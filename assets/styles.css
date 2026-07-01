@@ -131,3 +131,129 @@ main.dashboard-grid {
   opacity: 1;
   background: var(--orange);
 }
+
+.tile-add {
+  background: transparent;
+  border: 2px dashed rgba(91, 45, 142, 0.35);
+  border-top: 2px dashed rgba(91, 45, 142, 0.35);
+  color: var(--purple);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.tile-add:hover {
+  border-color: var(--purple);
+  background: rgba(91, 45, 142, 0.05);
+  box-shadow: none;
+}
+
+.tile-add h2 {
+  color: var(--purple);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 26, 46, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 1rem;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 14px;
+  padding: 1.75rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 48px rgba(26, 26, 46, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.modal h2 {
+  margin: 0 0 0.25rem;
+  color: var(--navy);
+  font-size: 1.25rem;
+}
+
+.modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #444;
+}
+
+.modal input {
+  font: inherit;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #d7d7e0;
+  border-radius: 8px;
+  font-weight: 400;
+}
+
+.modal input:focus {
+  outline: none;
+  border-color: var(--purple);
+}
+
+.modal-error {
+  color: #b3261e;
+  background: #fdecea;
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.modal-status {
+  color: var(--navy);
+  background: #eef0fb;
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+}
+
+.btn {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--orange);
+  color: #fff;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #eee;
+  color: #333;
+}

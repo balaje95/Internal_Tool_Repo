@@ -14,8 +14,47 @@
 </header>
 
 <main class="dashboard-grid" id="dashboard-grid">
-  <!-- Tiles are rendered here by dashboard.js -->
+  <!-- Tiles are rendered here below; the "+ Add Tool" tile is appended by add-tool.js -->
 </main>
+
+<div class="modal-overlay" id="add-tool-overlay" hidden>
+  <form class="modal" id="add-tool-form">
+    <h2>Add a new tool</h2>
+
+    <label>
+      Name
+      <input type="text" id="at-name" required maxlength="120" placeholder="e.g. Warranty Letter Generator">
+    </label>
+
+    <label>
+      Description
+      <input type="text" id="at-description" required maxlength="300" placeholder="One line describing what it does">
+    </label>
+
+    <label>
+      Icon (single emoji, optional)
+      <input type="text" id="at-icon" maxlength="4" placeholder="🔧">
+    </label>
+
+    <label>
+      Tool HTML file
+      <input type="file" id="at-file" accept=".html,.htm" required>
+    </label>
+
+    <label>
+      Admin password
+      <input type="password" id="at-password" required>
+    </label>
+
+    <p class="modal-error" id="at-error" hidden></p>
+    <p class="modal-status" id="at-status" hidden></p>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" id="at-cancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="at-submit">Add Tool</button>
+    </div>
+  </form>
+</div>
 
 <script src="assets/tools.config.js"></script>
 <script>
@@ -50,10 +89,12 @@
       const exists = await fileExists(tool.file);
       grid.appendChild(renderTile(tool, exists));
     }
+    if (window.renderAddToolTile) window.renderAddToolTile(grid);
   }
 
   init();
 </script>
+<script src="assets/add-tool.js"></script>
 
 </body>
 </html>
