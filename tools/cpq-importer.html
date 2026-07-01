@@ -3,12 +3,20 @@
 <head>
 <meta charset="utf-8" />
 <title>CPQ Importer to Zuper</title>
+<script>(function(){try{if(localStorage.getItem('cpq_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
+    --bg:#f7f7fa; --panel:#ffffff; --panel2:#eef0f4; --border:#dcdfe6;
+    --text:#1a1a2e; --muted:#6b7280; --accent:#ff7a1a; --accent2:#e8500a;
+    --good:#1f9d55; --bad:#d1453b; --radius:10px;
+    --log-bg:#f0f1f5; --warn-bg:#fff4e5; --warn-border:#f3c98b; --warn-text:#8a5a10;
+  }
+  [data-theme="dark"]{
     --bg:#0f1115; --panel:#171a21; --panel2:#1d2129; --border:#2a2f3a;
     --text:#e6e8eb; --muted:#9aa3b2; --accent:#ff7a1a; --accent2:#ffa05c;
-    --good:#3ddc84; --bad:#ff5c5c; --radius:10px;
+    --good:#3ddc84; --bad:#ff5c5c;
+    --log-bg:#0a0b0e; --warn-bg:#2a1f10; --warn-border:#5a3d12; --warn-text:#ffcf9a;
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
@@ -48,7 +56,7 @@
   .status-pill.ok{color:var(--good);border-color:var(--good);}
   .status-pill.err{color:var(--bad);border-color:var(--bad);}
   .checkbox-row{display:flex;align-items:center;gap:8px;margin:10px 0;font-size:13px;color:var(--muted);}
-  pre.log{background:#0a0b0e;border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12px;max-height:340px;overflow:auto;white-space:pre-wrap;margin:0;}
+  pre.log{background:var(--log-bg);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12px;max-height:340px;overflow:auto;white-space:pre-wrap;margin:0;}
   .log-line{margin:0 0 3px;}
   .log-ok{color:var(--good);}
   .log-err{color:var(--bad);}
@@ -58,7 +66,7 @@
   .summary-bar .stat{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 16px;text-align:center;}
   .summary-bar .stat .v{font-size:18px;font-weight:700;}
   .summary-bar .stat .l{font-size:11px;color:var(--muted);}
-  .warn-box{background:#2a1f10;border:1px solid #5a3d12;color:#ffcf9a;border-radius:8px;padding:12px 14px;font-size:12.5px;margin-bottom:14px;line-height:1.5;}
+  .warn-box{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text);border-radius:8px;padding:12px 14px;font-size:12.5px;margin-bottom:14px;line-height:1.5;}
 </style>
 </head>
 <body>
@@ -69,54 +77,15 @@
     <h1>CPQ Importer to Zuper</h1>
     <span class="sub">Convert any CPQ spreadsheet and import directly into a Zuper account</span>
   </div>
+  <button type="button" class="secondary" id="themeToggle" style="margin-left:auto;font-size:12.5px;padding:7px 14px;">🌙 Dark</button>
 </header>
 
 <main>
 
-  <!-- AI CONVERTER (optional) -->
-  <div class="step" id="aiConverterPanel" style="border-color:#7c5cbf;margin-bottom:20px;">
-    <h2 style="margin-bottom:6px;">
-      <span class="num" style="background:#7c5cbf;font-size:14px;">AI</span>
-      Convert raw spreadsheet with AI
-      <span style="font-size:11.5px;color:var(--muted);font-weight:400;margin-left:auto;white-space:nowrap;">Optional</span>
-    </h2>
-    <p class="hint">Have a CPQ spreadsheet in any format (Acculynx, EagleView, custom)? Upload it and AI will map your columns to the Zuper CPQ format automatically. Then download and upload the result in Step 1.</p>
-
-    <div class="dropzone" id="aiDropzone">
-      <div>📄 Drop raw spreadsheet here, or click to browse</div>
-      <div style="font-size:11.5px;margin-top:6px;">.xlsx · .xls · .csv accepted</div>
-    </div>
-    <input type="file" id="aiFileInput" accept=".xlsx,.xls,.csv" />
-    <div id="aiFileInfo" style="margin-top:8px;font-size:13px;color:var(--muted);"></div>
-
-    <div id="aiConfigRow" style="display:none;margin-top:16px;">
-      <div id="aiColumnsBox" style="margin-bottom:14px;padding:10px 14px;background:var(--panel2);border-radius:8px;font-size:12.5px;">
-        <span style="color:var(--muted);">Detected columns: </span><span id="aiColumnsPreview" style="color:var(--text);"></span>
-      </div>
-      <div class="row">
-        <div class="field">
-          <label>Anthropic API Key <span style="font-weight:400;color:var(--muted);">— saved in browser, enter once</span></label>
-          <input type="password" id="anthropicKeyInput" placeholder="sk-ant-api03-…" />
-        </div>
-      </div>
-      <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-        <button id="convertWithAiBtn" style="background:#7c5cbf;">AI Convert</button>
-        <span id="aiStatus" style="font-size:13px;color:var(--muted);"></span>
-      </div>
-    </div>
-
-    <div id="aiOutputSection" style="display:none;margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
-      <p class="hint" style="margin-bottom:10px;">Preview (first 10 rows of first sheet):</p>
-      <div id="aiOutputPreview" style="overflow-x:auto;margin-bottom:16px;border-radius:8px;"></div>
-      <button id="downloadConvertedBtn" style="background:#3ddc84;color:#0f1115;">⬇ Download converted file (.xlsx)</button>
-      <span style="font-size:12px;color:var(--muted);margin-left:12px;">Upload this in Step 1 to import</span>
-    </div>
-  </div>
-
   <!-- STEP 1: Upload -->
   <div class="step" id="step1">
     <h2><span class="num">1</span> Upload your CPQ spreadsheet</h2>
-    <p class="hint">Upload a workbook in Zuper CPQ column format — one sheet per proposal template. Need a starting point? Download the sample template below, or use the AI Converter above to transform any spreadsheet automatically.</p>
+    <p class="hint">Upload a workbook in Zuper CPQ column format — one sheet per proposal template. Need a starting point? Download the sample template below.</p>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
       <button class="secondary" id="downloadSampleBtn" style="font-size:12.5px;padding:7px 14px;">⬇ Download sample template</button>
       <span style="font-size:12px;color:var(--muted);">Shows the required column format with example data</span>
@@ -221,6 +190,18 @@
 </main>
 
 <script>
+(function() {
+  const toggle = document.getElementById('themeToggle');
+  const isDark = () => document.documentElement.getAttribute('data-theme') === 'dark';
+  const sync = () => { toggle.textContent = isDark() ? '☀️ Light' : '🌙 Dark'; };
+  toggle.addEventListener('click', () => {
+    if (isDark()) { document.documentElement.removeAttribute('data-theme'); localStorage.setItem('cpq_theme', 'light'); }
+    else { document.documentElement.setAttribute('data-theme', 'dark'); localStorage.setItem('cpq_theme', 'dark'); }
+    sync();
+  });
+  sync();
+})();
+
 const ZUPER_COLS = ["Product Name","Section","Product No","Product Type","UOM","Unit Price ($)","Quantity Type","Formula Name","Formula (Human-Readable)","Rounding","Rule Summary"];
 
 // Known Zuper API regions — tried in parallel during auto-detect
@@ -916,150 +897,6 @@ el('downloadSampleBtn').addEventListener('click', () => {
   a.click();
 });
 
-// ── AI Converter ─────────────────────────────────────────────
-let aiRawData = null;
-let aiConvertedData = null;
-
-const aiDropzone  = el('aiDropzone');
-const aiFileInput = el('aiFileInput');
-
-aiDropzone.addEventListener('click',     () => aiFileInput.click());
-aiDropzone.addEventListener('dragover',  e  => { e.preventDefault(); aiDropzone.classList.add('drag'); });
-aiDropzone.addEventListener('dragleave', () => aiDropzone.classList.remove('drag'));
-aiDropzone.addEventListener('drop',      e  => { e.preventDefault(); aiDropzone.classList.remove('drag'); if (e.dataTransfer.files[0]) handleAiFile(e.dataTransfer.files[0]); });
-aiFileInput.addEventListener('change',   e  => { if (e.target.files[0]) handleAiFile(e.target.files[0]); });
-
-function handleAiFile(file) {
-  el('aiFileInfo').textContent = `Loaded: ${file.name}`;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const wb = XLSX.read(e.target.result, { type: 'array' });
-    aiRawData = {
-      sheets: wb.SheetNames.map(name => ({
-        name,
-        rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' }),
-      })),
-    };
-    const allCols = new Set();
-    for (const sheet of aiRawData.sheets)
-      if (sheet.rows[0]) Object.keys(sheet.rows[0]).forEach(k => allCols.add(k));
-    el('aiColumnsPreview').textContent = [...allCols].join(' · ') || '(no columns detected)';
-    el('aiConfigRow').style.display = '';
-    el('aiOutputSection').style.display = 'none';
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-// Pre-fill API key from localStorage
-(function() {
-  const saved = localStorage.getItem('anthropic_api_key');
-  if (saved) el('anthropicKeyInput').value = saved;
-})();
-
-el('convertWithAiBtn').addEventListener('click', async () => {
-  const apiKey = el('anthropicKeyInput').value.trim();
-  if (!apiKey)   { el('aiStatus').textContent = 'Enter your Anthropic API key'; return; }
-  if (!aiRawData){ el('aiStatus').textContent = 'Upload a file first'; return; }
-  localStorage.setItem('anthropic_api_key', apiKey);
-
-  el('aiStatus').textContent = 'Converting with AI…';
-  el('convertWithAiBtn').disabled = true;
-
-  try {
-    const sheetsPayload = aiRawData.sheets.map(s => ({
-      name: s.name,
-      columns: s.rows[0] ? Object.keys(s.rows[0]) : [],
-      sample_rows: s.rows.slice(0, 30),
-    }));
-
-    const prompt = `You are converting a CPQ (Configure Price Quote) spreadsheet to Zuper CPQ format.
-
-TARGET COLUMNS (output must use exactly these keys):
-- Product Name   — product/service name (required)
-- Section        — category group like "Shingles", "Labor", "Underlayment" (required)
-- Product No     — SKU or product code (leave blank if none)
-- Product Type   — exactly "PARTS" for materials, "SERVICE" for labor/installation
-- UOM            — unit code: EA, SQ, LF, SQFT, GAL, BDL, RL, PC (pick best match)
-- Unit Price ($) — numeric price, no currency symbol
-- Quantity Type  — "FIXED" normally; "FORMULA" if quantity is formula-driven
-- Formula Name   — formula name if FORMULA type (otherwise blank)
-- Formula (Human-Readable) — formula expression if FORMULA type (otherwise blank)
-- Rounding       — NONE, ROUND, CEIL, or FLOOR (default NONE)
-- Rule Summary   — any conditional rule description (blank if none)
-
-SOURCE DATA:
-${JSON.stringify(sheetsPayload, null, 1)}
-
-RULES:
-1. Map every source product row to the target format — do not drop any products
-2. If source rows include section/category headers (rows where most price/qty fields are empty), use the header text as the Section value for subsequent rows
-3. Infer Product Type from context: materials/products → PARTS, labour/installation/service → SERVICE
-4. Normalise UOM to standard codes (e.g. "Square" → SQ, "Each" → EA, "Linear Foot" → LF)
-5. Preserve the original sheet structure (one output sheet per input sheet)
-6. Return ONLY valid JSON — no explanation, no markdown fences — in this exact shape:
-{"sheets":[{"name":"sheet name","rows":[{"Product Name":"","Section":"","Product No":"","Product Type":"PARTS","UOM":"EA","Unit Price ($)":0,"Quantity Type":"FIXED","Formula Name":"","Formula (Human-Readable)":"","Rounding":"NONE","Rule Summary":""}]}]}`;
-
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8192,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(`Anthropic API ${resp.status}: ${err.error?.message || JSON.stringify(err).slice(0,200)}`);
-    }
-
-    const apiData  = await resp.json();
-    const rawText  = apiData.content?.[0]?.text || '';
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Could not find JSON in AI response');
-    aiConvertedData = JSON.parse(jsonMatch[0]);
-
-    // Preview table
-    const first = aiConvertedData.sheets?.[0];
-    if (first?.rows?.length) {
-      const cols = Object.keys(first.rows[0]);
-      const cap  = first.rows.slice(0, 10);
-      let html = '<table style="border-collapse:collapse;font-size:11.5px;white-space:nowrap;">';
-      html += '<tr>' + cols.map(c => `<th style="border:1px solid var(--border);padding:4px 8px;background:var(--panel2);color:var(--muted);">${c}</th>`).join('') + '</tr>';
-      for (const row of cap)
-        html += '<tr>' + cols.map(c => `<td style="border:1px solid var(--border);padding:3px 8px;">${row[c] ?? ''}</td>`).join('') + '</tr>';
-      html += '</table>';
-      if (first.rows.length > 10)
-        html += `<p style="font-size:11px;color:var(--muted);margin-top:6px;">Showing 10 of ${first.rows.length} rows across this sheet</p>`;
-      el('aiOutputPreview').innerHTML = html;
-    }
-
-    const total = aiConvertedData.sheets?.reduce((n, s) => n + (s.rows?.length || 0), 0) || 0;
-    el('aiStatus').textContent = `Converted ${total} row(s) across ${aiConvertedData.sheets?.length || 0} sheet(s)`;
-    el('aiOutputSection').style.display = '';
-  } catch(e) {
-    el('aiStatus').textContent = `Error: ${e.message}`;
-  } finally {
-    el('convertWithAiBtn').disabled = false;
-  }
-});
-
-el('downloadConvertedBtn').addEventListener('click', () => {
-  if (!aiConvertedData?.sheets) return;
-  const wb = XLSX.utils.book_new();
-  for (const sheet of aiConvertedData.sheets) {
-    if (!sheet.rows?.length) continue;
-    const ws = XLSX.utils.json_to_sheet(sheet.rows);
-    XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
-  }
-  XLSX.writeFile(wb, 'Zuper_CPQ_converted.xlsx');
-});
 </script>
   <script src="../assets/back-link.js"></script>
 </body>
