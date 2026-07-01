@@ -14,7 +14,7 @@
 </header>
 
 <main class="dashboard-grid" id="dashboard-grid">
-  <!-- Tiles are rendered here below; the "+ Add Tool" tile is appended by add-tool.js -->
+  <!-- Tiles are rendered here below; the Add/Update Tool tiles are appended by manage-tools.js -->
 </main>
 
 <div class="modal-overlay" id="add-tool-overlay" hidden>
@@ -56,6 +56,35 @@
   </form>
 </div>
 
+<div class="modal-overlay" id="update-tool-overlay" hidden>
+  <form class="modal" id="update-tool-form">
+    <h2>Update an existing tool</h2>
+
+    <label>
+      Tool
+      <select id="ut-tool" required></select>
+    </label>
+
+    <label>
+      New HTML file (replaces the current one)
+      <input type="file" id="ut-file" accept=".html,.htm" required>
+    </label>
+
+    <label>
+      Admin password
+      <input type="password" id="ut-password" required>
+    </label>
+
+    <p class="modal-error" id="ut-error" hidden></p>
+    <p class="modal-status" id="ut-status" hidden></p>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" id="ut-cancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="ut-submit">Update Tool</button>
+    </div>
+  </form>
+</div>
+
 <script src="assets/tools.config.js"></script>
 <script>
   const grid = document.getElementById("dashboard-grid");
@@ -90,11 +119,12 @@
       grid.appendChild(renderTile(tool, exists));
     }
     if (window.renderAddToolTile) window.renderAddToolTile(grid);
+    if (window.renderUpdateToolTile) window.renderUpdateToolTile(grid);
   }
 
   init();
 </script>
-<script src="assets/add-tool.js"></script>
+<script src="assets/manage-tools.js"></script>
 
 </body>
 </html>
