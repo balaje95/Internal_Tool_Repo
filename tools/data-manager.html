@@ -481,6 +481,7 @@ input[type=checkbox]{accent-color:var(--primary)}
     <button class="btn btn-p" id="tt-import-btn" onclick="showTtImportCard()" style="display:none">🏷 Import Trade Type Mapping</button>
     <button class="btn btn-p" id="pkg-import-btn" onclick="showPkgImportCard()" style="display:none">📦 Import Packages</button>
     <button class="btn btn-p" id="tpl-import-btn" onclick="showTplImportCard()" style="display:none">📥 Import Template</button>
+    <button class="btn btn-p" id="wf-import-btn" onclick="showWfImportCard()" style="display:none">🔄 Import Workflow JSON</button>
     <label id="dryrun-label" style="display:none;align-items:center;gap:6px;font-size:.82rem;font-weight:600;cursor:pointer;margin-left:4px">
       <input type="checkbox" id="dryrun" checked onchange="updatePill()">
       Dry Run <span id="mode-pill" class="mode-safe">● Safe</span>
@@ -1158,6 +1159,49 @@ input[type=checkbox]{accent-color:var(--primary)}
   </div>
 </div>
 
+<!-- IMPORT WORKFLOW JSON -->
+<div class="card" id="wf-import-card" style="display:none">
+  <div class="sec-title">🔄 Import Workflow JSON</div>
+  <div style="display:flex;margin-bottom:20px;border-bottom:1.5px solid var(--sec-border)">
+    <div class="istep active" id="wfistep1-tab">① Upload</div>
+    <div class="istep" id="wfistep2-tab">② Preview</div>
+    <div class="istep" id="wfistep3-tab">③ Import</div>
+  </div>
+  <!-- Step 1: Upload -->
+  <div id="wfistep1">
+    <div id="wfi-dropzone" onclick="$('wfi-file').click()" ondragover="event.preventDefault()" ondrop="event.preventDefault();onWfImportFile({files:event.dataTransfer.files})" style="border:2px dashed var(--border-inp);border-radius:14px;padding:32px;background:var(--inp-bg);transition:border-color .15s,background .15s;text-align:center;cursor:pointer;margin-bottom:14px">
+      <div style="font-size:2rem;margin-bottom:8px">📂</div>
+      <p style="font-size:.85rem;color:var(--text-sub)"><strong style="color:var(--text)">Click to upload</strong> or drag &amp; drop</p>
+      <p style="font-size:.76rem;color:var(--text-sub);margin-top:4px">Workflow JSON exported from Zuper's Workflow Builder (array of workflow objects)</p>
+      <input type="file" id="wfi-file" accept=".json" style="display:none" onchange="onWfImportFile(this)">
+    </div>
+    <div class="msg msg-info" style="margin-bottom:12px;font-size:.8rem">
+      Imports straight into the <strong>currently connected account's</strong> Workflow Builder via <code>workflows/import</code>. Each workflow in the file is created as a <strong>brand-new</strong> workflow (fresh UID) — it never overwrites an existing one.
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-g" onclick="hideWfImportCard()">← Back</button>
+    </div>
+    <div id="wfi-msg1" class="msg" style="display:none;margin-top:10px"></div>
+  </div>
+  <!-- Step 2: Preview -->
+  <div id="wfistep2" style="display:none">
+    <div id="wfi-preview" style="margin-bottom:14px;padding:14px;background:var(--th-bg);border-radius:10px;border:1px solid var(--border);font-size:.82rem"></div>
+    <div class="btn-row">
+      <button class="btn btn-p" id="wfi-run-btn" onclick="startWfImport()">Import to Account →</button>
+      <button class="btn btn-o" onclick="wfiGoTo(1);$('wfi-file').value=''">← Back</button>
+    </div>
+    <div id="wfi-msg2" class="msg" style="display:none;margin-top:10px"></div>
+  </div>
+  <!-- Step 3: Result -->
+  <div id="wfistep3" style="display:none">
+    <div id="wfi-msg3" class="msg" style="display:none;margin-bottom:10px"></div>
+    <pre id="wfi-log" style="background:var(--th-bg);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.78rem;max-height:320px;overflow:auto;white-space:pre-wrap"></pre>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn btn-g" onclick="hideWfImportCard();doFetch()">Done — Refresh List</button>
+    </div>
+  </div>
+</div>
+
 <!-- KEYBOARD SHORTCUTS OVERLAY (FEAT-5) -->
 <div id="shortcuts-overlay" onclick="if(event.target===this)closeShortcuts()" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1002;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
   <div style="background:var(--card);border-radius:16px;width:520px;max-width:95vw;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:24px">
@@ -1316,6 +1360,7 @@ function showConnected(accountName, region){
   const _ttIBtn=$('tt-import-btn');if(_ttIBtn) _ttIBtn.style.display=modKey()==='product'?'inline-flex':'none';
   const _pkgIBtn=$('pkg-import-btn');if(_pkgIBtn) _pkgIBtn.style.display=modKey()==='package'?'inline-flex':'none';
   const _tplIBtn=$('tpl-import-btn');if(_tplIBtn) _tplIBtn.style.display=modKey()==='proposal_template'?'inline-flex':'none';
+  const _wfIBtn=$('wf-import-btn');if(_wfIBtn) _wfIBtn.style.display=modKey()==='workflow'?'inline-flex':'none';
   const _cpqRow=$('cpq-submodule-row');if(_cpqRow) _cpqRow.style.display=($('module').value==='cpq_group')?'block':'none';
   const _wfSubRow=$('workflow-submodule-row');if(_wfSubRow) _wfSubRow.style.display=($('module').value==='workflow_group')?'block':'none';
   // Hide delete button and dry-run toggle for no-delete modules
@@ -1360,6 +1405,8 @@ function doDisconnect(){
   const ttImpCardD=$('tt-import-card');if(ttImpCardD) ttImpCardD.style.display='none';
   const _pkgIBtnD=$('pkg-import-btn');if(_pkgIBtnD) _pkgIBtnD.style.display='none';
   const _tplIBtnD=$('tpl-import-btn');if(_tplIBtnD) _tplIBtnD.style.display='none';
+  const _wfIBtnD=$('wf-import-btn');if(_wfIBtnD) _wfIBtnD.style.display='none';
+  const wfImpCardD=$('wf-import-card');if(wfImpCardD) wfImpCardD.style.display='none';
   const _cpqRowD=$('cpq-submodule-row');if(_cpqRowD) _cpqRowD.style.display='none';
   const _wfRowD=$('workflow-submodule-row');if(_wfRowD) _wfRowD.style.display='none';
   $('dryrun-label').style.display='none';
@@ -6032,6 +6079,99 @@ function switchWfSub(key){
   onModuleChange();
 }
 
+// ── WORKFLOWS: import JSON straight into the connected account ──────────────
+let _wfImportData=null;
+
+function showWfImportCard(){
+  const c=$('wf-import-card');if(!c) return;
+  c.style.display='block';
+  c.scrollIntoView({behavior:'smooth',block:'start'});
+  wfiGoTo(1);
+  const fi=$('wfi-file');if(fi) fi.value='';
+  const m=$('wfi-msg1');if(m) m.style.display='none';
+  _wfImportData=null;
+}
+function hideWfImportCard(){const c=$('wf-import-card');if(c) c.style.display='none';}
+
+function wfiGoTo(step){
+  [1,2,3].forEach(n=>{
+    const s=$('wfistep'+n);if(s) s.style.display=n===step?'block':'none';
+    const t=$('wfistep'+n+'-tab');if(t){t.classList.toggle('active',n===step);t.classList.toggle('done',n<step);}
+  });
+}
+
+function onWfImportFile(input){
+  const f=input.files[0];if(!f) return;
+  const msg=$('wfi-msg1');msg.style.display='none';
+  const ext=(f.name.split('.').pop()||'').toLowerCase();
+  if(ext!=='json'){msg.className='msg msg-err';msg.textContent='✗ Please upload a .json file.';msg.style.display='block';return;}
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const data=JSON.parse(e.target.result);
+      const arr=Array.isArray(data)?data:(data.data||data.workflows||[data]);
+      if(!arr.length||!arr.every(w=>w&&typeof w==='object'&&w.nodes&&w.connections)){
+        msg.className='msg msg-err';
+        msg.textContent='✗ This doesn\'t look like a Workflow Builder export — expected an array of workflow objects with "nodes" and "connections".';
+        msg.style.display='block';
+        return;
+      }
+      _wfImportData=arr;
+      renderWfImportPreview();
+      wfiGoTo(2);
+    }catch(ex){msg.className='msg msg-err';msg.textContent='✗ Invalid JSON: '+ex.message;msg.style.display='block';}
+  };
+  reader.readAsText(f);
+}
+
+function renderWfImportPreview(){
+  const arr=_wfImportData;if(!arr) return;
+  const prev=$('wfi-preview');if(!prev) return;
+  prev.innerHTML=
+    '<div style="margin-bottom:8px;font-weight:600;font-size:.88rem">'+arr.length+' workflow'+(arr.length!==1?'s':'')+' found</div>'
+    +'<div style="display:flex;flex-direction:column;gap:6px">'
+    +arr.map(w=>{
+      const nodeCount=(w.nodes||[]).length;
+      const trigger=(w.nodes||[]).find(n=>n.action_type==='TRIGGER');
+      return '<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px">'
+        +'<span style="font-weight:600">'+esc(w.workflow_name||'Untitled Workflow')+'</span>'
+        +'<span style="color:var(--text-sub);font-size:.76rem;white-space:nowrap">'+nodeCount+' node'+(nodeCount!==1?'s':'')+(trigger?' · '+esc(trigger.action_name||trigger.action_key||''):'')+'</span>'
+        +'</div>';
+    }).join('')
+    +'</div>';
+}
+
+async function startWfImport(){
+  const arr=_wfImportData;if(!arr) return;
+  if(!_workflowBaseUrl){
+    const m=$('wfi-msg2');m.className='msg msg-err';m.textContent='✗ Workflow Service URL not set. Go back and set it on the connection screen.';m.style.display='block';
+    return;
+  }
+  const btn=$('wfi-run-btn');btn.disabled=true;btn.textContent='Importing…';
+  wfiGoTo(3);
+  const log=$('wfi-log');log.textContent='Uploading '+arr.length+' workflow(s) to '+_workflowBaseUrl+'workflows/import …\n';
+  try{
+    const blob=new Blob([JSON.stringify(arr)],{type:'application/json'});
+    const form=new FormData();
+    form.append('file',blob,'Workflow-Import.json');
+    const res=await fetch(_workflowBaseUrl+'workflows/import',{method:'POST',headers:getHdrs(),body:form});
+    const bodyText=await res.text();
+    const m=$('wfi-msg3');
+    if(!res.ok){
+      log.textContent+='\n✗ Import failed (HTTP '+res.status+')\n'+bodyText.slice(0,800);
+      m.className='msg msg-err';m.textContent='✗ Import failed — see log below.';m.style.display='block';
+      return;
+    }
+    log.textContent+='\n✓ Import succeeded (HTTP '+res.status+')\n'+bodyText.slice(0,1500);
+    m.className='msg msg-ok';m.textContent='✓ Imported '+arr.length+' workflow(s). Click "Refresh List" below to see them.';m.style.display='block';
+  }catch(e){
+    log.textContent+='\n✗ Network error: '+e.message;
+    const m=$('wfi-msg3');m.className='msg msg-err';m.textContent='✗ Network error — see log below.';m.style.display='block';
+  }finally{
+    btn.disabled=false;btn.textContent='Import to Account →';
+  }
+}
+
 function onModuleChange(){
   const cfg=modCfg();
   $('s-module').textContent=cfg?cfg.label:modKey();
@@ -6079,10 +6219,12 @@ function onModuleChange(){
   const ibtn=$('import-btn');if(ibtn) ibtn.style.display=(isProduct&&isConn)?'inline-flex':'none';
   const ttIbtn=$('tt-import-btn');if(ttIbtn) ttIbtn.style.display=(isProduct&&isConn)?'inline-flex':'none';
   const pkgIbtn=$('pkg-import-btn');if(pkgIbtn) pkgIbtn.style.display=(modKey()==='package'&&isConn)?'inline-flex':'none';
+  const wfIbtn=$('wf-import-btn');if(wfIbtn) wfIbtn.style.display=(modKey()==='workflow'&&isConn)?'inline-flex':'none';
   if(!isProduct&&typeof hideImportCard==='function') hideImportCard();
   if(!isProduct){const ttImpCard=$('tt-import-card');if(ttImpCard) ttImpCard.style.display='none';}
   if(modKey()!=='package'&&typeof hidePkgImportCard==='function') hidePkgImportCard();
   if(modKey()!=='proposal_template'&&typeof hideTplImportCard==='function') hideTplImportCard();
+  if(modKey()!=='workflow'&&typeof hideWfImportCard==='function') hideWfImportCard();
 }
 
 onModuleChange();
