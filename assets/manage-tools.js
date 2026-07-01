@@ -4,6 +4,16 @@
 // Both are Vercel serverless functions that commit straight to GitHub — they have
 // nothing to talk to when this page is opened as a plain static file or local server.
 (function () {
+  // Vercel serverless functions cap request bodies at ~4.5MB, and base64 encoding
+  // adds ~33% overhead on top of the raw file size — so the safe raw-file ceiling
+  // is well under that. Files above this either fail with an opaque platform error
+  // or (per Vercel's ~4.5MB response error page) never reach our error handling at all.
+  const MAX_FILE_BYTES = 3 * 1024 * 1024; // 3MB
+
+  function formatBytes(bytes) {
+    return (bytes / (1024 * 1024)).toFixed(2) + "MB";
+  }
+
   function readFileAsBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -85,6 +95,11 @@
         errorEl.hidden = false;
         return;
       }
+      if (file.size > MAX_FILE_BYTES) {
+        errorEl.textContent = `That file is ${formatBytes(file.size)}, which is over the ${formatBytes(MAX_FILE_BYTES)} limit for this upload form. Add it via git instead (see the dashboard repo's tools/ folder).`;
+        errorEl.hidden = false;
+        return;
+      }
 
       submitBtn.disabled = true;
       statusEl.textContent = "Uploading and committing to GitHub…";
@@ -119,7 +134,8 @@
       statusEl.hidden = true;
       form.reset();
       submitBtn.disabled = false;
-      select.innerHTML = (window.TOOLS || [])
+      const currentTools = typeof TOOLS !== "undefined" ? TOOLS : [];
+      select.innerHTML = currentTools
         .map((t) => `<option value="${t.file}">${t.name}</option>`)
         .join("");
       overlay.hidden = false;
@@ -162,6 +178,11 @@
       }
       if (!file) {
         errorEl.textContent = "Please choose the replacement .html file.";
+        errorEl.hidden = false;
+        return;
+      }
+      if (file.size > MAX_FILE_BYTES) {
+        errorEl.textContent = `That file is ${formatBytes(file.size)}, which is over the ${formatBytes(MAX_FILE_BYTES)} limit for this upload form. Update it via git instead.`;
         errorEl.hidden = false;
         return;
       }

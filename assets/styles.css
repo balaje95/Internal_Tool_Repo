@@ -204,6 +204,12 @@ main.dashboard-grid {
   font-weight: 400;
 }
 
+.modal-hint {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #888;
+}
+
 .modal input:focus {
   outline: none;
   border-color: var(--purple);

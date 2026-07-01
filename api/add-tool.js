@@ -18,6 +18,7 @@
 // will be rejected by the platform before this code even runs.
 
 const GITHUB_API = "https://api.github.com";
+const MAX_FILE_BYTES = 3 * 1024 * 1024; // 3MB decoded size, matching the client-side check
 
 function slugify(name) {
   const slug = String(name)
@@ -86,6 +87,10 @@ module.exports = async (req, res) => {
   }
   if (!fileContent || typeof fileContent !== "string" || !/^[A-Za-z0-9+/]+=*$/.test(fileContent)) {
     res.status(400).json({ error: "Missing or invalid (non-base64) file content." });
+    return;
+  }
+  if (Buffer.byteLength(fileContent, "base64") > MAX_FILE_BYTES) {
+    res.status(400).json({ error: `File is over the ${(MAX_FILE_BYTES / (1024 * 1024)).toFixed(0)}MB limit for this upload form.` });
     return;
   }
 
