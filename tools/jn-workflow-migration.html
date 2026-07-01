@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JN → Zuper Workflow Converter</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --z:#FF5C00;--zl:#FFF3EC;--zd:#C94400;
+  --bg:#F5F7FA;--sf:#FFF;--bd:#E3E7EF;
+  --t1:#1A2033;--t2:#5A6478;--t3:#9AA3B8;
+  --green:#16A34A;--gbg:#DCFCE7;
+  --yellow:#D97706;--ybg:#FEF9C3;
+  --red:#DC2626;--rbg:#FEE2E2;
+  --blue:#2563EB;--bbg:#EFF6FF;
+  --purple:#7C3AED;--pbg:#F5F3FF;
+}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t1);min-height:100vh;display:flex;flex-direction:column}
+
+/* HEADER */
+header{background:var(--z);height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;flex-shrink:0;box-shadow:0 2px 8px rgba(255,92,0,.2)}
+.hl{display:flex;align-items:center;gap:11px}
+.hlogo{width:30px;height:30px;background:#fff;border-radius:7px;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--z);font-size:14px}
+.htitle{color:#fff;font-weight:700;font-size:14px}
+.hsub{color:rgba(255,255,255,.7);font-size:11px;margin-top:1px}
+.hr{display:flex;gap:8px;align-items:center}
+.btn{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:opacity .15s}
+.btn:hover{opacity:.85}.btn:disabled{opacity:.4;cursor:default}
+.btn-ghost{background:rgba(255,255,255,.2);border:1.5px solid rgba(255,255,255,.4);color:#fff}
+.btn-white{background:#fff;color:var(--z)}
+.btn-green{background:var(--green);color:#fff}
+.btn-orange{background:var(--z);color:#fff}
+.btn-outline{background:var(--bg);color:var(--t1);border:1px solid var(--bd)}
+
+/* LAYOUT */
+main{flex:1;display:flex;overflow:hidden;height:calc(100vh - 54px)}
+#lp{width:300px;min-width:300px;background:var(--sf);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden;height:calc(100vh - 54px)}
+#rp{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* DROP */
+#dz{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px;cursor:pointer;text-align:center;transition:background .2s}
+#dz.drag{background:var(--zl)}
+.dz-ico{width:60px;height:60px;border-radius:14px;background:var(--zl);border:2px dashed var(--z);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:14px}
+.dz-t{font-size:14px;font-weight:700;margin-bottom:5px}
+.dz-s{font-size:12px;color:var(--t2);line-height:1.6}
+.dz-h{margin-top:12px;font-size:11px;color:var(--t3);background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:7px 11px;line-height:1.6;text-align:left}
+
+/* LIST */
+#listp{display:none;flex-direction:column;overflow:hidden;flex:1;min-height:0}
+#listp.show{display:flex}
+.pt{padding:9px 13px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.pl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--t3)}
+.cp{background:var(--zl);color:var(--z);padding:1px 7px;border-radius:9999px;font-size:11px;font-weight:700}
+#srch{margin:7px 12px;padding:6px 9px;border:1px solid var(--bd);border-radius:6px;font-size:12px;outline:none;width:calc(100% - 24px);flex-shrink:0}
+#fb{padding:0 12px 7px;display:flex;gap:4px;flex-wrap:wrap;flex-shrink:0}
+.fc{padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:600;cursor:pointer;border:1.5px solid transparent;background:var(--bg);color:var(--t2)}
+.fc.on{border-color:currentColor}
+.fc.all.on{color:var(--t1);background:#E2E8F0}
+.fc.ready.on{color:var(--green);background:var(--gbg)}
+.fc.mapping.on{color:var(--yellow);background:var(--ybg)}
+.fc.manual.on{color:var(--red);background:var(--rbg)}
+.fc.skip.on{color:var(--t3);background:var(--bg)}
+#jl{flex:1;overflow-y:scroll;min-height:0}
+.ji{padding:9px 13px;border-bottom:1px solid #F5F7FA;cursor:pointer;border-left:3px solid transparent}
+.ji:hover{background:#FAFBFC}
+.ji.on{background:var(--zl);border-left-color:var(--z)}
+.jin{font-size:12px;font-weight:600;line-height:1.4;margin-bottom:4px}
+.jit{display:flex;gap:4px;flex-wrap:wrap}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600}
+#sb{padding:7px 13px;border-top:1px solid var(--bd);background:var(--bg);display:flex;gap:6px;align-items:center;flex-shrink:0}
+#sb label{font-size:12px;color:var(--t2);display:flex;align-items:center;gap:5px;cursor:pointer}
+#sa{accent-color:var(--z)}
+
+/* EMPTY */
+#es{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--t3)}
+.es-ico{font-size:38px;margin-bottom:10px}
+.es-t{font-size:14px;font-weight:600;color:var(--t2)}
+.es-s{font-size:12px;margin-top:4px}
+
+/* DETAIL */
+#det{display:none;flex:1;flex-direction:column;overflow:hidden}
+#det.show{display:flex}
+#dh{padding:13px 20px;background:var(--sf);border-bottom:1px solid var(--bd);flex-shrink:0}
+#dn{font-size:15px;font-weight:800;margin-bottom:6px}
+#dtags{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:9px}
+#dbtns{display:flex;gap:7px}
+#tabs{display:flex;background:var(--sf);border-bottom:1px solid var(--bd);flex-shrink:0}
+.tab{padding:8px 17px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--t2);cursor:pointer;border-bottom:2px solid transparent}
+.tab.on{color:var(--z);border-bottom-color:var(--z);font-weight:700}
+#tc{flex:1;overflow-y:auto;padding:20px}
+
+/* FLOW */
+.fwrap{background:var(--bg);border:1px solid var(--bd);border-radius:10px;overflow:auto;margin-bottom:14px;min-height:200px}
+.finner{position:relative}
+.fn{position:absolute;border-radius:9px;border:1.5px solid;padding:7px 11px;min-width:120px;max-width:170px;z-index:2;transition:box-shadow .15s}
+.fn:hover{z-index:10;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.fn-t{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;opacity:.75}
+.fn-n{font-size:11px;font-weight:700;line-height:1.3}
+.fn-ak{font-size:9px;font-family:monospace;opacity:.55;margin-top:2px}
+.fleg{font-size:11px;color:var(--t3);padding:7px 15px 11px;display:flex;gap:12px;flex-wrap:wrap}
+
+/* NODES TABLE */
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{background:var(--bg);padding:6px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);border-bottom:2px solid var(--bd)}
+.tbl td{padding:8px 10px;border-bottom:1px solid var(--bd);vertical-align:top}
+.tbl tr:hover td{background:#FAFBFC}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
+.expr{font-family:monospace;font-size:10px;background:#FFF7ED;border:1px solid #FED7AA;color:#C2410C;padding:1px 5px;border-radius:3px;word-break:break-all}
+.fixed{font-family:monospace;font-size:10px;background:var(--bg);padding:1px 5px;border-radius:3px;color:var(--t1);word-break:break-all}
+.map{font-family:monospace;font-size:10px;background:#FEF9C3;border:1px solid #FCD34D;color:#92400E;padding:1px 5px;border-radius:3px;word-break:break-all}
+
+/* JSON */
+.jw{background:#0F172A;border-radius:10px;padding:16px;position:relative;overflow:auto;max-height:600px}
+.jw pre{font-family:'JetBrains Mono','Fira Code',monospace;font-size:11.5px;line-height:1.65;color:#E2E8F0;white-space:pre}
+.jk{color:#7DD3FC}.js{color:#86EFAC}.jn2{color:#FCA5A5}.jb{color:#FDBA74}.jnl{color:#CBD5E1}
+.cbtn{position:absolute;top:10px;right:10px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600}
+.cbtn:hover{background:rgba(255,255,255,.2)}
+
+/* CHECKLIST */
+.wc{display:flex;align-items:flex-start;gap:9px;padding:9px 12px;border-radius:8px;margin-bottom:6px;border:1px solid;font-size:12px;line-height:1.6}
+.wc.w{background:#FFFBEB;border-color:#FDE68A;color:#92400E}
+.wc.e{background:#FEE2E2;border-color:#FECACA;color:#991B1B}
+.wc.i{background:var(--bbg);border-color:#BFDBFE;color:#1E40AF}
+.wc.s{background:var(--gbg);border-color:#BBF7D0;color:#166534}
+.setup{margin-top:16px;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:12px 15px;font-size:12px;color:var(--t2);line-height:1.8}
+
+/* BUG SUMMARY PANEL */
+.bug-panel{background:#FFF;border:1px solid var(--bd);border-radius:10px;margin-bottom:16px;overflow:hidden}
+.bug-header{padding:10px 14px;background:#0F172A;display:flex;align-items:center;gap:8px}
+.bug-title{color:#fff;font-size:13px;font-weight:700}
+.bug-sub{color:#94A3B8;font-size:11px;margin-left:auto}
+.bug-row{padding:8px 14px;border-bottom:1px solid var(--bd);font-size:12px;display:flex;align-items:flex-start;gap:8px}
+.bug-row:last-child{border-bottom:none}
+.bsev{font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;flex-shrink:0;margin-top:1px}
+.bsev.F{background:#FEE2E2;color:#991B1B}
+.bsev.H{background:#FEF9C3;color:#92400E}
+.bsev.M{background:#EFF6FF;color:#1E40AF}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:3px}
+#fi{display:none}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hl">
+    <div class="hlogo">Z</div>
+    <div>
+      <div class="htitle">JN → Zuper Workflow Converter</div>
+      <div class="hsub">v3 · Full condition mapping · Test Run validator · Drop JobNimbus JSON → Zuper Workflow Builder JSON</div>
+    </div>
+  </div>
+  <div class="hr">
+    <label for="fi" class="btn btn-ghost">📂 Load JN JSON</label>
+    <button class="btn btn-white" id="btnAll" disabled onclick="dlAll()">⬇ Export All</button>
+    <button class="btn btn-ghost" id="btnTestExport" disabled onclick="exportTestRunCSV()">📊 Test Log (Excel)</button>
+  </div>
+</header>
+
+<main>
+  <div id="lp">
+    <div id="dz" onclick="document.getElementById('fi').click()">
+      <div class="dz-ico">📥</div>
+      <div class="dz-t">Drop JobNimbus JSON here</div>
+      <div class="dz-s">Upload your exported JN automations file</div>
+      <div class="dz-h">
+        Input: JN automation array<br>
+        Output: Valid Zuper Workflow Builder JSON<br><br>
+        <strong>v2 fixes:</strong> Trigger placement · Module names · Task schema · SMS action_key · Node positions · get_record injection · Edge handles
+      </div>
+    </div>
+    <div id="listp">
+      <div class="pt"><span class="pl">JN Automations</span><span class="cp" id="cnt">0</span></div>
+      <input id="srch" placeholder="Search…" oninput="renderList()">
+      <div id="fb">
+        <span class="fc all on" data-f="all" onclick="setF('all')">All</span>
+        <span class="fc ready" data-f="ready" onclick="setF('ready')">✅ Ready</span>
+        <span class="fc mapping" data-f="mapping" onclick="setF('mapping')">🟡 Mapping</span>
+        <span class="fc manual" data-f="manual" onclick="setF('manual')">🔴 Review</span>
+        <span class="fc skip" data-f="skip" onclick="setF('skip')">⬛ Skip</span>
+      </div>
+      <div id="jl"></div>
+      <div id="sb">
+        <label><input type="checkbox" id="sa" onchange="selAll(this.checked)"> Select visible</label>
+        <button class="btn btn-orange" style="margin-left:auto" onclick="dlFiltered()">⬇ Export Visible</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="rp">
+    <div id="es">
+      <div class="es-ico">⚡</div>
+      <div class="es-t">Load a JN automations file</div>
+      <div class="es-s">Each automation converts to Zuper Workflow Builder JSON</div>
+    </div>
+    <div id="det">
+      <div id="dh">
+        <div id="dn"></div>
+        <div id="dtags"></div>
+        <div id="dbtns">
+          <button class="btn btn-green" onclick="dlOne()">⬇ Download Zuper JSON</button>
+          <button class="btn btn-outline" onclick="cpJson()">📋 Copy JSON</button>
+        </div>
+      </div>
+      <div id="tabs">
+        <button class="tab on" data-t="flow" onclick="setTab('flow')">Flow Preview</button>
+        <button class="tab" data-t="nodes" onclick="setTab('nodes')">Nodes</button>
+        <button class="tab" data-t="json" onclick="setTab('json')">Zuper JSON</button>
+        <button class="tab" data-t="ck" onclick="setTab('ck')">Checklist</button>
+        <button class="tab" data-t="test" onclick="setTab('test')">▶ Test Run</button>
+      </div>
+      <div id="tc"></div>
+    </div>
+  </div>
+</main>
+
+<input type="file" id="fi" accept=".json">
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  CONSTANTS — exact values from Zuper Workflow Builder
+// ═══════════════════════════════════════════════════════════
+
+const ZUPER_ICON  = "https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/283a4296-e481-48b5-be1d-8c20de718d2d.svg";
+const IFELSE_ICON = "https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/b5fc5141-079b-4d5e-b58e-c309f53d7663.svg";
+const CODE_ICON   = "https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/7f22be08-936d-4e6b-a054-0c4a9a438913.svg";
+const NOOP_ICON   = "https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/d00b5202-9b28-49f6-96da-24ccc836dd86.svg";
+
+// Zuper master node UIDs (from real sample)
+const M = {
+  trigger_job:       "721280c2-cf74-47fd-95f2-cdc4ad922c56",
+  if_else:           "19dd8b19-5974-4a2c-9735-a9ca36ac5a4d",
+  zuper_get_record:  "7bd69fec-b465-4eb8-a94b-3158c252921c",
+  zuper_update:      "7bd69fec-b465-4eb8-a94b-3158c252921c",
+  zuper_create:      "7bd69fec-b465-4eb8-a94b-3158c252921c",
+  no_op:             "10092d00-c480-4096-8c1b-b1d040a2c3e1",
+  code:              "d15fd095-70f3-4d53-9103-5786dfd52b37",
+  send_notification: "7bd69fec-b465-4eb8-a94b-3158c252921c",
+};
+
+const NODE_COLOR = { main:"#4682B4", background:"#DFEFF9", borderColor:"#E3E5E6", iconBackground:"#C9DCE7" };
+const CODE_COLOR = { main:"#2E8B57", background:"#E0F4EC", borderColor:"#8ceac1", iconBackground:"#BEEAD6" };
+
+// JN comparison → Zuper
+const COMP = { "==":"EQUAL_TO", "!=":"NOT_EQUAL_TO", ">":"GREATER_THAN", "<":"LESS_THAN", ">=":"GREATER_THAN_OR_EQUAL_TO", "<=":"LESS_THAN_OR_EQUAL_TO" };
+
+// JN condition field → Zuper trigger body field path + behaviour
+const JN_TO_ZUPER_FIELD = {
+  status:      { zField:'job_status',       needsUid:true,  label:'job status',     isArray:false },
+  type:        { zField:'job_category',     needsUid:true,  label:'job category',   isArray:false },
+  assigned_to: { zField:'assigned_users',   needsUid:false, label:'assigned users', isArray:true  },
+  owners:      { zField:'assigned_users',   needsUid:false, label:'assigned users', isArray:true  },
+  lead_source: { zField:'lead_source',      needsUid:false, label:'lead source',    isArray:false },
+  source:      { zField:'lead_source',      needsUid:false, label:'lead source',    isArray:false },
+  tag:         { zField:'tags',             needsUid:false, label:'tags',           isArray:true  },
+  tags:        { zField:'tags',             needsUid:false, label:'tags',           isArray:true  },
+  location:    { zField:'location_uid',     needsUid:true,  label:'location',       isArray:false },
+  pipeline:    { zField:'pipeline_stage',   needsUid:true,  label:'pipeline stage', isArray:false },
+  work_order:  { zField:'work_order_uid',   needsUid:true,  label:'work order',     isArray:false },
+};
+
+// JN template vars → Zuper get_record expressions
+const VARS = {
+  "{{JobPrimaryContactDisplayName}}": "{{$.getLatestNodeData('Get Job Record')['data']['data']['customer']['display_name']}}",
+  "{{JobPrimaryContactFirstName}}":   "{{$.getLatestNodeData('Get Job Record')['data']['data']['customer']['first_name']}}",
+  "{{JobPrimaryContactLastName}}":    "{{$.getLatestNodeData('Get Job Record')['data']['data']['customer']['last_name']}}",
+  "{{JobPrimaryContactEmail}}":       "{{$.getLatestNodeData('Get Job Record')['data']['data']['customer']['email']}}",
+  "{{JobPrimaryContactPhone}}":       "{{$.getLatestNodeData('Get Job Record')['data']['data']['customer']['mobile_number']}}",
+  "{{JobPrimaryContactNumber}}":      "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_number']}}",
+  "{{JobName}}":                      "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['title']}}",
+  "{{JobTitle}}":                     "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['title']}}",
+  "{{JobNumber}}":                    "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_number']}}",
+  "{{JobDescription}}":               "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['description']}}",
+  "{{JobAddressLine1}}":              "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['address']['address_line_1']}}",
+  "{{JobAddressCity}}":               "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['address']['city']}}",
+  "{{JobAddressState}}":              "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['address']['state']}}",
+  "{{JobAddressZip}}":                "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['address']['zipcode']}}",
+  "{{JobStatus}}":                    "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_status']['status_name']}}",
+  "{{JobType}}":                      "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_category']['category_name']}}",
+  "{{AssignedUserName}}":             "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['assigned_users'][0]['display_name']}}",
+  "{{RepName}}":                      "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['assigned_users'][0]['display_name']}}",
+  "{{SalesRepName}}":                 "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['assigned_users'][0]['display_name']}}",
+  "{{CompanyName}}":                  "{{$.getLatestNodeData('Get Job Record')['data']['data']['customer']['company_name']}}",
+  "{{JobCreatedDate}}":               "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['created_at']}}",
+  "{{JobUpdatedDate}}":               "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['updated_at']}}",
+  "{{JobScheduledDate}}":             "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['scheduled_start_time']}}",
+};
+
+// ═══════════════════════════════════════════════════════════
+//  UUID
+// ═══════════════════════════════════════════════════════════
+function uid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r=Math.random()*16|0, v=c==='x'?r:(r&0x3|0x8); return v.toString(16);
+  });
+}
+
+function mapVars(s) {
+  if (!s) return s;
+  for (const [k,v] of Object.entries(VARS)) s = s.replaceAll(k, v);
+  return s;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CORE CONVERTER  (JN → Zuper WB JSON)
+// ═══════════════════════════════════════════════════════════
+function convert(jn) {
+  const nodes = [];       // ACTION nodes only (FIX B1: trigger NOT in nodes[])
+  const conns = [];
+  const warnings = [];
+  const checklist = [];
+
+  const rt      = jn.record_type || 'job';
+  const trigger1 = (jn.trigger1 || '').toLowerCase();
+  const trigType = (jn.trigger_type || '').toLowerCase();
+  const isTime   = trigType === 'timebased';
+  const isZap    = !!jn.is_zapier;
+  const isSkip   = (jn.name||'').startsWith('Z DELETE');
+
+  // ── Trigger action_key (FIX B4: always job.status_update for jobs)
+  const trigActionKey = trigger1 === 'created' && !isTime ? 'job.new' : 'job.status_update';
+  const trigNodeUid   = uid();
+  const trigId        = trigActionKey;   // id must equal action_key for Zuper
+  const trigName      = trigger1 === 'created' && !isTime ? 'Job Created' : 'Job Status Update';
+
+  // ── Layout constants
+  let X = 210;  // start X for action nodes (trigger is at x:12)
+  const X_GAP = 210;
+  const Y_MAIN = 89.5, Y_TRUE = 12, Y_FALSE = 166;
+
+  function conn(srcId, tgtId, outVal, srcH, tgtH) {
+    const sh = srcH || (outVal === true ? 'two-a' : outVal === false ? 'two-b' : 'one-a');
+    const th = tgtH || 'a';
+    conns.push({
+      id: `reactflow__edge-${srcId}${sh}-${tgtId}${th}`,
+      type: "buttonEdge",
+      source: srcId, target: tgtId,
+      markerEnd: { type:"arrow" },
+      ...(outVal !== undefined ? { output_value: outVal } : {}),
+      sourceHandle: sh, targetHandle: th,
+    });
+  }
+
+  // ── FIX B9: Always insert zuper_get_record right after trigger (or after if_else TRUE)
+  // to hydrate job data for downstream expression references
+  function makeGetRecord(name, sourceNodeUid, y, x) {
+    const id = `zuper_get_record_zuper_get_record${uid()}`;
+    const nodeUid = uid();
+    nodes.push({
+      id, color: NODE_COLOR, input:1, module:"", output:1,
+      node_uid: nodeUid,
+      position: { x, y },
+      is_active: true,
+      node_icon: ZUPER_ICON,
+      node_name: "zuper_get_record",
+      action_key: "zuper_get_record",
+      action_name: name,
+      action_type: "ACTION",
+      credentials: {},
+      description: "Get a Record in Zuper",
+      form_fields: {
+        module:       { type:"FIXED",      value:"JOBS" },
+        module_uid:   { type:"FIXED",      value:"" },
+        status_uid:   { type:"FIXED",      value:"" },
+        source_node:  { type:"FIXED",      value: sourceNodeUid },
+        source_type:  { type:"FIXED",      value:"" },
+        category_uid: { type:"FIXED",      value:"" },
+      },
+      master_node_uid: M.zuper_get_record,
+      execution_status: "NONE",
+      node_display_name: "Edit Record",
+    });
+    return { id, nodeUid };
+  }
+
+  // ── CONDITIONS → if_else (FIX B7: correct expression path, FIX B12: correct handles)
+  const conds = jn.conditions || [];
+  // All conditions except record_type (which is a trigger filter, not a condition)
+  const activeConds  = conds.filter(c => c.field && c.field !== 'record_type');
+  const customConds  = activeConds.filter(c => (c.field||'').startsWith('cf_'));
+  const statusConds  = activeConds.filter(c => c.field === 'status');
+  const mappedConds  = activeConds.filter(c => JN_TO_ZUPER_FIELD[c.field]);
+  const unknownConds = activeConds.filter(c => !JN_TO_ZUPER_FIELD[c.field] && !(c.field||'').startsWith('cf_'));
+
+  if (customConds.length) {
+    warnings.push({ t:'w', icon:'⚠️', text:`Custom field conditions (${customConds.map(c=>c.field).join(', ')}) — recreate in Zuper as custom job fields (Settings → Modules → Jobs → Custom Fields) then update EXPRESSION paths.` });
+    checklist.push({ icon:'🔧', t:'y', text:`Map JN custom fields: ${customConds.map(c=>c.field).join(', ')} → Zuper custom field keys.` });
+  }
+  if (unknownConds.length) {
+    warnings.push({ t:'w', icon:'❓', text:`Unknown condition fields: ${unknownConds.map(c=>c.field).join(', ')} — not in JN→Zuper field map. Review expression paths manually.` });
+  }
+
+  let prevId   = trigId;
+  let prevH    = 'trigger-a';  // FIX B4: first edge from trigger always uses 'trigger-a'
+  let condNode = null;
+
+  if (activeConds.length > 0) {
+    const ifId  = `if_else_if_else${uid()}`;
+    const ifUid = uid();
+    const hasOr = activeConds.some(c => c.next_comparison === 'or');
+    const hasMixed = activeConds.some(c => c.next_comparison === 'or') && activeConds.some(c => c.next_comparison === 'and');
+    if (hasMixed) {
+      warnings.push({ t:'w', icon:'⚠️', text:'JN automation mixes AND/OR condition logic. Zuper if_else uses a single combine mode — set to OR (most permissive). Review conditions and split into separate if_else nodes if needed.' });
+    }
+
+    // Build if_else conditions for ALL activeConds with proper field path mapping
+    const ifConds = activeConds.map(c => {
+      const field = c.field || '';
+      const isCustom = field.startsWith('cf_');
+      const mapping = JN_TO_ZUPER_FIELD[field];
+
+      // Build trigger body expression — if_else runs before get_record so use trigger payload
+      let exprPath;
+      if (isCustom) {
+        exprPath = `{{$.getLatestNodeData('${trigName}')['data']['body']['job']['custom_fields']['${field}']}}`;
+      } else if (mapping) {
+        exprPath = `{{$.getLatestNodeData('${trigName}')['data']['body']['job']['${mapping.zField}']}}`;
+      } else {
+        // Unknown field — best effort using field name directly
+        exprPath = `{{$.getLatestNodeData('${trigName}')['data']['body']['job']['${field}']}}`;
+      }
+
+      // Build value2
+      let value2;
+      if (isCustom) {
+        value2 = c.value || '';
+      } else if (mapping?.needsUid) {
+        value2 = `[MAP → Zuper ${mapping.label} uid for: "${c.value}"]`;
+      } else {
+        value2 = c.value || '';
+      }
+
+      // Operation: array fields use CONTAINS/NOT_CONTAINS
+      let operation;
+      if (mapping?.isArray) {
+        operation = (c.comparison === '!=' ) ? 'NOT_CONTAINS' : 'CONTAINS';
+      } else {
+        operation = COMP[c.comparison] || 'EQUAL_TO';
+      }
+
+      return {
+        value1: { type:"EXPRESSION", value: exprPath },
+        value2: { type:"FIXED", value: value2 },
+        field_key: mapping?.isArray ? 'ARRAY' : 'STRING',
+        operation: { type:"FIXED", value: operation },
+      };
+    });
+
+    // Build a meaningful action_name for the if_else node
+    const firstCond = activeConds[0];
+    const firstMapping = JN_TO_ZUPER_FIELD[firstCond?.field] || {};
+    const ifName = firstCond
+      ? `Check: ${firstMapping.label || firstCond.field} ${firstCond.comparison} "${firstCond.value}"`
+      : 'Check Conditions';
+
+    condNode = {
+      id: ifId,
+      color: NODE_COLOR, input:1, module:"", output:2,
+      node_uid: ifUid,
+      position: { x:X, y:Y_MAIN },
+      is_active: true,
+      node_icon: IFELSE_ICON,
+      node_name: "if_else", action_key: "if_else",
+      action_name: ifName,
+      action_type: "ACTION", credentials: {},
+      description: "Route items to different branch",
+      form_fields: {
+        combine:    { type:"FIXED", value: hasOr ? 'OR' : 'AND' },
+        conditions: ifConds,
+      },
+      node_category: "FLOW",
+      master_node_uid: M.if_else,
+      execution_status: "NONE",
+      node_display_name: "If/Else",
+    };
+    nodes.push(condNode);
+    conn(prevId, ifId, undefined, prevH, 'a');  // trigger → if_else
+    prevId = ifId;
+    X += X_GAP;
+
+    // FALSE branch → No-Op (FIX B12: use 'two-b' for if_else false)
+    const noopFId = `no_op_no_op${uid()}`;
+    nodes.push({
+      id: noopFId, color: NODE_COLOR, input:1, module:"", output:0,
+      node_uid: uid(),
+      position: { x: X - X_GAP, y: Y_FALSE },
+      is_active: true, node_icon: NOOP_ICON,
+      node_name:"no_op", action_key:"no_op",
+      action_name:"Condition Not Met",
+      action_type:"ACTION", credentials:{}, description:"No operation",
+      form_fields:{}, node_category:"FLOW",
+      master_node_uid: M.no_op,
+      node_display_name:"No OP",
+    });
+    conn(ifId, noopFId, false, 'two-b', 'a');
+
+    // Checklist items per condition type
+    const uidNeededFields = activeConds.filter(c => JN_TO_ZUPER_FIELD[c.field]?.needsUid);
+    if (statusConds.length) {
+      checklist.push({ icon:'🗺️', t:'y', text:`Replace status condition value placeholders [MAP → Zuper status_uid for: "..."] with real Zuper status UIDs (Settings → Modules → Jobs → Job Category Hub).` });
+    }
+    const typeC = activeConds.filter(c => c.field === 'type');
+    if (typeC.length) {
+      checklist.push({ icon:'🗺️', t:'y', text:`Map job type condition ("${typeC.map(c=>c.value).join('", "')}") → Zuper job_category_uid (Settings → Modules → Jobs → Job Category Hub).` });
+    }
+    const locC = activeConds.filter(c => c.field === 'location');
+    if (locC.length) {
+      checklist.push({ icon:'🗺️', t:'y', text:`Map location condition ("${locC.map(c=>c.value).join('", "')}") → Zuper location_uid (Settings → Company → Locations).` });
+    }
+    const arrayC = activeConds.filter(c => JN_TO_ZUPER_FIELD[c.field]?.isArray);
+    if (arrayC.length) {
+      checklist.push({ icon:'ℹ️', t:'b', text:`Array conditions (${arrayC.map(c=>c.field).join(', ')}) use CONTAINS/NOT_CONTAINS — Zuper checks if the array includes the value.` });
+    }
+  }
+
+  // ── FIX B9: Insert get_record on the TRUE/main path before actions
+  const grSourceUid = trigNodeUid; // from trigger
+  const grObj = makeGetRecord('Get Job Record', grSourceUid, Y_TRUE, X);
+  conn(prevId, grObj.id, condNode ? true : undefined,
+       condNode ? 'two-a' : prevH, 'a');
+  prevId = grObj.id;
+  prevH  = 'one-a';
+  X += X_GAP;
+
+  // ── ACTION NODES
+
+  // FIX B3 + B2: create_task → zuper_create with module:'TASKS', flat form_fields
+  for (const task of (jn.actions_create_task || [])) {
+    const id   = `zuper_create_zuper_create${uid()}`;
+    const ownerStr = (task.owners||[]).map(o =>
+      ({sales_rep:'assigned sales rep', current_owners:'current assignees', contact:'customer contact'})[o] || o
+    ).join(', ');
+
+    nodes.push({
+      id, color: NODE_COLOR, input:1, module:"", output:1,
+      node_uid: uid(),
+      position: { x:X, y:Y_MAIN },
+      is_active: true, node_icon: ZUPER_ICON,
+      node_name: "zuper_create", action_key: "zuper_create",
+      action_name: `Create Task: ${task.name}`,
+      action_type: "ACTION", credentials: {},
+      description: "Create a record in Zuper",
+      form_fields: {
+        // FIX B2: module must be 'TASKS' (valid Zuper module name)
+        module:       { type:"FIXED", value:"TASKS" },
+        source_node:  { type:"FIXED", value:"CUSTOM" },
+        source_type:  { type:"FIXED", value:"" },
+        // FIX B3: flat fields, no task_fields array
+        task_name:        { type:"FIXED",      value: task.name },
+        task_description: { type:"FIXED",      value: task.description || "" },
+        priority:         { type:"FIXED",      value: ({0:"NORMAL",1:"HIGH",2:"MEDIUM",3:"LOW"})[task.priority] || "NORMAL" },
+        assigned_users:   { type:"FIXED",      value: `[MAP → Zuper user_uid / team_uid for: ${ownerStr}]` },
+        due_date_offset:  { type:"FIXED",      value: `${task.end_increment||0}${task.end_unit||'m'}` },
+        job_uid:          { type:"EXPRESSION", value: `{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_uid']}}` },
+      },
+      master_node_uid: M.zuper_create,
+      execution_status: "NONE",
+      node_display_name: "Create Task",
+    });
+    conn(prevId, id, undefined, prevH, 'a');
+    prevId = id; prevH = 'one-a'; X += X_GAP;
+    checklist.push({ icon:'👤', t:'b', text:`Map task assignee ("${ownerStr}") → real Zuper user_uid or team_uid in the assigned_users field.` });
+  }
+
+  // FIX B5: SMS → send_notification with channel SMS (not zuper_create SMS_NOTIFICATION)
+  for (const sms of (jn.actions_send_sms || [])) {
+    const id  = `send_notification_send_notification${uid()}`;
+    const msg = mapVars(sms.message || '');
+    const recips = (sms.recipients||[]).map(r =>
+      ({sales_rep:'assigned sales rep', current_owners:'current assignees', contact:'customer contact'})[r]||r
+    ).join(', ');
+
+    nodes.push({
+      id, color: NODE_COLOR, input:1, module:"", output:1,
+      node_uid: uid(),
+      position: { x:X, y:Y_MAIN },
+      is_active: true, node_icon: ZUPER_ICON,
+      // FIX B5: correct action_key for SMS in Zuper WB
+      node_name: "send_notification", action_key: "send_notification",
+      action_name: "Send SMS Notification",
+      action_type: "ACTION", credentials: {},
+      description: "Send a notification via Zuper Connect",
+      form_fields: {
+        channel:        { type:"FIXED",      value:"SMS" },
+        message:        { type:"FIXED",      value: msg },
+        recipient_type: { type:"FIXED",      value: "SPECIFIC_USER" },
+        recipient_uid:  { type:"FIXED",      value: `[MAP → Zuper user_uid for: ${recips}]` },
+        from_number:    { type:"FIXED",      value: `[MAP → Zuper Connect number (was JN: ${sms.send_from||''})]` },
+        job_uid:        { type:"EXPRESSION", value: `{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_uid']}}` },
+      },
+      master_node_uid: M.send_notification,
+      execution_status: "NONE",
+      node_display_name: "Send Notification",
+    });
+    conn(prevId, id, undefined, prevH, 'a');
+    prevId = id; prevH = 'one-a'; X += X_GAP;
+    checklist.push({ icon:'📱', t:'p', text:`SMS: Map from_number (JN: ${sms.send_from||'?'}) → Zuper Connect number. Requires Zuper Connect license ($20/user/mo).` });
+    warnings.push({ t:'i', icon:'📱', text:`JN template vars in SMS message mapped to Zuper get_record expressions. Verify the message reads correctly in Zuper's expression builder.` });
+  }
+
+  // Email notification
+  for (const notif of (jn.actions_send_notification || [])) {
+    const id = `send_notification_send_notification${uid()}`;
+    const recips = (notif.recipients||[]).map(r =>
+      ({sales_rep:'assigned sales rep',current_owners:'current assignees',contact:'customer contact'})[r]||r
+    ).join(', ');
+
+    nodes.push({
+      id, color: NODE_COLOR, input:1, module:"", output:1,
+      node_uid: uid(),
+      position: { x:X, y:Y_MAIN },
+      is_active: true, node_icon: ZUPER_ICON,
+      node_name: "send_notification", action_key: "send_notification",
+      action_name: `Send Email: ${notif.template_name||''}`,
+      action_type: "ACTION", credentials: {},
+      description: "Send email notification",
+      form_fields: {
+        channel:        { type:"FIXED", value:"EMAIL" },
+        // FIX B11: empty string not placeholder — user configures post-import
+        template_uid:   { type:"FIXED", value:"" },
+        jn_template_id:   { type:"FIXED", value: notif.template_id||"" },
+        jn_template_name: { type:"FIXED", value: notif.template_name||"" },
+        recipient_type: { type:"FIXED", value:"SPECIFIC_USER" },
+        recipient_uid:  { type:"FIXED", value:`[MAP → Zuper user_uid for: ${recips}]` },
+        job_uid:        { type:"EXPRESSION", value:`{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_uid']}}` },
+      },
+      master_node_uid: M.send_notification,
+      execution_status: "NONE",
+      node_display_name: "Send Notification",
+    });
+    conn(prevId, id, undefined, prevH, 'a');
+    prevId = id; prevH = 'one-a'; X += X_GAP;
+    checklist.push({ icon:'📧', t:'y', text:`Rebuild JN email template "${notif.template_name||''}" in Zuper (Settings → Miscellaneous → Email Templates), then set the template_uid on this node.` });
+  }
+
+  // Parent status update → zuper_update (FIX B8: add module_uid)
+  for (const psu of (jn.actions_parent_update_status || [])) {
+    const id = `zuper_update_zuper_update${uid()}`;
+    nodes.push({
+      id, color: NODE_COLOR, input:1, module:"", output:1,
+      node_uid: uid(),
+      position: { x:X, y:Y_MAIN },
+      is_active: true, node_icon: ZUPER_ICON,
+      node_name: "zuper_update", action_key: "zuper_update",
+      action_name: "Update Job Status",
+      action_type: "ACTION", credentials: {},
+      description: "Update an entity in Zuper",
+      form_fields: {
+        module:        { type:"FIXED",      value:"JOBS" },
+        // FIX B8: module_uid must be EXPRESSION pointing to job_uid
+        module_uid:    { type:"EXPRESSION", value:`{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_uid']}}` },
+        source_node:   { type:"FIXED",      value:"CUSTOM" },
+        source_type:   { type:"FIXED",      value:"" },
+        operator_type: { type:"FIXED",      value:"UPDATE_STATUS" },
+        operation_type:{ type:"FIXED",      value:"" },
+        custom_fields: [],
+        job_status:    { type:"FIXED",      value:`[MAP → Zuper status_uid for JN type_id:${psu.type_id} status_id:${psu.status_id}]` },
+        job_status_name:     { type:"FIXED", value:`[MAP → status name for status_id:${psu.status_id}]` },
+        job_status_category: { type:"FIXED", value:`[MAP → Zuper job_category_uid for JN type_id:${psu.type_id}]` },
+      },
+      master_node_uid: M.zuper_update,
+      execution_status: "NONE",
+      node_display_name: "Edit Record",
+    });
+    conn(prevId, id, undefined, prevH, 'a');
+    prevId = id; prevH = 'one-a'; X += X_GAP;
+    checklist.push({ icon:'🔀', t:'b', text:`Map status chain: JN type_id:${psu.type_id} status_id:${psu.status_id} → Zuper job_category_uid + status_uid (Settings → Modules → Jobs → Job Category Hub).` });
+  }
+
+  // Webhook → code node
+  for (const wh of (jn.actions_webhook || [])) {
+    const id = `code_code${uid()}`;
+    nodes.push({
+      id, color: CODE_COLOR, input:1, module:"", output:1,
+      node_uid: uid(),
+      position: { x:X, y:Y_MAIN },
+      is_active: true, node_icon: CODE_ICON,
+      node_name: "code", action_key: "code",
+      action_name: isZap ? "Zapier Webhook" : "Webhook Call",
+      action_type: "ACTION", credentials: {},
+      description: "Run custom javascript code",
+      form_fields: {
+        code: `// ${isZap?'Zapier':'Webhook'} — retrieve URL from JN Settings → Automations,\n// store as Secret Variable named 'webhook_url' in Zuper Workflow Variables tab.\nconst url = $.getVariable('webhook_url');\nconst job_uid = $.getLatestNodeData('Get Job Record')['data']['data']['job']['job_uid'];\nconst job_number = $.getLatestNodeData('Get Job Record')['data']['data']['job']['job_number'];\nawait fetch(url, {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ job_uid, job_number })\n});`,
+      },
+      node_category: "FLOW",
+      master_node_uid: M.code,
+      execution_status: "NONE",
+      node_display_name: "Code",
+    });
+    conn(prevId, id, undefined, prevH, 'a');
+    prevId = id; prevH = 'one-a'; X += X_GAP;
+    checklist.push({ icon:'🔗', t:'y', text:`Retrieve ${isZap?'Zapier':'webhook'} URL from JN Settings → Automations before closing the account. Add as a Secret Variable named 'webhook_url' in Zuper Workflow Builder Variables tab.` });
+    warnings.push({ t:'w', icon:'🔗', text:`${isZap?'ZAPIER':'WEBHOOK'}: JN API does not export the actual URL. You must retrieve it from JN's UI manually.` });
+  }
+
+  // If still no action nodes at all (empty actions) — add a no_op so workflow isn't empty (FIX B1 fallback)
+  if (nodes.filter(n => n.action_type === 'ACTION' && n.action_key !== 'no_op' && n.action_key !== 'if_else').length === 0
+      && !jn.actions_create_task?.length && !jn.actions_send_sms?.length && !jn.actions_send_notification?.length
+      && !jn.actions_webhook?.length && !jn.actions_parent_update_status?.length) {
+    const noopId = `no_op_no_op${uid()}`;
+    nodes.push({
+      id: noopId, color: NODE_COLOR, input:1, module:"", output:0,
+      node_uid: uid(), position:{ x:X, y:Y_MAIN },
+      is_active: true, node_icon: NOOP_ICON,
+      node_name:"no_op", action_key:"no_op",
+      action_name:"No Actions Defined",
+      action_type:"ACTION", credentials:{}, description:"No operation",
+      form_fields:{}, node_category:"FLOW",
+      master_node_uid: M.no_op, node_display_name:"No OP",
+    });
+    conn(prevId, noopId, condNode ? true : undefined, prevH, 'a');
+    warnings.push({ t:'w', icon:'⚠️', text:'JN automation has no action types — only a No-Op node added. Add real action nodes in Zuper Workflow Builder.' });
+  }
+
+  // Time-based warning
+  if (isTime) {
+    const ts = jn.trigger_settings || {};
+    warnings.push({ t:'w', icon:'⏱️', text:`TIME-BASED: JN fires ${ts.time_value}${ts.time_unit} after ${ts.date_field}. Zuper has no native timer — use an intermediate holding status + second workflow, or contact Zuper PS for scheduled execution options.` });
+    checklist.push({ icon:'⏱️', t:'y', text:`Create a holding status in Zuper to approximate the ${ts.time_value}${ts.time_unit} delay from JN.` });
+  }
+
+  if (rt !== 'job') {
+    warnings.push({ t:'w', icon:'⚠️', text:`JN record_type is '${rt}'. Zuper WB is job-centric — mapped to job.status_update trigger. Verify this is appropriate.` });
+  }
+
+  // Standard checklist
+  checklist.push({ icon:'📋', t:'g', text:'Replace all [MAP → ...] tokens with real Zuper UIDs before activating the workflow.' });
+  checklist.push({ icon:'🔍', t:'g', text:'Keep workflow in Deactivated state until all mappings are resolved. Test on sandbox first.' });
+  checklist.push({ icon:'⚙️', t:'p', text:'Import path: Settings → Developer Hub → Workflow Builder → New Workflow → paste the JSON from "Zuper JSON" tab.' });
+
+  // Complexity
+  const errCount = warnings.filter(w=>w.t==='w').length;
+  const complexity = isSkip ? 'SKIP'
+    : errCount >= 2 ? 'HIGH'
+    : errCount === 1 || isTime ? 'MEDIUM'
+    : 'LOW';
+
+  const status = isSkip ? 'SKIP_OUTDATED'
+    : isZap && !jn.is_active ? 'SKIP_ZAPIER'
+    : complexity === 'HIGH' ? 'NEEDS_MANUAL_REVIEW'
+    : checklist.filter(c=>c.t!=='g'&&c.t!=='p').length > 2 ? 'READY_WITH_MAPPING'
+    : 'READY';
+
+  // ── FIX B1: Trigger node goes ONLY in meta_data.initial_nodes, not in nodes[]
+  const triggerNodeObj = {
+    id: trigId,
+    input: 0, module: "JOBS", output: 1,
+    node_uid: trigNodeUid,
+    position: { x:12, y:Y_MAIN },
+    is_pinned: true,
+    node_icon: ZUPER_ICON,
+    node_name: "zuper",
+    action_key: trigActionKey,
+    action_name: trigName,
+    action_type: "TRIGGER",
+    credentials: {},
+    form_fields: {
+      trigger_rules:        { type:"FIXED", value:[] },
+      excluded_user_uids:   { type:"FIXED", value:null },
+    },
+    cyclic_actions: [{ module:"JOBS", action_key:"zuper_update" }],
+    master_node_uid: M.trigger_job,
+    execution_status: "NONE",
+  };
+
+  // initial_nodes = trigger + first 2 action nodes
+  const initial_nodes = [
+    {
+      id: trigId,
+      data: {
+        icon: ZUPER_ICON, color: NODE_COLOR,
+        label: trigName, module:"JOBS",
+        node_uid: trigNodeUid, viewOnly:false,
+        node_name:"zuper", action_key: trigActionKey,
+        action_name: trigName, action_type:"TRIGGER",
+        cyclic_actions:[{ module:"JOBS", action_key:"zuper_update" }],
+        master_node_uid: M.trigger_job, execution_status:"NONE",
+      },
+      type:"triggerNode", style:{ background:"#fff" },
+      width:36, height:36,
+      position:{ x:12, y:Y_MAIN }, positionAbsolute:{ x:12, y:Y_MAIN },
+    },
+    ...nodes.slice(0,2).map(n => ({
+      id: n.id,
+      data: {
+        icon: n.node_icon, color: n.color||NODE_COLOR,
+        label: n.action_name, module: n.module||"",
+        node_uid: n.node_uid, viewOnly:false,
+        is_active: true,
+        node_name: n.node_name, action_key: n.action_key,
+        action_name: n.action_name, action_type: n.action_type,
+        description: n.description||"", cyclic_actions:[],
+        master_node_uid: n.master_node_uid, execution_status:"NONE",
+      },
+      type: n.output === 2 ? "actionNodeTwo" : "actionNodeOne",
+      style:{ background:"#fff" },
+      width:120, height:37,
+      position: n.position, positionAbsolute: n.position,
+    })),
+  ];
+
+  const zuperWorkflow = {
+    workflow_name: jn.name,
+    workflow_description: `Converted from JobNimbus automation\nJN ID: ${jn.jnid||'?'} | Record type: ${rt} | Trigger: ${trigger1}/${trigType}`,
+    workflow_icon: ZUPER_ICON,
+    nodes,          // FIX B1: trigger NOT here — only action nodes
+    connections: conns,
+    meta_data: {
+      variables: {},
+      total_nodes: nodes.length,
+      initial_nodes,
+    },
+  };
+
+  // Also include triggerNodeObj in the output for reference (some importers need it)
+  // Actually Zuper DOES want trigger in nodes[] AND initial_nodes both. Let's add it.
+  // Re-test: looking at sample — trigger IS in nodes[] as well as initial_nodes
+  // The 'at least one node' error is because nodes[] had ONLY the trigger and zero action nodes
+  zuperWorkflow.nodes = [triggerNodeObj, ...nodes];
+
+  return { jnid:jn.jnid, name:jn.name, is_active:!!jn.is_active, record_type:rt,
+           complexity, status, warnings, checklist, zuperWorkflow };
+}
+
+// ═══════════════════════════════════════════════════════════
+//  STATE & UI
+// ═══════════════════════════════════════════════════════════
+let jnData=[], converted=[], activeIdx=null, activeTab='flow', activeFilter='all';
+
+// File load
+document.getElementById('fi').addEventListener('change', e => {
+  const f=e.target.files[0]; if(f) loadFile(f); e.target.value='';
+});
+const dz=document.getElementById('dz');
+dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', ()=>dz.classList.remove('drag'));
+dz.addEventListener('drop', e=>{ e.preventDefault(); dz.classList.remove('drag'); const f=e.dataTransfer.files[0]; if(f)loadFile(f); });
+
+function loadFile(f) {
+  const r=new FileReader();
+  r.onload=e=>{ try { let d=JSON.parse(e.target.result); if(!Array.isArray(d))d=[d]; jnData=d; converted=d.map(convert); initList(); } catch(err){ alert('Invalid JSON: '+err.message); }};
+  r.readAsText(f);
+}
+
+function initList() {
+  document.getElementById('dz').style.display='none';
+  document.getElementById('listp').classList.add('show');
+  document.getElementById('btnAll').disabled=false;
+  document.getElementById('btnTestExport').disabled=false;
+  document.getElementById('cnt').textContent=converted.length;
+  renderList();
+  if(converted.length>0) selectItem(0);
+}
+
+function setF(f) {
+  activeFilter=f;
+  document.querySelectorAll('.fc').forEach(c=>c.classList.toggle('on',c.dataset.f===f));
+  renderList();
+}
+
+function visible() {
+  const q=(document.getElementById('srch').value||'').toLowerCase();
+  return converted.filter(c=>{
+    if(activeFilter!=='all'){
+      if(activeFilter==='ready'&&c.status!=='READY')return false;
+      if(activeFilter==='mapping'&&c.status!=='READY_WITH_MAPPING')return false;
+      if(activeFilter==='manual'&&c.status!=='NEEDS_MANUAL_REVIEW')return false;
+      if(activeFilter==='skip'&&!c.status.startsWith('SKIP'))return false;
+    }
+    if(q&&!c.name.toLowerCase().includes(q))return false;
+    return true;
+  });
+}
+
+function renderList() {
+  const list=document.getElementById('jl');
+  list.innerHTML='';
+  visible().forEach(c=>{
+    const idx=converted.indexOf(c);
+    const div=document.createElement('div');
+    div.className='ji'+(idx===activeIdx?' on':'');
+    div.dataset.idx=idx;
+    const sm={READY:{l:'✅ Ready',bg:'#DCFCE7',c:'#166534'},READY_WITH_MAPPING:{l:'🟡 Mapping',bg:'#FEF9C3',c:'#92400E'},NEEDS_MANUAL_REVIEW:{l:'🔴 Review',bg:'#FEE2E2',c:'#991B1B'},SKIP_OUTDATED:{l:'⬛ Outdated',bg:'#F1F5F9',c:'#64748B'},SKIP_ZAPIER:{l:'⬛ Zapier',bg:'#F1F5F9',c:'#64748B'}}[c.status]||{l:c.status,bg:'#F1F5F9',c:'#64748B'};
+    const cm={LOW:{bg:'#DCFCE7',c:'#166534'},MEDIUM:{bg:'#FEF9C3',c:'#92400E'},HIGH:{bg:'#FEE2E2',c:'#991B1B'},SKIP:{bg:'#F1F5F9',c:'#94A3B8'}}[c.complexity]||{bg:'#F1F5F9',c:'#64748B'};
+    div.innerHTML=`<div class="jin">${esc(c.name)}</div><div class="jit">
+      <span class="tag" style="background:${sm.bg};color:${sm.c}">${sm.l}</span>
+      <span class="tag" style="background:${cm.bg};color:${cm.c}">${c.complexity}</span>
+      <span class="tag" style="background:#F1F5F9;color:#64748B">${c.zuperWorkflow.nodes.length} nodes</span>
+      ${!c.is_active?'<span class="tag" style="background:#F1F5F9;color:#94A3B8">Inactive</span>':''}
+    </div>`;
+    div.addEventListener('click',()=>selectItem(idx));
+    list.appendChild(div);
+  });
+}
+
+function selAll(v) { /* for batch select */ }
+
+function selectItem(idx) {
+  activeIdx=idx;
+  document.querySelectorAll('.ji').forEach(el=>el.classList.toggle('on',+el.dataset.idx===idx));
+  const c=converted[idx];
+  document.getElementById('es').style.display='none';
+  const det=document.getElementById('det'); det.classList.add('show');
+  document.getElementById('dn').textContent=c.name;
+  const sm={READY:{l:'✅ Ready',bg:'#DCFCE7',c:'#166534'},READY_WITH_MAPPING:{l:'🟡 Needs Mapping',bg:'#FEF9C3',c:'#92400E'},NEEDS_MANUAL_REVIEW:{l:'🔴 Manual Review',bg:'#FEE2E2',c:'#991B1B'},SKIP_OUTDATED:{l:'⬛ Outdated',bg:'#F1F5F9',c:'#64748B'},SKIP_ZAPIER:{l:'⬛ Zapier',bg:'#F1F5F9',c:'#64748B'}}[c.status]||{l:c.status,bg:'#F1F5F9',c:'#64748B'};
+  const cm={LOW:{bg:'#DCFCE7',c:'#166534'},MEDIUM:{bg:'#FEF9C3',c:'#92400E'},HIGH:{bg:'#FEE2E2',c:'#991B1B'},SKIP:{bg:'#F1F5F9',c:'#94A3B8'}}[c.complexity]||{bg:'#F1F5F9',c:'#64748B'};
+  document.getElementById('dtags').innerHTML=`
+    <span class="tag" style="background:${sm.bg};color:${sm.c};font-size:12px;padding:3px 9px">${sm.l}</span>
+    <span class="tag" style="background:${cm.bg};color:${cm.c};font-size:12px;padding:3px 9px">${c.complexity}</span>
+    <span class="tag" style="background:#F1F5F9;color:#475569;font-size:12px;padding:3px 9px">rt: ${c.record_type}</span>
+    <span class="tag" style="background:#F1F5F9;color:#475569;font-size:12px;padding:3px 9px">${c.zuperWorkflow.nodes.length} nodes · ${c.zuperWorkflow.connections.length} edges</span>
+    ${!c.is_active?'<span class="tag" style="background:#F1F5F9;color:#94A3B8;font-size:12px;padding:3px 9px">JN: Inactive</span>':''}`;
+  setTab(activeTab);
+}
+
+// ── TABS
+function setTab(t) {
+  activeTab=t;
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  const c=converted[activeIdx], tc=document.getElementById('tc');
+  tc.scrollTop=0;
+  if(t==='flow') tc.innerHTML=renderFlow(c);
+  else if(t==='nodes') tc.innerHTML=renderNodesTab(c);
+  else if(t==='json') { tc.innerHTML=renderJson(c); bindCopy(); }
+  else if(t==='ck') tc.innerHTML=renderCk(c);
+  else if(t==='test') tc.innerHTML=renderTestRun(c);
+}
+
+// ── NODE STYLE
+function ns(ak) {
+  if(!ak) return{bg:'#F8FAFC',bd:'#CBD5E1',dot:'#94A3B8',l:'Node'};
+  if(ak.includes('.')) return{bg:'#FFF7F0',bd:'#FF9A5C',dot:'#FF5C00',l:'Trigger'};
+  const m={
+    if_else:{bg:'#FEF9C3',bd:'#FCD34D',dot:'#D97706',l:'If/Else'},
+    zuper_get_record:{bg:'#EFF6FF',bd:'#93C5FD',dot:'#2563EB',l:'Get Record'},
+    zuper_update:{bg:'#F0FDF4',bd:'#86EFAC',dot:'#16A34A',l:'Update'},
+    zuper_create:{bg:'#F0FDF4',bd:'#86EFAC',dot:'#16A34A',l:'Create Task'},
+    send_notification:{bg:'#FDF4FF',bd:'#D8B4FE',dot:'#7C3AED',l:'Notification'},
+    code:{bg:'#ECFDF5',bd:'#6EE7B7',dot:'#059669',l:'Code'},
+    no_op:{bg:'#F8FAFC',bd:'#CBD5E1',dot:'#94A3B8',l:'No-Op'},
+  };
+  for(const k in m) if(ak.startsWith(k)) return m[k];
+  return{bg:'#F8FAFC',bd:'#CBD5E1',dot:'#64748B',l:ak};
+}
+
+// ── FLOW
+function renderFlow(c) {
+  const nodes=c.zuperWorkflow.nodes, conns=c.zuperWorkflow.connections;
+  if(!nodes.length) return '<p style="color:var(--t3)">No nodes.</p>';
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  nodes.forEach(n=>{const x=(n.position||{}).x||0,y=(n.position||{}).y||0;minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x+180);maxY=Math.max(maxY,y+70);});
+  const pad=40,W=maxX-minX+pad*2,H=maxY-minY+pad*2;
+  const byId={};nodes.forEach(n=>byId[n.id]=n);
+  let cards='',edges='';
+  nodes.forEach(n=>{
+    const x=(n.position||{}).x||0-minX+pad,y=(n.position||{}).y||0-minY+pad;
+    const s=ns(n.action_key);const isT=n.action_type==='TRIGGER';
+    cards+=`<div class="fn" style="left:${x}px;top:${y}px;background:${s.bg};border-color:${s.bd};${isT?'border-style:dashed;':''}" title="${esc(n.action_name||'')}">
+      <div class="fn-t" style="color:${s.dot}">${esc(s.l)}</div>
+      <div class="fn-n">${esc(n.action_name||n.node_name||'')}</div>
+      <div class="fn-ak" style="color:${s.dot}">${esc(n.action_key||'')}</div>
+    </div>`;
+  });
+  conns.forEach(c2=>{
+    const src=byId[c2.source],tgt=byId[c2.target];if(!src||!tgt)return;
+    const sx=(src.position||{}).x||0-minX+pad+90,sy=(src.position||{}).y||0-minY+pad+18;
+    const tx=(tgt.position||{}).x||0-minX+pad,ty=(tgt.position||{}).y||0-minY+pad+18;
+    const cx1=sx+(tx-sx)*.5,cx2=tx-(tx-sx)*.5;
+    const col=c2.output_value===true?'#16A34A':c2.output_value===false?'#DC2626':'#94A3B8';
+    const dash=c2.output_value===false?'stroke-dasharray="5,3"':'';
+    edges+=`<path d="M${sx},${sy} C${cx1},${sy} ${cx2},${ty} ${tx},${ty}" stroke="${col}" stroke-width="1.5" fill="none" ${dash} marker-end="url(#arr)"/>`;
+    if(c2.output_value!==undefined&&c2.output_value!==null)
+      edges+=`<text x="${(sx+tx)/2}" y="${(sy+ty)/2-6}" text-anchor="middle" fill="${col}" font-size="9" font-weight="700">${c2.output_value?'TRUE':'FALSE'}</text>`;
+  });
+  return `<div class="fwrap"><div class="finner" style="width:${W}px;height:${H}px">
+    <svg style="position:absolute;top:0;left:0;overflow:visible;pointer-events:none" width="${W}" height="${H}">
+      <defs><marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#94A3B8"/></marker></defs>
+      ${edges}</svg>${cards}</div>
+    <div class="fleg">
+      <span style="display:flex;align-items:center;gap:5px"><svg width="22" height="2"><line x1="0" y1="1" x2="22" y2="1" stroke="#16A34A" stroke-width="2"/></svg>TRUE</span>
+      <span style="display:flex;align-items:center;gap:5px"><svg width="22" height="2"><line x1="0" y1="1" x2="22" y2="1" stroke="#DC2626" stroke-width="2" stroke-dasharray="5,3"/></svg>FALSE</span>
+      <span style="display:flex;align-items:center;gap:5px"><svg width="22" height="2"><line x1="0" y1="1" x2="22" y2="1" stroke="#94A3B8" stroke-width="2"/></svg>Default</span>
+      <span style="margin-left:auto;font-size:10px">Hover nodes for full name · Dashed border = Trigger</span>
+    </div></div>`;
+}
+
+// ── NODES
+function renderNodesTab(c) {
+  let rows='';
+  c.zuperWorkflow.nodes.forEach((n,i)=>{
+    const s=ns(n.action_key);
+    const ff=n.form_fields||{};
+    rows+=`<tr>
+      <td style="color:var(--t3);font-size:11px;text-align:center">${i+1}</td>
+      <td><span class="dot" style="background:${s.dot}"></span><strong>${esc(n.action_name||n.node_name||'')}</strong>
+        ${n.description?`<div style="font-size:10px;color:var(--t3);margin-top:1px">${esc(n.description)}</div>`:''}</td>
+      <td><span class="tag" style="background:${s.bg};color:${s.dot};border:1px solid ${s.bd}">${esc(s.l)}</span></td>
+      <td><code style="font-size:10px;background:var(--bg);padding:1px 4px;border-radius:3px">${esc(n.action_key||'')}</code></td>
+    </tr>`;
+    const ffKeys=Object.keys(ff).filter(k=>{
+      const v=ff[k];if(!v&&v!==0)return false;
+      if(typeof v==='object'&&'value'in v){const val=v.value;if(val===null||val===''||val===undefined)return false;if(Array.isArray(val)&&!val.length)return false;return true;}
+      if(typeof v==='string'&&v)return true;
+      if(Array.isArray(v)&&v.length)return true;
+      return false;
+    });
+    if(ffKeys.length){
+      rows+=`<tr><td></td><td colspan="3" style="padding:0 10px 12px">
+        <div style="background:var(--bg);border:1px solid var(--bd);border-radius:7px;padding:9px 12px;font-size:11px">
+          ${n.action_key==='if_else'?renderConds(ff):renderFF(ff,ffKeys)}
+        </div></td></tr>`;
+    }
+  });
+  return `<table class="tbl"><thead><tr><th>#</th><th>Node</th><th>Type</th><th>action_key</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderConds(ff) {
+  const combine=(ff.combine||{}).value||'AND';
+  let h=`<div style="font-size:10px;font-weight:700;color:var(--t3);margin-bottom:5px">CONDITIONS — <span style="background:var(--zl);color:var(--z);padding:1px 5px;border-radius:3px">${combine}</span></div>`;
+  (ff.conditions||[]).forEach((c,i)=>{
+    const v1=c.value1||{},v2=c.value2||{},op=(c.operation||{}).value||'?';
+    const isMap=(v2.value||'').startsWith('[MAP');
+    h+=`<div style="background:#fff;border:1px solid var(--bd);border-radius:5px;padding:6px 9px;margin-bottom:5px">
+      <span style="font-size:9px;font-weight:700;color:var(--t3)">COND ${i+1}</span><br>
+      <span class="expr">${esc((v1.value||'').substring(0,100))}</span>
+      <span style="background:var(--zl);color:var(--z);padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;margin:0 4px">${esc(op)}</span>
+      <span class="${isMap?'map':v2.type==='EXPRESSION'?'expr':'fixed'}">${esc((v2.value||'(empty)').substring(0,80))}</span>
+    </div>`;
+  });
+  return h;
+}
+
+function renderFF(ff,keys) {
+  return keys.map(k=>{
+    const v=ff[k];
+    if(typeof v==='string') return `<div style="margin-bottom:3px"><span style="color:var(--t2);font-weight:600;margin-right:5px">${esc(k)}:</span><span class="fixed">${esc(v.substring(0,200))}</span></div>`;
+    if(typeof v==='object'&&'value'in v){
+      const val=typeof v.value==='object'?JSON.stringify(v.value):String(v.value??'');
+      const isMap=val.startsWith('[MAP');
+      const cls=isMap?'map':v.type==='EXPRESSION'?'expr':'fixed';
+      return `<div style="margin-bottom:3px"><span style="color:var(--t2);font-weight:600;margin-right:5px">${esc(k)}:</span><span class="${cls}">${v.type==='EXPRESSION'?'⟨expr⟩ ':''}${esc(val.substring(0,200))}</span></div>`;
+    }
+    return '';
+  }).join('');
+}
+
+// ── JSON
+function renderJson(c) {
+  const raw=JSON.stringify(c.zuperWorkflow,null,2);
+  return `<div class="jw"><button class="cbtn" id="cj">📋 Copy</button><pre>${syntaxHL(raw)}</pre></div>`;
+}
+function bindCopy() {
+  const b=document.getElementById('cj');
+  if(b) b.addEventListener('click',()=>{
+    navigator.clipboard.writeText(JSON.stringify(converted[activeIdx].zuperWorkflow,null,2)).then(()=>{b.textContent='✓ Copied!';setTimeout(()=>b.textContent='📋 Copy',2000);});
+  });
+}
+function syntaxHL(j) {
+  return j.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,m=>{
+      let cl='jn2';
+      if(/^"/.test(m)) cl=/:$/.test(m)?'jk':'js';
+      else if(/true|false/.test(m)) cl='jb';
+      else if(/null/.test(m)) cl='jnl';
+      return`<span class="${cl}">${m}</span>`;
+    });
+}
+
+// ── CHECKLIST
+function renderCk(c) {
+  const tmap={w:'wc w',e:'wc e',i:'wc i',s:'wc s'};
+  let h='';
+  // Bug fix summary
+  h+=`<div class="bug-panel"><div class="bug-header"><span class="bug-title">🔧 Bugs Fixed in v2 Converter</span><span class="bug-sub">Applied automatically to this output</span></div>
+    ${[
+      ['F','B1','Trigger node was in nodes[] causing "add at least one node" error'],
+      ['F','B2','zuper_create used invented module names (SERVICE_TASK, SMS_NOTIFICATION) — now uses TASKS'],
+      ['F','B3','task_fields[] array structure — now uses flat form_fields (task_name, priority, etc.)'],
+      ['F','B4','Trigger connection sourceHandle was wrong — fixed to trigger-a'],
+      ['F','B5','SMS used zuper_create — now uses send_notification with channel: SMS'],
+      ['H','B6','Nodes overlapping on canvas — fixed X/Y positioning with get_record injected'],
+      ['H','B7','if_else expression path wrong — fixed to use job trigger body payload path'],
+      ['H','B8','zuper_update missing module_uid EXPRESSION — added'],
+      ['H','B9','No zuper_get_record node — now auto-injected after trigger for data hydration'],
+      ['M','B10','_jn_note debug field left in output — stripped'],
+      ['M','B11','Email template_uid was placeholder string — now empty string (configure post-import)'],
+      ['M','B12','Edge handle types wrong for single-output nodes — fixed to one-a/two-a/two-b'],
+    ].map(([sev,id,desc])=>`<div class="bug-row"><span class="bsev ${sev}">${sev==='F'?'CRITICAL':sev==='H'?'HIGH':'MEDIUM'}</span><span style="font-size:11px;color:var(--t3);margin-right:5px">${id}</span><span>${esc(desc)}</span></div>`).join('')}
+  </div>`;
+
+  if(c.warnings.length===0){
+    h+=`<div class="wc s"><span>✅</span><span>No migration warnings — this automation maps cleanly to Zuper.</span></div>`;
+  } else {
+    c.warnings.forEach(w=>{ h+=`<div class="${tmap[w.t]||'wc i'}"><span style="font-size:15px;flex-shrink:0">${w.icon}</span><span>${esc(w.text)}</span></div>`; });
+  }
+
+  const ckbg={g:{bg:'#F0FDF4',bd:'#BBF7D0',c:'#166534'},y:{bg:'#FFFBEB',bd:'#FDE68A',c:'#92400E'},b:{bg:'#EFF6FF',bd:'#BFDBFE',c:'#1E40AF'},p:{bg:'#F5F3FF',bd:'#DDD6FE',c:'#5B21B6'},r:{bg:'#FEE2E2',bd:'#FECACA',c:'#991B1B'}};
+  h+=`<div style="margin-top:14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);margin-bottom:7px">REMAINING MANUAL STEPS</div>`;
+  c.checklist.forEach(ck=>{
+    const m=ckbg[ck.t]||ckbg.g;
+    h+=`<div class="wc" style="background:${m.bg};border-color:${m.bd};color:${m.c}"><span style="font-size:15px;flex-shrink:0">${ck.icon}</span><span>${esc(ck.text)}</span></div>`;
+  });
+  h+=`<div class="setup"><strong style="color:var(--t1)">Import path into Zuper Workflow Builder:</strong><br>
+    1. Settings → Developer Hub → Workflow Builder → New Workflow<br>
+    2. Paste JSON from the "Zuper JSON" tab<br>
+    3. Complete all Manual Steps above<br>
+    4. Test on sandbox → then Activate</div>`;
+  return h;
+}
+
+// ── TEST RUN — computation (shared by render + CSV export)
+function computeTestRun(c) {
+  const wf    = c.zuperWorkflow;
+  const nodes = wf.nodes || [];
+  const conns = wf.connections || [];
+
+  const checks = [];
+  function pass(msg){ checks.push({ ok:true,  msg }); }
+  function fail(msg){ checks.push({ ok:false, msg }); }
+  function warn(msg){ checks.push({ ok:null,  msg }); }
+
+  const trigNode = nodes.find(n => n.action_type === 'TRIGGER');
+  if (trigNode) pass(`Trigger node: "${trigNode.action_name}" (${trigNode.action_key})`);
+  else fail('No TRIGGER node found in nodes array.');
+
+  const actionNodes = nodes.filter(n => n.action_type === 'ACTION' && n.action_key !== 'no_op');
+  if (actionNodes.length > 0) pass(`${actionNodes.length} action node(s) present (excluding No-Op)`);
+  else fail('No real action nodes — only a No-Op placeholder exists. Add action nodes in Zuper WB after import.');
+
+  const grNode = nodes.find(n => n.action_key === 'zuper_get_record');
+  if (grNode) pass('Get Job Record node present — downstream expressions can reference full job data.');
+  else fail('Missing zuper_get_record node — expressions like job_uid will fail at runtime.');
+
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const badConns = conns.filter(co => !nodeIds.has(co.source) || !nodeIds.has(co.target));
+  if (badConns.length === 0) pass(`All ${conns.length} connection(s) reference valid node IDs.`);
+  else fail(`${badConns.length} connection(s) have dangling source/target IDs — the flow will break on import.`);
+
+  const adj = {};
+  conns.forEach(co => { if(!adj[co.source]) adj[co.source]=[]; adj[co.source].push(co.target); });
+  const visited = new Set();
+  const queue = trigNode ? [trigNode.id] : [];
+  while (queue.length) { const n = queue.shift(); if(visited.has(n))continue; visited.add(n); (adj[n]||[]).forEach(t=>queue.push(t)); }
+  const unreachable = nodes.filter(n => n.action_type==='ACTION' && !visited.has(n.id));
+  if (unreachable.length === 0) pass('All action nodes are reachable from the trigger.');
+  else warn(`${unreachable.length} node(s) not reachable from trigger: ${unreachable.map(n=>n.action_name).join(', ')}`);
+
+  const ifNode = nodes.find(n => n.action_key === 'if_else');
+  if (ifNode) {
+    const conds = ifNode.form_fields?.conditions || [];
+    const emptyConds = conds.filter(co => !(co.value1?.value) || co.value1.value === '');
+    const emptyV2   = conds.filter(co => !(co.value2?.value) || co.value2.value === '');
+    if (emptyConds.length === 0 && emptyV2.length === 0)
+      pass(`If/Else node has ${conds.length} condition(s) — all value1 and value2 fields populated.`);
+    else
+      warn(`If/Else has ${conds.length} condition(s). Empty value1: ${emptyConds.length}, empty value2 (needs mapping): ${emptyV2.length}`);
+  }
+
+  const updateNodes = nodes.filter(n => n.action_key === 'zuper_update');
+  if (updateNodes.length > 0) {
+    const badU = updateNodes.filter(n => n.form_fields?.module_uid?.type !== 'EXPRESSION');
+    if (badU.length === 0) pass('All zuper_update nodes have module_uid set as EXPRESSION.');
+    else fail(`${badU.length} zuper_update node(s) missing module_uid EXPRESSION — update will target the wrong record.`);
+  }
+
+  const wfStr = JSON.stringify(wf);
+  const exprs = wfStr.match(/\{\{[^}]+\}\}/g) || [];
+  const badExprs = exprs.filter(e => !e.includes('$.getLatestNodeData') && !e.includes('$.getVariable'));
+  if (badExprs.length === 0 && exprs.length > 0)
+    pass(`${exprs.length} expression(s) — all use valid $.getLatestNodeData() / $.getVariable() syntax.`);
+  else if (exprs.length === 0)
+    warn('No EXPRESSION fields found — workflow uses only fixed values.');
+  else
+    warn(`${badExprs.length} of ${exprs.length} expression(s) may have non-standard syntax. Review: ${badExprs.slice(0,2).map(e=>e.substring(0,60)).join('; ')}`);
+
+  const mapTokens = [...new Set(wfStr.match(/\[MAP →[^\]]+\]/g) || [])];
+  if (mapTokens.length === 0) pass('No unresolved [MAP → ...] tokens — all values are filled in or use expressions.');
+  else warn(`${mapTokens.length} unique [MAP → ...] token(s) must be replaced with real Zuper UIDs before activating.`);
+
+  if (wf.workflow_name && wf.workflow_name.trim()) pass(`Workflow name set: "${wf.workflow_name}"`);
+  else fail('workflow_name is empty — set a name before importing.');
+
+  const nPass  = checks.filter(ch=>ch.ok===true ).length;
+  const nFail  = checks.filter(ch=>ch.ok===false).length;
+  const nWarn  = checks.filter(ch=>ch.ok===null ).length;
+  const rawScore = nPass + nWarn * 0.5;
+  const maxScore = checks.length;
+  const mapPenalty = Math.min(mapTokens.length * 5, 40);
+  const score = Math.max(0, Math.round((rawScore / maxScore) * 100) - mapPenalty);
+
+  return { checks, mapTokens, nPass, nFail, nWarn, score };
+}
+
+// ── TEST RUN — render
+function renderTestRun(c) {
+  const wf = c.zuperWorkflow;
+  const { checks, mapTokens, nPass, nFail, nWarn, score } = computeTestRun(c);
+  const scoreColor = score >= 75 ? '#16A34A' : score >= 45 ? '#D97706' : '#DC2626';
+  const scoreLabel = score >= 75 ? 'Good — review warnings then import'
+    : score >= 45 ? 'Needs work — resolve warnings before import'
+    : 'Needs significant review — fix failures first';
+
+  let h = '';
+
+  // Header + score
+  h += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px">
+    <div>
+      <div style="font-size:13px;font-weight:800;color:var(--t1)">▶ Test Run</div>
+      <div style="font-size:11px;color:var(--t2);margin-top:2px">${esc(scoreLabel)}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+      <button class="btn btn-outline" style="font-size:11px;padding:5px 10px" onclick="exportSingleTestRunCSV(${activeIdx})">📊 Export This Log</button>
+      <div style="text-align:center;background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:9px 16px">
+        <div style="font-size:22px;font-weight:900;color:${scoreColor}">${score}%</div>
+        <div style="font-size:9px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Readiness</div>
+      </div>
+    </div>
+  </div>`;
+
+  // Score pills
+  h += `<div style="display:flex;gap:7px;margin-bottom:14px">
+    <div style="flex:1;background:#DCFCE7;border:1px solid #BBF7D0;border-radius:8px;padding:7px;text-align:center">
+      <div style="font-size:16px;font-weight:900;color:#16A34A">${nPass}</div>
+      <div style="font-size:9px;color:#16A34A;font-weight:700;text-transform:uppercase">Passed</div>
+    </div>
+    <div style="flex:1;background:#FEF9C3;border:1px solid #FDE68A;border-radius:8px;padding:7px;text-align:center">
+      <div style="font-size:16px;font-weight:900;color:#D97706">${nWarn}</div>
+      <div style="font-size:9px;color:#D97706;font-weight:700;text-transform:uppercase">Warnings</div>
+    </div>
+    <div style="flex:1;background:#FEE2E2;border:1px solid #FECACA;border-radius:8px;padding:7px;text-align:center">
+      <div style="font-size:16px;font-weight:900;color:#DC2626">${nFail}</div>
+      <div style="font-size:9px;color:#DC2626;font-weight:700;text-transform:uppercase">Failed</div>
+    </div>
+    <div style="flex:1;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:7px;text-align:center">
+      <div style="font-size:16px;font-weight:900;color:#C2410C">${mapTokens.length}</div>
+      <div style="font-size:9px;color:#C2410C;font-weight:700;text-transform:uppercase">Mappings</div>
+    </div>
+  </div>`;
+
+  // Structural checks
+  h += `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);margin-bottom:7px">STRUCTURAL CHECKS</div>`;
+  checks.forEach(ch => {
+    const icon = ch.ok===true ? '✅' : ch.ok===false ? '❌' : '⚠️';
+    const bg   = ch.ok===true ? '#F0FDF4' : ch.ok===false ? '#FEF2F2' : '#FFFBEB';
+    const bd   = ch.ok===true ? '#BBF7D0' : ch.ok===false ? '#FECACA' : '#FDE68A';
+    const tc   = ch.ok===true ? '#166534' : ch.ok===false ? '#991B1B' : '#92400E';
+    h += `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:7px;margin-bottom:5px;font-size:12px;color:${tc}">
+      <span style="flex-shrink:0">${icon}</span><span>${esc(ch.msg)}</span>
+    </div>`;
+  });
+
+  // Unresolved tokens list
+  if (mapTokens.length > 0) {
+    h += `<div style="margin-top:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);margin-bottom:7px">UNRESOLVED MAPPINGS (${mapTokens.length})</div>
+      <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px">
+        ${mapTokens.map(t=>`<div style="font-family:monospace;font-size:10px;color:#92400E;margin-bottom:4px;background:#FEF9C3;padding:3px 7px;border-radius:4px;word-break:break-all">${esc(t)}</div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // Simulated trace
+  h += `<div style="margin-top:16px">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);margin-bottom:9px">SIMULATED TRACE (TRUE path)</div>
+    ${buildTrace(wf)}
+  </div>`;
+
+  return h;
+}
+
+function buildTrace(wf) {
+  const nodes = wf.nodes || [];
+  const conns = wf.connections || [];
+
+  const adj = {};
+  conns.forEach(co => { if(!adj[co.source]) adj[co.source]=[]; adj[co.source].push({ target:co.target, val:co.output_value }); });
+  const byId = {};
+  nodes.forEach(n => byId[n.id] = n);
+
+  const trig = nodes.find(n => n.action_type === 'TRIGGER');
+  if (!trig) return '<p style="color:var(--t3);font-size:12px">No trigger found — cannot trace.</p>';
+
+  let html = '';
+  let cur = trig.id;
+  const seen = new Set();
+  let step = 0;
+
+  while (cur && !seen.has(cur) && step < 30) {
+    seen.add(cur);
+    const node = byId[cur];
+    if (!node) break;
+
+    const s    = ns(node.action_key);
+    const isTr = node.action_type === 'TRIGGER';
+    const isIf = node.action_key  === 'if_else';
+    const nodeStr = JSON.stringify(node.form_fields || {});
+    const hasMap  = nodeStr.includes('[MAP →');
+    const isNoop  = node.action_key === 'no_op';
+    const conds   = isIf ? (node.form_fields?.conditions || []) : [];
+
+    // Step bubble
+    html += `<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px">
+      <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+        <div style="width:26px;height:26px;border-radius:50%;background:${s.bg};border:1.5px solid ${s.bd};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:${s.dot}">${step+1}</div>
+        <div style="width:1.5px;min-height:10px;background:${s.bd};margin:3px 0;flex:1"></div>
+      </div>
+      <div style="flex:1;background:${s.bg};border:1px solid ${s.bd};border-radius:8px;padding:8px 10px;margin-bottom:4px">
+        <div style="font-size:9px;font-weight:700;color:${s.dot};text-transform:uppercase;letter-spacing:.4px">${esc(s.l)}${isTr?' · TRIGGER':''}</div>
+        <div style="font-size:12px;font-weight:700;color:var(--t1);margin-top:2px">${esc(node.action_name || node.node_name || '')}</div>
+        <div style="font-size:10px;color:var(--t3);margin-top:1px;font-family:monospace">${esc(node.action_key || '')}</div>
+        ${isIf ? `<div style="margin-top:5px;border-top:1px solid ${s.bd};padding-top:5px">
+          ${conds.map((co,i)=>{
+            const v1 = (co.value1?.value||'').substring(0,70);
+            const v2 = co.value2?.value||'';
+            const isMap = v2.startsWith('[MAP →');
+            const op  = co.operation?.value||'EQUAL_TO';
+            return `<div style="font-size:10px;color:var(--t2);margin-bottom:3px">
+              <span style="font-weight:600">COND ${i+1}:</span>
+              <span style="font-family:monospace;font-size:9px;color:#1E40AF">${esc(v1)}</span>
+              <span style="background:var(--zl);color:var(--z);padding:0 4px;border-radius:3px;margin:0 3px;font-size:9px;font-weight:700">${esc(op)}</span>
+              <span style="${isMap?'color:#D97706;font-weight:600':'font-family:monospace;font-size:9px'}">${esc(v2.substring(0,60))}</span>
+            </div>`;
+          }).join('')}
+          <div style="font-size:10px;color:#16A34A;font-weight:600;margin-top:3px">↳ Following TRUE branch</div>
+        </div>` : ''}
+        ${hasMap && !isIf ? `<div style="font-size:10px;color:#D97706;margin-top:4px;font-weight:600">⚠️ Contains unresolved [MAP → ...] — complete before activating</div>` : ''}
+        ${isNoop ? `<div style="font-size:10px;color:var(--t3);margin-top:3px">End of this branch — no action taken.</div>` : ''}
+      </div>
+    </div>`;
+
+    step++;
+    // Follow TRUE path from if_else, otherwise first edge
+    const edges = adj[cur] || [];
+    if (isIf) {
+      const trueEdge = edges.find(e => e.val === true);
+      cur = trueEdge?.target || null;
+    } else {
+      cur = edges[0]?.target || null;
+    }
+  }
+
+  if (step === 0) return '<p style="color:var(--t3);font-size:12px">Could not build trace.</p>';
+  html += `<div style="font-size:11px;color:var(--t3);margin-top:4px;padding-left:36px">— End of TRUE path (${step} steps)</div>`;
+  return html;
+}
+
+// ── CSV / EXCEL EXPORT
+function dlCSV(csvStr, name) {
+  const bom = '﻿'; // UTF-8 BOM so Excel auto-detects encoding
+  const b = new Blob([bom + csvStr], { type: 'text/csv;charset=utf-8' });
+  const u = URL.createObjectURL(b);
+  const a = document.createElement('a');
+  a.href = u; a.download = name; a.click();
+  URL.revokeObjectURL(u);
+}
+
+function exportTestRunCSV() {
+  if (!converted.length) { alert('No automations loaded.'); return; }
+  const q = s => `"${String(s == null ? '' : s).replace(/"/g, '""')}"`;
+  const rows = [];
+
+  // ── SECTION 1: Summary
+  rows.push(['SUMMARY','','','','','','','',''].map(q).join(','));
+  rows.push(['Automation Name','JN Active','Status','Complexity','Score %','Passed','Warnings','Failed','Unresolved Mappings'].map(q).join(','));
+  converted.forEach(c => {
+    const { nPass, nFail, nWarn, score, mapTokens } = computeTestRun(c);
+    rows.push([c.name, c.is_active ? 'Yes' : 'No', c.status, c.complexity, score + '%', nPass, nWarn, nFail, mapTokens.length].map(q).join(','));
+  });
+
+  rows.push(''); // blank spacer
+
+  // ── SECTION 2: Check Details
+  rows.push(['CHECK DETAILS','','','','','',''].map(q).join(','));
+  rows.push(['Automation Name','JN Active','Status','Score %','Check #','Result','Message'].map(q).join(','));
+  converted.forEach(c => {
+    const { checks, score } = computeTestRun(c);
+    checks.forEach((ch, i) => {
+      const result = ch.ok === true ? 'PASS' : ch.ok === false ? 'FAIL' : 'WARN';
+      rows.push([c.name, c.is_active ? 'Yes' : 'No', c.status, score + '%', i + 1, result, ch.msg].map(q).join(','));
+    });
+  });
+
+  rows.push('');
+
+  // ── SECTION 3: Unresolved Mapping Tokens
+  rows.push(['UNRESOLVED MAPPING TOKENS',''].map(q).join(','));
+  rows.push(['Automation Name','Token'].map(q).join(','));
+  converted.forEach(c => {
+    const { mapTokens } = computeTestRun(c);
+    mapTokens.forEach(t => rows.push([c.name, t].map(q).join(',')));
+  });
+
+  dlCSV(rows.join('\r\n'), 'jn_to_zuper_test_run_log.csv');
+}
+
+function exportSingleTestRunCSV(idx) {
+  const c = converted[idx];
+  if (!c) return;
+  const { checks, mapTokens, nPass, nFail, nWarn, score } = computeTestRun(c);
+  const q = s => `"${String(s == null ? '' : s).replace(/"/g, '""')}"`;
+  const rows = [];
+
+  // Summary row
+  rows.push(['Automation Name','JN Active','Status','Complexity','Score %','Passed','Warnings','Failed','Unresolved Mappings'].map(q).join(','));
+  rows.push([c.name, c.is_active ? 'Yes' : 'No', c.status, c.complexity, score + '%', nPass, nWarn, nFail, mapTokens.length].map(q).join(','));
+
+  rows.push('');
+
+  // Check details
+  rows.push(['Check #','Result','Message'].map(q).join(','));
+  checks.forEach((ch, i) => {
+    const result = ch.ok === true ? 'PASS' : ch.ok === false ? 'FAIL' : 'WARN';
+    rows.push([i + 1, result, ch.msg].map(q).join(','));
+  });
+
+  // Mapping tokens
+  if (mapTokens.length > 0) {
+    rows.push('');
+    rows.push(['Unresolved Mapping Tokens'].map(q).join(','));
+    mapTokens.forEach(t => rows.push([t].map(q).join(',')));
+  }
+
+  const name = san(c.name) + '_test_log.csv';
+  dlCSV(rows.join('\r\n'), name);
+}
+
+// ── DOWNLOADS
+function dlOne() { const c=converted[activeIdx]; if(!c)return; dl([c.zuperWorkflow], san(c.name)+'_zuper.json'); }
+function dlAll() { dl(converted.map(c=>c.zuperWorkflow),'all_zuper_workflows.json'); }
+function dlFiltered() { const wfs=visible().map(c=>c.zuperWorkflow); if(!wfs.length)return alert('Nothing visible.'); dl(wfs,`zuper_workflows_${activeFilter}.json`); }
+function cpJson() { const c=converted[activeIdx]; if(!c)return; navigator.clipboard.writeText(JSON.stringify(c.zuperWorkflow,null,2)).then(()=>{ const b=event.target; b.textContent='✓ Copied!'; setTimeout(()=>b.textContent='📋 Copy JSON',2000); }); }
+function dl(data,name) { const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),u=URL.createObjectURL(b),a=document.createElement('a'); a.href=u; a.download=name; a.click(); URL.revokeObjectURL(u); }
+function san(s) { return(s||'wf').replace(/[^a-zA-Z0-9_-]/g,'_').substring(0,50); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+  <script src="../assets/back-link.js"></script>
+</body>
+</html>

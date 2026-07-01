@@ -1,0 +1,2713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Zuper Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root{
+  --zuper:#FF6B2C;--zuper2:#e85a1e;--zuper-glow:rgba(255,107,44,.18);
+  --bg:#f4f5f7;--surface:#fff;--surface2:#f0f1f3;--surface3:#e8e9ec;
+  --border:rgba(0,0,0,0.08);--border2:rgba(0,0,0,0.13);
+  --text:#111827;--text2:#6b7280;--text3:#9ca3af;
+  --green:#15803d;--green-bg:#dcfce7;
+  --red:#dc2626;--red-bg:#fee2e2;
+  --amber:#d97706;--amber-bg:#fef3c7;
+  --blue:#2563eb;--blue-bg:#dbeafe;
+  --purple:#7c3aed;--purple-bg:#ede9fe;
+  --teal:#0f766e;--teal-bg:#ccfbf1;
+  --gray:#6b7280;--gray-bg:#f3f4f6;
+  --sidebar-w:220px;--topbar-h:56px;
+}
+[data-theme=dark]{
+  --bg:#0f1117;--surface:#181c27;--surface2:#1e2333;--surface3:#252b3b;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e8eaf0;--text2:#8b90a0;--text3:#555a6b;
+  --green:#22c98a;--green-bg:rgba(34,201,138,.12);
+  --red:#f05252;--red-bg:rgba(240,82,82,.12);
+  --amber:#f5a623;--amber-bg:rgba(245,166,35,.12);
+  --blue:#4f8ef7;--blue-bg:rgba(79,142,247,.12);
+  --purple:#9b6dff;--purple-bg:rgba(155,109,255,.12);
+  --teal:#14b8a6;--teal-bg:rgba(20,184,166,.12);
+  --gray:#8b90a0;--gray-bg:rgba(139,144,160,.1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:14px;background:var(--bg);color:var(--text);transition:background .2s,color .1s}
+
+/* LOGIN */
+#loginScreen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem;background:var(--bg)}
+.login-wrap{width:100%;max-width:400px}
+.login-brand{display:flex;align-items:center;gap:10px;margin-bottom:2.5rem}
+.z-logo{width:38px;height:38px;background:var(--zuper);border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px var(--zuper-glow);flex-shrink:0}
+.z-logo svg{width:20px;height:20px}
+.brand-name{font-size:18px;font-weight:700;color:var(--text);letter-spacing:-.3px}
+.brand-name em{color:var(--zuper);font-style:normal}
+.login-title{font-size:22px;font-weight:700;letter-spacing:-.4px;margin-bottom:.4rem}
+.login-sub{font-size:13px;color:var(--text2);margin-bottom:1.75rem;line-height:1.65}
+.inp-label{font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px;display:block}
+.inp-wrap{position:relative;margin-bottom:16px}
+.inp{width:100%;background:var(--surface);border:1.5px solid var(--border2);border-radius:9px;padding:12px 44px 12px 14px;font-size:13px;color:var(--text);outline:none;transition:border-color .2s,box-shadow .2s}
+.inp:focus{border-color:var(--zuper);box-shadow:0 0 0 3px var(--zuper-glow)}
+.inp::placeholder{color:var(--text3)}
+.eye{position:absolute;right:13px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text3);padding:3px;display:flex}
+.eye:hover{color:var(--text2)}
+.cta{width:100%;background:var(--zuper);border:none;border-radius:9px;padding:13px;font-size:14px;font-weight:600;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px var(--zuper-glow);transition:background .2s,box-shadow .2s}
+.cta:hover{background:var(--zuper2);box-shadow:0 6px 18px var(--zuper-glow)}
+.cta:disabled{opacity:.55;cursor:not-allowed}
+.login-err{color:var(--red);font-size:12px;margin-top:10px;min-height:16px}
+.login-hint{font-size:11px;color:var(--text3);margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--border);line-height:1.7}
+.login-hint b{color:var(--text2)}
+.login-theme{display:flex;justify-content:flex-end;margin-bottom:1.5rem}
+.theme-pill{background:none;border:1px solid var(--border2);border-radius:99px;padding:5px 12px;font-size:11px;color:var(--text3);cursor:pointer;transition:all .2s}
+.theme-pill:hover{border-color:var(--zuper);color:var(--zuper)}
+
+/* APP SHELL */
+#appShell{display:none;height:100vh;overflow:hidden;flex-direction:column}
+
+/* TOPBAR */
+.topbar{height:var(--topbar-h);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px 0 0;flex-shrink:0;gap:12px;z-index:200}
+.topbar-logo{width:var(--sidebar-w);display:flex;align-items:center;gap:9px;padding:0 16px;flex-shrink:0;border-right:1px solid var(--border)}
+.topbar-logo-mark{width:28px;height:28px;background:var(--zuper);border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.topbar-logo-mark svg{width:15px;height:15px}
+.topbar-brand{font-size:14px;font-weight:700;color:var(--text);letter-spacing:-.2px}
+.topbar-brand em{color:var(--zuper);font-style:normal}
+.company-name{font-size:13px;font-weight:600;color:var(--text);margin-left:4px}
+.company-pill{font-size:11px;color:var(--text3);background:var(--surface2);border:1px solid var(--border);border-radius:99px;padding:2px 9px;margin-left:6px}
+.topbar-spacer{flex:1}
+.topbar-actions{display:flex;align-items:center;gap:8px}
+.top-btn{background:none;border:1px solid var(--border2);border-radius:7px;padding:6px 11px;font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .2s;white-space:nowrap}
+.top-btn:hover{border-color:var(--zuper);color:var(--zuper)}
+.top-btn.danger:hover{border-color:var(--red);color:var(--red)}
+.theme-ico{width:28px;height:28px;border:1px solid var(--border2);border-radius:7px;background:none;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.theme-ico:hover{border-color:var(--zuper);background:var(--surface2)}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0}
+.status-dot.spin{background:var(--zuper);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.status-txt{font-size:11px;color:var(--text3)}
+
+/* LAYOUT */
+.app-body{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;padding:12px 0}
+.sidebar-section{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;padding:12px 16px 6px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 16px;cursor:pointer;border-radius:0;transition:all .15s;border-left:2.5px solid transparent;font-size:13px;color:var(--text2)}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.active{background:var(--surface2);color:var(--zuper);border-left-color:var(--zuper);font-weight:500}
+.nav-item svg{width:16px;height:16px;flex-shrink:0;opacity:.7}
+.nav-item.active svg{opacity:1}
+.nav-group-label{font-size:10px;color:var(--text3);padding:10px 16px 4px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+
+/* MAIN */
+.main{flex:1;overflow-y:auto;padding:24px;background:var(--bg)}
+.page{display:none}
+.page.active{display:block}
+
+/* PAGE HEADER */
+.page-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;min-width:0}
+.page-hdr>div:first-child{min-width:0;flex:1}
+.page-title{font-size:20px;font-weight:700;color:var(--text);letter-spacing:-.4px}
+.page-sub{font-size:13px;color:var(--text3);margin-top:2px}
+.hdr-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.filter-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.filter-select{background:var(--surface);border:1px solid var(--border2);border-radius:7px;padding:7px 10px;font-size:12px;color:var(--text);outline:none;cursor:pointer}
+.filter-select:focus{border-color:var(--zuper)}
+
+/* METRICS */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-bottom:20px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:15px 16px;position:relative;overflow:hidden}
+.kpi::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;background:transparent}
+.kpi.orange::after{background:var(--zuper)}
+.kpi.green::after{background:var(--green)}
+.kpi.blue::after{background:var(--blue)}
+.kpi.amber::after{background:var(--amber)}
+.kpi.red::after{background:var(--red)}
+.kpi.purple::after{background:var(--purple)}
+.kpi-lbl{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+.kpi-val{font-size:22px;font-weight:700;color:var(--text);letter-spacing:-.5px}
+.kpi.orange .kpi-val{color:var(--zuper)}
+.kpi.green .kpi-val{color:var(--green)}
+.kpi.blue .kpi-val{color:var(--blue)}
+.kpi.amber .kpi-val{color:var(--amber)}
+.kpi.red .kpi-val{color:var(--red)}
+.kpi-sub{font-size:11px;color:var(--text3);margin-top:3px}
+
+/* CHARTS */
+.charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px;margin-bottom:16px}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:16px}
+.chart-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.chart-badge{font-size:11px;color:var(--text3);background:var(--surface2);border:1px solid var(--border);border-radius:99px;padding:2px 8px;font-weight:400}
+.chart-wrap{position:relative;width:100%}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
+.leg-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+
+/* TABLE */
+.tbl-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:14px}
+.tbl-hdr{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.tbl-title{font-size:13px;font-weight:600;color:var(--text)}
+.tbl-pill{font-size:11px;color:var(--text3);background:var(--surface2);border:1px solid var(--border);border-radius:99px;padding:2px 9px}
+.tbl-wrap{overflow-x:auto;overflow-y:auto;max-height:520px}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:10px 16px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;background:var(--surface2)}
+td{font-size:12px;color:var(--text);padding:10px 16px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--surface2)}
+td.dim{color:var(--text2)}
+td.mono{font-family:monospace;font-size:11px;color:var(--text2)}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:500;white-space:nowrap}
+.bg{background:var(--green-bg);color:var(--green)}
+.bb{background:var(--blue-bg);color:var(--blue)}
+.br{background:var(--red-bg);color:var(--red)}
+.ba{background:var(--amber-bg);color:var(--amber)}
+.bp{background:var(--purple-bg);color:var(--purple)}
+.bt{background:var(--teal-bg);color:var(--teal)}
+.bz{background:rgba(255,107,44,.1);color:var(--zuper)}
+.bgr{background:var(--gray-bg);color:var(--gray)}
+
+/* EMPTY */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;color:var(--text3);gap:10px;font-size:13px}
+.empty svg{opacity:.3}
+
+/* AVATAR */
+.avatar{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;background:rgba(255,107,44,.1);color:var(--zuper)}
+
+/* SPINNER */
+.spinner{width:15px;height:15px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px}
+
+/* OVERVIEW GRID */
+.overview-modules{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.module-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:16px;cursor:pointer;transition:all .2s;display:flex;flex-direction:column;gap:6px}
+.module-card:hover{border-color:var(--zuper);box-shadow:0 4px 16px var(--zuper-glow)}
+.module-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;margin-bottom:4px}
+.module-card-name{font-size:13px;font-weight:600;color:var(--text)}
+.module-card-val{font-size:20px;font-weight:700;color:var(--zuper);letter-spacing:-.4px}
+.module-card-sub{font-size:11px;color:var(--text3)}
+
+/* DETAIL PANELS */
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.info-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:16px}
+.info-title{font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+.info-row{display:flex;justify-content:space-between;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;gap:12px}
+.info-row:last-child{border-bottom:none}
+.info-key{color:var(--text2);flex-shrink:0}
+.info-val{color:var(--text);text-align:right;font-weight:500}
+
+/* ───── CUSTOM DASHBOARD ───── */
+.db-layout{display:flex;gap:16px;align-items:flex-start}
+.db-library{width:242px;min-width:242px;flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:11px;overflow:hidden;position:sticky;top:0;align-self:flex-start;max-height:calc(100vh - var(--topbar-h) - 48px - 20px);display:flex;flex-direction:column;transition:width .22s cubic-bezier(.4,0,.2,1),min-width .22s,opacity .18s}
+.db-library.collapsed{width:0;min-width:0;opacity:0;pointer-events:none;border-color:transparent}
+.db-lib-hdr{padding:11px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.db-lib-title{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.08em}
+.db-lib-scroll{overflow-y:auto;flex:1;padding-bottom:10px}
+.db-lib-sec{font-size:10px;font-weight:600;color:var(--text3);padding:10px 14px 3px;text-transform:uppercase;letter-spacing:.07em}
+.lib-item{display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:grab;transition:background .12s;border-left:2px solid transparent;user-select:none}
+.lib-item:hover:not(.on-canvas){background:var(--surface2);border-left-color:var(--zuper)}
+.lib-item.on-canvas{opacity:.38;cursor:default}
+.lib-icon{font-size:13px;flex-shrink:0}
+.lib-name{flex:1;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lib-tag{font-size:10px;padding:1px 6px;border-radius:99px;white-space:nowrap;flex-shrink:0}
+.lib-tag.mod{background:var(--surface2);color:var(--text3);border:1px solid var(--border)}
+.lib-tag.cross{background:rgba(255,107,44,.1);color:var(--zuper);border:1px solid rgba(255,107,44,.22)}
+
+.db-canvas-wrap{flex:1;min-width:0}
+.db-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.db-toolbar-title{font-size:20px;font-weight:700;color:var(--text);letter-spacing:-.4px;flex:1}
+.db-canvas{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;min-height:160px;border-radius:12px;border:2px dashed transparent;transition:border-color .18s;padding:2px}
+.db-canvas.drag-over{border-color:var(--border2)}
+.db-empty{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 24px;gap:10px;text-align:center;border:2px dashed var(--border);border-radius:11px;background:var(--surface)}
+.db-empty-ico{font-size:36px;opacity:.3}
+.db-empty-ttl{font-size:14px;font-weight:600;color:var(--text2)}
+.db-empty-sub{font-size:12px;color:var(--text3)}
+
+.canvas-widget{background:var(--surface);border:1px solid var(--border);border-radius:11px;overflow:hidden;display:flex;flex-direction:column;transition:border-color .15s,box-shadow .15s}
+.canvas-widget.wide{grid-column:span 2}
+.canvas-widget.dragging{opacity:.3;pointer-events:none}
+.canvas-widget.drag-target{border-color:var(--zuper);box-shadow:0 0 0 3px var(--zuper-glow)}
+.cw-hdr{padding:9px 11px 8px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border);cursor:grab;flex-shrink:0}
+.cw-hdr:active{cursor:grabbing}
+.cw-dots{color:var(--text3);line-height:0;flex-shrink:0}
+.cw-title{flex:1;font-size:12px;font-weight:600;color:var(--text)}
+.cw-cross{font-size:9px;background:rgba(255,107,44,.1);color:var(--zuper);border:1px solid rgba(255,107,44,.22);border-radius:99px;padding:1px 6px;margin-right:2px}
+.cw-acts{display:flex;gap:2px;flex-shrink:0}
+.cw-btn{width:22px;height:22px;background:none;border:none;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text3);transition:all .12s;flex-shrink:0}
+.cw-btn:hover{background:var(--surface2);color:var(--text)}
+.cw-btn.rm:hover{background:var(--red-bg);color:var(--red)}
+.cw-body{padding:12px;flex:1;overflow:hidden}
+
+.wkpi-row{display:flex;gap:14px}
+.wkpi-item{flex:1;min-width:0}
+.wkpi-val{font-size:22px;font-weight:700;letter-spacing:-.5px}
+.wkpi-lbl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+.wkpi-sub{font-size:11px;color:var(--text2);margin-top:1px}
+
+.cw-type-bar{display:flex;align-items:center;gap:3px;padding:6px 10px;border-top:1px solid var(--border);background:var(--surface2);flex-wrap:wrap;flex-shrink:0}
+.cw-type-btn{height:23px;padding:0 7px;background:none;border:1px solid transparent;border-radius:5px;cursor:pointer;display:flex;align-items:center;gap:4px;color:var(--text3);font-size:10px;font-weight:500;transition:all .12s;white-space:nowrap}
+.cw-type-btn:hover{background:var(--surface3);color:var(--text);border-color:var(--border)}
+.cw-type-btn.active{background:var(--surface);color:var(--zuper);border-color:var(--border2);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+@media(max-width:640px){
+  .canvas-widget.wide{grid-column:span 1}
+  .db-library{width:200px;min-width:200px}
+}
+/* ───── MODULE VISIBILITY MODAL ───── */
+.mod-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:800;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.mod-modal-box{background:var(--surface);border-radius:14px;width:420px;max-width:92vw;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.3);animation:modIn .18s cubic-bezier(.4,0,.2,1)}
+@keyframes modIn{from{opacity:0;transform:scale(.96) translateY(8px)}}
+.mod-modal-hdr{padding:18px 20px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.mod-modal-title{font-size:15px;font-weight:700;color:var(--text)}
+.mod-modal-sub{font-size:12px;color:var(--text3);margin-top:2px}
+.mod-modal-body{overflow-y:auto;flex:1;padding:4px 20px 12px}
+.mod-modal-ftr{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0}
+.mod-sec-hdr{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;padding:14px 0 5px}
+.mod-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.mod-row:last-child{border-bottom:none}
+.mod-row-info{flex:1;min-width:0}
+.mod-row-name{font-size:13px;font-weight:500;color:var(--text)}
+.mod-row.vis-off .mod-row-name{color:var(--text3)}
+.mod-row-cnt{font-size:11px;color:var(--text3);margin-top:1px}
+.mod-row-cnt.empty{color:var(--red);font-weight:500}
+.mod-toggle{position:relative;width:34px;height:20px;flex-shrink:0}
+.mod-toggle input{position:absolute;opacity:0;width:0;height:0}
+.mod-toggle-track{position:absolute;inset:0;background:var(--surface3);border-radius:99px;transition:background .18s;cursor:pointer}
+.mod-toggle input:checked~.mod-toggle-track{background:var(--zuper)}
+.mod-toggle input:disabled~.mod-toggle-track{opacity:.5;cursor:not-allowed}
+.mod-toggle-thumb{position:absolute;top:3px;left:3px;width:14px;height:14px;background:#fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .18s;pointer-events:none}
+.mod-toggle input:checked~.mod-toggle-thumb{transform:translateX(14px)}
+.nav-manage{margin-top:auto;border-top:1px solid var(--border);padding-top:8px}
+
+/* ───── DATE FILTER BAR ───── */
+.filter-bar{display:flex;align-items:center;gap:6px;padding:7px 24px;background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap;flex-shrink:0}
+.filter-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;flex-shrink:0}
+.filter-presets{display:flex;gap:4px;flex-wrap:wrap}
+.preset-btn{padding:3px 9px;border-radius:6px;border:1.5px solid var(--border2);background:transparent;color:var(--text2);font-size:11px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
+.preset-btn:hover{border-color:var(--zuper);color:var(--zuper)}
+.preset-btn.active{background:var(--zuper);border-color:var(--zuper);color:#fff}
+.filter-sep{width:1px;height:16px;background:var(--border2);margin:0 2px;flex-shrink:0}
+.filter-date-inp{padding:3px 7px;border-radius:6px;border:1.5px solid var(--border2);background:var(--surface2);color:var(--text);font-size:11px;cursor:pointer;flex-shrink:0}
+.filter-date-inp:focus{outline:none;border-color:var(--zuper)}
+.filter-save-btn{padding:3px 8px;border-radius:6px;border:1.5px solid var(--border2);background:transparent;color:var(--text2);font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.filter-save-btn:hover{border-color:var(--zuper);color:var(--zuper)}
+.preset-tag{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;background:rgba(255,107,44,.1);color:var(--zuper);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap}
+.preset-tag-x{opacity:.6;font-size:10px;cursor:pointer;line-height:1}
+.preset-tag-x:hover{opacity:1}
+.filter-active-badge{font-size:10px;padding:2px 7px;border-radius:99px;background:var(--zuper);color:#fff;font-weight:600;flex-shrink:0}
+/* ───── KPI ENHANCEMENTS ───── */
+.kpi-delta{font-size:10px;font-weight:600;margin-top:2px;line-height:1}
+.kpi-delta.up{color:var(--green)}.kpi-delta.down{color:var(--red)}.kpi-delta.flat{color:var(--text3)}
+.kpi-target-bar{height:3px;border-radius:99px;margin-top:6px;background:var(--surface3);overflow:hidden}
+.kpi-target-fill{height:100%;border-radius:99px;transition:width .4s ease}
+.kpi-target-fill.good{background:var(--green)}.kpi-target-fill.warn{background:var(--amber)}.kpi-target-fill.bad{background:var(--red)}
+.kpi-target-lbl{font-size:9px;color:var(--text3);cursor:pointer;margin-top:3px;display:inline-block;line-height:1.2}
+.kpi-target-lbl:hover{color:var(--zuper)}
+/* ───── TABLE SEARCH + CSV + PAGINATION ───── */
+.tbl-toolbar{display:flex;align-items:center;gap:8px;padding:10px 16px 4px}
+.tbl-search{flex:1;padding:6px 12px;border-radius:7px;border:1.5px solid var(--border2);background:var(--surface2);color:var(--text);font-size:12px;outline:none;min-width:0}
+.tbl-search:focus{border-color:var(--zuper)}
+.tbl-csv-btn{padding:5px 10px;border-radius:7px;border:1.5px solid var(--border2);background:transparent;color:var(--text2);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.tbl-csv-btn:hover{border-color:var(--green);color:var(--green)}
+.tbl-row-count{font-size:11px;color:var(--text3);white-space:nowrap;flex-shrink:0}
+.tbl-pagination{display:flex;align-items:center;gap:6px;padding:7px 14px;border-top:1px solid var(--border2);flex-wrap:wrap}
+.pgn-info{font-size:11px;color:var(--text3);flex:1;min-width:80px}
+.pgn-btn{padding:3px 9px;border-radius:6px;border:1.5px solid var(--border2);background:transparent;color:var(--text2);font-size:11px;font-weight:500;cursor:pointer;line-height:1.5}
+.pgn-btn:hover:not(:disabled){border-color:var(--zuper);color:var(--zuper)}
+.pgn-btn:disabled{opacity:.3;cursor:default}
+.pgn-pages{display:flex;align-items:center;gap:2px}
+.pgn-num{padding:3px 7px;border-radius:5px;border:1.5px solid transparent;font-size:11px;cursor:pointer;color:var(--text2);background:transparent}
+.pgn-num:hover{border-color:var(--border2)}
+.pgn-num.active{border-color:var(--zuper);color:var(--zuper);font-weight:600}
+.pgn-num.ellipsis{cursor:default;border:none;color:var(--text3)}
+.pgn-size{padding:3px 6px;border-radius:6px;border:1.5px solid var(--border2);background:var(--surface2);color:var(--text);font-size:11px;cursor:pointer}
+.cw-tbl-toolbar{display:flex;align-items:center;justify-content:space-between;padding:6px 12px 4px;gap:8px;border-bottom:1px solid var(--border2)}
+.cw-tbl-count{font-size:11px;color:var(--text3)}
+/* ───── TEAM SCORECARD ───── */
+.scorecard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:20px}
+.scorecard-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:5px}
+.scorecard-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scorecard-row{display:flex;justify-content:space-between;align-items:baseline}
+.scorecard-metric{font-size:11px;color:var(--text3)}
+.scorecard-val{font-size:14px;font-weight:700;color:var(--zuper)}
+.scorecard-val.sm{font-size:12px;color:var(--text2)}
+.scorecard-bar-wrap{height:4px;background:var(--surface3);border-radius:99px;overflow:hidden;margin-top:4px}
+.scorecard-bar-fill{height:100%;background:var(--zuper);border-radius:99px}
+.scorecard-ttl{font-size:12px;font-weight:700;color:var(--text);padding:0 0 8px;border-bottom:1px solid var(--border);margin-bottom:4px}
+/* ───── REVENUE FORECAST ───── */
+.forecast-note{font-size:11px;color:var(--text3);padding:4px 0 8px;font-style:italic}
+/* ───── MULTI-PAGE DASHBOARD TABS ───── */
+.dash-tabs-bar{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding-bottom:14px}
+.dash-tab{padding:5px 14px;border-radius:7px;border:1.5px solid var(--border2);background:transparent;color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:5px}
+.dash-tab.active{background:var(--zuper);border-color:var(--zuper);color:#fff}
+.dash-tab:hover:not(.active){border-color:var(--zuper);color:var(--zuper)}
+.dash-tab-del{font-size:10px;opacity:.6;cursor:pointer;line-height:1}
+.dash-tab-del:hover{opacity:1}
+.dash-tab-add{padding:4px 10px;border-radius:7px;border:1.5px dashed var(--border2);background:transparent;color:var(--text3);font-size:12px;cursor:pointer}
+.dash-tab-add:hover{border-color:var(--zuper);color:var(--zuper)}
+
+/* ─── TABLE BUILDER ─── */
+.bldr-mod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px;margin-top:10px}
+.bldr-mod-card{padding:13px 14px;background:var(--surface2);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;transition:all .15s}
+.bldr-mod-card:hover{border-color:var(--zuper);background:rgba(255,107,44,.05)}
+.bldr-mod-card.selected{border-color:var(--zuper);background:rgba(255,107,44,.08);box-shadow:0 0 0 3px var(--zuper-glow)}
+.bldr-mod-name{font-size:13px;font-weight:600;color:var(--text)}
+.bldr-mod-cnt{font-size:11px;color:var(--text3);margin-top:2px}
+.bldr-cols-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-top:10px}
+.bldr-col-item{display:flex;align-items:center;gap:8px;padding:8px 11px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;color:var(--text);background:var(--surface2);transition:border-color .12s;user-select:none}
+.bldr-col-item:has(input:checked){border-color:var(--zuper);background:rgba(255,107,44,.07)}
+.bldr-step-lbl{font-size:12px;font-weight:700;color:var(--zuper);letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px}
+.bldr-preview-lbl{margin-top:10px;font-size:11px;color:var(--text3);background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:8px 12px;line-height:1.6}
+.bldr-field{margin-top:14px}
+.bldr-lbl{display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px}
+.bldr-row{display:flex;gap:8px}
+.bldr-row .filter-select{flex:1}
+.lib-build-btn{display:flex;align-items:center;gap:7px;padding:8px 14px;margin:4px 8px 2px;cursor:pointer;border-radius:8px;border:1.5px dashed rgba(255,107,44,.4);background:rgba(255,107,44,.05);color:var(--zuper);font-size:12px;font-weight:500;transition:all .15s}
+.lib-build-btn:hover{border-color:var(--zuper);background:rgba(255,107,44,.1)}
+
+@media print{
+  .sidebar,.topbar,.db-library,.hdr-right{display:none!important}
+  .main{overflow:visible!important;padding:12px!important}
+  #appShell{height:auto!important;overflow:visible!important}
+  .app-body{overflow:visible!important}
+  .db-canvas{grid-template-columns:repeat(2,1fr)!important;display:grid!important}
+  .canvas-widget{break-inside:avoid;page-break-inside:avoid}
+  .canvas-widget.wide{grid-column:span 2}
+}
+</style>
+</head>
+<body data-theme="light">
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-wrap">
+    <div class="login-theme">
+      <button class="theme-pill" onclick="toggleTheme()" id="loginThemeBtn">🌙 Dark mode</button>
+    </div>
+    <div class="login-brand">
+      <div class="z-logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+      <div class="brand-name">Zuper <em>Analytics</em></div>
+    </div>
+    <h1 class="login-title">Connect your account</h1>
+    <p class="login-sub">Paste your API key to load a live multi-module dashboard across jobs, customers, invoices, assets, and more.</p>
+    <label class="inp-label">API Key</label>
+    <div class="inp-wrap">
+      <input class="inp" type="password" id="apiKeyInp" placeholder="e.g. a96c5a9267691168a3..." autocomplete="off" spellcheck="false"/>
+      <button class="eye" onclick="toggleVis()" title="Show key">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+    <button class="cta" id="loadBtn" onclick="startLoad()"><span id="loadTxt">Load dashboard</span></button>
+    <div class="login-err" id="loginErr"></div>
+    <div class="login-hint">Find your key in Zuper: <b>Settings → Developer Hub → API Keys</b><br/>Your key is used only to call Zuper's API directly from your browser — it is never stored or transmitted elsewhere.</div>
+  </div>
+</div>
+
+<!-- APP SHELL -->
+<div id="appShell" style="display:none;flex-direction:column;height:100vh">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-logo">
+      <div class="topbar-logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+      <span class="topbar-brand">Zuper <em>Analytics</em></span>
+    </div>
+    <span class="company-name" id="topCo">—</span>
+    <span class="company-pill" id="topRegion">—</span>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-actions">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-txt" id="statusTxt">Ready</span>
+      <button class="theme-ico" onclick="toggleTheme()" id="dashThemeBtn" title="Toggle theme">🌙</button>
+      <button class="top-btn" onclick="refreshModule()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Refresh
+      </button>
+      <button class="top-btn danger" onclick="logout()">Sign out</button>
+    </div>
+  </div>
+
+  <!-- DATE FILTER BAR -->
+  <div id="filterBar" class="filter-bar" style="display:none"></div>
+
+  <!-- BODY -->
+  <div class="app-body">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-section" id="seclbl-overview">Overview</div>
+      <div class="nav-item active" onclick="showPage('overview')" id="nav-overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Overview
+      </div>
+      <div class="sidebar-section" id="seclbl-operations">Operations</div>
+      <div class="nav-item" onclick="showPage('jobs')" id="nav-jobs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>Jobs
+      </div>
+      <div class="nav-item" onclick="showPage('timesheets')" id="nav-timesheets">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Timesheets
+      </div>
+      <div class="sidebar-section" id="seclbl-custprop">Customers &amp; Properties</div>
+      <div class="nav-item" onclick="showPage('customers')" id="nav-customers">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Customers
+      </div>
+      <div class="nav-item" onclick="showPage('properties')" id="nav-properties">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>Properties
+      </div>
+      <div class="sidebar-section" id="seclbl-finance">Finance</div>
+      <div class="nav-item" onclick="showPage('quotes')" id="nav-quotes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>Quotes
+      </div>
+      <div class="nav-item" onclick="showPage('invoices')" id="nav-invoices">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>Invoices
+      </div>
+      <div class="nav-item" onclick="showPage('contracts')" id="nav-contracts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Contracts
+      </div>
+      <div class="sidebar-section" id="seclbl-inventory">Inventory</div>
+      <div class="nav-item" onclick="showPage('parts')" id="nav-parts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>Parts & Services
+      </div>
+      <div class="nav-item" onclick="showPage('vendors')" id="nav-vendors">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="15" r="3"/></svg>Vendors
+      </div>
+      <div class="nav-item" onclick="showPage('materialrequests')" id="nav-materialrequests">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>Material Requests
+      </div>
+      <div class="nav-item" onclick="showPage('purchaseorders')" id="nav-purchaseorders">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>Purchase Orders
+      </div>
+      <div class="sidebar-section" id="seclbl-assets">Assets</div>
+      <div class="nav-item" onclick="showPage('assets')" id="nav-assets">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Assets
+      </div>
+      <div class="sidebar-section">Custom</div>
+      <div class="nav-item" onclick="showPage('dashboard')" id="nav-dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="5" rx="1"/><rect x="13" y="20" width="8" height="1" rx=".5"/></svg>My Dashboard
+      </div>
+      <div class="nav-manage">
+        <div class="nav-item" onclick="openModModal()" style="opacity:.75">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>Manage modules
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main" id="mainContent">
+
+      <!-- OVERVIEW -->
+      <div class="page active" id="page-overview">
+        <div class="page-hdr">
+          <div><div class="page-title">Overview</div><div class="page-sub">Summary across all modules in your account</div></div>
+        </div>
+        <div class="overview-modules" id="overviewModules"></div>
+        <div class="charts-grid" id="overviewCharts"></div>
+      </div>
+
+      <!-- JOBS -->
+      <div class="page" id="page-jobs">
+        <div class="page-hdr">
+          <div><div class="page-title">Jobs</div><div class="page-sub">All jobs in your account</div></div>
+        </div>
+        <div class="kpi-grid" id="jobsKpi"></div>
+        <div class="charts-grid" id="jobsCharts"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">All jobs</span><span class="tbl-pill" id="jobsTblPill">—</span></div><div class="tbl-wrap"><table><thead><tr><th>Job #</th><th>Title</th><th>Customer</th><th>Category</th><th>Status</th><th>Priority</th><th>Due Date</th></tr></thead><tbody id="jobsTbl"></tbody></table></div></div>
+      </div>
+
+      <!-- TIMESHEETS -->
+      <div class="page" id="page-timesheets">
+        <div class="page-hdr"><div><div class="page-title">Timesheets</div><div class="page-sub">Team time logs and attendance records</div></div></div>
+        <div class="kpi-grid" id="tsKpi"></div>
+        <div id="tsScorecard"></div>
+        <div class="charts-grid" id="tsCharts"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Timesheet records</span><span class="tbl-pill" id="tsTblPill">—</span></div><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Employee</th><th>Clock In</th><th>Clock Out</th><th>Duration</th><th>Status</th></tr></thead><tbody id="tsTbl"></tbody></table></div></div>
+      </div>
+
+      <!-- CUSTOMERS -->
+      <div class="page" id="page-customers">
+        <div class="page-hdr"><div><div class="page-title">Customers</div><div class="page-sub">All customer records</div></div></div>
+        <div class="kpi-grid" id="custKpi"></div>
+        <div class="charts-grid" id="custCharts"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Customer list</span><span class="tbl-pill" id="custTblPill">—</span></div><div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Jobs</th><th>LTV</th><th>Receivables</th><th>Portal</th></tr></thead><tbody id="custTbl"></tbody></table></div></div>
+      </div>
+
+      <!-- PROPERTIES -->
+      <div class="page" id="page-properties">
+        <div class="page-hdr"><div><div class="page-title">Properties</div><div class="page-sub">All service properties and addresses</div></div></div>
+        <div class="kpi-grid" id="propKpi"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Property list</span><span class="tbl-pill" id="propTblPill">—</span></div><div class="tbl-wrap"><table><thead><tr><th>Property Name</th><th>Address</th><th>City</th><th>State</th><th>Zip</th><th>Jobs</th><th>Customers</th></tr></thead><tbody id="propTbl"></tbody></table></div></div>
+      </div>
+
+      <!-- QUOTES -->
+      <div class="page" id="page-quotes">
+        <div class="page-hdr"><div><div class="page-title">Quotes</div><div class="page-sub">All estimates and proposals</div></div></div>
+        <div class="kpi-grid" id="quotesKpi"></div>
+        <div class="charts-grid" id="quotesCharts"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">All quotes</span><span class="tbl-pill" id="quotesTblPill">—</span></div><div class="tbl-wrap"><table><thead><tr><th>Quote #</th><th>Customer</th><th>Amount</th><th>Status</th><th>Created</th><th>Expiry</th></tr></thead><tbody id="quotesTbl"></tbody></table></div></div>
+      </div>
+
+      <!-- INVOICES -->
+      <div class="page" id="page-invoices">
+        <div class="page-hdr"><div><div class="page-title">Invoices</div><div class="page-sub">Billing and payment records</div></div></div>
+        <div class="kpi-grid" id="invKpi"></div>
+        <div class="charts-grid" id="invCharts"></div>
+        <div id="invForecast"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">All invoices</span><span class="tbl-pill" id="invTblPill">—</span></div><div class="tbl-wrap"><table><thead><tr><th>Invoice #</th><th>Customer</th><th>Amount</th><th>Status</th><th>Invoice Date</th><th>Due Date</th><th>Paid</th></tr></thead><tbody id="invTbl"></tbody></table></div></div>
+      </div>
+
+      <!-- CONTRACTS -->
+      <div class="page" id="page-contracts">
+        <div class="page-hdr"><div><div class="page-title">Contracts</div><div class="page-sub">Signed agreements and job documents</div></div></div>
+        <div class="kpi-grid" id="conKpi"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">All contracts</span><span class="tbl-pill" id="conTblPill">—</span></div><div class="tbl-wrap"><table><thead><tr><th>Contract #</th><th>Job</th><th>Customer</th><th>Status</th><th>Created</th></tr></thead><tbody id="conTbl"></tbody></table></div></div>
+      </div>
+
+      <!-- PARTS & SERVICES -->
+      <div class="page" id="page-parts">
+        <div class="page-hdr"><div><div class="page-title">Parts &amp; Services</div><div class="page-sub">Product catalog and pricing</div></div></div>
+        <div class="kpi-grid" id="partsKpi"></div>
+        <div class="charts-grid" id="partsCharts"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Catalog</span><span class="tbl-pill" id="partsTblPill">—</span></div><div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Category</th><th>Type</th><th>UOM</th><th>Sell Price</th><th>Purchase Price</th><th>Stock</th></tr></thead><tbody id="partsTbl"></tbody></table></div></div>
+      </div>
+
+      <!-- VENDORS -->
+      <div class="page" id="page-vendors">
+        <div class="page-hdr"><div><div class="page-title">Vendors</div><div class="page-sub">Supplier and vendor directory</div></div></div>
+        <div class="kpi-grid" id="vendKpi"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Vendor list</span><span class="tbl-pill" id="vendTblPill">—</span></div><div class="tbl-wrap"><table><thead><tr><th>Vendor Name</th><th>Email</th><th>Phone</th><th>Address</th><th>Status</th></tr></thead><tbody id="vendTbl"></tbody></table></div></div>
+      </div>
+
+      <!-- MATERIAL REQUESTS -->
+      <div class="page" id="page-materialrequests">
+        <div class="page-hdr"><div><div class="page-title">Material Requests</div><div class="page-sub">Requests for materials and supplies</div></div></div>
+        <div class="kpi-grid" id="mrKpi"></div>
+        <div class="charts-grid" id="mrCharts"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">All requests</span><span class="tbl-pill" id="mrTblPill">—</span></div><div class="tbl-wrap"><table><thead><tr><th>Request #</th><th>Job</th><th>Requested By</th><th>Items</th><th>Status</th><th>Date</th></tr></thead><tbody id="mrTbl"></tbody></table></div></div>
+      </div>
+
+      <!-- PURCHASE ORDERS -->
+      <div class="page" id="page-purchaseorders">
+        <div class="page-hdr"><div><div class="page-title">Purchase Orders</div><div class="page-sub">Orders placed with vendors</div></div></div>
+        <div class="kpi-grid" id="poKpi"></div>
+        <div class="charts-grid" id="poCharts"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">All purchase orders</span><span class="tbl-pill" id="poTblPill">—</span></div><div class="tbl-wrap"><table><thead><tr><th>PO #</th><th>Vendor</th><th>Job</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody id="poTbl"></tbody></table></div></div>
+      </div>
+
+      <!-- CUSTOM DASHBOARD -->
+      <div class="page" id="page-dashboard">
+        <div class="page-hdr">
+          <div><div class="page-title">My Dashboard</div><div class="page-sub">Drag widgets from the library to build your custom view</div></div>
+          <div class="hdr-right">
+            <button class="top-btn" onclick="openTableBuilder()" style="color:var(--zuper);border-color:rgba(255,107,44,.35)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Build Table
+            </button>
+            <button class="top-btn" id="libToggleBtn" onclick="toggleLibrary()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Widgets
+            </button>
+            <button class="top-btn" onclick="clearDashboard()">Clear all</button>
+            <button class="top-btn" onclick="exportPDF()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export PDF
+            </button>
+          </div>
+        </div>
+        <div id="dashTabsBar" class="dash-tabs-bar"></div>
+        <div class="db-layout">
+          <div class="db-library" id="dbLibrary">
+            <div class="db-lib-hdr">
+              <span class="db-lib-title">Widget Library</span>
+              <button class="cw-btn" onclick="toggleLibrary()" title="Hide panel">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="db-lib-scroll" id="dbLibContent"></div>
+          </div>
+          <div class="db-canvas-wrap">
+            <div class="db-canvas" id="dbCanvas"
+                 ondragover="onCanvasDragOver(event)"
+                 ondrop="onCanvasDrop(event)"
+                 ondragleave="onCanvasDragLeave(event)">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ASSETS -->
+      <div class="page" id="page-assets">
+        <div class="page-hdr"><div><div class="page-title">Assets</div><div class="page-sub">Equipment and asset tracking</div></div></div>
+        <div class="kpi-grid" id="assetsKpi"></div>
+        <div class="charts-grid" id="assetsCharts"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Asset inventory</span><span class="tbl-pill" id="assetsTblPill">—</span></div><div class="tbl-wrap"><table><thead><tr><th>Asset Name</th><th>Category</th><th>Serial #</th><th>Customer</th><th>Status</th><th>Last Updated</th></tr></thead><tbody id="assetsTbl"></tbody></table></div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const REGIONS=['https://us-east-1.zuperpro.com/api/','https://us-west-1c.zuperpro.com/api/'];
+const CL=['#FF6B2C','#2563eb','#15803d','#7c3aed','#d97706','#0f766e','#dc2626','#db2777'];
+const CD=['#FF6B2C','#4f8ef7','#22c98a','#9b6dff','#f5a623','#14b8a6','#f05252','#e879a0'];
+let apiKey='',baseUrl='',isDark=false,charts={},cache={},activePage='overview';
+
+function gc(){return isDark?CD:CL;}
+function gk(c,val){return isDark?`rgba(${hexRgb(c)},.08)`:`rgba(${hexRgb(c)},.08)`;}
+function hexRgb(h){const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);return `${r},${g},${b}`;}
+function gGrid(){return isDark?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.06)';}
+function gTick(){return isDark?'#555a6b':'#9ca3af';}
+
+function toggleTheme(){
+  isDark=!isDark;
+  document.body.setAttribute('data-theme',isDark?'dark':'light');
+  document.getElementById('loginThemeBtn').textContent=isDark?'☀️ Light mode':'🌙 Dark mode';
+  document.getElementById('dashThemeBtn').textContent=isDark?'☀️':'🌙';
+  if(Object.keys(charts).length){Object.values(charts).forEach(c=>c.destroy());charts={};renderPage(activePage);}
+}
+
+function toggleVis(){const i=document.getElementById('apiKeyInp');i.type=i.type==='password'?'text':'password';}
+
+async function tryR(key,url){
+  const r=await fetch(url+'user/company',{headers:{'x-api-key':key}});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  return r.json();
+}
+
+async function startLoad(){
+  apiKey=document.getElementById('apiKeyInp').value.trim();
+  if(!apiKey){setErr('Please enter your API key.');return;}
+  if(apiKey.length<20){setErr('Key looks too short — check it.');return;}
+  const btn=document.getElementById('loadBtn');
+  btn.disabled=true;
+  document.getElementById('loadTxt').innerHTML='<div class="spinner"></div>';
+  setErr('');
+  let co=null;
+  for(const url of REGIONS){try{co=await tryR(apiKey,url);baseUrl=url;break;}catch(e){}}
+  if(!co){setErr('Could not connect — check your API key.');btn.disabled=false;document.getElementById('loadTxt').textContent='Load dashboard';return;}
+  const name=co?.company_name||co?.data?.company_name||'Your Account';
+  document.getElementById('loginScreen').style.display='none';
+  const shell=document.getElementById('appShell');shell.style.display='flex';
+  document.getElementById('topCo').textContent=name;
+  document.getElementById('topRegion').textContent=baseUrl.includes('east')?'US East':'US West';
+  setStatus('loading','Loading data...');
+  try{
+    await loadAll();
+  }catch(e){
+    console.error('Dashboard load error:',e);
+    setStatus('loading','Load error: '+e.message);
+    setErr('Error loading data: '+e.message+' — try refreshing.');
+    btn.disabled=false;document.getElementById('loadTxt').textContent='Load dashboard';
+    return;
+  }
+  setStatus('ok','Last updated '+new Date().toLocaleTimeString());
+}
+
+function setErr(m){document.getElementById('loginErr').textContent=m;}
+function setStatus(t,m){
+  const d=document.getElementById('statusDot');
+  d.className='status-dot'+(t==='loading'?' spin':'');
+  document.getElementById('statusTxt').textContent=m;
+}
+
+function logout(){
+  apiKey='';baseUrl='';cache={};
+  filterFrom=null;filterTo=null;activePreset='all';
+  Object.values(charts).forEach(c=>c.destroy());charts={};
+  document.getElementById('appShell').style.display='none';
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('loadBtn').disabled=false;
+  document.getElementById('loadTxt').textContent='Load dashboard';
+  document.getElementById('filterBar').style.display='none';
+}
+
+async function zGet(path){
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(),15000);
+  try{
+    const r=await fetch(baseUrl+path,{headers:{'x-api-key':apiKey},signal:ctrl.signal});
+    clearTimeout(t);
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    return r.json();
+  }catch(e){clearTimeout(t);throw e;}
+}
+
+async function zGetAll(path){
+  const sep=path.includes('?')?'&':'?';
+  const first=await zGet(path+sep+'page=1&count=100');
+  const firstData=Array.isArray(first)?first:(first.data||[]);
+  const total=first.total_records||firstData.length;
+  if(firstData.length>=total){return{data:firstData,total_records:total};}
+  const pages=Math.ceil(total/100);
+  const rest=await Promise.allSettled(Array.from({length:pages-1},(_,i)=>zGet(path+sep+`page=${i+2}&count=100`)));
+  const allData=[...firstData];
+  rest.forEach(r=>{if(r.status==='fulfilled'){const d=Array.isArray(r.value)?r.value:(r.value.data||[]);allData.push(...d);}});
+  return{data:allData,total_records:total};
+}
+
+async function loadAll(){
+  setStatus('loading','Fetching data… (large accounts may take a moment)');
+  const endpts={
+    jobs:'jobs?sort=DESC&sort_by=none',
+    customers:'customers?sort=DESC&sort_by=created_at',
+    properties:'property',
+    invoices:'invoice',
+    estimates:'estimate',
+    parts:'product',
+    purchase_orders:'purchase_orders',
+    material_requests:'material_requests',
+    assets:'assets',
+    timesheets:'user/timesheet',
+    teams:'team',
+    users:'user?sort=ASC&sort_by=created_at',
+    vendors:'vendor',
+  };
+  const keys=Object.keys(endpts);
+  let done=0;
+  const results=await Promise.allSettled(keys.map(k=>
+    zGetAll(endpts[k]).then(r=>{done++;setStatus('loading',`Loading… ${done}/${keys.length} modules`);return r;})
+  ));
+  results.forEach((r,i)=>{
+    const k=keys[i];
+    cache[k]=r.status==='fulfilled'?(r.value.data||r.value||[]):[];
+    if(r.status==='fulfilled'&&r.value.total_records!=null)cache[k+'_total']=r.value.total_records;
+  });
+  invalidateDynCols();
+  loadCustomTbls();
+  loadModVis();
+  applyModVis();
+  initDateFilter();
+  renderPage('overview');
+  setStatus('ok','Last updated '+new Date().toLocaleTimeString());
+}
+
+function tot(key){return cache[key+'_total']||(cache[key]||[]).length;}
+
+function showPage(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  const pg=document.getElementById('page-'+id);
+  const nav=document.getElementById('nav-'+id);
+  if(pg)pg.classList.add('active');
+  if(nav)nav.classList.add('active');
+  activePage=id;
+  renderPage(id);
+}
+
+function refreshModule(){Object.values(charts).forEach(c=>c.destroy());charts={};loadAll().then(()=>renderPage(activePage));}
+
+function renderPage(id){
+  const fn={overview:renderOverview,jobs:renderJobs,customers:renderCustomers,properties:renderProperties,
+    timesheets:renderTimesheets,quotes:renderQuotes,invoices:renderInvoices,contracts:renderContracts,
+    parts:renderParts,vendors:renderVendors,materialrequests:renderMR,purchaseorders:renderPO,
+    assets:renderAssets,dashboard:renderDashboardPage};
+  if(fn[id])fn[id]();
+}
+
+// ─── HELPERS ───────────────────────────────────────────────
+function countBy(arr,fn){const m={};arr.forEach(x=>{const k=fn(x)||'Unknown';m[k]=(m[k]||0)+1;});return m;}
+function sum(arr,fn){return arr.reduce((s,x)=>s+(parseFloat(fn(x))||0),0);}
+function fmt$(n){return '$'+Math.round(n).toLocaleString();}
+function fmtDate(d){if(!d)return '—';try{return new Date(d).toLocaleDateString();}catch{return d;}}
+
+function kpiHtml(items){
+  return items.map(k=>`<div class="kpi ${k.cls||''}"><div class="kpi-lbl">${k.label}</div><div class="kpi-val">${k.val}</div><div class="kpi-sub">${k.sub||''}</div></div>`).join('');
+}
+
+function destroyChart(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+
+function makeDoughnut(id,labels,data,colors){
+  destroyChart(id);
+  const ctx=document.getElementById(id);if(!ctx)return;
+  charts[id]=new Chart(ctx,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0,hoverOffset:4}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}`}}}}});
+}
+
+function makeBar(id,labels,data,colors){
+  destroyChart(id);
+  const ctx=document.getElementById(id);if(!ctx)return;
+  charts[id]=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:5,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{font:{size:10},color:gTick(),autoSkip:false,maxRotation:30},grid:{display:false},border:{color:'transparent'}},
+        y:{ticks:{font:{size:10},color:gTick()},grid:{color:gGrid()},border:{color:'transparent'}}}}});
+}
+
+function makeHBar(id,labels,data,color){
+  destroyChart(id);
+  const ctx=document.getElementById(id);if(!ctx)return;
+  charts[id]=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data,backgroundColor:color,borderRadius:4,borderSkipped:false}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{font:{size:10},color:gTick()},grid:{color:gGrid()},border:{color:'transparent'}},
+        y:{ticks:{font:{size:10},color:gTick()},grid:{display:false},border:{color:'transparent'}}}}});
+}
+
+function makePie(id,labels,data,colors){
+  destroyChart(id);
+  const ctx=document.getElementById(id);if(!ctx)return;
+  charts[id]=new Chart(ctx,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:2,borderColor:'var(--surface)',hoverOffset:4}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'0%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}`}}}}});
+}
+
+function legend(container,labels,colors){
+  const el=document.getElementById(container);if(!el)return;
+  el.innerHTML=labels.map((l,i)=>`<div class="leg-item"><span class="leg-dot" style="background:${colors[i]}"></span>${l}</div>`).join('');
+}
+
+function chartCard(id,title,badge,height,legendId){
+  return `<div class="chart-card">
+    <div class="chart-title">${title}<span class="chart-badge">${badge}</span></div>
+    <div class="chart-wrap" style="height:${height}px"><canvas id="${id}" role="img" aria-label="${title}"></canvas></div>
+    <div class="legend" id="${legendId}"></div>
+  </div>`;
+}
+
+function sBadge(name){
+  const s=(name||'').toLowerCase();
+  if(s.includes('complet')||s.includes('done')||s.includes('closed')||s.includes('paid'))return`<span class="badge bg">${name}</span>`;
+  if(s.includes('cancel')||s.includes('void')||s.includes('reject'))return`<span class="badge br">${name}</span>`;
+  if(s.includes('progress')||s.includes('started')||s.includes('sent')||s.includes('approved'))return`<span class="badge bb">${name}</span>`;
+  if(s.includes('draft')||s.includes('new')||s.includes('pending'))return`<span class="badge ba">${name}</span>`;
+  return`<span class="badge bgr">${name||'—'}</span>`;
+}
+
+function priB(p){
+  if(p==='HIGH')return`<span class="badge br">High</span>`;
+  if(p==='LOW')return`<span class="badge bg">Low</span>`;
+  return`<span class="badge bb">Normal</span>`;
+}
+
+// ─── OVERVIEW ──────────────────────────────────────────────
+function renderOverview(){
+  const modules=[
+    {name:'Jobs',val:tot('jobs'),icon:'#FF6B2C',cls:'bz',page:'jobs'},
+    {name:'Customers',val:tot('customers'),icon:'#2563eb',cls:'bb',page:'customers'},
+    {name:'Properties',val:tot('properties'),icon:'#7c3aed',cls:'bp',page:'properties'},
+    {name:'Invoices',val:tot('invoices'),icon:'#15803d',cls:'bg',page:'invoices'},
+    {name:'Quotes',val:tot('estimates'),icon:'#d97706',cls:'ba',page:'quotes'},
+    {name:'Purchase Orders',val:tot('purchase_orders'),icon:'#0f766e',cls:'bt',page:'purchaseorders'},
+    {name:'Material Requests',val:tot('material_requests'),icon:'#dc2626',cls:'br',page:'materialrequests'},
+    {name:'Parts & Services',val:tot('parts'),icon:'#db2777',cls:'bgr',page:'parts'},
+    {name:'Assets',val:tot('assets'),icon:'#FF6B2C',cls:'bz',page:'assets'},
+  ].filter(m=>!hiddenModules.has(m.page));
+  document.getElementById('overviewModules').innerHTML=modules.map(m=>`
+    <div class="module-card" onclick="showPage('${m.page}')">
+      <div class="module-icon" style="background:${m.icon}18">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${m.icon}" stroke-width="2"></svg>
+      </div>
+      <div class="module-card-name">${m.name}</div>
+      <div class="module-card-val">${m.val}</div>
+      <div class="module-card-sub">Click to explore →</div>
+    </div>`).join('');
+
+  // Revenue & jobs summary charts (apply date filter so overview reflects the selected period)
+  const jobs=filterByDate(cache.jobs||[],'created_at');
+  const invs=filterByDate(cache.invoices||[],'invoice_date');
+  const colors=gc();
+  const statusCounts=countBy(jobs,j=>j.current_job_status?.status_name);
+  const sKeys=Object.keys(statusCounts).slice(0,6);
+  const invStatus=countBy(invs,i=>i.invoice_status);
+  const iKeys=Object.keys(invStatus).slice(0,6);
+  const iColors=iKeys.map((_,i)=>colors[i%colors.length]);
+  const revenue=sum(invs.filter(i=>i.invoice_status==='PAID'),i=>i.total);
+  const outstanding=sum(invs.filter(i=>['SENT','APPROVED','PARTIALLY_PAID'].includes(i.invoice_status)),i=>i.total);
+
+  document.getElementById('overviewCharts').innerHTML=
+    chartCard('ovJobStatus','Jobs by status',jobs.length+' jobs',200,'ovJobStatusLeg')+
+    chartCard('ovInvStatus','Invoice breakdown',invs.length+' invoices',200,'ovInvStatusLeg');
+
+  setTimeout(()=>{
+    makeDoughnut('ovJobStatus',sKeys,sKeys.map(k=>statusCounts[k]),colors.slice(0,sKeys.length));
+    legend('ovJobStatusLeg',sKeys.map((k,i)=>`${k} (${statusCounts[k]})`),colors.slice(0,sKeys.length));
+    makeDoughnut('ovInvStatus',iKeys,iKeys.map(k=>invStatus[k]),iColors);
+    legend('ovInvStatusLeg',iKeys.map((k,i)=>`${k} (${invStatus[k]})`),iColors);
+  },50);
+}
+
+// ─── JOBS ──────────────────────────────────────────────────
+function renderJobs(){
+  const allJobs=cache.jobs||[];
+  const jobs=filterByDate(allJobs,'created_at');
+  const prevJobs=filterPrevPeriod(allJobs,'created_at');
+  const open=jobs.filter(j=>{const s=(j.current_job_status?.status_name||'').toLowerCase();return !s.includes('complet')&&!s.includes('cancel');}).length;
+  const completed=jobs.filter(j=>(j.current_job_status?.status_name||'').toLowerCase().includes('complet')).length;
+  const hi=jobs.filter(j=>j.job_priority==='HIGH').length;
+  document.getElementById('jobsKpi').innerHTML=kpiEnhHtml([
+    {id:'jobs_total',label:'Total jobs',val:jobs.length,rawVal:jobs.length,sub:open+' open',cls:'orange',delta:calcDelta(jobs.length,prevJobs.length)},
+    {id:'jobs_completed',label:'Completed',val:completed,rawVal:completed,sub:'finished',cls:'green',delta:calcDelta(completed,prevJobs.filter(j=>(j.current_job_status?.status_name||'').toLowerCase().includes('complet')).length)},
+    {id:'jobs_hipri',label:'High priority',val:hi,rawVal:hi,sub:'needs attention',cls:'red'},
+    {id:'jobs_cats',label:'Categories',val:new Set(jobs.map(j=>j.job_category?.category_name)).size,rawVal:new Set(jobs.map(j=>j.job_category?.category_name)).size,sub:'job types',cls:'blue'},
+  ]);
+  const colors=gc();
+  const statusC=countBy(jobs,j=>j.current_job_status?.status_name);
+  const catC=countBy(jobs,j=>j.job_category?.category_name);
+  const cKeys=Object.keys(catC).slice(0,8);
+  const sKeys=Object.keys(statusC).slice(0,6);
+  document.getElementById('jobsCharts').innerHTML=
+    chartCard('jobsStatusChart','By status',sKeys.length+' statuses',200,'jobsStatusLeg')+
+    chartCard('jobsCatChart','By category',cKeys.length+' categories',200,'jobsCatLeg');
+  setTimeout(()=>{
+    makeDoughnut('jobsStatusChart',sKeys,sKeys.map(k=>statusC[k]),colors.slice(0,sKeys.length));
+    legend('jobsStatusLeg',sKeys.map((k,i)=>`${k} (${statusC[k]})`),colors.slice(0,sKeys.length));
+    addDrillDown('jobsStatusChart','jobsTbl');
+    const cColors=cKeys.map((_,i)=>colors[i%colors.length]);
+    makeBar('jobsCatChart',cKeys,cKeys.map(k=>catC[k]),cColors);
+    legend('jobsCatLeg',cKeys,cColors);
+    addDrillDown('jobsCatChart','jobsTbl');
+  },80);
+  document.getElementById('jobsTblPill').textContent=jobs.length+' shown';
+  document.getElementById('jobsTbl').innerHTML=jobs.map(j=>`<tr>
+    <td class="mono">${j.work_order_number||'—'}</td>
+    <td>${j.job_title||'—'}</td>
+    <td>${(j.customer?.customer_first_name||'')+' '+(j.customer?.customer_last_name||'')}</td>
+    <td class="dim">${j.job_category?.category_name||'—'}</td>
+    <td>${sBadge(j.current_job_status?.status_name)}</td>
+    <td>${priB(j.job_priority)}</td>
+    <td class="dim">${fmtDate(j.due_date)}</td>
+  </tr>`).join('');
+  addTableSearch('jobsTbl','csvJobs');
+}
+
+// ─── TIMESHEETS ─────────────────────────────────────────────
+function renderTimesheets(){
+  const allTs=cache.timesheets||[];
+  const ts=filterByDate(allTs,'date');
+  const prevTs=filterPrevPeriod(allTs,'date');
+  const totalMins=sum(ts,t=>t.duration_minutes||t.duration||0);
+  const prevMins=sum(prevTs,t=>t.duration_minutes||t.duration||0);
+  document.getElementById('tsKpi').innerHTML=kpiEnhHtml([
+    {id:'ts_total',label:'Total records',val:ts.length,rawVal:ts.length,sub:'timesheet entries',cls:'orange',delta:calcDelta(ts.length,prevTs.length)},
+    {id:'ts_members',label:'Team members',val:tot('users'),rawVal:tot('users'),sub:'in account',cls:'blue'},
+    {id:'ts_hours',label:'Total hours',val:Math.round(totalMins/60),rawVal:Math.round(totalMins/60),sub:'in period',cls:'green',delta:calcDelta(Math.round(totalMins/60),Math.round(prevMins/60))},
+  ]);
+  renderTeamScorecard();
+  const userC=countBy(ts,t=>t.user_name||t.employee_name||t.user?.first_name||'Unknown');
+  const uKeys=Object.keys(userC).slice(0,8);
+  const colors=gc();
+  document.getElementById('tsCharts').innerHTML=
+    chartCard('tsUserChart','Entries by team member',uKeys.length+' members',200,'tsUserLeg');
+  setTimeout(()=>{
+    makeHBar('tsUserChart',uKeys,uKeys.map(k=>userC[k]),colors[0]);
+    addDrillDown('tsUserChart','tsTbl');
+  },80);
+  document.getElementById('tsTblPill').textContent=ts.length+' shown';
+  document.getElementById('tsTbl').innerHTML=ts.length===0?
+    `<tr><td colspan="6"><div class="empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>No timesheet data in this range</div></td></tr>`:
+    ts.map(t=>`<tr>
+      <td>${fmtDate(t.date||t.created_at)}</td>
+      <td>${t.user_name||t.user?.first_name||'—'}</td>
+      <td class="dim">${t.clock_in||t.start_time||'—'}</td>
+      <td class="dim">${t.clock_out||t.end_time||'—'}</td>
+      <td>${t.duration_minutes?Math.round(t.duration_minutes/60)+'h '+(t.duration_minutes%60)+'m':t.duration||'—'}</td>
+      <td>${sBadge(t.status||t.approval_status||'Logged')}</td>
+    </tr>`).join('');
+  addTableSearch('tsTbl','csvTimesheets');
+}
+
+// ─── CUSTOMERS ──────────────────────────────────────────────
+function renderCustomers(){
+  const custs=cache.customers||[];
+  const portal=custs.filter(c=>c.is_portal_enabled).length;
+  const totalLtv=sum(custs,c=>c.accounts?.ltv||0);
+  const totalRec=sum(custs,c=>c.accounts?.receivables||0);
+  document.getElementById('custKpi').innerHTML=kpiHtml([
+    {label:'Total customers',val:tot('customers'),sub:'in account',cls:'orange'},
+    {label:'Portal enabled',val:portal,sub:'self-service access',cls:'blue'},
+    {label:'Total LTV',val:fmt$(totalLtv),sub:'lifetime value',cls:'green'},
+    {label:'Receivables',val:fmt$(totalRec),sub:'outstanding',cls:'amber'},
+  ]);
+  const tagC=countBy(custs,c=>(c.customer_tags||[])[0]||'No tag');
+  const tKeys=Object.keys(tagC).slice(0,6);
+  const colors=gc();
+  document.getElementById('custCharts').innerHTML=
+    chartCard('custTagChart','By tag',tKeys.length+' tags',200,'custTagLeg');
+  setTimeout(()=>{
+    const tColors=tKeys.map((_,i)=>colors[i%colors.length]);
+    makeDoughnut('custTagChart',tKeys,tKeys.map(k=>tagC[k]),tColors);
+    legend('custTagLeg',tKeys.map((k,i)=>`${k} (${tagC[k]})`),tColors);
+    addDrillDown('custTagChart','custTbl');
+  },50);
+  document.getElementById('custTblPill').textContent=tot('customers')+' total';
+  document.getElementById('custTbl').innerHTML=custs.map(c=>`<tr>
+    <td><div style="display:flex;align-items:center;gap:8px"><div class="avatar">${((c.customer_first_name||'?')[0]+(c.customer_last_name||'?')[0]).toUpperCase()}</div>${(c.customer_first_name||'')+' '+(c.customer_last_name||'')}</div></td>
+    <td class="dim">${c.customer_email||'—'}</td>
+    <td class="dim">${c.customer_contact_no?.mobile||'—'}</td>
+    <td>${c.no_of_jobs||0}</td>
+    <td>${fmt$(c.accounts?.ltv||0)}</td>
+    <td>${fmt$(c.accounts?.receivables||0)}</td>
+    <td>${c.is_portal_enabled?`<span class="badge bg">Active</span>`:`<span class="badge bgr">Off</span>`}</td>
+  </tr>`).join('');
+  addTableSearch('custTbl','csvCustomers');
+}
+
+// ─── PROPERTIES ─────────────────────────────────────────────
+function renderProperties(){
+  const props=cache.properties||[];
+  const cities=new Set(props.map(p=>p.property_address?.city).filter(Boolean));
+  const states=new Set(props.map(p=>p.property_address?.state).filter(Boolean));
+  document.getElementById('propKpi').innerHTML=kpiHtml([
+    {label:'Total properties',val:tot('properties'),sub:'in account',cls:'orange'},
+    {label:'Cities',val:cities.size,sub:'unique cities',cls:'blue'},
+    {label:'States',val:states.size,sub:'unique states',cls:'purple'},
+    {label:'Active',val:props.filter(p=>p.is_active!==false).length,sub:'active records',cls:'green'},
+  ]);
+  document.getElementById('propTblPill').textContent=tot('properties')+' total';
+  document.getElementById('propTbl').innerHTML=props.length===0?
+    `<tr><td colspan="7"><div class="empty">No property data available</div></td></tr>`:
+    props.map(p=>`<tr>
+      <td>${p.property_name||'—'}</td>
+      <td class="dim">${p.property_address?.street||'—'}</td>
+      <td class="dim">${p.property_address?.city||'—'}</td>
+      <td class="dim">${p.property_address?.state||'—'}</td>
+      <td class="dim">${p.property_address?.zip_code||'—'}</td>
+      <td>${p.no_of_jobs||0}</td>
+      <td>${(p.property_customers||[]).length}</td>
+    </tr>`).join('');
+  addTableSearch('propTbl',null);
+}
+
+// ─── QUOTES ─────────────────────────────────────────────────
+function renderQuotes(){
+  const ests=cache.estimates||[];
+  const total=sum(ests,e=>e.total||e.estimate_total||0);
+  const won=ests.filter(e=>(e.estimate_status||e.status||'').toLowerCase().includes('approv')||
+    (e.estimate_status||'').toLowerCase().includes('accept')).length;
+  document.getElementById('quotesKpi').innerHTML=kpiHtml([
+    {label:'Total quotes',val:tot('estimates'),sub:'in account',cls:'orange'},
+    {label:'Total value',val:fmt$(total),sub:'all quotes combined',cls:'green'},
+    {label:'Approved',val:won,sub:'accepted quotes',cls:'blue'},
+    {label:'Win rate',val:ests.length?Math.round(won/ests.length*100)+'%':'—',sub:'approval rate',cls:'purple'},
+  ]);
+  const statusC=countBy(ests,e=>e.estimate_status||e.status||'Unknown');
+  const sKeys=Object.keys(statusC).slice(0,6);
+  const colors=gc();
+  document.getElementById('quotesCharts').innerHTML=chartCard('quotesStatusChart','By status',ests.length+' quotes',200,'quotesStatusLeg');
+  setTimeout(()=>{
+    makeDoughnut('quotesStatusChart',sKeys,sKeys.map(k=>statusC[k]),colors.slice(0,sKeys.length));
+    legend('quotesStatusLeg',sKeys.map((k,i)=>`${k} (${statusC[k]})`),colors.slice(0,sKeys.length));
+    addDrillDown('quotesStatusChart','quotesTbl');
+  },50);
+  document.getElementById('quotesTblPill').textContent=tot('estimates')+' total';
+  document.getElementById('quotesTbl').innerHTML=ests.map(e=>`<tr>
+    <td class="mono">${e.estimate_no||e.quote_no||'—'}</td>
+    <td>${(e.customer?.customer_first_name||'')+' '+(e.customer?.customer_last_name||'')}</td>
+    <td>${fmt$(e.total||e.estimate_total||0)}</td>
+    <td>${sBadge(e.estimate_status||e.status||'Draft')}</td>
+    <td class="dim">${fmtDate(e.created_at)}</td>
+    <td class="dim">${fmtDate(e.expiry_date||e.valid_till)}</td>
+  </tr>`).join('');
+  addTableSearch('quotesTbl','csvQuotes');
+}
+
+// ─── INVOICES ───────────────────────────────────────────────
+function renderInvoices(){
+  const allInvs=cache.invoices||[];
+  const invs=filterByDate(allInvs,'invoice_date');
+  const prevInvs=filterPrevPeriod(allInvs,'invoice_date');
+  const paid=invs.filter(i=>i.invoice_status==='PAID');
+  const prevPaid=prevInvs.filter(i=>i.invoice_status==='PAID');
+  const revenue=sum(paid,i=>i.total);
+  const prevRevenue=sum(prevPaid,i=>i.total);
+  const outstanding=sum(invs.filter(i=>['SENT','APPROVED','PARTIALLY_PAID'].includes(i.invoice_status)),i=>i.total);
+  document.getElementById('invKpi').innerHTML=kpiEnhHtml([
+    {id:'inv_total',label:'Total invoices',val:invs.length,rawVal:invs.length,sub:'in period',cls:'orange',delta:calcDelta(invs.length,prevInvs.length)},
+    {id:'inv_revenue',label:'Revenue (paid)',val:fmt$(revenue),rawVal:revenue,sub:paid.length+' paid invoices',cls:'green',delta:calcDelta(revenue,prevRevenue)},
+    {id:'inv_outstanding',label:'Outstanding',val:fmt$(outstanding),rawVal:outstanding,sub:'awaiting payment',cls:'amber'},
+    {id:'inv_voidd',label:'Void / Draft',val:invs.filter(i=>['VOID','DRAFT'].includes(i.invoice_status)).length,rawVal:invs.filter(i=>['VOID','DRAFT'].includes(i.invoice_status)).length,sub:'not active',cls:'red'},
+  ]);
+  const statusC=countBy(invs,i=>i.invoice_status||'Unknown');
+  const sKeys=Object.keys(statusC);
+  const invColorMap=isDark?{PAID:'#22c98a',SENT:'#4f8ef7',DRAFT:'#f5a623',VOID:'#f05252',PARTIALLY_PAID:'#14b8a6',APPROVED:'#9b6dff'}
+    :{PAID:'#15803d',SENT:'#2563eb',DRAFT:'#d97706',VOID:'#dc2626',PARTIALLY_PAID:'#0f766e',APPROVED:'#7c3aed'};
+  const iColors=sKeys.map(k=>invColorMap[k]||gc()[7]);
+  document.getElementById('invCharts').innerHTML=chartCard('invStatusChart','By status',invs.length+' invoices',200,'invStatusLeg');
+  renderRevenueForecast();
+  setTimeout(()=>{
+    makeDoughnut('invStatusChart',sKeys,sKeys.map(k=>statusC[k]),iColors);
+    legend('invStatusLeg',sKeys.map((k,i)=>`${k} (${statusC[k]})`),iColors);
+    addDrillDown('invStatusChart','invTbl');
+  },80);
+  document.getElementById('invTblPill').textContent=invs.length+' shown';
+  document.getElementById('invTbl').innerHTML=invs.map(i=>`<tr>
+    <td class="mono">${i.invoice_no||'—'}</td>
+    <td>${(i.customer?.customer_first_name||'')+' '+(i.customer?.customer_last_name||'')}</td>
+    <td>${fmt$(parseFloat(i.total)||0)}</td>
+    <td>${sBadge(i.invoice_status)}</td>
+    <td class="dim">${fmtDate(i.invoice_date)}</td>
+    <td class="dim">${fmtDate(i.due_date)}</td>
+    <td>${i.is_paid?`<span class="badge bg">Paid</span>`:`<span class="badge bgr">Unpaid</span>`}</td>
+  </tr>`).join('');
+  addTableSearch('invTbl','csvInvoices');
+}
+
+// ─── CONTRACTS ──────────────────────────────────────────────
+function renderContracts(){
+  const jobs=cache.jobs||[];
+  const withContracts=jobs.filter(j=>j.associations?.documents>0||j.has_documents);
+  document.getElementById('conKpi').innerHTML=kpiHtml([
+    {label:'Jobs with docs',val:withContracts.length,sub:'have attached documents',cls:'orange'},
+    {label:'Total jobs',val:tot('jobs'),sub:'all job records',cls:'blue'},
+    {label:'Doc coverage',val:jobs.length?Math.round(withContracts.length/jobs.length*100)+'%':'—',sub:'jobs with documentation',cls:'green'},
+  ]);
+  document.getElementById('conTblPill').textContent=tot('jobs')+' jobs';
+  document.getElementById('conTbl').innerHTML=jobs.map(j=>`<tr>
+    <td class="mono">${j.work_order_number||j.job_uid?.slice(0,8)||'—'}</td>
+    <td>${j.job_title||'—'}</td>
+    <td>${(j.customer?.customer_first_name||'')+' '+(j.customer?.customer_last_name||'')}</td>
+    <td>${sBadge(j.current_job_status?.status_name||'Unknown')}</td>
+    <td class="dim">${fmtDate(j.created_at)}</td>
+  </tr>`).join('');
+  addTableSearch('conTbl',null);
+}
+
+// ─── PARTS & SERVICES ────────────────────────────────────────
+function renderParts(){
+  const parts=cache.parts||[];
+  const services=parts.filter(p=>p.product_type==='SERVICE');
+  const materials=parts.filter(p=>p.product_type==='PARTS'||p.product_type==='MATERIAL');
+  document.getElementById('partsKpi').innerHTML=kpiHtml([
+    {label:'Total items',val:tot('parts'),sub:'in catalog',cls:'orange'},
+    {label:'Materials / Parts',val:materials.length,sub:'physical items',cls:'blue'},
+    {label:'Services',val:services.length,sub:'labor & services',cls:'green'},
+    {label:'Avg sell price',val:parts.length?fmt$(sum(parts,p=>p.selling_price||p.price||0)/parts.length):'—',sub:'per item',cls:'amber'},
+  ]);
+  const catC=countBy(parts,p=>p.product_category?.category_name||'Uncategorized');
+  const cKeys=Object.keys(catC).slice(0,8);
+  const typeC=countBy(parts,p=>p.product_type||'Unknown');
+  const tKeys=Object.keys(typeC);
+  const colors=gc();
+  document.getElementById('partsCharts').innerHTML=
+    chartCard('partsCatChart','By category',cKeys.length+' categories',200,'partsCatLeg')+
+    chartCard('partsTypeChart','By type',tKeys.length+' types',200,'partsTypeLeg');
+  setTimeout(()=>{
+    const cColors=cKeys.map((_,i)=>colors[i%colors.length]);
+    makeBar('partsCatChart',cKeys,cKeys.map(k=>catC[k]),cColors);
+    legend('partsCatLeg',cKeys,cColors);
+    addDrillDown('partsCatChart','partsTbl');
+    const tColors=tKeys.map((_,i)=>colors[i%colors.length]);
+    makeDoughnut('partsTypeChart',tKeys,tKeys.map(k=>typeC[k]),tColors);
+    legend('partsTypeLeg',tKeys.map((k,i)=>`${k} (${typeC[k]})`),tColors);
+    addDrillDown('partsTypeChart','partsTbl');
+  },50);
+  document.getElementById('partsTblPill').textContent=tot('parts')+' items';
+  document.getElementById('partsTbl').innerHTML=parts.map(p=>`<tr>
+    <td>${p.product_name||'—'}</td>
+    <td class="dim">${p.product_category?.category_name||'—'}</td>
+    <td>${p.product_type==='SERVICE'?`<span class="badge bb">Service</span>`:`<span class="badge bz">Part</span>`}</td>
+    <td class="dim">${p.unit_of_measure||p.uom||'—'}</td>
+    <td>${p.selling_price!=null||p.price!=null?fmt$(p.selling_price||p.price||0):'—'}</td>
+    <td class="dim">${p.purchase_price!=null?fmt$(p.purchase_price):'—'}</td>
+    <td>${p.track_quantity?`<span class="badge bg">${p.quantity||0}</span>`:`<span class="badge bgr">Not tracked</span>`}</td>
+  </tr>`).join('');
+  addTableSearch('partsTbl','csvParts');
+}
+
+// ─── VENDORS ─────────────────────────────────────────────────
+function renderVendors(){
+  const vendors=cache.vendors||[];
+  document.getElementById('vendKpi').innerHTML=kpiHtml([
+    {label:'Total vendors',val:tot('vendors'),sub:'in account',cls:'orange'},
+    {label:'Active',val:vendors.filter(v=>v.is_active!==false).length,sub:'active suppliers',cls:'green'},
+  ]);
+  document.getElementById('vendTblPill').textContent=tot('vendors')+' vendors';
+  document.getElementById('vendTbl').innerHTML=vendors.length===0?
+    `<tr><td colspan="5"><div class="empty">No vendor records found</div></td></tr>`:
+    vendors.map(v=>`<tr>
+      <td>${v.vendor_name||v.name||'—'}</td>
+      <td class="dim">${v.vendor_email||v.email||'—'}</td>
+      <td class="dim">${v.vendor_phone||v.phone||'—'}</td>
+      <td class="dim">${v.vendor_address?.city||v.address?.city||'—'}</td>
+      <td>${v.is_active===false?`<span class="badge br">Inactive</span>`:`<span class="badge bg">Active</span>`}</td>
+    </tr>`).join('');
+  addTableSearch('vendTbl',null);
+}
+
+// ─── MATERIAL REQUESTS ───────────────────────────────────────
+function renderMR(){
+  const mrs=cache.material_requests||[];
+  const pending=mrs.filter(m=>(m.status||'').toLowerCase().includes('pend')||
+    (m.material_request_status||'').toLowerCase().includes('pend')).length;
+  document.getElementById('mrKpi').innerHTML=kpiHtml([
+    {label:'Total requests',val:tot('material_requests'),sub:'in account',cls:'orange'},
+    {label:'Pending',val:pending,sub:'awaiting approval',cls:'amber'},
+    {label:'Completed',val:mrs.filter(m=>{const s=(m.status||m.material_request_status||'').toLowerCase();return s.includes('complet')||s.includes('fulfilled');}).length,sub:'fulfilled',cls:'green'},
+  ]);
+  const statusC=countBy(mrs,m=>m.material_request_status||m.status||'Unknown');
+  const sKeys=Object.keys(statusC).slice(0,6);
+  const colors=gc();
+  document.getElementById('mrCharts').innerHTML=chartCard('mrStatusChart','By status',mrs.length+' requests',200,'mrStatusLeg');
+  setTimeout(()=>{
+    makeDoughnut('mrStatusChart',sKeys,sKeys.map(k=>statusC[k]),colors.slice(0,sKeys.length));
+    legend('mrStatusLeg',sKeys.map((k,i)=>`${k} (${statusC[k]})`),colors.slice(0,sKeys.length));
+    addDrillDown('mrStatusChart','mrTbl');
+  },50);
+  document.getElementById('mrTblPill').textContent=tot('material_requests')+' total';
+  document.getElementById('mrTbl').innerHTML=mrs.length===0?
+    `<tr><td colspan="6"><div class="empty">No material requests found</div></td></tr>`:
+    mrs.map(m=>`<tr>
+      <td class="mono">${m.material_request_uid?.slice(0,8)||'—'}</td>
+      <td>${m.job?.job_title||m.job_title||'—'}</td>
+      <td class="dim">${m.created_by?.first_name||m.user?.first_name||'—'}</td>
+      <td>${(m.items||m.material_request_items||[]).length||'—'}</td>
+      <td>${sBadge(m.material_request_status||m.status||'Pending')}</td>
+      <td class="dim">${fmtDate(m.created_at)}</td>
+    </tr>`).join('');
+  addTableSearch('mrTbl',null);
+}
+
+// ─── PURCHASE ORDERS ─────────────────────────────────────────
+function renderPO(){
+  const pos=cache.purchase_orders||[];
+  const total=sum(pos,p=>p.total||p.purchase_order_total||0);
+  const pending=pos.filter(p=>{const s=(p.purchase_order_status||p.status||'').toLowerCase();return s.includes('pend')||s.includes('draft');}).length;
+  document.getElementById('poKpi').innerHTML=kpiHtml([
+    {label:'Total POs',val:tot('purchase_orders'),sub:'in account',cls:'orange'},
+    {label:'Total value',val:fmt$(total),sub:'all orders combined',cls:'green'},
+    {label:'Pending',val:pending,sub:'awaiting confirmation',cls:'amber'},
+    {label:'Received',val:pos.filter(p=>(p.purchase_order_status||p.status||'').toLowerCase().includes('receiv')).length,sub:'fulfilled orders',cls:'blue'},
+  ]);
+  const statusC=countBy(pos,p=>p.purchase_order_status||p.status||'Unknown');
+  const sKeys=Object.keys(statusC).slice(0,6);
+  const colors=gc();
+  document.getElementById('poCharts').innerHTML=chartCard('poStatusChart','By status',pos.length+' orders',200,'poStatusLeg');
+  setTimeout(()=>{
+    makeDoughnut('poStatusChart',sKeys,sKeys.map(k=>statusC[k]),colors.slice(0,sKeys.length));
+    legend('poStatusLeg',sKeys.map((k,i)=>`${k} (${statusC[k]})`),colors.slice(0,sKeys.length));
+    addDrillDown('poStatusChart','poTbl');
+  },50);
+  document.getElementById('poTblPill').textContent=tot('purchase_orders')+' total';
+  document.getElementById('poTbl').innerHTML=pos.length===0?
+    `<tr><td colspan="6"><div class="empty">No purchase orders found</div></td></tr>`:
+    pos.map(p=>`<tr>
+      <td class="mono">${p.purchase_order_no||p.purchase_order_uid?.slice(0,8)||'—'}</td>
+      <td class="dim">${p.vendor?.vendor_name||p.vendor_name||'—'}</td>
+      <td>${p.job?.job_title||p.job_title||'—'}</td>
+      <td>${fmt$(p.total||p.purchase_order_total||0)}</td>
+      <td>${sBadge(p.purchase_order_status||p.status||'Draft')}</td>
+      <td class="dim">${fmtDate(p.created_at)}</td>
+    </tr>`).join('');
+  addTableSearch('poTbl',null);
+}
+
+// ─── ASSETS ──────────────────────────────────────────────────
+function renderAssets(){
+  const assets=cache.assets||[];
+  const catC=countBy(assets,a=>a.asset_category?.category_name||a.category_name||'Uncategorized');
+  const cKeys=Object.keys(catC).slice(0,6);
+  document.getElementById('assetsKpi').innerHTML=kpiHtml([
+    {label:'Total assets',val:tot('assets'),sub:'in account',cls:'orange'},
+    {label:'Categories',val:cKeys.length,sub:'asset types',cls:'blue'},
+    {label:'Active',val:assets.filter(a=>a.is_active!==false).length,sub:'in service',cls:'green'},
+  ]);
+  const colors=gc();
+  document.getElementById('assetsCharts').innerHTML=chartCard('assetsCatChart','By category',cKeys.length+' categories',200,'assetsCatLeg');
+  setTimeout(()=>{
+    const cColors=cKeys.map((_,i)=>colors[i%colors.length]);
+    makeDoughnut('assetsCatChart',cKeys,cKeys.map(k=>catC[k]),cColors);
+    legend('assetsCatLeg',cKeys.map((k,i)=>`${k} (${catC[k]})`),cColors);
+    addDrillDown('assetsCatChart','assetsTbl');
+  },50);
+  document.getElementById('assetsTblPill').textContent=tot('assets')+' total';
+  document.getElementById('assetsTbl').innerHTML=assets.length===0?
+    `<tr><td colspan="6"><div class="empty">No asset records found</div></td></tr>`:
+    assets.map(a=>`<tr>
+      <td>${a.asset_name||a.name||'—'}</td>
+      <td class="dim">${a.asset_category?.category_name||a.category_name||'—'}</td>
+      <td class="mono">${a.serial_number||a.asset_serial_no||'—'}</td>
+      <td class="dim">${(a.customer?.customer_first_name||'')+' '+(a.customer?.customer_last_name||'')}</td>
+      <td>${sBadge(a.status||a.asset_status||'Active')}</td>
+      <td class="dim">${fmtDate(a.updated_at||a.created_at)}</td>
+    </tr>`).join('');
+  addTableSearch('assetsTbl',null);
+}
+
+// ─── CUSTOM DASHBOARD ──────────────────────────────────────────
+const DASH_KEY='zuper_dash_v2';
+const DASH_SIZES_KEY='zuper_dash_sizes_v2';
+let dashLayout=[];
+let dashSizes={};
+let libOpen=true;
+let dragWid=null,dragSrc=null;
+
+// SVG helpers for icons inside widget headers
+const SVG_DOTS='<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><circle cx="2" cy="2" r="1.1"/><circle cx="8" cy="2" r="1.1"/><circle cx="2" cy="5" r="1.1"/><circle cx="8" cy="5" r="1.1"/><circle cx="2" cy="8" r="1.1"/><circle cx="8" cy="8" r="1.1"/></svg>';
+const SVG_RESIZE='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>';
+const SVG_CLOSE='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+const DASH_TYPES_KEY='zuper_dash_types_v2';
+let dashChartTypes={};
+
+// ───── MODULE VISIBILITY ─────
+const HIDDEN_MODS_KEY='zuper_hidden_mods_v2';
+let hiddenModules=new Set();
+const MODULE_LIST=[
+  {id:'overview',   label:'Overview',          section:'seclbl-overview',   cacheKey:null,              alwaysShow:true},
+  {id:'jobs',       label:'Jobs',              section:'seclbl-operations', cacheKey:'jobs'},
+  {id:'timesheets', label:'Timesheets',        section:'seclbl-operations', cacheKey:'timesheets'},
+  {id:'customers',  label:'Customers',         section:'seclbl-custprop',   cacheKey:'customers'},
+  {id:'properties', label:'Properties',        section:'seclbl-custprop',   cacheKey:'properties'},
+  {id:'quotes',     label:'Quotes',            section:'seclbl-finance',    cacheKey:'estimates'},
+  {id:'invoices',   label:'Invoices',          section:'seclbl-finance',    cacheKey:'invoices'},
+  {id:'contracts',  label:'Contracts',         section:'seclbl-finance',    cacheKey:null},
+  {id:'parts',      label:'Parts & Services',  section:'seclbl-inventory',  cacheKey:'parts'},
+  {id:'vendors',    label:'Vendors',           section:'seclbl-inventory',  cacheKey:'vendors'},
+  {id:'materialrequests', label:'Material Requests', section:'seclbl-inventory', cacheKey:'material_requests'},
+  {id:'purchaseorders',   label:'Purchase Orders',   section:'seclbl-inventory', cacheKey:'purchase_orders'},
+  {id:'assets',     label:'Assets',            section:'seclbl-assets',     cacheKey:'assets'},
+  {id:'dashboard',  label:'My Dashboard',      section:null,                cacheKey:null, alwaysShow:true},
+];
+const SEC_MEMBERS={
+  'seclbl-overview':['overview'],
+  'seclbl-operations':['jobs','timesheets'],
+  'seclbl-custprop':['customers','properties'],
+  'seclbl-finance':['quotes','invoices','contracts'],
+  'seclbl-inventory':['parts','vendors','materialrequests','purchaseorders'],
+  'seclbl-assets':['assets'],
+};
+
+function loadModVis(){
+  try{const s=localStorage.getItem(HIDDEN_MODS_KEY);if(s)hiddenModules=new Set(JSON.parse(s));}catch(e){}
+}
+function saveModVis(){
+  localStorage.setItem(HIDDEN_MODS_KEY,JSON.stringify([...hiddenModules]));
+}
+function applyModVis(){
+  MODULE_LIST.forEach(m=>{
+    const nav=document.getElementById('nav-'+m.id);
+    if(nav)nav.style.display=hiddenModules.has(m.id)?'none':'';
+  });
+  // hide section labels where all members are hidden
+  Object.entries(SEC_MEMBERS).forEach(([secId,mods])=>{
+    const el=document.getElementById(secId);
+    if(!el)return;
+    el.style.display=mods.every(id=>hiddenModules.has(id))?'none':'';
+  });
+  // if active page is now hidden, go to overview
+  if(hiddenModules.has(activePage))showPage('overview');
+}
+function toggleModVis(id,visible){
+  if(visible)hiddenModules.delete(id);else hiddenModules.add(id);
+  saveModVis();applyModVis();renderModModal();
+}
+function autoHideEmpty(){
+  MODULE_LIST.filter(m=>!m.alwaysShow).forEach(m=>{
+    const cnt=m.cacheKey?(cache[m.cacheKey]||[]).length:0;
+    if(cnt===0)hiddenModules.add(m.id);
+  });
+  saveModVis();applyModVis();renderModModal();
+}
+function showAllMods(){
+  hiddenModules.clear();saveModVis();applyModVis();renderModModal();
+}
+function openModModal(){
+  renderModModal();
+  document.getElementById('modModalOverlay').style.display='flex';
+}
+function closeModModal(){document.getElementById('modModalOverlay').style.display='none';}
+function renderModModal(){
+  const body=document.getElementById('modModalBody');
+  const sections={};
+  MODULE_LIST.forEach(m=>{
+    const sec=m.section||'seclbl-custom';
+    if(!sections[sec])sections[sec]=[];
+    sections[sec].push(m);
+  });
+  const SEC_LABELS={'seclbl-overview':'Overview','seclbl-operations':'Operations','seclbl-custprop':'Customers & Properties','seclbl-finance':'Finance','seclbl-inventory':'Inventory','seclbl-assets':'Assets','seclbl-custom':'Custom'};
+  let html='';
+  Object.entries(sections).forEach(([sec,mods])=>{
+    html+=`<div class="mod-sec-hdr">${SEC_LABELS[sec]||sec}</div>`;
+    mods.forEach(m=>{
+      const vis=!hiddenModules.has(m.id);
+      const cnt=m.cacheKey?(cache[m.cacheKey]||[]).length:null;
+      const cntTxt=m.alwaysShow?'':(cnt===null?'No data available':`${cnt.toLocaleString()} record${cnt===1?'':'s'}`);
+      const emptyClass=cnt===0&&!m.alwaysShow?' empty':'';
+      html+=`<div class="mod-row${vis?'':' vis-off'}">
+        <div class="mod-row-info">
+          <div class="mod-row-name">${m.label}</div>
+          ${cntTxt?`<div class="mod-row-cnt${emptyClass}">${cntTxt}</div>`:''}
+        </div>
+        <label class="mod-toggle"${m.alwaysShow?' title="Always visible"':''}>
+          <input type="checkbox"${vis?' checked':''}${m.alwaysShow?' disabled':''} onchange="toggleModVis('${m.id}',this.checked)">
+          <div class="mod-toggle-track"></div>
+          <div class="mod-toggle-thumb"></div>
+        </label>
+      </div>`;
+    });
+  });
+  body.innerHTML=html;
+}
+
+const TYPE_ICONS={
+  doughnut:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>',
+  pie:'<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 10 10H12V2z" opacity=".3" stroke="currentColor" stroke-width="2.2" fill="none"/><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2.2"/><line x1="12" y1="2" x2="12" y2="12" stroke="currentColor" stroke-width="2.2"/></svg>',
+  bar:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="11" width="4" height="10" rx="1"/><rect x="10" y="5" width="4" height="16" rx="1"/><rect x="17" y="8" width="4" height="13" rx="1"/></svg>',
+  hbar:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="10" height="4" rx="1"/><rect x="3" y="10" width="16" height="4" rx="1"/><rect x="3" y="16" width="13" height="4" rx="1"/></svg>',
+  table:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/></svg>',
+};
+const TYPE_LABELS={doughnut:'Donut',pie:'Pie',bar:'Bar',hbar:'H-Bar',table:'Table'};
+
+// Shorthand: filtered cache slice for a given module key + date field
+function fd(key,field){return filterByDate(cache[key]||[],field||'created_at');}
+
+// ─── WIDGET DEFINITIONS ────────────────────────────────────────
+const WIDGET_DEFS=[
+  // JOBS
+  {id:'jobs-status',title:'Jobs by Status',module:'Jobs',icon:'📊',defaultWide:false,
+   supportedTypes:['doughnut','pie','bar','hbar','table'],defaultType:'doughnut',
+   getData(){const jobs=fd('jobs'),c=gc();const sC=countBy(jobs,j=>j.current_job_status?.status_name);const k=Object.keys(sC).slice(0,6);return{labels:k,values:k.map(x=>sC[x]),colors:c.slice(0,k.length),fmt:'n',heads:['Status','Count']};}
+  },
+  {id:'jobs-category',title:'Jobs by Category',module:'Jobs',icon:'📈',defaultWide:false,
+   supportedTypes:['bar','hbar','doughnut','pie','table'],defaultType:'bar',
+   getData(){const jobs=fd('jobs'),c=gc();const sC=countBy(jobs,j=>j.job_category?.category_name||'Uncategorized');const k=Object.keys(sC).slice(0,8);return{labels:k,values:k.map(x=>sC[x]),colors:k.map((_,i)=>c[i%c.length]),fmt:'n',heads:['Category','Jobs']};}
+  },
+  {id:'jobs-kpi',title:'Jobs Summary',module:'Jobs',icon:'🔢',defaultWide:false,
+   render(el){const jobs=fd('jobs');const open=jobs.filter(j=>{const s=(j.current_job_status?.status_name||'').toLowerCase();return !s.includes('complet')&&!s.includes('cancel');}).length;const high=jobs.filter(j=>j.job_priority==='HIGH').length;const done=jobs.filter(j=>(j.current_job_status?.status_name||'').toLowerCase().includes('complet')).length;el.innerHTML=`<div class="wkpi-row"><div class="wkpi-item"><div class="wkpi-val" style="color:var(--zuper)">${jobs.length}</div><div class="wkpi-lbl">Jobs (period)</div><div class="wkpi-sub">${open} open</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--red)">${high}</div><div class="wkpi-lbl">High Priority</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--green)">${done}</div><div class="wkpi-lbl">Completed</div></div></div>`;}
+  },
+  {id:'jobs-table',title:'Recent Jobs',module:'Jobs',icon:'📋',defaultWide:true,
+   render(el){const jobs=fd('jobs');el.innerHTML=`<div class="cw-tbl-toolbar"><span class="cw-tbl-count">${jobs.length} rows</span><button class="tbl-csv-btn" onclick="csvJobs()" title="Export to CSV">⬇ CSV</button></div><div class="tbl-wrap" style="max-height:240px;overflow-y:auto"><table><thead><tr><th>Job #</th><th>Title</th><th>Customer</th><th>Status</th><th>Due</th></tr></thead><tbody>${jobs.slice(0,20).map(j=>`<tr><td class="mono">${j.work_order_number||'—'}</td><td>${j.job_title||'—'}</td><td>${(j.customer?.customer_first_name||'')+' '+(j.customer?.customer_last_name||'')}</td><td>${sBadge(j.current_job_status?.status_name)}</td><td class="dim">${fmtDate(j.due_date)}</td></tr>`).join('')}</tbody></table></div>${jobs.length>20?`<div style="font-size:11px;color:var(--text3);padding:5px 12px 8px">Showing 20 of ${jobs.length} rows</div>`:''}`;  }
+  },
+  // FINANCE
+  {id:'inv-status',title:'Invoice Status',module:'Finance',icon:'📊',defaultWide:false,
+   supportedTypes:['doughnut','pie','bar','hbar','table'],defaultType:'doughnut',
+   getData(){const invs=fd('invoices','invoice_date'),c=gc();const sC=countBy(invs,i=>i.invoice_status||'Unknown');const k=Object.keys(sC);return{labels:k,values:k.map(x=>sC[x]),colors:c.slice(0,k.length),fmt:'n',heads:['Status','Count']};}
+  },
+  {id:'inv-kpi',title:'Revenue & Outstanding',module:'Finance',icon:'💰',defaultWide:false,
+   render(el){const invs=fd('invoices','invoice_date');const revenue=sum(invs.filter(i=>i.invoice_status==='PAID'),i=>i.total);const outstanding=sum(invs.filter(i=>['SENT','APPROVED','PARTIALLY_PAID'].includes(i.invoice_status)),i=>i.total);el.innerHTML=`<div class="wkpi-row"><div class="wkpi-item"><div class="wkpi-val" style="color:var(--green)">${fmt$(revenue)}</div><div class="wkpi-lbl">Revenue (Paid)</div><div class="wkpi-sub">${invs.filter(i=>i.invoice_status==='PAID').length} invoices</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--amber)">${fmt$(outstanding)}</div><div class="wkpi-lbl">Outstanding</div><div class="wkpi-sub">awaiting payment</div></div></div>`;}
+  },
+  {id:'inv-table',title:'Recent Invoices',module:'Finance',icon:'📋',defaultWide:true,
+   render(el){const invs=fd('invoices','invoice_date');el.innerHTML=`<div class="cw-tbl-toolbar"><span class="cw-tbl-count">${invs.length} rows</span><button class="tbl-csv-btn" onclick="csvInvoices()" title="Export to CSV">⬇ CSV</button></div><div class="tbl-wrap" style="max-height:240px;overflow-y:auto"><table><thead><tr><th>Invoice #</th><th>Customer</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>${invs.slice(0,20).map(i=>`<tr><td class="mono">${i.invoice_no||'—'}</td><td>${(i.customer?.customer_first_name||'')+' '+(i.customer?.customer_last_name||'')}</td><td>${fmt$(parseFloat(i.total)||0)}</td><td>${sBadge(i.invoice_status)}</td><td class="dim">${fmtDate(i.invoice_date)}</td></tr>`).join('')}</tbody></table></div>${invs.length>20?`<div style="font-size:11px;color:var(--text3);padding:5px 12px 8px">Showing 20 of ${invs.length} rows</div>`:''}`;  }
+  },
+  {id:'quotes-status',title:'Quote Status',module:'Finance',icon:'📊',defaultWide:false,
+   supportedTypes:['doughnut','pie','bar','hbar','table'],defaultType:'doughnut',
+   getData(){const ests=fd('estimates'),c=gc();const sC=countBy(ests,e=>e.estimate_status||e.status||'Unknown');const k=Object.keys(sC).slice(0,6);return{labels:k,values:k.map(x=>sC[x]),colors:c.slice(0,k.length),fmt:'n',heads:['Status','Count']};}
+  },
+  // CUSTOMERS
+  {id:'cust-tags',title:'Customers by Tag',module:'Customers',icon:'📊',defaultWide:false,
+   supportedTypes:['doughnut','pie','bar','hbar','table'],defaultType:'doughnut',
+   getData(){const custs=cache.customers||[],c=gc();const sC=countBy(custs,x=>(x.customer_tags||[])[0]||'No tag');const k=Object.keys(sC).slice(0,6);return{labels:k,values:k.map(x=>sC[x]),colors:c.slice(0,k.length),fmt:'n',heads:['Tag','Customers']};}
+  },
+  {id:'cust-kpi',title:'Customer KPIs',module:'Customers',icon:'💰',defaultWide:false,
+   render(el){const custs=cache.customers||[];const ltv=sum(custs,c=>c.accounts?.ltv||0);const recv=sum(custs,c=>c.accounts?.receivables||0);el.innerHTML=`<div class="wkpi-row"><div class="wkpi-item"><div class="wkpi-val" style="color:var(--zuper)">${tot('customers')}</div><div class="wkpi-lbl">Customers</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--green)">${fmt$(ltv)}</div><div class="wkpi-lbl">Total LTV</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--amber)">${fmt$(recv)}</div><div class="wkpi-lbl">Receivables</div></div></div>`;}
+  },
+  {id:'cust-top-recv',title:'Top Customers by Debt',module:'Customers',icon:'📈',defaultWide:false,
+   supportedTypes:['hbar','bar','table'],defaultType:'hbar',
+   getData(){const custs=cache.customers||[],c=gc();const sorted=[...custs].sort((a,b)=>(b.accounts?.receivables||0)-(a.accounts?.receivables||0)).slice(0,8);const names=sorted.map(x=>((x.customer_first_name||'')[0]||'?')+'. '+(x.customer_last_name||'Unknown'));const vals=sorted.map(x=>Math.round(x.accounts?.receivables||0));return{labels:names,values:vals,colors:c.slice(0,names.length),fmt:'$',heads:['Customer','Receivables']};}
+  },
+  // PEOPLE
+  {id:'ts-by-user',title:'Hours by Team Member',module:'People',icon:'📊',defaultWide:false,
+   supportedTypes:['hbar','bar','doughnut','table'],defaultType:'hbar',
+   getData(){const ts=fd('timesheets','date'),c=gc();const sC=countBy(ts,t=>t.user_name||t.user?.first_name||'Unknown');const k=Object.keys(sC).slice(0,8);return{labels:k,values:k.map(x=>sC[x]),colors:c.slice(0,k.length),fmt:'n',heads:['Member','Entries']};}
+  },
+  {id:'ts-kpi',title:'Timesheet Summary',module:'People',icon:'⏱',defaultWide:false,
+   render(el){const ts=fd('timesheets','date');const hrs=Math.round(sum(ts,t=>parseFloat(t.duration_minutes||t.duration||0))/60);el.innerHTML=`<div class="wkpi-row"><div class="wkpi-item"><div class="wkpi-val" style="color:var(--zuper)">${tot('timesheets')}</div><div class="wkpi-lbl">Records</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--blue)">${hrs}h</div><div class="wkpi-lbl">Total Hours</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--purple)">${tot('users')}</div><div class="wkpi-lbl">Team Members</div></div></div>`;}
+  },
+  // INVENTORY
+  {id:'assets-cat',title:'Assets by Category',module:'Inventory',icon:'📊',defaultWide:false,
+   supportedTypes:['doughnut','pie','bar','hbar','table'],defaultType:'doughnut',
+   getData(){const assets=fd('assets'),c=gc();const sC=countBy(assets,a=>a.asset_category?.category_name||'Uncategorized');const k=Object.keys(sC).slice(0,6);return{labels:k,values:k.map(x=>sC[x]),colors:c.slice(0,k.length),fmt:'n',heads:['Category','Assets']};}
+  },
+  {id:'parts-type',title:'Parts by Type',module:'Inventory',icon:'📊',defaultWide:false,
+   supportedTypes:['doughnut','pie','bar','hbar','table'],defaultType:'doughnut',
+   getData(){const parts=fd('parts'),c=gc();const sC=countBy(parts,p=>p.product_type||'Unknown');const k=Object.keys(sC);return{labels:k,values:k.map(x=>sC[x]),colors:c.slice(0,k.length),fmt:'n',heads:['Type','Items']};}
+  },
+  {id:'po-status',title:'PO by Status',module:'Inventory',icon:'📊',defaultWide:false,
+   supportedTypes:['doughnut','pie','bar','hbar','table'],defaultType:'doughnut',
+   getData(){const pos=fd('purchase_orders','purchase_order_date'),c=gc();const sC=countBy(pos,p=>p.purchase_order_status||p.status||'Unknown');const k=Object.keys(sC).slice(0,6);return{labels:k,values:k.map(x=>sC[x]),colors:c.slice(0,k.length),fmt:'n',heads:['Status','Count']};}
+  },
+  {id:'mr-status',title:'Material Requests',module:'Inventory',icon:'📊',defaultWide:false,
+   supportedTypes:['doughnut','pie','bar','hbar','table'],defaultType:'doughnut',
+   getData(){const mrs=fd('material_requests'),c=gc();const sC=countBy(mrs,m=>m.material_request_status||m.status||'Unknown');const k=Object.keys(sC).slice(0,6);return{labels:k,values:k.map(x=>sC[x]),colors:c.slice(0,k.length),fmt:'n',heads:['Status','Count']};}
+  },
+  // CROSS-MODULE
+  {id:'cross-revenue-by-cat',title:'Revenue by Job Category',module:'cross',icon:'⚡',defaultWide:true,
+   supportedTypes:['bar','hbar','doughnut','pie','table'],defaultType:'bar',
+   getData(){
+     const invs=fd('invoices','invoice_date'),jobs=fd('jobs'),c=gc();
+     const jobMap={};jobs.forEach(j=>{if(j.job_uid)jobMap[j.job_uid]=j;});
+     const catRev={};
+     invs.filter(i=>i.invoice_status==='PAID').forEach(i=>{const uid=i.job_uid||i.job?.job_uid;const cat=uid&&jobMap[uid]?(jobMap[uid].job_category?.category_name||'Uncategorized'):'No linked job';catRev[cat]=(catRev[cat]||0)+(parseFloat(i.total)||0);});
+     const k=Object.keys(catRev).sort((a,b)=>catRev[b]-catRev[a]).slice(0,8);
+     return{labels:k,values:k.map(x=>Math.round(catRev[x])),colors:k.map((_,i)=>c[i%c.length]),fmt:'$',heads:['Job Category','Revenue (Paid)'],xLabel:'Invoices × Jobs'};
+   }
+  },
+  {id:'cross-outstanding-by-cust',title:'Outstanding by Customer',module:'cross',icon:'⚡',defaultWide:true,
+   supportedTypes:['hbar','bar','doughnut','table'],defaultType:'hbar',
+   getData(){
+     const invs=fd('invoices','invoice_date'),c=gc();
+     const custOut={};
+     invs.filter(i=>['SENT','APPROVED','PARTIALLY_PAID'].includes(i.invoice_status)).forEach(i=>{const name=((i.customer?.customer_first_name||'')+' '+(i.customer?.customer_last_name||'Unknown')).trim()||'Unknown';custOut[name]=(custOut[name]||0)+(parseFloat(i.total)||0);});
+     const k=Object.keys(custOut).sort((a,b)=>custOut[b]-custOut[a]).slice(0,8);
+     return{labels:k,values:k.map(x=>Math.round(custOut[x])),colors:c.slice(0,k.length),fmt:'$',heads:['Customer','Outstanding'],xLabel:'Invoices × Customers'};
+   }
+  },
+  {id:'cross-spend-by-vendor',title:'PO Spend by Vendor',module:'cross',icon:'⚡',defaultWide:true,
+   supportedTypes:['hbar','bar','doughnut','table'],defaultType:'hbar',
+   getData(){
+     const pos=fd('purchase_orders','purchase_order_date'),c=gc();
+     const vendSpend={};
+     pos.forEach(p=>{const v=p.vendor?.vendor_name||p.vendor_name||'Unknown';vendSpend[v]=(vendSpend[v]||0)+(parseFloat(p.total||p.purchase_order_total)||0);});
+     const k=Object.keys(vendSpend).sort((a,b)=>vendSpend[b]-vendSpend[a]).slice(0,8);
+     return{labels:k,values:k.map(x=>Math.round(vendSpend[x])),colors:c.slice(0,k.length),fmt:'$',heads:['Vendor','PO Spend'],xLabel:'Purchase Orders × Vendors'};
+   }
+  },
+  {id:'cross-jobs-vs-inv',title:'Module Count Overview',module:'cross',icon:'⚡',defaultWide:false,
+   supportedTypes:['bar','hbar','doughnut','pie','table'],defaultType:'bar',
+   getData(){
+     const c=gc();
+     const labels=['Jobs','Invoices','Quotes','Customers','Assets','POs'];
+     const vals=[tot('jobs'),tot('invoices'),tot('estimates'),tot('customers'),tot('assets'),tot('purchase_orders')];
+     return{labels,values:vals,colors:labels.map((_,i)=>c[i%c.length]),fmt:'n',heads:['Module','Count'],xLabel:'All Modules'};
+   }
+  },
+];
+
+const WIDGET_MAP={};
+WIDGET_DEFS.forEach(w=>WIDGET_MAP[w.id]=w);
+
+// ═══════════════════════════════════════════════════════════════
+// CUSTOM TABLE BUILDER
+// ═══════════════════════════════════════════════════════════════
+const CUSTOM_TBLS_KEY='zuper_custom_tbls_v2';
+let customTbls={};
+
+// Column registry — one entry per module, cols define display + raw value + filterable/sortable flags
+const MODULE_COLUMNS={
+  jobs:{label:'Jobs',cacheKey:'jobs',dateField:'created_at',cols:[
+    {id:'job_no',   label:'Job #',       val:j=>j.work_order_number||'—',rawVal:j=>j.work_order_number||''},
+    {id:'title',    label:'Title',       val:j=>j.job_title||'—',rawVal:j=>j.job_title||''},
+    {id:'customer', label:'Customer',    val:j=>(j.customer?.customer_first_name||'')+' '+(j.customer?.customer_last_name||''),rawVal:j=>j.customer?.customer_last_name||'',sortable:true},
+    {id:'status',   label:'Status',      val:j=>sBadge(j.current_job_status?.status_name),rawVal:j=>j.current_job_status?.status_name||'',filterable:true,sortable:true},
+    {id:'priority', label:'Priority',    val:j=>priB(j.job_priority),rawVal:j=>j.job_priority||'',filterable:true},
+    {id:'category', label:'Category',    val:j=>j.job_category?.category_name||'—',rawVal:j=>j.job_category?.category_name||'',filterable:true},
+    {id:'due_date', label:'Due Date',    val:j=>fmtDate(j.due_date),rawVal:j=>j.due_date||'',sortable:true},
+    {id:'created',  label:'Created',     val:j=>fmtDate(j.created_at),rawVal:j=>j.created_at||'',sortable:true},
+    {id:'city',     label:'City',        val:j=>j.service_address?.city||j.address?.city||'—',rawVal:j=>j.service_address?.city||j.address?.city||'',filterable:true},
+    {id:'tech',     label:'Technician',  val:j=>(j.users||[]).map(u=>u.first_name||'').filter(Boolean).join(', ')||'—'},
+  ]},
+  customers:{label:'Customers',cacheKey:'customers',dateField:'created_at',cols:[
+    {id:'name',    label:'Name',         val:c=>(c.customer_first_name||'')+' '+(c.customer_last_name||''),rawVal:c=>c.customer_last_name||'',sortable:true},
+    {id:'email',   label:'Email',        val:c=>c.customer_email||'—'},
+    {id:'phone',   label:'Phone',        val:c=>c.customer_contact_no?.mobile||'—'},
+    {id:'jobs',    label:'Total Jobs',   val:c=>c.no_of_jobs||0,rawVal:c=>c.no_of_jobs||0,sortable:true},
+    {id:'ltv',     label:'LTV',          val:c=>fmt$(c.accounts?.ltv||0),rawVal:c=>c.accounts?.ltv||0,sortable:true},
+    {id:'owed',    label:'Owes (Recv.)', val:c=>fmt$(c.accounts?.receivables||0),rawVal:c=>c.accounts?.receivables||0,sortable:true},
+    {id:'portal',  label:'Portal',       val:c=>c.is_portal_enabled?'<span class="badge bg">Yes</span>':'<span class="badge bgr">No</span>',rawVal:c=>c.is_portal_enabled?'Yes':'No',filterable:true},
+    {id:'tag',     label:'Tag',          val:c=>(c.customer_tags||[])[0]||'—',rawVal:c=>(c.customer_tags||[])[0]||'',filterable:true},
+  ]},
+  invoices:{label:'Invoices',cacheKey:'invoices',dateField:'invoice_date',cols:[
+    {id:'inv_no',   label:'Invoice #',   val:i=>i.invoice_no||'—',rawVal:i=>i.invoice_no||''},
+    {id:'customer', label:'Customer',    val:i=>(i.customer?.customer_first_name||'')+' '+(i.customer?.customer_last_name||''),rawVal:i=>i.customer?.customer_last_name||'',sortable:true},
+    {id:'amount',   label:'Amount',      val:i=>fmt$(parseFloat(i.total)||0),rawVal:i=>parseFloat(i.total)||0,sortable:true},
+    {id:'status',   label:'Status',      val:i=>sBadge(i.invoice_status),rawVal:i=>i.invoice_status||'',filterable:true},
+    {id:'inv_date', label:'Invoice Date',val:i=>fmtDate(i.invoice_date),rawVal:i=>i.invoice_date||'',sortable:true},
+    {id:'due_date', label:'Due Date',    val:i=>fmtDate(i.due_date),rawVal:i=>i.due_date||'',sortable:true},
+    {id:'paid',     label:'Paid?',       val:i=>i.is_paid?'<span class="badge bg">Yes</span>':'<span class="badge bgr">No</span>',rawVal:i=>i.is_paid?'Yes':'No',filterable:true},
+  ]},
+  estimates:{label:'Quotes',cacheKey:'estimates',dateField:'created_at',cols:[
+    {id:'quote_no', label:'Quote #',     val:e=>e.estimate_no||e.quote_no||'—',rawVal:e=>e.estimate_no||e.quote_no||''},
+    {id:'customer', label:'Customer',    val:e=>(e.customer?.customer_first_name||'')+' '+(e.customer?.customer_last_name||''),rawVal:e=>e.customer?.customer_last_name||'',sortable:true},
+    {id:'amount',   label:'Amount',      val:e=>fmt$(parseFloat(e.total||e.estimate_total)||0),rawVal:e=>parseFloat(e.total||e.estimate_total)||0,sortable:true},
+    {id:'status',   label:'Status',      val:e=>sBadge(e.estimate_status||e.status||'Draft'),rawVal:e=>e.estimate_status||e.status||'',filterable:true},
+    {id:'created',  label:'Created',     val:e=>fmtDate(e.created_at),rawVal:e=>e.created_at||'',sortable:true},
+    {id:'expiry',   label:'Expiry',      val:e=>fmtDate(e.expiry_date||e.valid_till),rawVal:e=>e.expiry_date||e.valid_till||'',sortable:true},
+  ]},
+  parts:{label:'Parts & Services',cacheKey:'parts',dateField:'created_at',cols:[
+    {id:'name',     label:'Name',        val:p=>p.product_name||p.name||'—',rawVal:p=>p.product_name||p.name||'',sortable:true},
+    {id:'category', label:'Category',    val:p=>p.product_category?.category_name||'—',rawVal:p=>p.product_category?.category_name||'',filterable:true},
+    {id:'type',     label:'Type',        val:p=>p.product_type==='SERVICE'?'<span class="badge bb">Service</span>':'<span class="badge bz">Part</span>',rawVal:p=>p.product_type||'',filterable:true},
+    {id:'uom',      label:'UOM',         val:p=>p.unit_of_measure||p.uom||'—'},
+    {id:'sell',     label:'Sell Price',  val:p=>fmt$(p.selling_price||p.price||0),rawVal:p=>p.selling_price||p.price||0,sortable:true},
+    {id:'buy',      label:'Buy Price',   val:p=>fmt$(p.purchase_price||0),rawVal:p=>p.purchase_price||0,sortable:true},
+    {id:'stock',    label:'Stock',       val:p=>p.track_quantity?(p.quantity||0)+'':'—',rawVal:p=>p.track_quantity?(p.quantity||0):0,sortable:true},
+  ]},
+  assets:{label:'Assets',cacheKey:'assets',dateField:'created_at',cols:[
+    {id:'name',     label:'Name',        val:a=>a.asset_name||a.name||'—',rawVal:a=>a.asset_name||a.name||'',sortable:true},
+    {id:'category', label:'Category',    val:a=>a.asset_category?.category_name||a.category_name||'—',rawVal:a=>a.asset_category?.category_name||a.category_name||'',filterable:true},
+    {id:'serial',   label:'Serial #',    val:a=>a.serial_number||a.asset_serial_no||'—'},
+    {id:'customer', label:'Customer',    val:a=>(a.customer?.customer_first_name||'')+' '+(a.customer?.customer_last_name||''),rawVal:a=>a.customer?.customer_last_name||'',sortable:true},
+    {id:'status',   label:'Status',      val:a=>sBadge(a.status||a.asset_status||'Active'),rawVal:a=>a.status||a.asset_status||'',filterable:true},
+    {id:'updated',  label:'Updated',     val:a=>fmtDate(a.updated_at||a.created_at),rawVal:a=>a.updated_at||a.created_at||'',sortable:true},
+  ]},
+  vendors:{label:'Vendors',cacheKey:'vendors',dateField:'created_at',cols:[
+    {id:'name',     label:'Name',        val:v=>v.vendor_name||v.name||'—',rawVal:v=>v.vendor_name||v.name||'',sortable:true},
+    {id:'email',    label:'Email',       val:v=>v.vendor_email||v.email||'—'},
+    {id:'phone',    label:'Phone',       val:v=>v.vendor_phone||v.phone||'—'},
+    {id:'city',     label:'City',        val:v=>v.vendor_address?.city||v.address?.city||'—',rawVal:v=>v.vendor_address?.city||v.address?.city||'',filterable:true},
+    {id:'status',   label:'Status',      val:v=>v.is_active===false?'<span class="badge br">Inactive</span>':'<span class="badge bg">Active</span>',rawVal:v=>v.is_active===false?'Inactive':'Active',filterable:true},
+  ]},
+  purchase_orders:{label:'Purchase Orders',cacheKey:'purchase_orders',dateField:'created_at',cols:[
+    {id:'po_no',    label:'PO #',        val:p=>p.purchase_order_no||'—',rawVal:p=>p.purchase_order_no||''},
+    {id:'vendor',   label:'Vendor',      val:p=>p.vendor?.vendor_name||p.vendor_name||'—',rawVal:p=>p.vendor?.vendor_name||p.vendor_name||'',filterable:true,sortable:true},
+    {id:'job',      label:'Job',         val:p=>p.job?.job_title||p.job_title||'—',rawVal:p=>p.job?.job_title||p.job_title||''},
+    {id:'amount',   label:'Amount',      val:p=>fmt$(p.total||p.purchase_order_total||0),rawVal:p=>p.total||p.purchase_order_total||0,sortable:true},
+    {id:'status',   label:'Status',      val:p=>sBadge(p.purchase_order_status||p.status||'Draft'),rawVal:p=>p.purchase_order_status||p.status||'',filterable:true},
+    {id:'date',     label:'Date',        val:p=>fmtDate(p.created_at),rawVal:p=>p.created_at||'',sortable:true},
+  ]},
+  material_requests:{label:'Material Requests',cacheKey:'material_requests',dateField:'created_at',cols:[
+    {id:'req_id',   label:'Request #',   val:m=>m.material_request_uid?.slice(0,8)||'—'},
+    {id:'job',      label:'Job',         val:m=>m.job?.job_title||m.job_title||'—',rawVal:m=>m.job?.job_title||m.job_title||'',filterable:true},
+    {id:'by',       label:'Requested By',val:m=>m.created_by?.first_name||m.user?.first_name||'—',rawVal:m=>m.created_by?.first_name||m.user?.first_name||'',filterable:true},
+    {id:'items',    label:'Items',       val:m=>(m.items||m.material_request_items||[]).length,rawVal:m=>(m.items||m.material_request_items||[]).length,sortable:true},
+    {id:'status',   label:'Status',      val:m=>sBadge(m.material_request_status||m.status||'Pending'),rawVal:m=>m.material_request_status||m.status||'',filterable:true},
+    {id:'date',     label:'Date',        val:m=>fmtDate(m.created_at),rawVal:m=>m.created_at||'',sortable:true},
+  ]},
+  timesheets:{label:'Timesheets',cacheKey:'timesheets',dateField:'date',cols:[
+    {id:'date',     label:'Date',        val:t=>fmtDate(t.date||t.created_at),rawVal:t=>t.date||t.created_at||'',sortable:true},
+    {id:'employee', label:'Employee',    val:t=>t.user_name||t.user?.first_name||'—',rawVal:t=>t.user_name||t.user?.first_name||'',filterable:true,sortable:true},
+    {id:'clock_in', label:'Clock In',    val:t=>t.clock_in||t.start_time||'—'},
+    {id:'clock_out',label:'Clock Out',   val:t=>t.clock_out||t.end_time||'—'},
+    {id:'duration', label:'Duration',    val:t=>t.duration_minutes?Math.round(t.duration_minutes/60)+'h '+(t.duration_minutes%60)+'m':t.duration||'—',rawVal:t=>t.duration_minutes||0,sortable:true},
+    {id:'status',   label:'Status',      val:t=>sBadge(t.status||t.approval_status||'Logged'),rawVal:t=>t.status||t.approval_status||'',filterable:true},
+  ]},
+};
+
+function loadCustomTbls(){try{customTbls=JSON.parse(localStorage.getItem(CUSTOM_TBLS_KEY)||'{}');}catch(e){}}
+function saveCustomTbls(){localStorage.setItem(CUSTOM_TBLS_KEY,JSON.stringify(customTbls));}
+
+// ── Dynamic column discovery ────────────────────────────────────
+const _dynColsCache={};
+function invalidateDynCols(){Object.keys(_dynColsCache).forEach(k=>delete _dynColsCache[k]);}
+function humanizeKey(k){return k.replace(/_/g,' ').replace(/([a-z])([A-Z])/g,'$1 $2').split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');}
+function getNestedVal(obj,path){return path.split('.').reduce((o,k)=>{if(o==null)return null;if(Array.isArray(o)){const v=o[0];return v!=null&&v[k]!==undefined?v[k]:null;}return o[k]!==undefined?o[k]:null;},obj);}
+function discoverCols(modKey){
+  if(_dynColsCache[modKey])return _dynColsCache[modKey];
+  const mod=MODULE_COLUMNS[modKey];if(!mod)return[];
+  const data=cache[mod.cacheKey]||[];
+  const seen=new Set(mod.cols.map(c=>c.id));
+  const newCols=[];
+  function traverse(obj,prefix,labelPfx,depth){
+    if(depth>=3||!obj||typeof obj!=='object')return;
+    if(Array.isArray(obj)){
+      // Traverse first element of arrays to discover nested fields (e.g. locations[0].warehouse_name)
+      if(depth>0&&obj.length>0&&obj[0]&&typeof obj[0]==='object'&&!Array.isArray(obj[0])){
+        traverse(obj[0],prefix,labelPfx,depth+1);
+      }
+      return;
+    }
+    for(const[k,v] of Object.entries(obj)){
+      if(k.startsWith('_'))continue;
+      const path=prefix?`${prefix}.${k}`:k;
+      const id=path.replace(/\./g,'__');
+      const lbl=labelPfx?`${labelPfx} › ${humanizeKey(k)}`:humanizeKey(k);
+      if(seen.has(id))continue;
+      if(v!==null&&v!==undefined){
+        if(typeof v==='string'||typeof v==='number'||typeof v==='boolean'){
+          seen.add(id);
+          newCols.push({id,label:lbl,_path:path,_discovered:true,
+            val:item=>{const x=getNestedVal(item,path);return x===null||x===undefined||x===''?'—':typeof x==='number'?x:String(x);},
+            rawVal:item=>{const x=getNestedVal(item,path);return x===null||x===undefined?'':x;},
+            sortable:typeof v==='number'||(typeof v==='string'&&/^\d{4}-\d{2}/.test(v)),
+            filterable:typeof v==='string'&&v.length>0&&v.length<80,
+          });
+        }else if(typeof v==='object'&&depth<2){
+          traverse(v,path,lbl,depth+1);
+        }
+      }
+    }
+  }
+  data.slice(0,Math.min(data.length,10)).forEach(item=>traverse(item,'','',0));
+  const allCols=[...mod.cols,...newCols];
+  _dynColsCache[modKey]=allCols;
+  return allCols;
+}
+function findCol(modKey,id){
+  const mod=MODULE_COLUMNS[modKey];if(!mod)return null;
+  const curated=mod.cols.find(c=>c.id===id);if(curated)return curated;
+  return discoverCols(modKey).find(c=>c.id===id)||null;
+}
+
+// Resolves both built-in and custom table widgets by ID
+function resolveWidget(id){
+  if(WIDGET_MAP[id])return WIDGET_MAP[id];
+  if(id.startsWith('ct-')){
+    const def=customTbls[id];if(!def)return null;
+    return{id,title:def.name,module:'Custom',icon:'📋',defaultWide:true,
+      supportedTypes:['table','doughnut','pie','bar','hbar'],
+      defaultType:'table',
+      getData(){return getCustomChartData(def);},
+      render(el){renderCustomTable(el,def,id);}};
+  }
+  return null;
+}
+
+function getCustomChartData(def){
+  const mod=MODULE_COLUMNS[def.module];
+  if(!mod)return{labels:[],values:[],colors:[],heads:['Label','Value'],fmt:'',xLabel:''};
+  let data=filterByDate(cache[mod.cacheKey]||[],mod.dateField);
+  if(def.filter&&def.filter.field&&def.filter.value&&def.filter.value!=='Any'){
+    const fCol=findCol(def.module,def.filter.field);
+    if(fCol){const fv=String(def.filter.value).toLowerCase();data=data.filter(item=>{const rv=String(fCol.rawVal?fCol.rawVal(item):fCol.val(item)).replace(/<[^>]+>/g,'').toLowerCase();return rv===fv||rv.includes(fv);});}
+  }
+  const cols=def.cols.map(cid=>findCol(def.module,cid)).filter(Boolean);
+  let labelCol=null,valueCol=null;
+  if(data.length){
+    for(const c of cols){
+      const s=c.rawVal?c.rawVal(data[0]):null;
+      if(!labelCol&&typeof s==='string')labelCol=c;
+      else if(!valueCol&&typeof s==='number')valueCol=c;
+    }
+  }
+  if(!labelCol&&cols.length)labelCol=cols[0];
+  const groups={};
+  data.forEach(item=>{
+    const lv=String(labelCol?(labelCol.rawVal?labelCol.rawVal(item):String(labelCol.val(item)).replace(/<[^>]+>/g,'').trim())||'—':'—')||'—';
+    if(!groups[lv])groups[lv]=0;
+    groups[lv]+=valueCol?Number(valueCol.rawVal?valueCol.rawVal(item):0)||0:1;
+  });
+  const entries=Object.entries(groups).sort((a,b)=>b[1]-a[1]).slice(0,20);
+  const colors=entries.map((_,i)=>gc()[i%gc().length]);
+  const isMoney=valueCol&&/price|amount|ltv|receivab|owed/i.test(valueCol.label);
+  return{
+    labels:entries.map(e=>e[0]),values:entries.map(e=>e[1]),colors,
+    heads:[labelCol?.label||'Label',valueCol?valueCol.label:'Count'],
+    fmt:isMoney?'$':'',
+    xLabel:`${labelCol?.label||'Group'}${valueCol?' · '+valueCol.label:' · Count'}`,
+  };
+}
+
+function _buildCustomTableData(def){
+  const mod=MODULE_COLUMNS[def.module];if(!mod)return{cols:[],data:[]};
+  let data=filterByDate(cache[mod.cacheKey]||[],mod.dateField);
+  if(def.filter&&def.filter.field&&def.filter.value&&def.filter.value!=='Any'){
+    const fCol=findCol(def.module,def.filter.field);
+    if(fCol){const fv=String(def.filter.value).toLowerCase();data=data.filter(item=>{const rv=String(fCol.rawVal?fCol.rawVal(item):fCol.val(item)).replace(/<[^>]+>/g,'').toLowerCase();return rv===fv||rv.includes(fv);});}
+  }
+  if(def.sort&&def.sort.field){
+    const sCol=findCol(def.module,def.sort.field);
+    if(sCol){data=[...data].sort((a,b)=>{const av=sCol.rawVal?sCol.rawVal(a):String(sCol.val(a)).replace(/<[^>]+>/g,'');const bv=sCol.rawVal?sCol.rawVal(b):String(sCol.val(b)).replace(/<[^>]+>/g,'');const cmp=typeof av==='number'?av-bv:String(av).localeCompare(String(bv));return def.sort.dir==='desc'?-cmp:cmp;});}
+  }
+  const cols=def.cols.map(cid=>findCol(def.module,cid)).filter(Boolean);
+  return{cols,data};
+}
+
+function csvFromWidget(id){
+  const def=customTbls[id];if(!def)return;
+  const{cols,data}=_buildCustomTableData(def);
+  if(!cols.length||!data.length){alert('No data to export.');return;}
+  csvDownload(cols.map(c=>c.label),data.map(item=>cols.map(c=>{const v=c.rawVal?c.rawVal(item):String(c.val(item)).replace(/<[^>]+>/g,'').trim();return v===null||v===undefined?'':v;})),`${def.name.replace(/[^a-z0-9]+/gi,'-').toLowerCase()}.csv`);
+}
+
+function renderCustomTable(el,def,id){
+  const mod=MODULE_COLUMNS[def.module];
+  if(!mod){el.innerHTML='<div class="empty">Module unavailable</div>';return;}
+  const{cols,data}=_buildCustomTableData(def);
+  const limit=def.limit||20;
+  const shown=data.slice(0,limit);
+  const exportBtn=id?`<button class="tbl-csv-btn" onclick="csvFromWidget('${id}')" title="Export all ${data.length} rows to CSV">⬇ CSV</button>`:'';
+  el.innerHTML=`
+    <div class="cw-tbl-toolbar">
+      <span class="cw-tbl-count">${data.length} row${data.length!==1?'s':''}</span>
+      ${exportBtn}
+    </div>
+    <div class="tbl-wrap" style="max-height:240px;overflow-y:auto"><table>
+      <thead><tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr></thead>
+      <tbody>${shown.length
+        ?shown.map(item=>`<tr>${cols.map(c=>`<td>${c.val(item)}</td>`).join('')}</tr>`).join('')
+        :`<tr><td colspan="${cols.length}"><div class="empty" style="padding:20px 0">No data matches filter</div></td></tr>`}
+      </tbody></table></div>
+    ${data.length>limit?`<div style="font-size:11px;color:var(--text3);padding:5px 12px 8px">Showing ${limit} of ${data.length} rows · <button class="tbl-csv-btn" onclick="csvFromWidget('${id}')" style="font-size:10px;padding:3px 8px">Export all</button></div>`:''}`;
+}
+
+// ── Builder state ─────────────────────────────────────────────
+let bldrStep=1,bldrMod=null,bldrCols=[],bldrFilter={field:null,value:'Any'},bldrSort={field:null,dir:'asc'},bldrLimit=20,bldrName='';
+
+function openTableBuilder(){
+  bldrStep=1;bldrMod=null;bldrCols=[];bldrFilter={field:null,value:'Any'};
+  bldrSort={field:null,dir:'asc'};bldrLimit=20;bldrName='';
+  renderBuilderModal();
+  document.getElementById('tblBuilderOverlay').style.display='flex';
+}
+function closeTableBuilder(){document.getElementById('tblBuilderOverlay').style.display='none';}
+
+function builderSelectMod(key){bldrMod=key;bldrCols=[];renderBuilderModal();}
+function builderToggleCol(id){
+  if(bldrCols.includes(id))bldrCols=bldrCols.filter(c=>c!==id);
+  else bldrCols.push(id);
+  renderBuilderModal();
+}
+function builderNext(){
+  if(bldrStep===3){saveCustomTable();return;}
+  bldrStep++;
+  if(bldrStep===3&&!bldrName)bldrName=(MODULE_COLUMNS[bldrMod]?.label||'')+ ' table';
+  renderBuilderModal();
+}
+function builderBack(){bldrStep--;renderBuilderModal();}
+
+function bldrGetFilterVals(fieldId){
+  if(!fieldId||!bldrMod)return['Any'];
+  const col=findCol(bldrMod,fieldId);if(!col)return['Any'];
+  const mod=MODULE_COLUMNS[bldrMod];if(!mod)return['Any'];
+  const vals=new Set();
+  (cache[mod.cacheKey]||[]).forEach(item=>{
+    const v=col.rawVal?String(col.rawVal(item)):String(col.val(item)).replace(/<[^>]+>/g,'');
+    if(v&&v.trim()&&v!=='—')vals.add(v);
+  });
+  return['Any',...Array.from(vals).sort()];
+}
+function bldrFilterFieldChange(field){
+  bldrFilter={field:field||null,value:'Any'};
+  renderBuilderModal();
+}
+
+function renderBuilderModal(){
+  const body=document.getElementById('tblBuilderBody');if(!body)return;
+  if(bldrStep===1){
+    body.innerHTML=`<div class="bldr-step-lbl">Step 1 of 3 — Choose a module</div>
+      <div class="bldr-mod-grid">${Object.entries(MODULE_COLUMNS).map(([k,m])=>`
+        <div class="bldr-mod-card${bldrMod===k?' selected':''}" onclick="builderSelectMod('${k}')">
+          <div class="bldr-mod-name">${m.label}</div>
+          <div class="bldr-mod-cnt">${(cache[m.cacheKey]||[]).length} records</div>
+        </div>`).join('')}</div>`;
+  }else if(bldrStep===2){
+    delete _dynColsCache[bldrMod];
+    const allCols=discoverCols(bldrMod);
+    const curatedCols=MODULE_COLUMNS[bldrMod].cols;
+    const discoveredCols=allCols.filter(c=>c._discovered);
+    body.innerHTML=`<div class="bldr-step-lbl">Step 2 of 3 — Select columns <span style="font-weight:400;color:var(--text3)">(pick 2+)</span></div>
+      <div class="bldr-cols-grid">${curatedCols.map(c=>`
+        <label class="bldr-col-item">
+          <input type="checkbox" ${bldrCols.includes(c.id)?'checked':''} onchange="builderToggleCol('${c.id}')">
+          <span>${c.label}</span>
+        </label>`).join('')}</div>
+      ${discoveredCols.length?`
+        <div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;padding:10px 0 4px;border-top:1px solid var(--border);margin-top:8px">Additional Fields Detected From Your Data</div>
+        <div class="bldr-cols-grid">${discoveredCols.slice(0,60).map(c=>`
+          <label class="bldr-col-item">
+            <input type="checkbox" ${bldrCols.includes(c.id)?'checked':''} onchange="builderToggleCol('${c.id}')">
+            <span>${c.label}</span>
+          </label>`).join('')}</div>`:''}
+      ${bldrCols.length?`<div class="bldr-preview-lbl">Selected: ${bldrCols.map(id=>{const c=allCols.find(c=>c.id===id);return c?.label||id;}).filter(Boolean).join(' · ')}</div>`:''}`;
+  }else if(bldrStep===3){
+    const mod=MODULE_COLUMNS[bldrMod];
+    const allCols=discoverCols(bldrMod);
+    const fCols=allCols.filter(c=>c.filterable);
+    const sCols=allCols.filter(c=>c.sortable&&bldrCols.includes(c.id));
+    const fVals=bldrGetFilterVals(bldrFilter.field);
+    body.innerHTML=`<div class="bldr-step-lbl">Step 3 of 3 — Configure</div>
+      <div class="bldr-field">
+        <label class="bldr-lbl">Widget name</label>
+        <input class="inp" style="width:100%" value="${bldrName}" placeholder="e.g. Outstanding Invoices by Customer" oninput="bldrName=this.value">
+      </div>
+      <div class="bldr-field">
+        <label class="bldr-lbl">Filter by column (optional)</label>
+        <div class="bldr-row">
+          <select class="filter-select" onchange="bldrFilterFieldChange(this.value)">
+            <option value="">No filter</option>
+            ${fCols.map(c=>`<option value="${c.id}"${bldrFilter.field===c.id?' selected':''}>${c.label}</option>`).join('')}
+          </select>
+          <select class="filter-select" ${!bldrFilter.field?'disabled':''} onchange="bldrFilter.value=this.value">
+            ${fVals.map(v=>`<option value="${v}"${bldrFilter.value===v?' selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="bldr-field">
+        <label class="bldr-lbl">Sort by (optional)</label>
+        <div class="bldr-row">
+          <select class="filter-select" onchange="bldrSort.field=this.value">
+            <option value="">None</option>
+            ${sCols.map(c=>`<option value="${c.id}"${bldrSort.field===c.id?' selected':''}>${c.label}</option>`).join('')}
+          </select>
+          <select class="filter-select" style="flex:0 0 90px" onchange="bldrSort.dir=this.value">
+            <option value="asc"${bldrSort.dir==='asc'?' selected':''}>Asc ↑</option>
+            <option value="desc"${bldrSort.dir==='desc'?' selected':''}>Desc ↓</option>
+          </select>
+        </div>
+      </div>
+      <div class="bldr-field">
+        <label class="bldr-lbl">Max rows to show</label>
+        <select class="filter-select" onchange="bldrLimit=Number(this.value)">
+          ${[10,20,30,50,100].map(n=>`<option value="${n}"${bldrLimit===n?' selected':''}>${n} rows</option>`).join('')}
+        </select>
+      </div>`;
+  }
+  const back=document.getElementById('tblBuilderBack');
+  const next=document.getElementById('tblBuilderNext');
+  if(back)back.style.display=bldrStep>1?'inline-flex':'none';
+  if(next){
+    next.textContent=bldrStep===3?'Add to Dashboard ✓':'Next →';
+    next.disabled=(bldrStep===1&&!bldrMod)||(bldrStep===2&&bldrCols.length<2);
+  }
+}
+
+function saveCustomTable(){
+  const name=(bldrName||'').trim()||(MODULE_COLUMNS[bldrMod]?.label+' table');
+  const id='ct-'+Date.now();
+  loadCustomTbls();
+  customTbls[id]={
+    name,module:bldrMod,cols:[...bldrCols],
+    filter:bldrFilter.field&&bldrFilter.value!=='Any'?{field:bldrFilter.field,value:bldrFilter.value}:null,
+    sort:bldrSort.field?{field:bldrSort.field,dir:bldrSort.dir}:null,
+    limit:bldrLimit
+  };
+  saveCustomTbls();
+  dashLayout.push(id);
+  saveDashState();renderCanvas();renderLibrary();
+  closeTableBuilder();
+}
+
+// ─── STATE ─────────────────────────────────────────────────────
+function loadDashState(){
+  // Multi-page system is canonical; fall back to single-page if pages not loaded yet
+  if(dashPages.length){syncActiveDashPage();dashLayout=dashLayout.filter(id=>resolveWidget(id));return;}
+  try{
+    dashLayout=JSON.parse(localStorage.getItem(DASH_KEY)||'[]');
+    dashSizes=JSON.parse(localStorage.getItem(DASH_SIZES_KEY)||'{}');
+    dashChartTypes=JSON.parse(localStorage.getItem(DASH_TYPES_KEY)||'{}');
+    dashLayout=dashLayout.filter(id=>resolveWidget(id));
+  }catch(e){dashLayout=[];dashSizes={};dashChartTypes={};}
+}
+function saveDashState(){
+  saveDashPages();
+  localStorage.setItem(DASH_KEY,JSON.stringify(dashLayout));
+  localStorage.setItem(DASH_SIZES_KEY,JSON.stringify(dashSizes));
+  localStorage.setItem(DASH_TYPES_KEY,JSON.stringify(dashChartTypes));
+}
+
+// ─── CHART TYPE SYSTEM ─────────────────────────────────────────
+function getWType(id){
+  const w=resolveWidget(id);
+  if(!w||!w.supportedTypes)return null;
+  return dashChartTypes[id]||w.defaultType||w.supportedTypes[0];
+}
+function setWType(id,type){
+  dashChartTypes[id]=type;
+  saveDashState();
+  const widget=document.getElementById('cw-'+id);
+  if(widget)widget.querySelectorAll('.cw-type-btn').forEach(b=>b.classList.toggle('active',b.dataset.type===type));
+  Object.keys(charts).filter(k=>k==='wc-'+id).forEach(k=>{try{charts[k].destroy();}catch(e){}delete charts[k];});
+  const body=document.getElementById('cwb-'+id);
+  if(body)renderWidgetContent(body,id);
+}
+function renderWidgetContent(el,id){
+  const w=resolveWidget(id);if(!w)return;
+  if(!w.supportedTypes){w.render(el);return;}
+  const type=getWType(id);
+  if(id.startsWith('ct-')&&type==='table'){w.render(el);return;}
+  renderChartOfType(el,id,w.getData(),type);
+}
+function renderChartOfType(el,id,data,type){
+  const cid='wc-'+id,lid='wl-'+id;
+  const fv=v=>data.fmt==='$'?fmt$(v):Number(v).toLocaleString();
+  const pfx=data.xLabel?`<div style="margin-bottom:8px"><span style="font-size:10px;background:rgba(255,107,44,.1);color:var(--zuper);border:1px solid rgba(255,107,44,.22);border-radius:99px;padding:2px 8px">${data.xLabel}</span></div>`:'';
+  if(type==='table'){
+    el.innerHTML=pfx+`<div class="tbl-wrap" style="max-height:240px;overflow-y:auto"><table><thead><tr>${data.heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${data.labels.map((l,i)=>`<tr><td>${l}</td><td style="font-weight:600">${fv(data.values[i])}</td></tr>`).join('')}</tbody></table></div>`;
+    return;
+  }
+  const h=(type==='hbar')?Math.min(Math.max(160,data.labels.length*30),280):185;
+  const showLeg=(type==='doughnut'||type==='pie');
+  el.innerHTML=pfx+`<div class="chart-wrap" style="height:${h}px"><canvas id="${cid}"></canvas></div>${showLeg?`<div class="legend" id="${lid}"></div>`:''}`;
+  setTimeout(()=>{
+    if(type==='doughnut'){makeDoughnut(cid,data.labels,data.values,data.colors);legend(lid,data.labels.map((l,i)=>`${l} (${fv(data.values[i])})`),data.colors);}
+    else if(type==='pie'){makePie(cid,data.labels,data.values,data.colors);legend(lid,data.labels.map((l,i)=>`${l} (${fv(data.values[i])})`),data.colors);}
+    else if(type==='bar'){makeBar(cid,data.labels,data.values,data.colors);}
+    else if(type==='hbar'){makeHBar(cid,data.labels,data.values,data.colors[0]);}
+  },50);
+}
+
+// ─── RENDER DASHBOARD PAGE ─────────────────────────────────────
+function renderDashboardPage(){
+  loadDashPages();
+  renderDashboardTabs();
+  renderLibrary();
+  renderCanvas();
+}
+
+// ─── LIBRARY ──────────────────────────────────────────────────
+function renderLibrary(){
+  const LIB_SECTIONS=['Jobs','Finance','Customers','People','Inventory'];
+  const sections={};
+  const cross=[];
+  WIDGET_DEFS.forEach(w=>{
+    if(w.module==='cross')cross.push(w);
+    else{if(!sections[w.module])sections[w.module]=[];sections[w.module].push(w);}
+  });
+  let html='';
+  LIB_SECTIONS.forEach(mod=>{
+    if(!sections[mod])return;
+    html+=`<div class="db-lib-sec">${mod}</div>`;
+    sections[mod].forEach(w=>{
+      const on=dashLayout.includes(w.id);
+      html+=`<div class="lib-item${on?' on-canvas':''}" ${on?'':'draggable="true"'} ondragstart="onLibDragStart(event,'${w.id}')" title="${w.title}">
+        <span class="lib-icon">${w.icon}</span><span class="lib-name">${w.title}</span>
+        <span class="lib-tag mod">${mod}</span>
+      </div>`;
+    });
+  });
+  if(cross.length){
+    html+=`<div class="db-lib-sec">Cross-Module</div>`;
+    cross.forEach(w=>{
+      const on=dashLayout.includes(w.id);
+      html+=`<div class="lib-item${on?' on-canvas':''}" ${on?'':'draggable="true"'} ondragstart="onLibDragStart(event,'${w.id}')" title="${w.title}">
+        <span class="lib-icon">${w.icon}</span><span class="lib-name">${w.title}</span>
+        <span class="lib-tag cross">cross</span>
+      </div>`;
+    });
+  }
+  // Custom Tables section
+  loadCustomTbls();
+  html+=`<div class="db-lib-sec">Custom Tables</div>
+    <div class="lib-build-btn" onclick="openTableBuilder()">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Build new table…
+    </div>`;
+  Object.entries(customTbls).forEach(([ctId,def])=>{
+    const on=dashLayout.includes(ctId);
+    html+=`<div class="lib-item${on?' on-canvas':''}" ${on?'':'draggable="true"'} ondragstart="onLibDragStart(event,'${ctId}')" title="${def.name}">
+      <span class="lib-icon">📋</span><span class="lib-name">${def.name}</span>
+      <span class="lib-tag mod">${MODULE_COLUMNS[def.module]?.label||def.module}</span>
+    </div>`;
+  });
+  const el=document.getElementById('dbLibContent');
+  if(el)el.innerHTML=html;
+}
+
+// ─── CANVAS ───────────────────────────────────────────────────
+function renderCanvas(){
+  loadCustomTbls();
+  Object.keys(charts).filter(k=>k.startsWith('wc-')).forEach(k=>{try{charts[k].destroy();}catch(e){}delete charts[k];});
+  const canvas=document.getElementById('dbCanvas');
+  if(!canvas)return;
+  if(dashLayout.length===0){
+    canvas.innerHTML=`<div class="db-empty"><div class="db-empty-ico">📊</div><div class="db-empty-ttl">Your dashboard is empty</div><div class="db-empty-sub">Open the Widgets panel and drag any chart or table here</div></div>`;
+    return;
+  }
+  canvas.innerHTML=dashLayout.map(id=>{
+    const w=resolveWidget(id);if(!w)return'';
+    const wide=dashSizes[id]==='wide'||(w.defaultWide&&dashSizes[id]!=='normal');
+    const curType=getWType(id);
+    const typeBar=w.supportedTypes
+      ?`<div class="cw-type-bar">${w.supportedTypes.map(t=>`<button class="cw-type-btn${curType===t?' active':''}" data-type="${t}" onclick="setWType('${id}','${t}')" title="${TYPE_LABELS[t]}">${TYPE_ICONS[t]}<span>${TYPE_LABELS[t]}</span></button>`).join('')}</div>`
+      :'';
+    return `<div class="canvas-widget${wide?' wide':''}" id="cw-${id}"
+      draggable="true"
+      ondragstart="onWidgetDragStart(event,'${id}')"
+      ondragover="onWidgetDragOver(event,'${id}')"
+      ondrop="onWidgetDrop(event,'${id}')"
+      ondragleave="onWidgetDragLeave(event,'${id}')"
+      ondragend="onWidgetDragEnd()">
+      <div class="cw-hdr">
+        <span class="cw-dots" title="Drag to reorder">${SVG_DOTS}</span>
+        <span class="cw-title">${w.title}</span>
+        ${w.module==='cross'?'<span class="cw-cross">cross</span>':''}
+        <div class="cw-acts">
+          <button class="cw-btn" onclick="toggleWSize('${id}')" title="Toggle wide">${SVG_RESIZE}</button>
+          <button class="cw-btn rm" onclick="removeWidget('${id}')" title="Remove">${SVG_CLOSE}</button>
+        </div>
+      </div>
+      <div class="cw-body" id="cwb-${id}"></div>
+      ${typeBar}
+    </div>`;
+  }).join('');
+  dashLayout.forEach(id=>{
+    const el=document.getElementById('cwb-'+id);
+    if(el)renderWidgetContent(el,id);
+  });
+}
+
+// ─── WIDGET ACTIONS ────────────────────────────────────────────
+function removeWidget(id){
+  dashLayout=dashLayout.filter(x=>x!==id);
+  if(id.startsWith('ct-')){loadCustomTbls();delete customTbls[id];saveCustomTbls();}
+  saveDashState();renderCanvas();renderLibrary();
+}
+function toggleWSize(id){
+  const w=resolveWidget(id);
+  const wide=dashSizes[id]==='wide'||((w&&w.defaultWide)&&dashSizes[id]!=='normal');
+  dashSizes[id]=wide?'normal':'wide';
+  saveDashState();renderCanvas();
+}
+function toggleLibrary(){
+  libOpen=!libOpen;
+  const lib=document.getElementById('dbLibrary');
+  if(lib)lib.classList.toggle('collapsed',!libOpen);
+  const btn=document.getElementById('libToggleBtn');
+  if(btn){const icon='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>';btn.innerHTML=icon+(libOpen?' Hide Widgets':' Widgets');}
+}
+function clearDashboard(){
+  if(dashLayout.length===0)return;
+  if(!confirm('Clear all widgets from your dashboard?'))return;
+  dashLayout=[];dashSizes={};dashChartTypes={};
+  saveDashState();renderCanvas();renderLibrary();
+}
+
+// ─── DRAG & DROP ───────────────────────────────────────────────
+function onLibDragStart(e,id){
+  if(dashLayout.includes(id)){e.preventDefault();return;}
+  dragWid=id;dragSrc='library';
+  e.dataTransfer.effectAllowed='copy';
+  e.dataTransfer.setData('text/plain',id);
+}
+function onWidgetDragStart(e,id){
+  dragWid=id;dragSrc='canvas';
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain',id);
+  setTimeout(()=>{const el=document.getElementById('cw-'+id);if(el)el.classList.add('dragging');},0);
+}
+function onWidgetDragOver(e,targetId){
+  e.preventDefault();e.stopPropagation();
+  if(dragWid===targetId)return;
+  e.dataTransfer.dropEffect=dragSrc==='canvas'?'move':'copy';
+  const el=document.getElementById('cw-'+targetId);
+  if(el)el.classList.add('drag-target');
+}
+function onWidgetDragLeave(e,targetId){
+  const el=document.getElementById('cw-'+targetId);
+  if(el)el.classList.remove('drag-target');
+}
+function onWidgetDrop(e,targetId){
+  e.preventDefault();e.stopPropagation();
+  const el=document.getElementById('cw-'+targetId);
+  if(el)el.classList.remove('drag-target');
+  if(!dragWid)return;
+  if(dragSrc==='library'&&!dashLayout.includes(dragWid)){
+    const ti=dashLayout.indexOf(targetId);
+    if(ti>=0)dashLayout.splice(ti,0,dragWid);else dashLayout.push(dragWid);
+    saveDashState();renderCanvas();renderLibrary();
+  }else if(dragSrc==='canvas'&&dragWid!==targetId){
+    const fi=dashLayout.indexOf(dragWid),ti=dashLayout.indexOf(targetId);
+    if(fi>=0&&ti>=0){dashLayout.splice(fi,1);dashLayout.splice(ti,0,dragWid);saveDashState();renderCanvas();}
+  }
+  dragWid=null;dragSrc=null;
+}
+function onWidgetDragEnd(){
+  document.querySelectorAll('.canvas-widget').forEach(w=>w.classList.remove('dragging','drag-target'));
+  dragWid=null;dragSrc=null;
+}
+function onCanvasDragOver(e){
+  e.preventDefault();
+  const c=document.getElementById('dbCanvas');if(c)c.classList.add('drag-over');
+}
+function onCanvasDragLeave(e){
+  const c=document.getElementById('dbCanvas');if(c)c.classList.remove('drag-over');
+}
+function onCanvasDrop(e){
+  e.preventDefault();
+  const c=document.getElementById('dbCanvas');if(c)c.classList.remove('drag-over');
+  if(dragSrc==='library'&&dragWid&&!dashLayout.includes(dragWid)){
+    dashLayout.push(dragWid);
+    saveDashState();renderCanvas();renderLibrary();
+  }
+  dragWid=null;dragSrc=null;
+}
+
+// ─── PDF EXPORT ────────────────────────────────────────────────
+function exportPDF(){window.print();}
+
+// ═══════════════════════════════════════════════════════════════
+// FEATURES 1+7: DATE RANGE FILTER + SAVED PRESETS
+// ═══════════════════════════════════════════════════════════════
+const DATE_PRESETS_STORE='zuper_date_presets_v2';
+let filterFrom=null,filterTo=null,activePreset='all';
+let savedPresets={};
+
+function initDateFilter(){
+  try{savedPresets=JSON.parse(localStorage.getItem(DATE_PRESETS_STORE)||'{}');}catch(e){}
+  const bar=document.getElementById('filterBar');
+  if(bar)bar.style.display='flex';
+  renderFilterBar();
+}
+function setPreset(name){
+  const now=new Date(),y=now.getFullYear(),m=now.getMonth(),d=now.getDate();
+  if(name==='today'){filterFrom=new Date(y,m,d);filterTo=new Date(y,m,d,23,59,59);}
+  else if(name==='week'){const wd=now.getDay()||7;filterFrom=new Date(y,m,d-wd+1);filterTo=new Date();}
+  else if(name==='month'){filterFrom=new Date(y,m,1);filterTo=new Date();}
+  else if(name==='quarter'){const q=Math.floor(m/3);filterFrom=new Date(y,q*3,1);filterTo=new Date();}
+  else if(name==='year'){filterFrom=new Date(y,0,1);filterTo=new Date();}
+  else{filterFrom=null;filterTo=null;}
+  activePreset=name;
+  renderFilterBar();
+  renderPage(activePage);
+}
+function setCustomDate(from,to){
+  filterFrom=from?new Date(from):null;
+  filterTo=to?new Date(to+'T23:59:59'):null;
+  activePreset='custom';
+  renderFilterBar();
+  renderPage(activePage);
+}
+function filterByDate(items,field){
+  if(!filterFrom&&!filterTo)return items;
+  return items.filter(item=>{
+    const raw=item[field]||item.created_at;
+    if(!raw)return true;
+    const d=new Date(raw);
+    if(isNaN(d.getTime()))return true;
+    return(!filterFrom||d>=filterFrom)&&(!filterTo||d<=filterTo);
+  });
+}
+function filterPrevPeriod(items,field){
+  const now=new Date();
+  let pf,pt;
+  if(!filterFrom){
+    pf=new Date(now.getFullYear(),now.getMonth()-1,1);
+    pt=new Date(now.getFullYear(),now.getMonth(),0,23,59,59);
+  } else {
+    const len=(filterTo||now)-filterFrom;
+    pt=new Date(filterFrom.getTime()-1);
+    pf=new Date(filterFrom.getTime()-len);
+  }
+  return items.filter(item=>{
+    const raw=item[field]||item.created_at;
+    if(!raw)return false;
+    const d=new Date(raw);
+    if(isNaN(d.getTime()))return false;
+    return d>=pf&&d<=pt;
+  });
+}
+function calcDelta(cur,prev){
+  if(prev===0)return cur>0?{txt:'New ↑',cls:'up'}:{txt:'—',cls:'flat'};
+  const pct=Math.round(((cur-prev)/Math.abs(prev))*100);
+  if(pct>0)return{txt:`↑ ${pct}% vs prev`,cls:'up'};
+  if(pct<0)return{txt:`↓ ${Math.abs(pct)}% vs prev`,cls:'down'};
+  return{txt:'No change',cls:'flat'};
+}
+function savePreset(name){
+  if(!name)return;
+  savedPresets[name]={from:filterFrom?filterFrom.toISOString():null,to:filterTo?filterTo.toISOString():null};
+  localStorage.setItem(DATE_PRESETS_STORE,JSON.stringify(savedPresets));
+  renderFilterBar();
+}
+function loadPreset(name){
+  const p=savedPresets[name];if(!p)return;
+  filterFrom=p.from?new Date(p.from):null;
+  filterTo=p.to?new Date(p.to):null;
+  activePreset=name;
+  renderFilterBar();
+  renderPage(activePage);
+}
+function deletePreset(name,ev){
+  ev.stopPropagation();
+  delete savedPresets[name];
+  localStorage.setItem(DATE_PRESETS_STORE,JSON.stringify(savedPresets));
+  renderFilterBar();
+}
+function promptSavePreset(){
+  const name=prompt('Name this preset (e.g. "Q1 2025"):');
+  if(name&&name.trim())savePreset(name.trim());
+}
+function renderFilterBar(){
+  const bar=document.getElementById('filterBar');if(!bar)return;
+  const PRESETS=[['today','Today'],['week','This week'],['month','This month'],['quarter','Quarter'],['year','Year'],['all','All time']];
+  const fStr=filterFrom?filterFrom.toISOString().slice(0,10):'';
+  const tStr=filterTo?filterTo.toISOString().slice(0,10):'';
+  const hasFilter=!!(filterFrom||filterTo);
+  bar.innerHTML=
+    `<span class="filter-label">Period</span>`+
+    `<div class="filter-presets">${PRESETS.map(([k,l])=>`<button class="preset-btn${activePreset===k?' active':''}" onclick="setPreset('${k}')">${l}</button>`).join('')}</div>`+
+    `<div class="filter-sep"></div>`+
+    `<input type="date" class="filter-date-inp" value="${fStr}" onchange="setCustomDate(this.value,document.querySelectorAll('.filter-date-inp')[1].value)" title="From">`+
+    `<span style="font-size:11px;color:var(--text3)">–</span>`+
+    `<input type="date" class="filter-date-inp" value="${tStr}" onchange="setCustomDate(document.querySelectorAll('.filter-date-inp')[0].value,this.value)" title="To">`+
+    `<div class="filter-sep"></div>`+
+    `<button class="filter-save-btn" onclick="promptSavePreset()" title="Save preset">💾 Save</button>`+
+    Object.keys(savedPresets).map(n=>`<span class="preset-tag" onclick="loadPreset('${n}')" title="Load: ${n}">${n}<span class="preset-tag-x" onclick="deletePreset('${n}',event)">✕</span></span>`).join('')+
+    (hasFilter?`<span class="filter-active-badge">${activePreset==='custom'?'Custom range':(PRESETS.find(p=>p[0]===activePreset)||['',''])[1]||activePreset}</span>`:'');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FEATURE 2: CSV EXPORT
+// ═══════════════════════════════════════════════════════════════
+function csvDownload(headers,rows,filename){
+  const esc=v=>{const s=String(v==null?'':v).replace(/"/g,'""');return/[,"\n]/.test(s)?'"'+s+'"':s;};
+  const csv=[headers].concat(rows).map(r=>r.map(esc).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download=filename;a.click();URL.revokeObjectURL(a.href);
+}
+function csvJobs(){
+  const jobs=filterByDate(cache.jobs||[],'created_at');
+  csvDownload(['Job#','Title','Customer','Category','Status','Priority','Due Date','Created'],
+    jobs.map(j=>[j.work_order_number||'',j.job_title||'',(j.customer?j.customer.customer_first_name||'':'')+' '+(j.customer?j.customer.customer_last_name||'':''),
+      j.job_category?j.job_category.category_name||'':'',j.current_job_status?j.current_job_status.status_name||'':'',j.job_priority||'',fmtDate(j.due_date),fmtDate(j.created_at)]),'jobs.csv');
+}
+function csvInvoices(){
+  const invs=filterByDate(cache.invoices||[],'invoice_date');
+  csvDownload(['Invoice#','Customer','Amount','Status','Invoice Date','Due Date'],
+    invs.map(i=>[i.invoice_no||'',(i.customer?i.customer.customer_first_name||'':'')+' '+(i.customer?i.customer.customer_last_name||'':''),
+      parseFloat(i.total)||0,i.invoice_status||'',fmtDate(i.invoice_date),fmtDate(i.due_date)]),'invoices.csv');
+}
+function csvCustomers(){
+  const custs=cache.customers||[];
+  csvDownload(['Name','Email','Phone','Jobs','LTV','Receivables'],
+    custs.map(c=>[(c.customer_first_name||'')+' '+(c.customer_last_name||''),c.customer_email||'',
+      c.customer_contact_no?c.customer_contact_no.mobile||'':'',c.no_of_jobs||0,
+      c.accounts?c.accounts.ltv||0:0,c.accounts?c.accounts.receivables||0:0]),'customers.csv');
+}
+function csvTimesheets(){
+  const ts=filterByDate(cache.timesheets||[],'date');
+  csvDownload(['Date','Employee','Clock In','Clock Out','Duration','Status'],
+    ts.map(t=>[fmtDate(t.date||t.created_at),t.user_name||(t.user?t.user.first_name||'':''),t.clock_in||'',t.clock_out||'',
+      t.duration_minutes?Math.round(t.duration_minutes/60)+'h '+(t.duration_minutes%60)+'m':'',t.status||'']),'timesheets.csv');
+}
+function csvQuotes(){
+  const ests=filterByDate(cache.estimates||[],'created_at');
+  csvDownload(['Quote#','Customer','Amount','Status','Created','Expiry'],
+    ests.map(e=>[e.estimate_no||e.quote_no||'',(e.customer?e.customer.customer_first_name||'':'')+' '+(e.customer?e.customer.customer_last_name||'':''),
+      parseFloat(e.total||e.estimate_total)||0,e.estimate_status||e.status||'',fmtDate(e.created_at),fmtDate(e.expiry_date||e.valid_till)]),'quotes.csv');
+}
+function csvParts(){
+  const parts=cache.parts||[];
+  csvDownload(['Name','Category','Type','UOM','Sell Price','Purchase Price'],
+    parts.map(p=>[p.product_name||p.name||'',p.product_category?p.product_category.category_name||'':'',p.product_type||'',
+      p.unit_of_measure||'',p.selling_price||0,p.purchase_price||0]),'parts.csv');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FEATURE 3: TABLE SEARCH + PAGINATION  |  FEATURE 4: CHART DRILL-DOWN
+// ═══════════════════════════════════════════════════════════════
+const tblState={}; // { tbodyId: { page, size, search } }
+
+function _getTblState(tbodyId){
+  if(!tblState[tbodyId])tblState[tbodyId]={page:1,size:20,search:''};
+  return tblState[tbodyId];
+}
+
+function applyTableState(tbodyId){
+  const tbody=document.getElementById(tbodyId);if(!tbody)return;
+  const st=_getTblState(tbodyId);
+  const rows=Array.from(tbody.querySelectorAll('tr'));
+  const q=st.search.toLowerCase();
+  const filtered=q?rows.filter(r=>r.textContent.toLowerCase().includes(q)):rows;
+  const total=filtered.length;
+  const totalPages=Math.max(1,Math.ceil(total/st.size));
+  if(st.page>totalPages)st.page=totalPages;
+  const start=(st.page-1)*st.size;
+  const end=start+st.size;
+  rows.forEach(r=>r.style.display='none');
+  filtered.slice(start,end).forEach(r=>r.style.display='');
+  _renderPaginationBar(tbodyId,st,total,totalPages);
+}
+
+function _renderPaginationBar(tbodyId,st,total,totalPages){
+  const bar=document.getElementById('pgn_'+tbodyId);if(!bar)return;
+  const s=st.page,sz=st.size;
+  const start=Math.min((s-1)*sz+1,total),end=Math.min(s*sz,total);
+  // Build page number list (max 7 buttons with ellipsis)
+  let pages=[];
+  if(totalPages<=7){for(let i=1;i<=totalPages;i++)pages.push(i);}
+  else{
+    pages=[1];
+    if(s>3)pages.push('…');
+    for(let i=Math.max(2,s-1);i<=Math.min(totalPages-1,s+1);i++)pages.push(i);
+    if(s<totalPages-2)pages.push('…');
+    pages.push(totalPages);
+  }
+  const sizeOpts=[20,50,100].map(n=>`<option value="${n}"${sz===n?' selected':''}>${n}/page</option>`).join('');
+  bar.innerHTML=`
+    <span class="pgn-info">${total===0?'No results':`${start}–${end} of ${total}`}</span>
+    <button class="pgn-btn" onclick="setTblPage('${tbodyId}',${s-1})" ${s<=1?'disabled':''}>← Prev</button>
+    <div class="pgn-pages">${pages.map(p=>p==='…'
+      ?`<span class="pgn-num ellipsis">…</span>`
+      :`<button class="pgn-num${p===s?' active':''}" onclick="setTblPage('${tbodyId}',${p})">${p}</button>`
+    ).join('')}</div>
+    <button class="pgn-btn" onclick="setTblPage('${tbodyId}',${s+1})" ${s>=totalPages?'disabled':''}>Next →</button>
+    <select class="pgn-size" onchange="setTblPageSize('${tbodyId}',+this.value)">${sizeOpts}</select>`;
+}
+
+function setTblPage(tbodyId,page){
+  const st=_getTblState(tbodyId);
+  st.page=page;
+  applyTableState(tbodyId);
+  const el=document.getElementById(tbodyId);
+  if(el){const card=el.closest('.tbl-card');if(card)card.scrollIntoView({behavior:'smooth',block:'nearest'});}
+}
+
+function setTblPageSize(tbodyId,size){
+  const st=_getTblState(tbodyId);
+  st.size=size;st.page=1;
+  applyTableState(tbodyId);
+}
+
+function addTableSearch(tbodyId,csvFn){
+  const tbody=document.getElementById(tbodyId);if(!tbody)return;
+  const card=tbody.closest('.tbl-card');if(!card)return;
+  // Remove any previously injected toolbar/pagination
+  card.querySelector('.tbl-toolbar')?.remove();
+  card.querySelector('.tbl-pagination')?.remove();
+  // Reset state (new data just rendered)
+  const st=_getTblState(tbodyId);st.page=1;st.search='';
+  // Toolbar: search + CSV
+  const toolbar=document.createElement('div');toolbar.className='tbl-toolbar';
+  toolbar.innerHTML=`<input class="tbl-search" placeholder="Search…" oninput="filterTable(this,'${tbodyId}')" id="srch_${tbodyId}">`+
+    (csvFn?`<button class="tbl-csv-btn" onclick="${csvFn}()">⬇ CSV</button>`:'')+
+    `<span class="tbl-row-count" id="cnt_${tbodyId}"></span>`;
+  // Pagination bar: injected after .tbl-wrap
+  const pgnBar=document.createElement('div');pgnBar.className='tbl-pagination';pgnBar.id='pgn_'+tbodyId;
+  const wrap=card.querySelector('.tbl-wrap');
+  if(wrap){card.insertBefore(toolbar,wrap);wrap.after(pgnBar);}
+  applyTableState(tbodyId);
+}
+
+function filterTable(inp,tbodyId){
+  const st=_getTblState(tbodyId);
+  st.search=inp.value;st.page=1;
+  applyTableState(tbodyId);
+}
+
+function updateTblCount(tbodyId){
+  // kept for backward compatibility — applyTableState handles count now
+  applyTableState(tbodyId);
+}
+
+function drillDownTable(tbodyId,label){
+  const tbody=document.getElementById(tbodyId);if(!tbody)return;
+  const st=_getTblState(tbodyId);
+  const srch=document.getElementById('srch_'+tbodyId);
+  // Toggle: same label clears; different label sets
+  if(st.search===label){
+    st.search='';if(srch)srch.value='';
+  }else{
+    st.search=label;if(srch)srch.value=label;
+  }
+  st.page=1;
+  applyTableState(tbodyId);
+  const card=tbody.closest('.tbl-card');
+  if(card)card.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function addDrillDown(chartId,tbodyId){
+  const ch=charts[chartId];if(!ch)return;
+  const canvas=document.getElementById(chartId);if(!canvas)return;
+  canvas.style.cursor='pointer';
+  canvas.onclick=function(evt){
+    const pts=ch.getElementsAtEventForMode(evt,'nearest',{intersect:true},true);
+    if(pts.length)drillDownTable(tbodyId,ch.data.labels[pts[0].index]);
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FEATURE 5: PERIOD COMPARISON  |  FEATURE 9: KPI THRESHOLDS
+// ═══════════════════════════════════════════════════════════════
+const KPI_TARGETS_KEY='zuper_kpi_targets_v2';
+let kpiTargets={};
+function loadKpiTargets(){try{kpiTargets=JSON.parse(localStorage.getItem(KPI_TARGETS_KEY)||'{}');}catch(e){}}
+function saveKpiTarget(id,val){
+  loadKpiTargets();
+  if(val===null)delete kpiTargets[id];else kpiTargets[id]=Number(val);
+  localStorage.setItem(KPI_TARGETS_KEY,JSON.stringify(kpiTargets));
+}
+function promptKpiTarget(kpiId,cur){
+  loadKpiTargets();
+  const existing=kpiTargets[kpiId];
+  const val=prompt('Set target for this KPI (current: '+Number(cur).toLocaleString()+')\n\nLeave blank to remove target:',existing!=null?String(existing):'');
+  if(val===null)return;
+  if(val.trim()==='')saveKpiTarget(kpiId,null);
+  else if(!isNaN(Number(val)))saveKpiTarget(kpiId,Number(val));
+  renderPage(activePage);
+}
+function kpiEnhHtml(items){
+  loadKpiTargets();
+  return items.map(k=>{
+    const numVal=typeof k.rawVal==='number'?k.rawVal:parseFloat(String(k.rawVal||'').replace(/[^0-9.-]/g,''))||0;
+    const delta=k.delta?'<div class="kpi-delta '+k.delta.cls+'">'+k.delta.txt+'</div>':'';
+    let targetHtml='';
+    const target=kpiTargets[k.id];
+    if(k.id){
+      if(target!=null&&!isNaN(numVal)){
+        const pct=Math.min(100,Math.round((numVal/target)*100));
+        const fc=pct>=100?'good':pct>=70?'warn':'bad';
+        targetHtml='<div class="kpi-target-bar"><div class="kpi-target-fill '+fc+'" style="width:'+pct+'%"></div></div>'+
+          '<div class="kpi-target-lbl" onclick="promptKpiTarget(\''+k.id+'\','+numVal+')">Target: '+Number(target).toLocaleString()+' ('+pct+'%)</div>';
+      } else {
+        targetHtml='<div class="kpi-target-lbl" onclick="promptKpiTarget(\''+k.id+'\','+numVal+')">+ Set target</div>';
+      }
+    }
+    return '<div class="kpi '+(k.cls||'')+'">'+
+      '<div class="kpi-lbl">'+k.label+'</div>'+
+      '<div class="kpi-val">'+k.val+'</div>'+
+      '<div class="kpi-sub">'+(k.sub||'')+'</div>'+
+      delta+targetHtml+
+      '</div>';
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FEATURE 6: TEAM PERFORMANCE SCORECARD
+// ═══════════════════════════════════════════════════════════════
+function renderTeamScorecard(){
+  const el=document.getElementById('tsScorecard');if(!el)return;
+  const ts=filterByDate(cache.timesheets||[],'date');
+  const byUser={};
+  ts.forEach(t=>{
+    const name=t.user_name||t.employee_name||(t.user?t.user.first_name||'Unknown':'Unknown');
+    if(!byUser[name])byUser[name]={entries:0,mins:0};
+    byUser[name].entries++;
+    byUser[name].mins+=Number(t.duration_minutes||t.duration||0);
+  });
+  const users=Object.entries(byUser).sort(function(a,b){return b[1].mins-a[1].mins;}).slice(0,8);
+  if(!users.length){el.innerHTML='';return;}
+  const maxMins=users[0][1].mins||1;
+  el.innerHTML='<div class="scorecard-ttl">Team Performance</div><div class="scorecard-grid">'+
+    users.map(function(u){
+      const name=u[0],d=u[1];
+      const hrs=Math.floor(d.mins/60),mins=d.mins%60;
+      const pct=Math.round((d.mins/maxMins)*100);
+      return '<div class="scorecard-card">'+
+        '<div class="scorecard-name">'+name+'</div>'+
+        '<div class="scorecard-row"><span class="scorecard-metric">Hours logged</span><span class="scorecard-val">'+hrs+'h '+mins+'m</span></div>'+
+        '<div class="scorecard-row"><span class="scorecard-metric">Entries</span><span class="scorecard-val sm">'+d.entries+'</span></div>'+
+        '<div class="scorecard-bar-wrap"><div class="scorecard-bar-fill" style="width:'+pct+'%"></div></div>'+
+        '</div>';
+    }).join('')+'</div>';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FEATURE 8: REVENUE FORECAST
+// ═══════════════════════════════════════════════════════════════
+function makeLineChart(id,labels,datasets){
+  destroyChart(id);
+  const ctx=document.getElementById(id);if(!ctx)return;
+  charts[id]=new Chart(ctx,{
+    type:'line',data:{labels,datasets},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:true,labels:{font:{size:10},color:gTick(),boxWidth:12,padding:8}}},
+      scales:{
+        x:{ticks:{font:{size:10},color:gTick()},grid:{display:false},border:{color:'transparent'}},
+        y:{ticks:{font:{size:10},color:gTick(),callback:function(v){return v>=1000?'$'+Math.round(v/1000)+'k':'$'+v;}},
+           grid:{color:gGrid()},border:{color:'transparent'}}
+      }}
+  });
+}
+function renderRevenueForecast(){
+  const el=document.getElementById('invForecast');if(!el)return;
+  const invs=cache.invoices||[];
+  const monthly={};
+  invs.filter(function(i){return i.invoice_status==='PAID';}).forEach(function(i){
+    const d=new Date(i.invoice_date||i.created_at);if(isNaN(d.getTime()))return;
+    const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    monthly[key]=(monthly[key]||0)+(parseFloat(i.total)||0);
+  });
+  const keys=Object.keys(monthly).sort().slice(-7);
+  if(keys.length<2){el.innerHTML='';return;}
+  const vals=keys.map(function(k){return monthly[k];});
+  const n=vals.length,xm=(n-1)/2;
+  const ym=vals.reduce(function(s,v){return s+v;},0)/n;
+  const num=vals.reduce(function(s,v,i){return s+(i-xm)*(v-ym);},0);
+  const den=vals.reduce(function(s,_,i){return s+(i-xm)*(i-xm);},0);
+  const slope=den?num/den:0,intercept=ym-slope*xm;
+  const parts=keys[keys.length-1].split('-');
+  const lastY=Number(parts[0]),lastM=Number(parts[1]);
+  const projKeys=[];
+  for(let i=1;i<=2;i++){const nm=((lastM-1+i)%12)+1;const ny=lastY+Math.floor((lastM-1+i)/12);projKeys.push(ny+'-'+String(nm).padStart(2,'0'));}
+  const allLabels=keys.concat(projKeys).map(function(k){const p=k.split('-');return new Date(Number(p[0]),Number(p[1])-1,1).toLocaleString('default',{month:'short',year:'2-digit'});});
+  const actualData=vals.concat(projKeys.map(function(){return null;}));
+  const projData=vals.map(function(){return null;}).slice(0,-1).concat([vals[n-1]]).concat(projKeys.map(function(_,i){return Math.max(0,Math.round(intercept+slope*(n+i)));}));
+  el.innerHTML='<div class="chart-card">'+
+    '<div class="chart-title">Monthly Revenue<span class="chart-badge">Forecast</span></div>'+
+    '<div class="forecast-note">Paid invoices by month · dashed = projected trend</div>'+
+    '<div class="chart-wrap" style="height:200px"><canvas id="revForecastChart"></canvas></div>'+
+    '</div>';
+  setTimeout(function(){
+    makeLineChart('revForecastChart',allLabels,[
+      {label:'Actual',data:actualData,borderColor:isDark?'#22c98a':'#15803d',backgroundColor:isDark?'rgba(34,201,138,.08)':'rgba(21,128,61,.08)',tension:.35,pointRadius:4,borderWidth:2,fill:true},
+      {label:'Projected',data:projData,borderColor:'#FF6B2C',backgroundColor:'transparent',tension:.35,pointRadius:4,borderWidth:2,borderDash:[5,4]}
+    ]);
+  },50);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FEATURE 10: MULTI-PAGE DASHBOARDS
+// ═══════════════════════════════════════════════════════════════
+const DASH_PAGES_KEY='zuper_dash_pages_v2';
+let dashPages=[],activeDashPageId='';
+
+function loadDashPages(){
+  try{dashPages=JSON.parse(localStorage.getItem(DASH_PAGES_KEY)||'[]');}catch(e){dashPages=[];}
+  if(!dashPages.length){
+    const layout=JSON.parse(localStorage.getItem(DASH_KEY)||'[]');
+    const sizes=JSON.parse(localStorage.getItem(DASH_SIZES_KEY)||'{}');
+    const types=JSON.parse(localStorage.getItem(DASH_TYPES_KEY)||'{}');
+    dashPages=[{id:'p1',name:'My Dashboard',layout:layout,sizes:sizes,types:types}];
+    saveDashPages();
+  }
+  if(!activeDashPageId||!dashPages.find(function(p){return p.id===activeDashPageId;}))activeDashPageId=dashPages[0].id;
+  syncActiveDashPage();
+}
+function syncActiveDashPage(){
+  const pg=dashPages.find(function(p){return p.id===activeDashPageId;});
+  if(!pg)return;
+  dashLayout=pg.layout||[];
+  dashSizes=pg.sizes||{};
+  dashChartTypes=pg.types||{};
+}
+function saveDashPages(){
+  const pg=dashPages.find(function(p){return p.id===activeDashPageId;});
+  if(pg){pg.layout=dashLayout;pg.sizes=dashSizes;pg.types=dashChartTypes;}
+  localStorage.setItem(DASH_PAGES_KEY,JSON.stringify(dashPages));
+}
+function addDashTab(){
+  const name=prompt('Dashboard page name:','Page '+(dashPages.length+1));
+  if(!name||!name.trim())return;
+  const flushPg=dashPages.find(function(p){return p.id===activeDashPageId;});
+  if(flushPg){flushPg.layout=dashLayout;flushPg.sizes=dashSizes;flushPg.types=dashChartTypes;}
+  const id='p'+Date.now();
+  dashPages.push({id:id,name:name.trim(),layout:[],sizes:{},types:{}});
+  activeDashPageId=id;
+  syncActiveDashPage();
+  saveDashPages();
+  renderDashboardPage();
+}
+function switchDashTab(id){
+  const flushPg=dashPages.find(function(p){return p.id===activeDashPageId;});
+  if(flushPg){flushPg.layout=dashLayout;flushPg.sizes=dashSizes;flushPg.types=dashChartTypes;}
+  activeDashPageId=id;
+  syncActiveDashPage();
+  renderDashboardPage();
+}
+function deleteDashTab(id,ev){
+  ev.stopPropagation();
+  if(dashPages.length<=1){alert('Cannot delete the last dashboard page.');return;}
+  if(!confirm('Delete this dashboard page?'))return;
+  dashPages=dashPages.filter(function(p){return p.id!==id;});
+  if(activeDashPageId===id)activeDashPageId=dashPages[0].id;
+  syncActiveDashPage();
+  saveDashPages();
+  renderDashboardPage();
+}
+function renameDashTab(id){
+  const pg=dashPages.find(function(p){return p.id===id;});if(!pg)return;
+  const n=prompt('Rename:',pg.name);
+  if(n&&n.trim()){pg.name=n.trim();saveDashPages();renderDashboardTabs();}
+}
+function renderDashboardTabs(){
+  const bar=document.getElementById('dashTabsBar');if(!bar)return;
+  bar.innerHTML=dashPages.map(function(p){
+    return '<button class="dash-tab'+(p.id===activeDashPageId?' active':'')+'" onclick="switchDashTab(\''+p.id+'\')" ondblclick="renameDashTab(\''+p.id+'\')">'+p.name+
+      (dashPages.length>1?'<span class="dash-tab-del" onclick="deleteDashTab(\''+p.id+'\',event)">✕</span>':'')+
+      '</button>';
+  }).join('')+'<button class="dash-tab-add" onclick="addDashTab()">+ New page</button>';
+}
+
+// Boot
+document.getElementById('apiKeyInp').addEventListener('keydown',e=>{if(e.key==='Enter')startLoad();});
+</script>
+
+<!-- MODULE VISIBILITY MODAL -->
+<div class="mod-modal-overlay" id="modModalOverlay" style="display:none" onclick="if(event.target===this)closeModModal()">
+  <div class="mod-modal-box" onclick="event.stopPropagation()">
+    <div class="mod-modal-hdr">
+      <div class="mod-modal-title">Manage Modules</div>
+      <div class="mod-modal-sub">Toggle which modules appear in the sidebar</div>
+    </div>
+    <div class="mod-modal-body" id="modModalBody"></div>
+    <div class="mod-modal-ftr">
+      <button class="top-btn" onclick="autoHideEmpty()" title="Hide modules with no data">Auto-hide empty</button>
+      <button class="top-btn" onclick="showAllMods()">Show all</button>
+      <div style="flex:1"></div>
+      <button class="top-btn" onclick="closeModModal()">Done</button>
+    </div>
+  </div>
+</div>
+<!-- TABLE BUILDER MODAL -->
+<div class="mod-modal-overlay" id="tblBuilderOverlay" style="display:none" onclick="if(event.target===this)closeTableBuilder()">
+  <div class="mod-modal-box" style="width:540px;max-width:95vw" onclick="event.stopPropagation()">
+    <div class="mod-modal-hdr">
+      <div class="mod-modal-title">Build Custom Table Widget</div>
+      <div class="mod-modal-sub">Pick a module, choose columns, and set a filter — saved as a reusable dashboard widget</div>
+    </div>
+    <div class="mod-modal-body" id="tblBuilderBody" style="padding:16px 20px 8px;min-height:200px"></div>
+    <div class="mod-modal-ftr">
+      <button class="top-btn" id="tblBuilderBack" onclick="builderBack()" style="display:none">← Back</button>
+      <div style="flex:1"></div>
+      <button class="top-btn" onclick="closeTableBuilder()">Cancel</button>
+      <button class="cta" id="tblBuilderNext" onclick="builderNext()" style="width:auto;padding:9px 22px" disabled>Next →</button>
+    </div>
+  </div>
+</div>
+  <script src="../assets/back-link.js"></script>
+</body>
+</html>

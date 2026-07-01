@@ -1,0 +1,1066 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CPQ Importer to Zuper</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d2129; --border:#2a2f3a;
+    --text:#e6e8eb; --muted:#9aa3b2; --accent:#ff7a1a; --accent2:#ffa05c;
+    --good:#3ddc84; --bad:#ff5c5c; --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  header{padding:24px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;}
+  header img.logo{width:28px;height:28px;border-radius:6px;background:var(--accent);}
+  header h1{font-size:18px;margin:0;font-weight:600;}
+  header span.sub{color:var(--muted);font-size:13px;}
+  main{max-width:1080px;margin:0 auto;padding:28px 32px 80px;}
+  .step{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:22px 24px;margin-bottom:20px;}
+  .step h2{display:flex;align-items:center;gap:10px;font-size:15px;margin:0 0 14px;}
+  .step h2 .num{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#1a1a1a;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;}
+  .step.disabled{opacity:.45;pointer-events:none;}
+  .hint{color:var(--muted);font-size:12.5px;margin:4px 0 14px;line-height:1.5;}
+  .dropzone{border:1.5px dashed var(--border);border-radius:var(--radius);padding:28px;text-align:center;color:var(--muted);cursor:pointer;transition:border-color .15s;}
+  .dropzone:hover, .dropzone.drag{border-color:var(--accent);color:var(--text);}
+  input[type=file]{display:none;}
+  .row{display:flex;gap:12px;flex-wrap:wrap;}
+  .field{flex:1;min-width:220px;}
+  label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;}
+  input[type=text],input[type=password]{width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13.5px;}
+  input[type=text]:focus,input[type=password]:focus{outline:none;border-color:var(--accent);}
+  button{background:var(--accent);color:#1a1300;border:none;border-radius:8px;padding:9px 16px;font-size:13.5px;font-weight:600;cursor:pointer;}
+  button:hover{background:var(--accent2);}
+  button.secondary{background:transparent;border:1px solid var(--border);color:var(--text);}
+  button.secondary:hover{border-color:var(--accent);background:var(--panel2);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  .tabs-list{display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:360px;overflow-y:auto;}
+  .tab-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13.5px;}
+  .tab-row:last-child{border-bottom:none;}
+  .tab-row:hover{background:var(--panel2);}
+  .tab-row .name{flex:1;font-weight:500;}
+  .tab-row .meta{color:var(--muted);font-size:12px;display:flex;gap:10px;}
+  .badge{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:2px 7px;font-size:11px;}
+  .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .toolbar .links a{color:var(--accent2);font-size:12.5px;cursor:pointer;text-decoration:none;margin-left:12px;}
+  .status-pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:5px 10px;border-radius:20px;background:var(--panel2);border:1px solid var(--border);}
+  .status-pill.ok{color:var(--good);border-color:var(--good);}
+  .status-pill.err{color:var(--bad);border-color:var(--bad);}
+  .checkbox-row{display:flex;align-items:center;gap:8px;margin:10px 0;font-size:13px;color:var(--muted);}
+  pre.log{background:#0a0b0e;border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12px;max-height:340px;overflow:auto;white-space:pre-wrap;margin:0;}
+  .log-line{margin:0 0 3px;}
+  .log-ok{color:var(--good);}
+  .log-err{color:var(--bad);}
+  .log-info{color:var(--muted);}
+  .footer-actions{display:flex;gap:10px;margin-top:16px;}
+  .summary-bar{display:flex;gap:16px;margin-bottom:14px;}
+  .summary-bar .stat{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 16px;text-align:center;}
+  .summary-bar .stat .v{font-size:18px;font-weight:700;}
+  .summary-bar .stat .l{font-size:11px;color:var(--muted);}
+  .warn-box{background:#2a1f10;border:1px solid #5a3d12;color:#ffcf9a;border-radius:8px;padding:12px 14px;font-size:12.5px;margin-bottom:14px;line-height:1.5;}
+</style>
+</head>
+<body>
+
+<header>
+  <img class="logo" alt="" />
+  <div>
+    <h1>CPQ Importer to Zuper</h1>
+    <span class="sub">Convert any CPQ spreadsheet and import directly into a Zuper account</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- AI CONVERTER (optional) -->
+  <div class="step" id="aiConverterPanel" style="border-color:#7c5cbf;margin-bottom:20px;">
+    <h2 style="margin-bottom:6px;">
+      <span class="num" style="background:#7c5cbf;font-size:14px;">AI</span>
+      Convert raw spreadsheet with AI
+      <span style="font-size:11.5px;color:var(--muted);font-weight:400;margin-left:auto;white-space:nowrap;">Optional</span>
+    </h2>
+    <p class="hint">Have a CPQ spreadsheet in any format (Acculynx, EagleView, custom)? Upload it and AI will map your columns to the Zuper CPQ format automatically. Then download and upload the result in Step 1.</p>
+
+    <div class="dropzone" id="aiDropzone">
+      <div>📄 Drop raw spreadsheet here, or click to browse</div>
+      <div style="font-size:11.5px;margin-top:6px;">.xlsx · .xls · .csv accepted</div>
+    </div>
+    <input type="file" id="aiFileInput" accept=".xlsx,.xls,.csv" />
+    <div id="aiFileInfo" style="margin-top:8px;font-size:13px;color:var(--muted);"></div>
+
+    <div id="aiConfigRow" style="display:none;margin-top:16px;">
+      <div id="aiColumnsBox" style="margin-bottom:14px;padding:10px 14px;background:var(--panel2);border-radius:8px;font-size:12.5px;">
+        <span style="color:var(--muted);">Detected columns: </span><span id="aiColumnsPreview" style="color:var(--text);"></span>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Anthropic API Key <span style="font-weight:400;color:var(--muted);">— saved in browser, enter once</span></label>
+          <input type="password" id="anthropicKeyInput" placeholder="sk-ant-api03-…" />
+        </div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <button id="convertWithAiBtn" style="background:#7c5cbf;">AI Convert</button>
+        <span id="aiStatus" style="font-size:13px;color:var(--muted);"></span>
+      </div>
+    </div>
+
+    <div id="aiOutputSection" style="display:none;margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+      <p class="hint" style="margin-bottom:10px;">Preview (first 10 rows of first sheet):</p>
+      <div id="aiOutputPreview" style="overflow-x:auto;margin-bottom:16px;border-radius:8px;"></div>
+      <button id="downloadConvertedBtn" style="background:#3ddc84;color:#0f1115;">⬇ Download converted file (.xlsx)</button>
+      <span style="font-size:12px;color:var(--muted);margin-left:12px;">Upload this in Step 1 to import</span>
+    </div>
+  </div>
+
+  <!-- STEP 1: Upload -->
+  <div class="step" id="step1">
+    <h2><span class="num">1</span> Upload your CPQ spreadsheet</h2>
+    <p class="hint">Upload a workbook in Zuper CPQ column format — one sheet per proposal template. Need a starting point? Download the sample template below, or use the AI Converter above to transform any spreadsheet automatically.</p>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+      <button class="secondary" id="downloadSampleBtn" style="font-size:12.5px;padding:7px 14px;">⬇ Download sample template</button>
+      <span style="font-size:12px;color:var(--muted);">Shows the required column format with example data</span>
+    </div>
+    <div class="dropzone" id="dropzone">
+      <div>📄 Click to choose a file, or drag it here</div>
+      <div style="font-size:11.5px;margin-top:6px;">.xlsx only</div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx" />
+    <div id="fileInfo" style="margin-top:12px;font-size:13px;color:var(--muted);"></div>
+  </div>
+
+  <!-- STEP 2: Tabs -->
+  <div class="step disabled" id="step2">
+    <h2><span class="num">2</span> Choose which tabs to import</h2>
+    <p class="hint">Each selected tab becomes one Zuper Proposal Template with one option containing all of that tab's line items. Deselect any tabs you don't want to import.</p>
+    <div class="toolbar">
+      <span style="font-size:12.5px;color:var(--muted);" id="tabCountLabel">0 tabs found</span>
+      <span class="links"><a id="selectAll">Select all</a><a id="selectNone">Select none</a></span>
+    </div>
+    <div class="tabs-list" id="tabsList"></div>
+    <div class="summary-bar" id="selSummary" style="margin-top:14px;"></div>
+  </div>
+
+  <!-- STEP 3: Connection -->
+  <div class="step disabled" id="step3">
+    <h2><span class="num">3</span> Connect to the customer's Zuper account</h2>
+    <p class="hint">Paste the API key from Zuper → Settings → Developer Hub → API Key. The account and region are detected automatically.</p>
+    <div class="row">
+      <div class="field">
+        <label>API Key</label>
+        <input type="password" id="apiKeyInput" placeholder="Paste x-api-key value here" />
+      </div>
+    </div>
+    <div class="footer-actions">
+      <button class="secondary" id="testConnBtn">Test connection</button>
+      <span id="connStatus"></span>
+    </div>
+
+    <!-- Config panel — revealed after successful connection -->
+    <div id="importConfig" style="display:none;margin-top:18px;padding-top:18px;border-top:1px solid var(--border);">
+      <p class="hint" style="margin-top:0;">Configure how products are created in this account.</p>
+
+      <!-- Category mode toggle -->
+      <div class="field" style="margin-bottom:16px;">
+        <label>Product category assignment</label>
+        <div style="display:flex;gap:24px;margin-top:8px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-weight:normal;line-height:1.45;">
+            <input type="radio" name="catMode" value="auto" id="catModeAuto" checked style="margin-top:3px;accent-color:var(--accent);" />
+            <span><strong>Auto</strong> — one category per sheet section<br><span style="font-size:12px;color:var(--muted);">e.g. "Shingles", "Labor", "Gutters &amp; Fascia" — creates missing categories automatically</span></span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-weight:normal;line-height:1.45;">
+            <input type="radio" name="catMode" value="manual" id="catModeManual" style="margin-top:3px;accent-color:var(--accent);" />
+            <span><strong>Manual</strong> — pick one category for all products<br><span style="font-size:12px;color:var(--muted);">Use an existing category or create a new one</span></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Manual category picker (hidden when auto is active) -->
+      <div id="manualCatSection" style="display:none;">
+        <div class="row">
+          <div class="field">
+            <label>Product category for all imported items</label>
+            <select id="categorySelect" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13.5px;"></select>
+          </div>
+        </div>
+        <div id="newCategoryRow" class="row" style="margin-top:10px;display:none;">
+          <div class="field">
+            <label>New category name</label>
+            <input type="text" id="newCategoryInput" placeholder="e.g. Roofing Materials" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Product status (always visible) -->
+      <div class="row" style="margin-top:4px;">
+        <div class="field" style="max-width:220px;">
+          <label>Product status</label>
+          <select id="statusSelect" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13.5px;">
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 4: Import -->
+  <div class="step disabled" id="step4">
+    <h2><span class="num">4</span> Build the CPQ in Zuper</h2>
+    <div class="warn-box">
+      Browsers block most cross-origin API calls unless the server explicitly allows it (CORS). If Zuper's API doesn't, the calls below will fail with a network/CORS error even with a valid key. If that happens, use <strong>"Download import plan"</strong> instead — it's the same payload structure consumed by the internal <code>build-cpq.js</code> script, which runs server-side and isn't subject to this restriction.
+    </div>
+    <div class="footer-actions">
+      <button id="runImportBtn">Run dry run</button>
+      <button id="confirmImportBtn" style="display:none;background:var(--good);color:#0a1a0a;">Confirm &amp; import to account</button>
+      <button class="secondary" id="downloadPlanBtn">Download import plan (JSON)</button>
+    </div>
+    <pre class="log" id="logBox">Waiting…</pre>
+  </div>
+
+</main>
+
+<script>
+const ZUPER_COLS = ["Product Name","Section","Product No","Product Type","UOM","Unit Price ($)","Quantity Type","Formula Name","Formula (Human-Readable)","Rounding","Rule Summary"];
+
+// Known Zuper API regions — tried in parallel during auto-detect
+const ZUPER_REGIONS = [
+  'https://us-east-1.zuperpro.com/api/',
+  'https://us-west-2.zuperpro.com/api/',
+  'https://eu-west-1.zuperpro.com/api/',
+  'https://ap-south-1.zuperpro.com/api/',
+  'https://ap-southeast-1.zuperpro.com/api/',
+  'https://ca-central-1.zuperpro.com/api/',
+  'https://me-south-1.zuperpro.com/api/',
+  'https://sa-east-1.zuperpro.com/api/',
+];
+
+let workbook = null;
+let parsedTabs = {};
+let selectedTabs = new Set();
+let connResult = null; // { base, company } set after successful test/auto-detect
+
+const el = (id) => document.getElementById(id);
+const logBox = el('logBox');
+
+function log(msg, kind){
+  const cls = kind === 'ok' ? 'log-ok' : kind === 'err' ? 'log-err' : 'log-info';
+  const line = document.createElement('div');
+  line.className = 'log-line ' + cls;
+  line.textContent = msg;
+  if (logBox.textContent === 'Waiting…') logBox.textContent = '';
+  logBox.appendChild(line);
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+// ---------- STEP 1: parse the uploaded workbook ----------
+function enableStep(id){ el(id).classList.remove('disabled'); }
+
+el('dropzone').addEventListener('click', () => el('fileInput').click());
+el('dropzone').addEventListener('dragover', e => { e.preventDefault(); el('dropzone').classList.add('drag'); });
+el('dropzone').addEventListener('dragleave', () => el('dropzone').classList.remove('drag'));
+el('dropzone').addEventListener('drop', e => {
+  e.preventDefault();
+  el('dropzone').classList.remove('drag');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+el('fileInput').addEventListener('change', e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+function handleFile(file){
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      workbook = XLSX.read(e.target.result, { type: 'array' });
+      el('fileInfo').textContent = `Loaded "${file.name}" — ${workbook.SheetNames.length} sheet(s)`;
+      parseWorkbook();
+      enableStep('step2');
+      enableStep('step3');
+    } catch (err) {
+      el('fileInfo').textContent = 'Could not read this file: ' + err.message;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseWorkbook(){
+  parsedTabs = {};
+  const sheetNames = workbook.SheetNames.filter(n => n.toLowerCase() !== 'index');
+  for (const name of sheetNames){
+    const ws = workbook.Sheets[name];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+    if (!rows.length) continue;
+    const header = rows[0].map(h => (h || '').toString().trim());
+    const colIdx = {};
+    header.forEach((h, i) => colIdx[h] = i);
+
+    const items = [];
+    const sectionsSeen = [];
+    for (let r = 1; r < rows.length; r++){
+      const row = rows[r];
+      if (!row || !row.length) continue;
+      const productName = row[colIdx['Product Name']];
+      const section = row[colIdx['Section']];
+      if (!productName) continue;
+      if (!section) continue; // ALL-CAPS group-label row; skip
+      if (!sectionsSeen.includes(section)) sectionsSeen.push(section);
+      items.push({
+        productName: String(productName),
+        section: String(section),
+        productNo: row[colIdx['Product No']] ?? null,
+        productType: (row[colIdx['Product Type']] || 'PARTS').toString().toUpperCase(),
+        uom: row[colIdx['UOM']] || 'EA',
+        unitPrice: typeof row[colIdx['Unit Price ($)']] === 'number' ? row[colIdx['Unit Price ($)']] : Number(row[colIdx['Unit Price ($)']]) || 0,
+        quantityType: (row[colIdx['Quantity Type']] || 'FIXED').toString().toUpperCase(),
+        formulaName: row[colIdx['Formula Name']] || null,
+        formulaHuman: row[colIdx['Formula (Human-Readable)']] || null,
+        rounding: row[colIdx['Rounding']] || null,
+        ruleSummary: row[colIdx['Rule Summary']] || null,
+      });
+    }
+    parsedTabs[name] = { items, sections: sectionsSeen };
+  }
+  renderTabsList();
+}
+
+function renderTabsList(){
+  const list = el('tabsList');
+  list.innerHTML = '';
+  const names = Object.keys(parsedTabs);
+  el('tabCountLabel').textContent = `${names.length} tabs found`;
+  names.forEach(name => {
+    const t = parsedTabs[name];
+    const parts = t.items.filter(i => i.productType === 'PARTS').length;
+    const services = t.items.filter(i => i.productType === 'SERVICE').length;
+    const row = document.createElement('div');
+    row.className = 'tab-row';
+    row.innerHTML = `
+      <input type="checkbox" data-tab="${name}" />
+      <div class="name">${name}</div>
+      <div class="meta">
+        <span class="badge">${t.items.length} items</span>
+        <span class="badge">${parts} parts</span>
+        <span class="badge">${services} services</span>
+        <span class="badge">${t.sections.length} sections</span>
+      </div>`;
+    list.appendChild(row);
+    row.querySelector('input').addEventListener('change', (e) => {
+      if (e.target.checked) selectedTabs.add(name); else selectedTabs.delete(name);
+      renderSelSummary();
+    });
+  });
+}
+
+el('selectAll').addEventListener('click', () => {
+  document.querySelectorAll('#tabsList input[type=checkbox]').forEach(cb => { cb.checked = true; selectedTabs.add(cb.dataset.tab); });
+  renderSelSummary();
+});
+el('selectNone').addEventListener('click', () => {
+  document.querySelectorAll('#tabsList input[type=checkbox]').forEach(cb => { cb.checked = false; });
+  selectedTabs.clear();
+  renderSelSummary();
+});
+
+function renderSelSummary(){
+  const box = el('selSummary');
+  if (!selectedTabs.size){ box.innerHTML = ''; document.getElementById('step4').classList.add('disabled'); return; }
+  let itemCount = 0;
+  selectedTabs.forEach(n => itemCount += parsedTabs[n].items.length);
+  box.innerHTML = `
+    <div class="stat"><div class="v">${selectedTabs.size}</div><div class="l">templates</div></div>
+    <div class="stat"><div class="v">${itemCount}</div><div class="l">total line items</div></div>`;
+  document.getElementById('step4').classList.remove('disabled');
+}
+
+// ---------- STEP 3: connection ----------
+
+// GET requests must NOT include Content-Type — some Zuper regions reject it.
+function headers(apiKey, includeContentType){
+  const h = { 'x-api-key': apiKey };
+  if (includeContentType) h['Content-Type'] = 'application/json';
+  return h;
+}
+
+async function apiReq(base, apiKey, path, opts = {}){
+  const method = (opts.method || 'GET').toUpperCase();
+  const r = await fetch(base + path, {
+    ...opts,
+    headers: headers(apiKey, method !== 'GET'),
+  });
+  let j = null;
+  try { j = await r.json(); } catch(e){}
+  return { ok: r.ok, status: r.status, json: j };
+}
+
+// Try all known regions in parallel and return the first that authenticates successfully.
+async function autoDetectBase(apiKey){
+  const checks = ZUPER_REGIONS.map(async (base) => {
+    try {
+      const r = await fetch(base + 'user/company', { headers: { 'x-api-key': apiKey } });
+      if (!r.ok) return null;
+      const j = await r.json().catch(() => null);
+      const company = j?.data?.company_name ?? j?.company_name;
+      if (company) return { base, company };
+    } catch(e){}
+    return null;
+  });
+  const results = await Promise.all(checks);
+  return results.find(r => r !== null) ?? null;
+}
+
+// Normalise a section/category name for Zuper (rejects "/" in category names)
+function normalizeCatName(raw){
+  return String(raw || '').replace(/\s*\/\s*/g, ' & ').replace(/\s+/g, ' ').trim();
+}
+
+// Fetch all product categories; returns Map<lowercaseName, uid>
+async function fetchAccountCategories(base, apiKey){
+  const map = new Map();
+  let page = 1;
+  while (true){
+    const r = await apiReq(base, apiKey, `products/category?count=100&page=${page}`);
+    const rows = Array.isArray(r.json?.data) ? r.json.data : [];
+    for (const c of rows){
+      const uid  = c.category_uid ?? c.product_category_uid;
+      const name = c.category_name ?? c.product_category_name;
+      if (uid && name) map.set(String(name).toLowerCase(), uid);
+    }
+    if (rows.length < 100) break;
+    page++;
+  }
+  return map;
+}
+
+// Create or reuse a category by name; mutates existingMap so duplicates aren't re-created
+async function ensureCategory(base, apiKey, rawName, existingMap){
+  const normalized = normalizeCatName(rawName);
+  const key = normalized.toLowerCase();
+  if (existingMap.has(key)) return existingMap.get(key);
+  // Flat body, field name "product_category_name" — confirmed against a live account.
+  // A wrapped {product_category:{category_name:...}} body is rejected by this endpoint,
+  // which silently breaks every product whose section maps to this category.
+  const cr = await apiReq(base, apiKey, 'products/category', {
+    method: 'POST',
+    body: JSON.stringify({ product_category_name: normalized }),
+  });
+  const uid = cr.json?.data?.product_category_uid ?? cr.json?.data?.category_uid ?? cr.json?.product_category_uid;
+  if (!uid) throw new Error(`Category "${normalized}" create failed (HTTP ${cr.status}): ${JSON.stringify(cr.json).slice(0,150)}`);
+  existingMap.set(key, uid);
+  return uid;
+}
+
+// Populate the manual category dropdown; also reveals the importConfig panel
+async function loadCategories(base, apiKey){
+  const r = await apiReq(base, apiKey, 'products/category?count=200&page=1');
+  const cats = Array.isArray(r.json?.data) ? r.json.data : [];
+  const select = el('categorySelect');
+  select.innerHTML = '<option value="__new__">+ Create new category…</option>';
+  for (const cat of cats){
+    const uid  = cat.category_uid ?? cat.product_category_uid;
+    const name = cat.category_name ?? cat.product_category_name;
+    if (!uid || !name) continue;
+    const opt = document.createElement('option');
+    opt.value = uid;
+    opt.textContent = name;
+    select.appendChild(opt);
+  }
+  select.addEventListener('change', () => {
+    el('newCategoryRow').style.display = select.value === '__new__' ? '' : 'none';
+  });
+  el('importConfig').style.display = '';
+}
+
+// Radio toggle: show/hide manual category section
+document.querySelectorAll('input[name="catMode"]').forEach(r => {
+  r.addEventListener('change', () => {
+    el('manualCatSection').style.display = r.value === 'manual' ? '' : 'none';
+  });
+});
+
+el('testConnBtn').addEventListener('click', async () => {
+  const statusEl = el('connStatus');
+  statusEl.innerHTML = '<span class="status-pill">detecting account…</span>';
+  el('importConfig').style.display = 'none';
+  const apiKey = el('apiKeyInput').value.trim();
+  if (!apiKey){
+    statusEl.innerHTML = '<span class="status-pill err">✗ API key is required.</span>';
+    return;
+  }
+  try {
+    const result = await autoDetectBase(apiKey);
+    if (result){
+      connResult = result;
+      statusEl.innerHTML = `<span class="status-pill ok">✓ Connected — ${result.company} (${result.base})</span>`;
+      await loadCategories(result.base, apiKey);
+    } else {
+      connResult = null;
+      statusEl.innerHTML = `<span class="status-pill err">✗ Could not authenticate with any region (check key or CORS — see step 4)</span>`;
+    }
+  } catch (err){
+    statusEl.innerHTML = `<span class="status-pill err">✗ ${err.message}</span>`;
+  }
+});
+
+// ---------- STEP 4: build plan + run ----------
+function buildPlan(){
+  const plans = [];
+  selectedTabs.forEach(tabName => {
+    const t = parsedTabs[tabName];
+    // Each tab = one template with one option containing all its items.
+    // This preserves the sheet structure exactly — Good/Better/Best sheets
+    // stay as separate proposals, each with a single option.
+    plans.push({
+      templateName: tabName,
+      options: [{ name: tabName, items: t.items }],
+    });
+  });
+  return plans;
+}
+
+el('downloadPlanBtn').addEventListener('click', () => {
+  const plan = buildPlan();
+  const blob = new Blob([JSON.stringify(plan, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'zuper_cpq_import_plan.json';
+  a.click();
+});
+
+async function runImport(dryRun){
+  const apiKey = el('apiKeyInput').value.trim();
+  if (!apiKey){ log('API key is required.', 'err'); return; }
+
+  // Resolve connection
+  let base, company;
+  if (connResult){
+    base = connResult.base; company = connResult.company;
+  } else {
+    log('Auto-detecting account…', 'info');
+    const result = await autoDetectBase(apiKey);
+    if (!result){ log('✗ Could not authenticate. Check API key.', 'err'); return; }
+    connResult = result; base = result.base; company = result.company;
+  }
+  log(`Account: ${company}  |  ${base}`, 'info');
+  log(dryRun ? '─── VALIDATION RUN (reads only, no writes) ───' : '─── LIVE IMPORT ───', 'info');
+
+  // ── Category mode ──
+  const catMode = document.querySelector('input[name="catMode"]:checked')?.value || 'auto';
+  const catSelect = el('categorySelect');
+  const catVal = catSelect?.value || '__new__';
+  const newCatName = (el('newCategoryInput')?.value || '').trim() || 'Imported Products';
+  if (catMode === 'auto')
+    log('Category mode: Auto — one category per sheet section', 'info');
+  else if (catVal === '__new__')
+    log(`Category mode: Manual → will create new "${newCatName}"`, 'info');
+  else
+    log(`Category mode: Manual → "${catSelect.options[catSelect.selectedIndex]?.text || catVal}"`, 'info');
+
+  // ── STEP 1: Load existing products (real GET every run) ──
+  log('Loading existing products…', 'info');
+  const existingProductsMap = new Map(); // "name|TYPE" -> product_uid
+  try {
+    let page = 1, count = 500, fetched = 0;
+    do {
+      const r = await apiReq(base, apiKey, `product?page=${page}&count=${count}`);
+      if (!r.ok){ log(`  ⚠ GET products HTTP ${r.status} — duplicate check skipped`, 'info'); break; }
+      const list = Array.isArray(r.json?.data) ? r.json.data : [];
+      for (const p of list){
+        const k = (p.product_name||'').toLowerCase()+'|'+(p.product_type||'PARTS').toUpperCase();
+        existingProductsMap.set(k, p.product_uid);
+      }
+      fetched = list.length; page++;
+    } while (fetched === count);
+    log(`  ${existingProductsMap.size} products already in account`, 'info');
+  } catch(e){ log(`  ⚠ product load error: ${e.message}`, 'info'); }
+
+  // ── STEP 2: Load CPQ formulas (real GET every run) ──
+  log('Loading CPQ formulas…', 'info');
+  const formulaByName = new Map(); // lowercase name -> formula_uid
+  try {
+    let page = 1, count = 100, fetched = 0;
+    do {
+      const fr = await apiReq(base, apiKey, `invoice_estimate/cpq/formulas?page=${page}&count=${count}`);
+      const list = Array.isArray(fr.json?.data) ? fr.json.data : [];
+      for (const f of list) formulaByName.set((f.formula_name||'').toLowerCase().trim(), f.formula_uid);
+      fetched = list.length; page++;
+    } while (fetched === count);
+    log(`  ${formulaByName.size} CPQ formula(s) found`, 'info');
+  } catch(e){ log(`  ⚠ formula load error: ${e.message}`, 'info'); }
+
+  // ── STEP 3: Analyse import plan ──
+  const plan = buildPlan();
+  let willCreate = 0, willReuse = 0;
+  const unmatchedFormulas = []; // formula names in Excel that don't exist in account
+  const rulesNeeded = [];       // items with Rule Summary — cannot be created via API
+  const uniqueSections = new Set(); // for auto-category mode
+
+  const seenRule = new Set();
+  for (const tpl of plan){
+    for (const planOpt of tpl.options){
+      for (const item of planOpt.items){
+        const k = item.productName.toLowerCase()+'|'+item.productType;
+        existingProductsMap.has(k) ? willReuse++ : willCreate++;
+        if (item.section) uniqueSections.add(normalizeCatName(item.section));
+        if (item.formulaName){
+          const fKey = item.formulaName.toLowerCase().trim();
+          if (!formulaByName.has(fKey)) unmatchedFormulas.push({ name: item.formulaName, product: item.productName });
+        }
+        if (item.ruleSummary){
+          const rKey = item.productName+'|'+item.ruleSummary;
+          if (!seenRule.has(rKey)){
+            seenRule.add(rKey);
+            rulesNeeded.push({ product: item.productName, rule: item.ruleSummary, template: tpl.templateName, option: planOpt.name });
+          }
+        }
+      }
+    }
+  }
+
+  log(`\nPlan: ${willCreate} product(s) to create, ${willReuse} to reuse across all tiers`, 'ok');
+
+  // Load account categories once — shared by validation report and live run
+  const accountCategoryMap = await fetchAccountCategories(base, apiKey);
+
+  // Report auto-category plan
+  if (catMode === 'auto' && uniqueSections.size){
+    const toCreate = [...uniqueSections].filter(s => !accountCategoryMap.has(s.toLowerCase()));
+    const toReuse  = [...uniqueSections].filter(s =>  accountCategoryMap.has(s.toLowerCase()));
+    if (toReuse.length)  log(`  Categories already in account (${toReuse.length}): ${toReuse.join(', ')}`, 'ok');
+    if (toCreate.length) log(`  Categories to create (${toCreate.length}): ${toCreate.join(', ')}`, 'info');
+  }
+
+  if (unmatchedFormulas.length){
+    log(`⚠ ${unmatchedFormulas.length} formula name(s) from Excel NOT found in this account:`, 'info');
+    const seen = new Set();
+    for (const u of unmatchedFormulas){
+      if (!seen.has(u.name)){ seen.add(u.name); log(`   Formula: "${u.name}" — used by "${u.product}"`, 'info'); }
+    }
+    log('  → These items will import with quantity_type=FIXED. Map formulas manually in Zuper after import.', 'info');
+  }
+
+  if (rulesNeeded.length){
+    log(`⚠ ${rulesNeeded.length} item(s) have conditional rules. The Zuper public API has no endpoint to create CPQ rules — set these up manually in Zuper after import:`, 'info');
+    log('  Navigate: Settings → Modules → Quotes & Invoice → Zuper IQ → Proposal Templates → [template] → Edit → Conditional Rules', 'info');
+    for (const r of rulesNeeded)
+      log(`   ${r.template} › "${r.product}": ${r.rule}`, 'info');
+  }
+
+  if (dryRun){
+    log('\nValidation complete. If no ✗ errors above, the live import should succeed.', 'ok');
+    return;
+  }
+
+  // ─────────────────────────────────────────────
+  // LIVE IMPORT — writes start here
+  // ─────────────────────────────────────────────
+  log('\n─── Writing to account ───', 'info');
+
+  // ── Resolve categories for live run ──
+  // accountCategoryMap already loaded above during validation
+  let resolvedCategoryUid = null;   // used in manual mode
+  const sectionCatMap = new Map();  // used in auto mode: normalized section → uid
+
+  if (catMode === 'auto'){
+    log(`Setting up ${uniqueSections.size} section category/categories…`, 'info');
+    for (const section of uniqueSections){
+      try {
+        const uid = await ensureCategory(base, apiKey, section, accountCategoryMap);
+        sectionCatMap.set(section.toLowerCase(), uid);
+        log(`  ✓ "${section}" → ${uid}`, 'ok');
+      } catch(e){
+        log(`  ✗ ${e.message}`, 'err');
+      }
+    }
+  } else {
+    // Manual mode
+    resolvedCategoryUid = catVal !== '__new__' ? catVal : null;
+    if (catVal === '__new__'){
+      log(`Creating category "${newCatName}"…`, 'info');
+      try {
+        resolvedCategoryUid = await ensureCategory(base, apiKey, newCatName, accountCategoryMap);
+        log(`✓ Category "${newCatName}" → ${resolvedCategoryUid}`, 'ok');
+        await loadCategories(base, apiKey);
+        const sel = el('categorySelect');
+        if (sel) sel.value = resolvedCategoryUid;
+      } catch(e){
+        log(`✗ ${e.message}`, 'err');
+        return;
+      }
+    }
+  }
+
+  const productUidCache = new Map();
+
+  async function upsertProduct(item){
+    const cacheKey = item.productName.toLowerCase()+'|'+item.productType;
+    if (productUidCache.has(cacheKey)) return productUidCache.get(cacheKey);
+
+    // Reuse if already in account
+    const existingUid = existingProductsMap.get(cacheKey);
+    if (existingUid){
+      log(`  → reuse "${item.productName}" (${existingUid})`, 'ok');
+      productUidCache.set(cacheKey, existingUid);
+      return existingUid;
+    }
+
+    // Determine category UID for this item
+    let categoryUid;
+    if (catMode === 'auto'){
+      const secKey = normalizeCatName(item.section).toLowerCase();
+      categoryUid = sectionCatMap.get(secKey) ?? null;
+    } else {
+      categoryUid = resolvedCategoryUid;
+    }
+    if (!categoryUid){
+      // Don't POST with a null category — that just surfaces as a generic "Product
+      // category is mandatory" error. Point back at the real cause: the category for
+      // this item's section (or the manual category) failed to resolve/create above.
+      log(`  ✗ "${item.productName}" — no category resolved for section "${item.section}" (see the category creation errors above)`, 'err');
+      return null;
+    }
+
+    // product_category here is the plain UID string (not an object) — matches the
+    // create/update payload shape confirmed live elsewhere for this same product endpoint.
+    const prod = {
+      product_name:     item.productName,
+      product_type:     item.productType,
+      price:            item.unitPrice,
+      uom:              item.uom,
+      product_category: categoryUid,
+      is_available:     true,
+      is_billable:      true,
+      quantity:         1,
+      min_quantity:     1,
+    };
+    if (item.productNo) prod.product_id = String(item.productNo);
+    const body = { product: prod, vendor: [] };
+
+    const r = await apiReq(base, apiKey, 'product', { method: 'POST', body: JSON.stringify(body) });
+    const data = Array.isArray(r.json?.data) ? r.json.data[0] : r.json?.data;
+    const uid = data?.product_uid;
+    if (!r.ok || !uid){
+      log(`  ✗ "${item.productName}" (HTTP ${r.status}): ${JSON.stringify(r.json).slice(0,200)}`, 'err');
+      return null;
+    }
+    log(`  ✓ created "${item.productName}" [${normalizeCatName(item.section)}] → ${uid}`, 'ok');
+    productUidCache.set(cacheKey, uid);
+    existingProductsMap.set(cacheKey, uid);
+    return uid;
+  }
+
+  const liPath = (tUid, oUid) =>
+    `invoice_estimate/proposal_template/${tUid}/options/${oUid}/line_items?items_type=LINE_ITEMS`;
+
+  for (const tpl of plan){
+    log(`\n─ Template: "${tpl.templateName}"`, 'info');
+
+    const tr = await apiReq(base, apiKey, 'invoice_estimate/proposal_template', {
+      method: 'POST',
+      body: JSON.stringify({ proposal_template: {
+        template_name: tpl.templateName,
+        template_description: '',
+        template_type: 'CPQ',
+      }}),
+    });
+    const templateUid = tr.json?.data?.template_uid;
+    if (!tr.ok || !templateUid){
+      log(`  ✗ template failed (HTTP ${tr.status}): ${JSON.stringify(tr.json).slice(0,200)}`, 'err');
+      continue;
+    }
+    log(`  ✓ template → ${templateUid}`, 'ok');
+
+    const optionPayloads = tpl.options.map((o, i) => ({
+      option_name:     o.name,
+      option_description: '',
+      is_recommended: tpl.options.length === 1 ? true : i === 1,
+    }));
+    const or_ = await apiReq(base, apiKey, `invoice_estimate/proposal_template/${templateUid}/options?items_type=LINE_ITEMS`, {
+      method: 'POST',
+      body: JSON.stringify({ proposal_options: optionPayloads }),
+    });
+    const options = Array.isArray(or_.json?.data) ? or_.json.data : [];
+    if (!options.length){ log(`  ✗ options failed (HTTP ${or_.status}): ${JSON.stringify(or_.json).slice(0,200)}`, 'err'); continue; }
+    log(`  ✓ ${tpl.options.map(o => `"${o.name}"`).join(', ')} option(s) created`, 'ok');
+
+    // Activate template (publish out of draft) — required step per cpq-skill
+    await apiReq(base, apiKey, `invoice_estimate/proposal_template/${templateUid}`, {
+      method: 'PUT',
+      body: JSON.stringify({ proposal_template: {
+        template_name: tpl.templateName,
+        template_description: '',
+        template_type: 'CPQ',
+        template_uid: templateUid,
+        is_draft: false,
+      }}),
+    });
+    log(`  ✓ template activated (is_draft=false)`, 'ok');
+
+    for (const planOpt of tpl.options){
+      const tierItems = planOpt.items;
+      if (!tierItems.length) continue;
+      const opt = options.find(o => o.option_name === planOpt.name);
+      if (!opt){ log(`  ⚠ option "${planOpt.name}" not found in response`, 'info'); continue; }
+      const optionUid = opt.option_uid;
+      log(` Option: "${planOpt.name}" (${tierItems.length} items)`, 'info');
+
+      const sectionUidMap = {};
+      for (const item of tierItems){
+
+        // Section header — create once per option per section name
+        if (!sectionUidMap[item.section]){
+          const sr = await apiReq(base, apiKey, liPath(templateUid, optionUid), {
+            method: 'POST',
+            body: JSON.stringify({ line_item: {
+              type: 'HEADER', line_item_type: 'HEADER',
+              product_name:      item.section,
+              section_type:      'EXPANDED',
+              show_section_total: false,
+              show_child_prices:  true,
+            }}),
+          });
+          const hd = sr.json?.data;
+          const sec = Array.isArray(hd) ? hd[0] : hd;
+          sectionUidMap[item.section] = sec?.section_uid ?? sec?.line_item_uid ?? sec?.uid ?? null;
+          if (!sr.ok) log(`   ⚠ section "${item.section}" HTTP ${sr.status}`, 'info');
+        }
+
+        // Product upsert
+        const productUid = await upsertProduct(item);
+        if (!productUid) continue;
+
+        // Formula — match by name; only attach if account has it
+        const formulaUid = item.formulaName
+          ? (formulaByName.get(item.formulaName.toLowerCase().trim()) ?? null)
+          : null;
+        const quantityType = (formulaUid && item.quantityType === 'FORMULA') ? 'FORMULA' : 'FIXED';
+
+        const lineBody = {
+          line_item: {
+            type: 'ITEM', line_item_type: 'ITEM',
+            product_name:  item.productName,
+            product:       productUid,
+            product_type:  item.productType,
+            quantity:      1,
+            quantity_type: quantityType,
+            ...(formulaUid                  ? { formula: formulaUid }                                              : {}),
+            ...(sectionUidMap[item.section] ? { section_uid: sectionUidMap[item.section], section_name: item.section } : {}),
+          },
+        };
+        let lr = await apiReq(base, apiKey, liPath(templateUid, optionUid), {
+          method: 'POST', body: JSON.stringify(lineBody),
+        });
+        // If formula was rejected, retry as FIXED (mirrors cpq-skill addLineItem)
+        if (!lr.ok && formulaUid){
+          log(`   ⚠ formula rejected for "${item.productName}" — retrying as FIXED`, 'info');
+          const fallback = { line_item: { ...lineBody.line_item, quantity_type: 'FIXED', formula: undefined } };
+          delete fallback.line_item.formula;
+          lr = await apiReq(base, apiKey, liPath(templateUid, optionUid), {
+            method: 'POST', body: JSON.stringify(fallback),
+          });
+        }
+        if (!lr.ok){
+          log(`   ✗ "${item.productName}" (HTTP ${lr.status}): ${JSON.stringify(lr.json).slice(0,200)}`, 'err');
+        } else {
+          const tags = [formulaUid ? `formula:${item.formulaName}` : '', item.ruleSummary ? '⚠ rule→manual' : ''].filter(Boolean).join(' ');
+          log(`   ✓ "${item.productName}"${tags ? '  ['+tags+']' : ''}`, 'ok');
+        }
+      }
+    }
+  }
+
+  if (rulesNeeded.length){
+    log('\n─── Post-import manual steps (Conditional Rules) ───', 'info');
+    log('The Zuper public API does not expose a CPQ rule creation endpoint.', 'info');
+    log('Go to: Settings → Modules → Quotes & Invoice → Zuper IQ → Proposal Templates → [template] → Edit → add Conditional Rules', 'info');
+    for (const r of rulesNeeded)
+      log(`  ${r.template} › "${r.product}":  ${r.rule}`, 'info');
+  }
+  log('\n─── Import complete ───', 'ok');
+}
+
+el('runImportBtn').addEventListener('click', async () => {
+  logBox.textContent = '';
+  el('confirmImportBtn').style.display = 'none';
+  el('runImportBtn').disabled = true;
+
+  await runImport(true);
+
+  const errorCount = logBox.querySelectorAll('.log-err').length;
+  if (errorCount === 0){
+    log('\nDry run passed with no errors — click "Confirm & import to account" to write to the live account.', 'ok');
+    el('confirmImportBtn').style.display = '';
+  } else {
+    log(`\nDry run found ${errorCount} error(s) — review above before importing.`, 'err');
+  }
+  el('runImportBtn').disabled = false;
+});
+
+el('confirmImportBtn').addEventListener('click', async () => {
+  logBox.textContent = '';
+  el('confirmImportBtn').style.display = 'none';
+  el('runImportBtn').disabled = true;
+
+  await runImport(false);
+
+  el('runImportBtn').disabled = false;
+});
+
+// ── Sample template download ──────────────────────────────────
+const SAMPLE_XLSX_B64 = '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';
+
+el('downloadSampleBtn').addEventListener('click', () => {
+  const bytes = Uint8Array.from(atob(SAMPLE_XLSX_B64), c => c.charCodeAt(0));
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Zuper_CPQ_sample_template.xlsx';
+  a.click();
+});
+
+// ── AI Converter ─────────────────────────────────────────────
+let aiRawData = null;
+let aiConvertedData = null;
+
+const aiDropzone  = el('aiDropzone');
+const aiFileInput = el('aiFileInput');
+
+aiDropzone.addEventListener('click',     () => aiFileInput.click());
+aiDropzone.addEventListener('dragover',  e  => { e.preventDefault(); aiDropzone.classList.add('drag'); });
+aiDropzone.addEventListener('dragleave', () => aiDropzone.classList.remove('drag'));
+aiDropzone.addEventListener('drop',      e  => { e.preventDefault(); aiDropzone.classList.remove('drag'); if (e.dataTransfer.files[0]) handleAiFile(e.dataTransfer.files[0]); });
+aiFileInput.addEventListener('change',   e  => { if (e.target.files[0]) handleAiFile(e.target.files[0]); });
+
+function handleAiFile(file) {
+  el('aiFileInfo').textContent = `Loaded: ${file.name}`;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(e.target.result, { type: 'array' });
+    aiRawData = {
+      sheets: wb.SheetNames.map(name => ({
+        name,
+        rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' }),
+      })),
+    };
+    const allCols = new Set();
+    for (const sheet of aiRawData.sheets)
+      if (sheet.rows[0]) Object.keys(sheet.rows[0]).forEach(k => allCols.add(k));
+    el('aiColumnsPreview').textContent = [...allCols].join(' · ') || '(no columns detected)';
+    el('aiConfigRow').style.display = '';
+    el('aiOutputSection').style.display = 'none';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Pre-fill API key from localStorage
+(function() {
+  const saved = localStorage.getItem('anthropic_api_key');
+  if (saved) el('anthropicKeyInput').value = saved;
+})();
+
+el('convertWithAiBtn').addEventListener('click', async () => {
+  const apiKey = el('anthropicKeyInput').value.trim();
+  if (!apiKey)   { el('aiStatus').textContent = 'Enter your Anthropic API key'; return; }
+  if (!aiRawData){ el('aiStatus').textContent = 'Upload a file first'; return; }
+  localStorage.setItem('anthropic_api_key', apiKey);
+
+  el('aiStatus').textContent = 'Converting with AI…';
+  el('convertWithAiBtn').disabled = true;
+
+  try {
+    const sheetsPayload = aiRawData.sheets.map(s => ({
+      name: s.name,
+      columns: s.rows[0] ? Object.keys(s.rows[0]) : [],
+      sample_rows: s.rows.slice(0, 30),
+    }));
+
+    const prompt = `You are converting a CPQ (Configure Price Quote) spreadsheet to Zuper CPQ format.
+
+TARGET COLUMNS (output must use exactly these keys):
+- Product Name   — product/service name (required)
+- Section        — category group like "Shingles", "Labor", "Underlayment" (required)
+- Product No     — SKU or product code (leave blank if none)
+- Product Type   — exactly "PARTS" for materials, "SERVICE" for labor/installation
+- UOM            — unit code: EA, SQ, LF, SQFT, GAL, BDL, RL, PC (pick best match)
+- Unit Price ($) — numeric price, no currency symbol
+- Quantity Type  — "FIXED" normally; "FORMULA" if quantity is formula-driven
+- Formula Name   — formula name if FORMULA type (otherwise blank)
+- Formula (Human-Readable) — formula expression if FORMULA type (otherwise blank)
+- Rounding       — NONE, ROUND, CEIL, or FLOOR (default NONE)
+- Rule Summary   — any conditional rule description (blank if none)
+
+SOURCE DATA:
+${JSON.stringify(sheetsPayload, null, 1)}
+
+RULES:
+1. Map every source product row to the target format — do not drop any products
+2. If source rows include section/category headers (rows where most price/qty fields are empty), use the header text as the Section value for subsequent rows
+3. Infer Product Type from context: materials/products → PARTS, labour/installation/service → SERVICE
+4. Normalise UOM to standard codes (e.g. "Square" → SQ, "Each" → EA, "Linear Foot" → LF)
+5. Preserve the original sheet structure (one output sheet per input sheet)
+6. Return ONLY valid JSON — no explanation, no markdown fences — in this exact shape:
+{"sheets":[{"name":"sheet name","rows":[{"Product Name":"","Section":"","Product No":"","Product Type":"PARTS","UOM":"EA","Unit Price ($)":0,"Quantity Type":"FIXED","Formula Name":"","Formula (Human-Readable)":"","Rounding":"NONE","Rule Summary":""}]}]}`;
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 8192,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(`Anthropic API ${resp.status}: ${err.error?.message || JSON.stringify(err).slice(0,200)}`);
+    }
+
+    const apiData  = await resp.json();
+    const rawText  = apiData.content?.[0]?.text || '';
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('Could not find JSON in AI response');
+    aiConvertedData = JSON.parse(jsonMatch[0]);
+
+    // Preview table
+    const first = aiConvertedData.sheets?.[0];
+    if (first?.rows?.length) {
+      const cols = Object.keys(first.rows[0]);
+      const cap  = first.rows.slice(0, 10);
+      let html = '<table style="border-collapse:collapse;font-size:11.5px;white-space:nowrap;">';
+      html += '<tr>' + cols.map(c => `<th style="border:1px solid var(--border);padding:4px 8px;background:var(--panel2);color:var(--muted);">${c}</th>`).join('') + '</tr>';
+      for (const row of cap)
+        html += '<tr>' + cols.map(c => `<td style="border:1px solid var(--border);padding:3px 8px;">${row[c] ?? ''}</td>`).join('') + '</tr>';
+      html += '</table>';
+      if (first.rows.length > 10)
+        html += `<p style="font-size:11px;color:var(--muted);margin-top:6px;">Showing 10 of ${first.rows.length} rows across this sheet</p>`;
+      el('aiOutputPreview').innerHTML = html;
+    }
+
+    const total = aiConvertedData.sheets?.reduce((n, s) => n + (s.rows?.length || 0), 0) || 0;
+    el('aiStatus').textContent = `Converted ${total} row(s) across ${aiConvertedData.sheets?.length || 0} sheet(s)`;
+    el('aiOutputSection').style.display = '';
+  } catch(e) {
+    el('aiStatus').textContent = `Error: ${e.message}`;
+  } finally {
+    el('convertWithAiBtn').disabled = false;
+  }
+});
+
+el('downloadConvertedBtn').addEventListener('click', () => {
+  if (!aiConvertedData?.sheets) return;
+  const wb = XLSX.utils.book_new();
+  for (const sheet of aiConvertedData.sheets) {
+    if (!sheet.rows?.length) continue;
+    const ws = XLSX.utils.json_to_sheet(sheet.rows);
+    XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
+  }
+  XLSX.writeFile(wb, 'Zuper_CPQ_converted.xlsx');
+});
+</script>
+  <script src="../assets/back-link.js"></script>
+</body>
+</html>
