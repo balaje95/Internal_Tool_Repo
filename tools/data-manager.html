@@ -1172,11 +1172,12 @@ input[type=checkbox]{accent-color:var(--primary)}
     <div id="wfi-dropzone" onclick="$('wfi-file').click()" ondragover="event.preventDefault()" ondrop="event.preventDefault();onWfImportFile({files:event.dataTransfer.files})" style="border:2px dashed var(--border-inp);border-radius:14px;padding:32px;background:var(--inp-bg);transition:border-color .15s,background .15s;text-align:center;cursor:pointer;margin-bottom:14px">
       <div style="font-size:2rem;margin-bottom:8px">📂</div>
       <p style="font-size:.85rem;color:var(--text-sub)"><strong style="color:var(--text)">Click to upload</strong> or drag &amp; drop</p>
-      <p style="font-size:.76rem;color:var(--text-sub);margin-top:4px">Workflow JSON exported from Zuper's Workflow Builder (array of workflow objects)</p>
+      <p style="font-size:.76rem;color:var(--text-sub);margin-top:4px">Zuper Workflow Builder export, or a raw JobNimbus automations export (auto-converted)</p>
       <input type="file" id="wfi-file" accept=".json" style="display:none" onchange="onWfImportFile(this)">
     </div>
     <div class="msg msg-info" style="margin-bottom:12px;font-size:.8rem">
-      Imports straight into the <strong>currently connected account's</strong> Workflow Builder via <code>workflows/import</code>. Each workflow in the file is created as a <strong>brand-new</strong> workflow (fresh UID) — it never overwrites an existing one.
+      Imports straight into the <strong>currently connected account's</strong> Workflow Builder via <code>workflows/import</code>. Each workflow in the file is created as a <strong>brand-new</strong> workflow (fresh UID) — it never overwrites an existing one.<br>
+      <strong>JobNimbus files</strong> are detected automatically and converted to Zuper's format on the fly — review the warnings shown in the preview step before importing, since some fields (user/status/category UIDs) can't be auto-mapped and need manual follow-up.
     </div>
     <div class="btn-row">
       <button class="btn btn-g" onclick="hideWfImportCard()">← Back</button>
@@ -1185,9 +1186,16 @@ input[type=checkbox]{accent-color:var(--primary)}
   </div>
   <!-- Step 2: Preview -->
   <div id="wfistep2" style="display:none">
-    <div id="wfi-preview" style="margin-bottom:14px;padding:14px;background:var(--th-bg);border-radius:10px;border:1px solid var(--border);font-size:.82rem"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+      <div class="btn-row" style="margin:0">
+        <button class="btn btn-o" style="font-size:.76rem;padding:5px 12px" onclick="wfiSetAll(true)">Select All</button>
+        <button class="btn btn-o" style="font-size:.76rem;padding:5px 12px" onclick="wfiSetAll(false)">Select None</button>
+      </div>
+      <div id="wfi-sel-count" style="font-size:.8rem;color:var(--text-sub);font-weight:600"></div>
+    </div>
+    <div id="wfi-preview" style="margin-bottom:14px;padding:14px;background:var(--th-bg);border-radius:10px;border:1px solid var(--border);font-size:.82rem;max-height:420px;overflow-y:auto"></div>
     <div class="btn-row">
-      <button class="btn btn-p" id="wfi-run-btn" onclick="startWfImport()">Import to Account →</button>
+      <button class="btn btn-p" id="wfi-run-btn" onclick="startWfImport()">Import Selected →</button>
       <button class="btn btn-o" onclick="wfiGoTo(1);$('wfi-file').value=''">← Back</button>
     </div>
     <div id="wfi-msg2" class="msg" style="display:none;margin-top:10px"></div>
@@ -6079,8 +6087,626 @@ function switchWfSub(key){
   onModuleChange();
 }
 
+
+// ── JN → Zuper converter (ported from tools/jn-workflow-migration.html) ─────
+// ═══════════════════════════════════════════════════════════
+//  CONSTANTS — exact values from Zuper Workflow Builder
+// ═══════════════════════════════════════════════════════════
+
+const ZUPER_ICON  = "https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/283a4296-e481-48b5-be1d-8c20de718d2d.svg";
+const IFELSE_ICON = "https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/b5fc5141-079b-4d5e-b58e-c309f53d7663.svg";
+const CODE_ICON   = "https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/7f22be08-936d-4e6b-a054-0c4a9a438913.svg";
+const NOOP_ICON   = "https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/d00b5202-9b28-49f6-96da-24ccc836dd86.svg";
+
+// Zuper master node UIDs (from real sample)
+const M = {
+  trigger_job:       "721280c2-cf74-47fd-95f2-cdc4ad922c56",
+  if_else:           "19dd8b19-5974-4a2c-9735-a9ca36ac5a4d",
+  zuper_get_record:  "7bd69fec-b465-4eb8-a94b-3158c252921c",
+  zuper_update:      "7bd69fec-b465-4eb8-a94b-3158c252921c",
+  zuper_create:      "7bd69fec-b465-4eb8-a94b-3158c252921c",
+  no_op:             "10092d00-c480-4096-8c1b-b1d040a2c3e1",
+  code:              "d15fd095-70f3-4d53-9103-5786dfd52b37",
+  send_notification: "7bd69fec-b465-4eb8-a94b-3158c252921c",
+};
+
+const NODE_COLOR = { main:"#4682B4", background:"#DFEFF9", borderColor:"#E3E5E6", iconBackground:"#C9DCE7" };
+const CODE_COLOR = { main:"#2E8B57", background:"#E0F4EC", borderColor:"#8ceac1", iconBackground:"#BEEAD6" };
+
+// JN comparison → Zuper
+const COMP = { "==":"EQUAL_TO", "!=":"NOT_EQUAL_TO", ">":"GREATER_THAN", "<":"LESS_THAN", ">=":"GREATER_THAN_OR_EQUAL_TO", "<=":"LESS_THAN_OR_EQUAL_TO" };
+
+// JN condition field → Zuper trigger body field path + behaviour
+const JN_TO_ZUPER_FIELD = {
+  status:      { zField:'job_status',       needsUid:true,  label:'job status',     isArray:false },
+  type:        { zField:'job_category',     needsUid:true,  label:'job category',   isArray:false },
+  assigned_to: { zField:'assigned_users',   needsUid:false, label:'assigned users', isArray:true  },
+  owners:      { zField:'assigned_users',   needsUid:false, label:'assigned users', isArray:true  },
+  lead_source: { zField:'lead_source',      needsUid:false, label:'lead source',    isArray:false },
+  source:      { zField:'lead_source',      needsUid:false, label:'lead source',    isArray:false },
+  tag:         { zField:'tags',             needsUid:false, label:'tags',           isArray:true  },
+  tags:        { zField:'tags',             needsUid:false, label:'tags',           isArray:true  },
+  location:    { zField:'location_uid',     needsUid:true,  label:'location',       isArray:false },
+  pipeline:    { zField:'pipeline_stage',   needsUid:true,  label:'pipeline stage', isArray:false },
+  work_order:  { zField:'work_order_uid',   needsUid:true,  label:'work order',     isArray:false },
+};
+
+// JN template vars → Zuper get_record expressions
+const VARS = {
+  "{{JobPrimaryContactDisplayName}}": "{{$.getLatestNodeData('Get Job Record')['data']['data']['customer']['display_name']}}",
+  "{{JobPrimaryContactFirstName}}":   "{{$.getLatestNodeData('Get Job Record')['data']['data']['customer']['first_name']}}",
+  "{{JobPrimaryContactLastName}}":    "{{$.getLatestNodeData('Get Job Record')['data']['data']['customer']['last_name']}}",
+  "{{JobPrimaryContactEmail}}":       "{{$.getLatestNodeData('Get Job Record')['data']['data']['customer']['email']}}",
+  "{{JobPrimaryContactPhone}}":       "{{$.getLatestNodeData('Get Job Record')['data']['data']['customer']['mobile_number']}}",
+  "{{JobPrimaryContactNumber}}":      "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_number']}}",
+  "{{JobName}}":                      "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['title']}}",
+  "{{JobTitle}}":                     "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['title']}}",
+  "{{JobNumber}}":                    "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_number']}}",
+  "{{JobDescription}}":               "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['description']}}",
+  "{{JobAddressLine1}}":              "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['address']['address_line_1']}}",
+  "{{JobAddressCity}}":               "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['address']['city']}}",
+  "{{JobAddressState}}":              "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['address']['state']}}",
+  "{{JobAddressZip}}":                "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['address']['zipcode']}}",
+  "{{JobStatus}}":                    "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_status']['status_name']}}",
+  "{{JobType}}":                      "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_category']['category_name']}}",
+  "{{AssignedUserName}}":             "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['assigned_users'][0]['display_name']}}",
+  "{{RepName}}":                      "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['assigned_users'][0]['display_name']}}",
+  "{{SalesRepName}}":                 "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['assigned_users'][0]['display_name']}}",
+  "{{CompanyName}}":                  "{{$.getLatestNodeData('Get Job Record')['data']['data']['customer']['company_name']}}",
+  "{{JobCreatedDate}}":               "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['created_at']}}",
+  "{{JobUpdatedDate}}":               "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['updated_at']}}",
+  "{{JobScheduledDate}}":             "{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['scheduled_start_time']}}",
+};
+
+// ═══════════════════════════════════════════════════════════
+//  UUID
+// ═══════════════════════════════════════════════════════════
+function uid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r=Math.random()*16|0, v=c==='x'?r:(r&0x3|0x8); return v.toString(16);
+  });
+}
+
+function mapVars(s) {
+  if (!s) return s;
+  for (const [k,v] of Object.entries(VARS)) s = s.replaceAll(k, v);
+  return s;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CORE CONVERTER  (JN → Zuper WB JSON)
+// ═══════════════════════════════════════════════════════════
+function convertJnToZuper(jn) {
+  const nodes = [];       // ACTION nodes only (FIX B1: trigger NOT in nodes[])
+  const conns = [];
+  const warnings = [];
+  const checklist = [];
+
+  const rt      = jn.record_type || 'job';
+  const trigger1 = (jn.trigger1 || '').toLowerCase();
+  const trigType = (jn.trigger_type || '').toLowerCase();
+  const isTime   = trigType === 'timebased';
+  const isZap    = !!jn.is_zapier;
+  const isSkip   = (jn.name||'').startsWith('Z DELETE');
+
+  // ── Trigger action_key (FIX B4: always job.status_update for jobs)
+  const trigActionKey = trigger1 === 'created' && !isTime ? 'job.new' : 'job.status_update';
+  const trigNodeUid   = uid();
+  const trigId        = trigActionKey;   // id must equal action_key for Zuper
+  const trigName      = trigger1 === 'created' && !isTime ? 'Job Created' : 'Job Status Update';
+
+  // ── Layout constants
+  let X = 210;  // start X for action nodes (trigger is at x:12)
+  const X_GAP = 210;
+  const Y_MAIN = 89.5, Y_TRUE = 12, Y_FALSE = 166;
+
+  function conn(srcId, tgtId, outVal, srcH, tgtH) {
+    const sh = srcH || (outVal === true ? 'two-a' : outVal === false ? 'two-b' : 'one-a');
+    const th = tgtH || 'a';
+    conns.push({
+      id: `reactflow__edge-${srcId}${sh}-${tgtId}${th}`,
+      type: "buttonEdge",
+      source: srcId, target: tgtId,
+      markerEnd: { type:"arrow" },
+      ...(outVal !== undefined ? { output_value: outVal } : {}),
+      sourceHandle: sh, targetHandle: th,
+    });
+  }
+
+  // ── FIX B9: Always insert zuper_get_record right after trigger (or after if_else TRUE)
+  // to hydrate job data for downstream expression references
+  function makeGetRecord(name, sourceNodeUid, y, x) {
+    const id = `zuper_get_record_zuper_get_record${uid()}`;
+    const nodeUid = uid();
+    nodes.push({
+      id, color: NODE_COLOR, input:1, module:"", output:1,
+      node_uid: nodeUid,
+      position: { x, y },
+      is_active: true,
+      node_icon: ZUPER_ICON,
+      node_name: "zuper_get_record",
+      action_key: "zuper_get_record",
+      action_name: name,
+      action_type: "ACTION",
+      credentials: {},
+      description: "Get a Record in Zuper",
+      form_fields: {
+        module:       { type:"FIXED",      value:"JOBS" },
+        module_uid:   { type:"FIXED",      value:"" },
+        status_uid:   { type:"FIXED",      value:"" },
+        source_node:  { type:"FIXED",      value: sourceNodeUid },
+        source_type:  { type:"FIXED",      value:"" },
+        category_uid: { type:"FIXED",      value:"" },
+      },
+      master_node_uid: M.zuper_get_record,
+      execution_status: "NONE",
+      node_display_name: "Edit Record",
+    });
+    return { id, nodeUid };
+  }
+
+  // ── CONDITIONS → if_else (FIX B7: correct expression path, FIX B12: correct handles)
+  const conds = jn.conditions || [];
+  // All conditions except record_type (which is a trigger filter, not a condition)
+  const activeConds  = conds.filter(c => c.field && c.field !== 'record_type');
+  const customConds  = activeConds.filter(c => (c.field||'').startsWith('cf_'));
+  const statusConds  = activeConds.filter(c => c.field === 'status');
+  const mappedConds  = activeConds.filter(c => JN_TO_ZUPER_FIELD[c.field]);
+  const unknownConds = activeConds.filter(c => !JN_TO_ZUPER_FIELD[c.field] && !(c.field||'').startsWith('cf_'));
+
+  if (customConds.length) {
+    warnings.push({ t:'w', icon:'⚠️', text:`Custom field conditions (${customConds.map(c=>c.field).join(', ')}) — recreate in Zuper as custom job fields (Settings → Modules → Jobs → Custom Fields) then update EXPRESSION paths.` });
+    checklist.push({ icon:'🔧', t:'y', text:`Map JN custom fields: ${customConds.map(c=>c.field).join(', ')} → Zuper custom field keys.` });
+  }
+  if (unknownConds.length) {
+    warnings.push({ t:'w', icon:'❓', text:`Unknown condition fields: ${unknownConds.map(c=>c.field).join(', ')} — not in JN→Zuper field map. Review expression paths manually.` });
+  }
+
+  let prevId   = trigId;
+  let prevH    = 'trigger-a';  // FIX B4: first edge from trigger always uses 'trigger-a'
+  let condNode = null;
+
+  if (activeConds.length > 0) {
+    const ifId  = `if_else_if_else${uid()}`;
+    const ifUid = uid();
+    const hasOr = activeConds.some(c => c.next_comparison === 'or');
+    const hasMixed = activeConds.some(c => c.next_comparison === 'or') && activeConds.some(c => c.next_comparison === 'and');
+    if (hasMixed) {
+      warnings.push({ t:'w', icon:'⚠️', text:'JN automation mixes AND/OR condition logic. Zuper if_else uses a single combine mode — set to OR (most permissive). Review conditions and split into separate if_else nodes if needed.' });
+    }
+
+    // Build if_else conditions for ALL activeConds with proper field path mapping
+    const ifConds = activeConds.map(c => {
+      const field = c.field || '';
+      const isCustom = field.startsWith('cf_');
+      const mapping = JN_TO_ZUPER_FIELD[field];
+
+      // Build trigger body expression — if_else runs before get_record so use trigger payload
+      let exprPath;
+      if (isCustom) {
+        exprPath = `{{$.getLatestNodeData('${trigName}')['data']['body']['job']['custom_fields']['${field}']}}`;
+      } else if (mapping) {
+        exprPath = `{{$.getLatestNodeData('${trigName}')['data']['body']['job']['${mapping.zField}']}}`;
+      } else {
+        // Unknown field — best effort using field name directly
+        exprPath = `{{$.getLatestNodeData('${trigName}')['data']['body']['job']['${field}']}}`;
+      }
+
+      // Build value2
+      let value2;
+      if (isCustom) {
+        value2 = c.value || '';
+      } else if (mapping?.needsUid) {
+        value2 = `[MAP → Zuper ${mapping.label} uid for: "${c.value}"]`;
+      } else {
+        value2 = c.value || '';
+      }
+
+      // Operation: array fields use CONTAINS/NOT_CONTAINS
+      let operation;
+      if (mapping?.isArray) {
+        operation = (c.comparison === '!=' ) ? 'NOT_CONTAINS' : 'CONTAINS';
+      } else {
+        operation = COMP[c.comparison] || 'EQUAL_TO';
+      }
+
+      return {
+        value1: { type:"EXPRESSION", value: exprPath },
+        value2: { type:"FIXED", value: value2 },
+        field_key: mapping?.isArray ? 'ARRAY' : 'STRING',
+        operation: { type:"FIXED", value: operation },
+      };
+    });
+
+    // Build a meaningful action_name for the if_else node
+    const firstCond = activeConds[0];
+    const firstMapping = JN_TO_ZUPER_FIELD[firstCond?.field] || {};
+    const ifName = firstCond
+      ? `Check: ${firstMapping.label || firstCond.field} ${firstCond.comparison} "${firstCond.value}"`
+      : 'Check Conditions';
+
+    condNode = {
+      id: ifId,
+      color: NODE_COLOR, input:1, module:"", output:2,
+      node_uid: ifUid,
+      position: { x:X, y:Y_MAIN },
+      is_active: true,
+      node_icon: IFELSE_ICON,
+      node_name: "if_else", action_key: "if_else",
+      action_name: ifName,
+      action_type: "ACTION", credentials: {},
+      description: "Route items to different branch",
+      form_fields: {
+        combine:    { type:"FIXED", value: hasOr ? 'OR' : 'AND' },
+        conditions: ifConds,
+      },
+      node_category: "FLOW",
+      master_node_uid: M.if_else,
+      execution_status: "NONE",
+      node_display_name: "If/Else",
+    };
+    nodes.push(condNode);
+    conn(prevId, ifId, undefined, prevH, 'a');  // trigger → if_else
+    prevId = ifId;
+    X += X_GAP;
+
+    // FALSE branch → No-Op (FIX B12: use 'two-b' for if_else false)
+    const noopFId = `no_op_no_op${uid()}`;
+    nodes.push({
+      id: noopFId, color: NODE_COLOR, input:1, module:"", output:0,
+      node_uid: uid(),
+      position: { x: X - X_GAP, y: Y_FALSE },
+      is_active: true, node_icon: NOOP_ICON,
+      node_name:"no_op", action_key:"no_op",
+      action_name:"Condition Not Met",
+      action_type:"ACTION", credentials:{}, description:"No operation",
+      form_fields:{}, node_category:"FLOW",
+      master_node_uid: M.no_op,
+      node_display_name:"No OP",
+    });
+    conn(ifId, noopFId, false, 'two-b', 'a');
+
+    // Checklist items per condition type
+    const uidNeededFields = activeConds.filter(c => JN_TO_ZUPER_FIELD[c.field]?.needsUid);
+    if (statusConds.length) {
+      checklist.push({ icon:'🗺️', t:'y', text:`Replace status condition value placeholders [MAP → Zuper status_uid for: "..."] with real Zuper status UIDs (Settings → Modules → Jobs → Job Category Hub).` });
+    }
+    const typeC = activeConds.filter(c => c.field === 'type');
+    if (typeC.length) {
+      checklist.push({ icon:'🗺️', t:'y', text:`Map job type condition ("${typeC.map(c=>c.value).join('", "')}") → Zuper job_category_uid (Settings → Modules → Jobs → Job Category Hub).` });
+    }
+    const locC = activeConds.filter(c => c.field === 'location');
+    if (locC.length) {
+      checklist.push({ icon:'🗺️', t:'y', text:`Map location condition ("${locC.map(c=>c.value).join('", "')}") → Zuper location_uid (Settings → Company → Locations).` });
+    }
+    const arrayC = activeConds.filter(c => JN_TO_ZUPER_FIELD[c.field]?.isArray);
+    if (arrayC.length) {
+      checklist.push({ icon:'ℹ️', t:'b', text:`Array conditions (${arrayC.map(c=>c.field).join(', ')}) use CONTAINS/NOT_CONTAINS — Zuper checks if the array includes the value.` });
+    }
+  }
+
+  // ── FIX B9: Insert get_record on the TRUE/main path before actions
+  const grSourceUid = trigNodeUid; // from trigger
+  const grObj = makeGetRecord('Get Job Record', grSourceUid, Y_TRUE, X);
+  conn(prevId, grObj.id, condNode ? true : undefined,
+       condNode ? 'two-a' : prevH, 'a');
+  prevId = grObj.id;
+  prevH  = 'one-a';
+  X += X_GAP;
+
+  // ── ACTION NODES
+
+  // FIX B3 + B2: create_task → zuper_create with module:'TASKS', flat form_fields
+  for (const task of (jn.actions_create_task || [])) {
+    const id   = `zuper_create_zuper_create${uid()}`;
+    const ownerStr = (task.owners||[]).map(o =>
+      ({sales_rep:'assigned sales rep', current_owners:'current assignees', contact:'customer contact'})[o] || o
+    ).join(', ');
+
+    nodes.push({
+      id, color: NODE_COLOR, input:1, module:"", output:1,
+      node_uid: uid(),
+      position: { x:X, y:Y_MAIN },
+      is_active: true, node_icon: ZUPER_ICON,
+      node_name: "zuper_create", action_key: "zuper_create",
+      action_name: `Create Task: ${task.name}`,
+      action_type: "ACTION", credentials: {},
+      description: "Create a record in Zuper",
+      form_fields: {
+        // FIX B2: module must be 'TASKS' (valid Zuper module name)
+        module:       { type:"FIXED", value:"TASKS" },
+        source_node:  { type:"FIXED", value:"CUSTOM" },
+        source_type:  { type:"FIXED", value:"" },
+        // FIX B3: flat fields, no task_fields array
+        task_name:        { type:"FIXED",      value: task.name },
+        task_description: { type:"FIXED",      value: task.description || "" },
+        priority:         { type:"FIXED",      value: ({0:"NORMAL",1:"HIGH",2:"MEDIUM",3:"LOW"})[task.priority] || "NORMAL" },
+        assigned_users:   { type:"FIXED",      value: `[MAP → Zuper user_uid / team_uid for: ${ownerStr}]` },
+        due_date_offset:  { type:"FIXED",      value: `${task.end_increment||0}${task.end_unit||'m'}` },
+        job_uid:          { type:"EXPRESSION", value: `{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_uid']}}` },
+      },
+      master_node_uid: M.zuper_create,
+      execution_status: "NONE",
+      node_display_name: "Create Task",
+    });
+    conn(prevId, id, undefined, prevH, 'a');
+    prevId = id; prevH = 'one-a'; X += X_GAP;
+    checklist.push({ icon:'👤', t:'b', text:`Map task assignee ("${ownerStr}") → real Zuper user_uid or team_uid in the assigned_users field.` });
+  }
+
+  // FIX B5: SMS → send_notification with channel SMS (not zuper_create SMS_NOTIFICATION)
+  for (const sms of (jn.actions_send_sms || [])) {
+    const id  = `send_notification_send_notification${uid()}`;
+    const msg = mapVars(sms.message || '');
+    const recips = (sms.recipients||[]).map(r =>
+      ({sales_rep:'assigned sales rep', current_owners:'current assignees', contact:'customer contact'})[r]||r
+    ).join(', ');
+
+    nodes.push({
+      id, color: NODE_COLOR, input:1, module:"", output:1,
+      node_uid: uid(),
+      position: { x:X, y:Y_MAIN },
+      is_active: true, node_icon: ZUPER_ICON,
+      // FIX B5: correct action_key for SMS in Zuper WB
+      node_name: "send_notification", action_key: "send_notification",
+      action_name: "Send SMS Notification",
+      action_type: "ACTION", credentials: {},
+      description: "Send a notification via Zuper Connect",
+      form_fields: {
+        channel:        { type:"FIXED",      value:"SMS" },
+        message:        { type:"FIXED",      value: msg },
+        recipient_type: { type:"FIXED",      value: "SPECIFIC_USER" },
+        recipient_uid:  { type:"FIXED",      value: `[MAP → Zuper user_uid for: ${recips}]` },
+        from_number:    { type:"FIXED",      value: `[MAP → Zuper Connect number (was JN: ${sms.send_from||''})]` },
+        job_uid:        { type:"EXPRESSION", value: `{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_uid']}}` },
+      },
+      master_node_uid: M.send_notification,
+      execution_status: "NONE",
+      node_display_name: "Send Notification",
+    });
+    conn(prevId, id, undefined, prevH, 'a');
+    prevId = id; prevH = 'one-a'; X += X_GAP;
+    checklist.push({ icon:'📱', t:'p', text:`SMS: Map from_number (JN: ${sms.send_from||'?'}) → Zuper Connect number. Requires Zuper Connect license ($20/user/mo).` });
+    warnings.push({ t:'i', icon:'📱', text:`JN template vars in SMS message mapped to Zuper get_record expressions. Verify the message reads correctly in Zuper's expression builder.` });
+  }
+
+  // Email notification
+  for (const notif of (jn.actions_send_notification || [])) {
+    const id = `send_notification_send_notification${uid()}`;
+    const recips = (notif.recipients||[]).map(r =>
+      ({sales_rep:'assigned sales rep',current_owners:'current assignees',contact:'customer contact'})[r]||r
+    ).join(', ');
+
+    nodes.push({
+      id, color: NODE_COLOR, input:1, module:"", output:1,
+      node_uid: uid(),
+      position: { x:X, y:Y_MAIN },
+      is_active: true, node_icon: ZUPER_ICON,
+      node_name: "send_notification", action_key: "send_notification",
+      action_name: `Send Email: ${notif.template_name||''}`,
+      action_type: "ACTION", credentials: {},
+      description: "Send email notification",
+      form_fields: {
+        channel:        { type:"FIXED", value:"EMAIL" },
+        // FIX B11: empty string not placeholder — user configures post-import
+        template_uid:   { type:"FIXED", value:"" },
+        jn_template_id:   { type:"FIXED", value: notif.template_id||"" },
+        jn_template_name: { type:"FIXED", value: notif.template_name||"" },
+        recipient_type: { type:"FIXED", value:"SPECIFIC_USER" },
+        recipient_uid:  { type:"FIXED", value:`[MAP → Zuper user_uid for: ${recips}]` },
+        job_uid:        { type:"EXPRESSION", value:`{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_uid']}}` },
+      },
+      master_node_uid: M.send_notification,
+      execution_status: "NONE",
+      node_display_name: "Send Notification",
+    });
+    conn(prevId, id, undefined, prevH, 'a');
+    prevId = id; prevH = 'one-a'; X += X_GAP;
+    checklist.push({ icon:'📧', t:'y', text:`Rebuild JN email template "${notif.template_name||''}" in Zuper (Settings → Miscellaneous → Email Templates), then set the template_uid on this node.` });
+  }
+
+  // Parent status update → zuper_update (FIX B8: add module_uid)
+  for (const psu of (jn.actions_parent_update_status || [])) {
+    const id = `zuper_update_zuper_update${uid()}`;
+    nodes.push({
+      id, color: NODE_COLOR, input:1, module:"", output:1,
+      node_uid: uid(),
+      position: { x:X, y:Y_MAIN },
+      is_active: true, node_icon: ZUPER_ICON,
+      node_name: "zuper_update", action_key: "zuper_update",
+      action_name: "Update Job Status",
+      action_type: "ACTION", credentials: {},
+      description: "Update an entity in Zuper",
+      form_fields: {
+        module:        { type:"FIXED",      value:"JOBS" },
+        // FIX B8: module_uid must be EXPRESSION pointing to job_uid
+        module_uid:    { type:"EXPRESSION", value:`{{$.getLatestNodeData('Get Job Record')['data']['data']['job']['job_uid']}}` },
+        source_node:   { type:"FIXED",      value:"CUSTOM" },
+        source_type:   { type:"FIXED",      value:"" },
+        operator_type: { type:"FIXED",      value:"UPDATE_STATUS" },
+        operation_type:{ type:"FIXED",      value:"" },
+        custom_fields: [],
+        job_status:    { type:"FIXED",      value:`[MAP → Zuper status_uid for JN type_id:${psu.type_id} status_id:${psu.status_id}]` },
+        job_status_name:     { type:"FIXED", value:`[MAP → status name for status_id:${psu.status_id}]` },
+        job_status_category: { type:"FIXED", value:`[MAP → Zuper job_category_uid for JN type_id:${psu.type_id}]` },
+      },
+      master_node_uid: M.zuper_update,
+      execution_status: "NONE",
+      node_display_name: "Edit Record",
+    });
+    conn(prevId, id, undefined, prevH, 'a');
+    prevId = id; prevH = 'one-a'; X += X_GAP;
+    checklist.push({ icon:'🔀', t:'b', text:`Map status chain: JN type_id:${psu.type_id} status_id:${psu.status_id} → Zuper job_category_uid + status_uid (Settings → Modules → Jobs → Job Category Hub).` });
+  }
+
+  // Webhook → code node
+  for (const wh of (jn.actions_webhook || [])) {
+    const id = `code_code${uid()}`;
+    nodes.push({
+      id, color: CODE_COLOR, input:1, module:"", output:1,
+      node_uid: uid(),
+      position: { x:X, y:Y_MAIN },
+      is_active: true, node_icon: CODE_ICON,
+      node_name: "code", action_key: "code",
+      action_name: isZap ? "Zapier Webhook" : "Webhook Call",
+      action_type: "ACTION", credentials: {},
+      description: "Run custom javascript code",
+      form_fields: {
+        code: `// ${isZap?'Zapier':'Webhook'} — retrieve URL from JN Settings → Automations,\n// store as Secret Variable named 'webhook_url' in Zuper Workflow Variables tab.\nconst url = $.getVariable('webhook_url');\nconst job_uid = $.getLatestNodeData('Get Job Record')['data']['data']['job']['job_uid'];\nconst job_number = $.getLatestNodeData('Get Job Record')['data']['data']['job']['job_number'];\nawait fetch(url, {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ job_uid, job_number })\n});`,
+      },
+      node_category: "FLOW",
+      master_node_uid: M.code,
+      execution_status: "NONE",
+      node_display_name: "Code",
+    });
+    conn(prevId, id, undefined, prevH, 'a');
+    prevId = id; prevH = 'one-a'; X += X_GAP;
+    checklist.push({ icon:'🔗', t:'y', text:`Retrieve ${isZap?'Zapier':'webhook'} URL from JN Settings → Automations before closing the account. Add as a Secret Variable named 'webhook_url' in Zuper Workflow Builder Variables tab.` });
+    warnings.push({ t:'w', icon:'🔗', text:`${isZap?'ZAPIER':'WEBHOOK'}: JN API does not export the actual URL. You must retrieve it from JN's UI manually.` });
+  }
+
+  // If still no action nodes at all (empty actions) — add a no_op so workflow isn't empty (FIX B1 fallback)
+  if (nodes.filter(n => n.action_type === 'ACTION' && n.action_key !== 'no_op' && n.action_key !== 'if_else').length === 0
+      && !jn.actions_create_task?.length && !jn.actions_send_sms?.length && !jn.actions_send_notification?.length
+      && !jn.actions_webhook?.length && !jn.actions_parent_update_status?.length) {
+    const noopId = `no_op_no_op${uid()}`;
+    nodes.push({
+      id: noopId, color: NODE_COLOR, input:1, module:"", output:0,
+      node_uid: uid(), position:{ x:X, y:Y_MAIN },
+      is_active: true, node_icon: NOOP_ICON,
+      node_name:"no_op", action_key:"no_op",
+      action_name:"No Actions Defined",
+      action_type:"ACTION", credentials:{}, description:"No operation",
+      form_fields:{}, node_category:"FLOW",
+      master_node_uid: M.no_op, node_display_name:"No OP",
+    });
+    conn(prevId, noopId, condNode ? true : undefined, prevH, 'a');
+    warnings.push({ t:'w', icon:'⚠️', text:'JN automation has no action types — only a No-Op node added. Add real action nodes in Zuper Workflow Builder.' });
+  }
+
+  // Time-based warning
+  if (isTime) {
+    const ts = jn.trigger_settings || {};
+    warnings.push({ t:'w', icon:'⏱️', text:`TIME-BASED: JN fires ${ts.time_value}${ts.time_unit} after ${ts.date_field}. Zuper has no native timer — use an intermediate holding status + second workflow, or contact Zuper PS for scheduled execution options.` });
+    checklist.push({ icon:'⏱️', t:'y', text:`Create a holding status in Zuper to approximate the ${ts.time_value}${ts.time_unit} delay from JN.` });
+  }
+
+  if (rt !== 'job') {
+    warnings.push({ t:'w', icon:'⚠️', text:`JN record_type is '${rt}'. Zuper WB is job-centric — mapped to job.status_update trigger. Verify this is appropriate.` });
+  }
+
+  // Standard checklist
+  checklist.push({ icon:'📋', t:'g', text:'Replace all [MAP → ...] tokens with real Zuper UIDs before activating the workflow.' });
+  checklist.push({ icon:'🔍', t:'g', text:'Keep workflow in Deactivated state until all mappings are resolved. Test on sandbox first.' });
+  checklist.push({ icon:'⚙️', t:'p', text:'Import path: Settings → Developer Hub → Workflow Builder → New Workflow → paste the JSON from "Zuper JSON" tab.' });
+
+  // Complexity
+  const errCount = warnings.filter(w=>w.t==='w').length;
+  const complexity = isSkip ? 'SKIP'
+    : errCount >= 2 ? 'HIGH'
+    : errCount === 1 || isTime ? 'MEDIUM'
+    : 'LOW';
+
+  const status = isSkip ? 'SKIP_OUTDATED'
+    : isZap && !jn.is_active ? 'SKIP_ZAPIER'
+    : complexity === 'HIGH' ? 'NEEDS_MANUAL_REVIEW'
+    : checklist.filter(c=>c.t!=='g'&&c.t!=='p').length > 2 ? 'READY_WITH_MAPPING'
+    : 'READY';
+
+  // ── FIX B1: Trigger node goes ONLY in meta_data.initial_nodes, not in nodes[]
+  const triggerNodeObj = {
+    id: trigId,
+    input: 0, module: "JOBS", output: 1,
+    node_uid: trigNodeUid,
+    position: { x:12, y:Y_MAIN },
+    is_pinned: true,
+    node_icon: ZUPER_ICON,
+    node_name: "zuper",
+    action_key: trigActionKey,
+    action_name: trigName,
+    action_type: "TRIGGER",
+    credentials: {},
+    form_fields: {
+      trigger_rules:        { type:"FIXED", value:[] },
+      excluded_user_uids:   { type:"FIXED", value:null },
+    },
+    cyclic_actions: [{ module:"JOBS", action_key:"zuper_update" }],
+    master_node_uid: M.trigger_job,
+    execution_status: "NONE",
+  };
+
+  // initial_nodes = trigger + first 2 action nodes
+  const initial_nodes = [
+    {
+      id: trigId,
+      data: {
+        icon: ZUPER_ICON, color: NODE_COLOR,
+        label: trigName, module:"JOBS",
+        node_uid: trigNodeUid, viewOnly:false,
+        node_name:"zuper", action_key: trigActionKey,
+        action_name: trigName, action_type:"TRIGGER",
+        cyclic_actions:[{ module:"JOBS", action_key:"zuper_update" }],
+        master_node_uid: M.trigger_job, execution_status:"NONE",
+      },
+      type:"triggerNode", style:{ background:"#fff" },
+      width:36, height:36,
+      position:{ x:12, y:Y_MAIN }, positionAbsolute:{ x:12, y:Y_MAIN },
+    },
+    ...nodes.slice(0,2).map(n => ({
+      id: n.id,
+      data: {
+        icon: n.node_icon, color: n.color||NODE_COLOR,
+        label: n.action_name, module: n.module||"",
+        node_uid: n.node_uid, viewOnly:false,
+        is_active: true,
+        node_name: n.node_name, action_key: n.action_key,
+        action_name: n.action_name, action_type: n.action_type,
+        description: n.description||"", cyclic_actions:[],
+        master_node_uid: n.master_node_uid, execution_status:"NONE",
+      },
+      type: n.output === 2 ? "actionNodeTwo" : "actionNodeOne",
+      style:{ background:"#fff" },
+      width:120, height:37,
+      position: n.position, positionAbsolute: n.position,
+    })),
+  ];
+
+  const zuperWorkflow = {
+    workflow_name: jn.name,
+    workflow_description: `Converted from JobNimbus automation\nJN ID: ${jn.jnid||'?'} | Record type: ${rt} | Trigger: ${trigger1}/${trigType}`,
+    workflow_icon: ZUPER_ICON,
+    nodes,          // FIX B1: trigger NOT here — only action nodes
+    connections: conns,
+    meta_data: {
+      variables: {},
+      total_nodes: nodes.length,
+      initial_nodes,
+    },
+  };
+
+  // Also include triggerNodeObj in the output for reference (some importers need it)
+  // Actually Zuper DOES want trigger in nodes[] AND initial_nodes both. Let's add it.
+  // Re-test: looking at sample — trigger IS in nodes[] as well as initial_nodes
+  // The 'at least one node' error is because nodes[] had ONLY the trigger and zero action nodes
+  zuperWorkflow.nodes = [triggerNodeObj, ...nodes];
+
+  return { jnid:jn.jnid, name:jn.name, is_active:!!jn.is_active, record_type:rt,
+           complexity, status, warnings, checklist, zuperWorkflow };
+}
+
 // ── WORKFLOWS: import JSON straight into the connected account ──────────────
 let _wfImportData=null;
+let _wfImportConversions=null; // set when the uploaded file was JobNimbus format and got auto-converted
+let _wfImportSelected=null;    // per-row checkbox state, indexed the same as _wfImportData
+
+function isZuperWorkflowShape(w){
+  return !!(w && typeof w==='object' && Array.isArray(w.nodes) && Array.isArray(w.connections));
+}
+function isJnAutomationShape(w){
+  if(!w||typeof w!=='object') return false;
+  if(isZuperWorkflowShape(w)) return false;
+  return ('jnid' in w)||('trigger1' in w)||('trigger_type' in w)||Object.keys(w).some(k=>k.startsWith('actions_'));
+}
 
 function showWfImportCard(){
   const c=$('wf-import-card');if(!c) return;
@@ -6090,6 +6716,8 @@ function showWfImportCard(){
   const fi=$('wfi-file');if(fi) fi.value='';
   const m=$('wfi-msg1');if(m) m.style.display='none';
   _wfImportData=null;
+  _wfImportConversions=null;
+  _wfImportSelected=null;
 }
 function hideWfImportCard(){const c=$('wf-import-card');if(c) c.style.display='none';}
 
@@ -6110,13 +6738,23 @@ function onWfImportFile(input){
     try{
       const data=JSON.parse(e.target.result);
       const arr=Array.isArray(data)?data:(data.data||data.workflows||[data]);
-      if(!arr.length||!arr.every(w=>w&&typeof w==='object'&&w.nodes&&w.connections)){
+      if(!arr.length){msg.className='msg msg-err';msg.textContent='✗ Empty file — no workflows found.';msg.style.display='block';return;}
+
+      if(arr.every(isZuperWorkflowShape)){
+        _wfImportData=arr;
+        _wfImportConversions=null;
+        _wfImportSelected=arr.map(()=>true);
+      } else if(arr.every(isJnAutomationShape)){
+        const conversions=arr.map(convertJnToZuper);
+        _wfImportData=conversions.map(c=>c.zuperWorkflow);
+        _wfImportConversions=conversions;
+        _wfImportSelected=conversions.map(c=>c.status!=='SKIP_OUTDATED'&&c.status!=='SKIP_ZAPIER');
+      } else {
         msg.className='msg msg-err';
-        msg.textContent='✗ This doesn\'t look like a Workflow Builder export — expected an array of workflow objects with "nodes" and "connections".';
+        msg.textContent='✗ Unrecognized format — expected either a Zuper Workflow Builder export (array of objects with "nodes"/"connections") or a JobNimbus automations export.';
         msg.style.display='block';
         return;
       }
-      _wfImportData=arr;
       renderWfImportPreview();
       wfiGoTo(2);
     }catch(ex){msg.className='msg msg-err';msg.textContent='✗ Invalid JSON: '+ex.message;msg.style.display='block';}
@@ -6124,32 +6762,81 @@ function onWfImportFile(input){
   reader.readAsText(f);
 }
 
+const WF_STATUS_BADGE={
+  READY:              {label:'Ready',                color:'var(--green)'},
+  READY_WITH_MAPPING: {label:'Needs Mapping',         color:'var(--amber)'},
+  NEEDS_MANUAL_REVIEW:{label:'Needs Review',          color:'var(--red)'},
+  SKIP_OUTDATED:      {label:'Outdated (Z DELETE)',   color:'var(--text-sub)'},
+  SKIP_ZAPIER:        {label:'Inactive Zapier',       color:'var(--text-sub)'},
+};
+
+function wfiToggleSelect(i,checked){
+  if(!_wfImportSelected) return;
+  _wfImportSelected[i]=checked;
+  wfiUpdateSelCount();
+}
+function wfiSetAll(checked){
+  if(!_wfImportSelected) return;
+  _wfImportSelected=_wfImportSelected.map(()=>checked);
+  renderWfImportPreview();
+}
+function wfiUpdateSelCount(){
+  const el=$('wfi-sel-count');if(!el||!_wfImportSelected) return;
+  const n=_wfImportSelected.filter(Boolean).length;
+  el.textContent=n+' of '+_wfImportSelected.length+' selected';
+  const btn=$('wfi-run-btn');if(btn) btn.textContent='Import Selected ('+n+') →';
+}
+
 function renderWfImportPreview(){
   const arr=_wfImportData;if(!arr) return;
   const prev=$('wfi-preview');if(!prev) return;
+  const conversions=_wfImportConversions;
+  const sel=_wfImportSelected||arr.map(()=>true);
+  const sourceLabel=conversions?'⚡ Auto-converted from JobNimbus':'Zuper Workflow Builder export';
   prev.innerHTML=
-    '<div style="margin-bottom:8px;font-weight:600;font-size:.88rem">'+arr.length+' workflow'+(arr.length!==1?'s':'')+' found</div>'
-    +'<div style="display:flex;flex-direction:column;gap:6px">'
-    +arr.map(w=>{
+    '<div style="margin-bottom:8px;font-weight:600;font-size:.88rem">'+arr.length+' workflow'+(arr.length!==1?'s':'')+' found'
+    +' <span style="font-weight:400;font-size:.74rem;color:var(--text-sub)">('+sourceLabel+')</span></div>'
+    +'<div style="display:flex;flex-direction:column;gap:8px">'
+    +arr.map((w,i)=>{
       const nodeCount=(w.nodes||[]).length;
       const trigger=(w.nodes||[]).find(n=>n.action_type==='TRIGGER');
-      return '<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px">'
-        +'<span style="font-weight:600">'+esc(w.workflow_name||'Untitled Workflow')+'</span>'
+      const conv=conversions?conversions[i]:null;
+      const issues=conv?[...(conv.warnings||[]),...(conv.checklist||[])].filter(x=>x.t==='w'||x.t==='y'):[];
+      const badge=conv?WF_STATUS_BADGE[conv.status]:null;
+      return '<div style="padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px">'
+        +'<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">'
+        +'<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;flex:1;min-width:0">'
+        +'<input type="checkbox" style="margin-top:3px;flex-shrink:0" '+(sel[i]?'checked':'')+' onchange="wfiToggleSelect('+i+',this.checked)">'
+        +'<span style="font-weight:600;overflow-wrap:anywhere">'+esc(w.workflow_name||'Untitled Workflow')+'</span>'
+        +'</label>'
+        +'<span style="display:flex;gap:6px;align-items:center;flex-shrink:0">'
+        +(badge?'<span style="font-size:.68rem;font-weight:600;color:'+badge.color+';border:1px solid '+badge.color+';border-radius:20px;padding:1px 8px;white-space:nowrap">'+badge.label+'</span>':'')
         +'<span style="color:var(--text-sub);font-size:.76rem;white-space:nowrap">'+nodeCount+' node'+(nodeCount!==1?'s':'')+(trigger?' · '+esc(trigger.action_name||trigger.action_key||''):'')+'</span>'
+        +'</span>'
+        +'</div>'
+        +(issues.length?'<div style="margin-top:6px;margin-left:26px;display:flex;flex-direction:column;gap:3px">'+issues.map(x=>'<div style="font-size:.72rem;color:var(--amber)">'+(x.icon||'⚠')+' '+esc(x.text)+'</div>').join('')+'</div>':'')
         +'</div>';
     }).join('')
-    +'</div>';
+    +'</div>'
+    +(conversions?'<div class="msg msg-warn" style="margin-top:10px;font-size:.78rem">⚠ Auto-converted from JobNimbus — this is a best-effort mapping, not a guaranteed 1:1 conversion. Anything tagged <code>[MAP → ...]</code> above needs a real Zuper UID filled in before the workflow will run correctly. Items marked Outdated/Inactive Zapier are unchecked by default — review before including them. Import selected workflows in a <strong>deactivated</strong> state and test on a sandbox account first.</div>':'');
+  wfiUpdateSelCount();
 }
 
 async function startWfImport(){
-  const arr=_wfImportData;if(!arr) return;
+  const full=_wfImportData;if(!full) return;
+  const sel=_wfImportSelected||full.map(()=>true);
+  const arr=full.filter((_,i)=>sel[i]);
+  if(!arr.length){
+    const m=$('wfi-msg2');m.className='msg msg-err';m.textContent='✗ No workflows selected — check at least one before importing.';m.style.display='block';
+    return;
+  }
   if(!_workflowBaseUrl){
     const m=$('wfi-msg2');m.className='msg msg-err';m.textContent='✗ Workflow Service URL not set. Go back and set it on the connection screen.';m.style.display='block';
     return;
   }
   const btn=$('wfi-run-btn');btn.disabled=true;btn.textContent='Importing…';
   wfiGoTo(3);
-  const log=$('wfi-log');log.textContent='Uploading '+arr.length+' workflow(s) to '+_workflowBaseUrl+'workflows/import …\n';
+  const log=$('wfi-log');log.textContent='Uploading '+arr.length+' of '+full.length+' workflow(s) to '+_workflowBaseUrl+'workflows/import …\n';
   try{
     const blob=new Blob([JSON.stringify(arr)],{type:'application/json'});
     const form=new FormData();
@@ -6168,7 +6855,7 @@ async function startWfImport(){
     log.textContent+='\n✗ Network error: '+e.message;
     const m=$('wfi-msg3');m.className='msg msg-err';m.textContent='✗ Network error — see log below.';m.style.display='block';
   }finally{
-    btn.disabled=false;btn.textContent='Import to Account →';
+    btn.disabled=false;btn.textContent='Import Selected →';
   }
 }
 
