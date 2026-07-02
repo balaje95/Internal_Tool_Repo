@@ -1135,6 +1135,23 @@ input[type=checkbox]{accent-color:var(--primary)}
       <div class="field-lbl">Template Name <span style="font-weight:400;color:var(--text-sub)">(required for Excel import)</span></div>
       <input class="inp" id="ti-tpl-name" placeholder="e.g. GAF Roofing Proposal" style="max-width:420px;font-size:.85rem">
     </div>
+    <div id="ti-catmode-row" style="display:none;margin-bottom:14px;padding:12px 14px;background:var(--th-bg);border-radius:8px;border:1px solid var(--border)">
+      <div class="field-lbl" style="margin-bottom:8px">Product category assignment <span style="font-weight:400;color:var(--text-sub)">(for any products this import needs to create)</span></div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap">
+        <label style="display:flex;align-items:flex-start;gap:7px;font-size:.82rem;cursor:pointer;font-weight:400;line-height:1.4">
+          <input type="radio" name="ti-catmode" value="auto" id="ti-catmode-auto" checked onchange="onTiCatModeChange()">
+          <span><strong>Auto</strong> — one category per Section value, created if missing</span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:7px;font-size:.82rem;cursor:pointer;font-weight:400;line-height:1.4">
+          <input type="radio" name="ti-catmode" value="manual" id="ti-catmode-manual" onchange="onTiCatModeChange()">
+          <span><strong>Manual</strong> — one category for every product this creates</span>
+        </label>
+      </div>
+      <div id="ti-catmanual-row" style="display:none;margin-top:10px;gap:8px;flex-wrap:wrap">
+        <select class="inp" id="ti-category-select" style="max-width:280px;margin-right:8px"></select>
+        <input class="inp" id="ti-newcategory-input" placeholder="New category name" style="max-width:220px;display:none">
+      </div>
+    </div>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:12px 14px;background:var(--th-bg);border-radius:8px;border:1px solid var(--border);margin-bottom:14px">
       <label style="display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:600;cursor:pointer">
         <input type="checkbox" id="ti-dryrun" checked onchange="updateTiPill()">
@@ -7219,14 +7236,17 @@ function parseTplExcel(wb){
     if(!rows.length) continue;
     const keys=Object.keys(rows[0]);
     const col=(terms)=>keys.find(k=>terms.some(t=>k.toLowerCase().includes(t)))||'';
-    const cName =col(['product name','item name','name']);
-    const cProdNo=col(['product no','product_no','qxo','sku','part no','part_no']);
-    const cType  =col(['product type','type']);
-    const cUom   =col(['uom','unit of measure','unit']);
-    const cPrice =col(['unit price','price']);
-    const cQtyT  =col(['quantity type','qty type']);
-    const cFName =col(['formula name']);
+    const cName   =col(['product name','item name','name']);
+    const cSection=col(['section']);
+    const cProdNo =col(['product no','product_no','qxo','sku','part no','part_no']);
+    const cType   =col(['product type','type']);
+    const cUom    =col(['uom','unit of measure','unit']);
+    const cPrice  =col(['unit price','price']);
+    const cQtyT   =col(['quantity type','qty type']);
+    const cFName  =col(['formula name']);
+    const cRule   =col(['rule summary','conditional rule']);
     const items=[];
+    let lastSection=null;
     for(const row of rows){
       const nameVal=String(row[cName]||'').trim();
       if(!nameVal) continue;
@@ -7234,11 +7254,18 @@ function parseTplExcel(wb){
       const _prodNo=String(row[cProdNo]||'').trim();
       const _uom=String(row[cUom]||'').trim();
       const _price=parseFloat(String(row[cPrice]||'0').replace(/[$,\s]/g,''))||0;
-      const isAtlasHeader=(cProdNo||cUom||cPrice)&&(!_prodNo&&!_uom&&!_price);
+      const sectionVal=cSection?String(row[cSection]||'').trim():'';
+      const isAtlasHeader=!cSection&&(cProdNo||cUom||cPrice)&&(!_prodNo&&!_uom&&!_price);
       if(nameVal.startsWith('▶ ')||nameVal.startsWith('> ')||isAtlasHeader){
         const sectionName=nameVal.replace(/^[▶>§]\s*/,'');
         items.push({_type:'HEADER',section_name:sectionName});
+        lastSection=sectionName;
       } else {
+        // Explicit Section column (Zuper CPQ format) — emit a HEADER whenever it changes
+        if(cSection&&sectionVal&&sectionVal!==lastSection){
+          items.push({_type:'HEADER',section_name:sectionVal});
+          lastSection=sectionVal;
+        }
         items.push({
           _type:'ITEM',
           product_name:nameVal,
@@ -7248,12 +7275,78 @@ function parseTplExcel(wb){
           price:_price,
           quantity_type:String(row[cQtyT]||'MANUAL').trim()||'MANUAL',
           formula_name:String(row[cFName]||'').trim(),
+          rule_summary:cRule?String(row[cRule]||'').trim():'',
         });
       }
     }
     if(items.length) opts.push({option_name:sheetName,option_description:'',_raw_items:items});
   }
   return opts;
+}
+
+// Flatten HEADER/ITEM entries into ITEM-only entries carrying the section they fall under
+function itemsWithSection(rawItems){
+  let sec=null;
+  const out=[];
+  for(const it of (rawItems||[])){
+    if(it._type==='HEADER'){sec=it.section_name||null;continue;}
+    out.push({...it,_section:sec});
+  }
+  return out;
+}
+
+// Product categories: fetch (paginated) into Map<lowercase name, uid>, and create-if-missing
+async function tiFetchCategories(){
+  const map=new Map();
+  let page=1;
+  while(page<=50){
+    const r=await fetch(baseUrl()+'products/category?count=100&page='+page,{headers:getHdrs()});
+    if(!r.ok) break;
+    const d=await r.json().catch(()=>({}));
+    const rows=Array.isArray(d.data)?d.data:[];
+    for(const c of rows){
+      const uid=c.category_uid??c.product_category_uid;
+      const name=c.category_name??c.product_category_name;
+      if(uid&&name) map.set(String(name).toLowerCase(),uid);
+    }
+    if(rows.length<100) break;
+    page++;
+  }
+  return map;
+}
+async function tiEnsureCategory(name,catMap){
+  const norm=String(name||'').trim();if(!norm) return null;
+  const key=norm.toLowerCase();
+  if(catMap.has(key)) return catMap.get(key);
+  const r=await fetch(baseUrl()+'products/category',{method:'POST',headers:hdrs(),body:JSON.stringify({product_category_name:norm})});
+  const d=await r.json().catch(()=>({}));
+  const uid=d.data?.product_category_uid??d.data?.category_uid??d.product_category_uid;
+  if(!r.ok||!uid) throw new Error('Category "'+norm+'" create failed (HTTP '+r.status+'): '+JSON.stringify(d).slice(0,150));
+  catMap.set(key,uid);
+  return uid;
+}
+
+function onTiCatModeChange(){
+  const mode=document.querySelector('input[name="ti-catmode"]:checked')?.value||'auto';
+  const row=$('ti-catmanual-row');if(row) row.style.display=mode==='manual'?'flex':'none';
+}
+
+let _tiCategoriesLoadedFor=null;
+async function loadTiCategories(){
+  const sel=$('ti-category-select');if(!sel) return;
+  if(!apiKey()) return;
+  if(_tiCategoriesLoadedFor===apiKey()) return; // avoid refetching on every preview re-render
+  try{
+    const map=await tiFetchCategories();
+    sel.innerHTML='<option value="__new__">+ Create new category…</option>';
+    for(const [name,uid] of map.entries()){
+      const opt=document.createElement('option');
+      opt.value=uid;opt.textContent=name;
+      sel.appendChild(opt);
+    }
+    sel.onchange=()=>{const nc=$('ti-newcategory-input');if(nc) nc.style.display=sel.value==='__new__'?'block':'none';};
+    _tiCategoriesLoadedFor=apiKey();
+  }catch(e){/* non-fatal — manual category select just stays empty */}
 }
 
 function renderTplImportPreview(){
@@ -7263,16 +7356,23 @@ function renderTplImportPreview(){
   const allRawItems=opts.flatMap(o=>o._raw_items||o.line_items||o.items||o.proposal_line_items||[]);
   const itemCount=allRawItems.filter(i=>(i._type||i.line_item_type)!=='HEADER').length;
   const nameRow=$('ti-name-row');if(nameRow) nameRow.style.display=isExcel?'block':'none';
+  const catRow=$('ti-catmode-row');if(catRow) catRow.style.display=isExcel?'block':'none';
+  if(isExcel) loadTiCategories();
+  const flatItems=isExcel?opts.flatMap(o=>itemsWithSection(o._raw_items||[])):[];
+  const sectionCount=isExcel?new Set(flatItems.map(i=>i._section).filter(Boolean)).size:0;
+  const ruleCount=isExcel?flatItems.filter(i=>i.rule_summary).length:0;
   const prev=$('ti-preview');if(!prev) return;
   prev.innerHTML=
     '<div style="margin-bottom:8px;font-weight:600;font-size:.88rem">'+esc(rec.template_name||rec._tpl_name||'Unnamed Template')+'</div>'
     +'<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:.8rem;color:var(--text-sub)">'
     +'<span><strong style="color:var(--text)">'+opts.length+'</strong> option'+(opts.length!==1?'s':'')+'</span>'
     +'<span><strong style="color:var(--text)">'+itemCount+'</strong> line items</span>'
+    +(isExcel&&sectionCount?'<span><strong style="color:var(--text)">'+sectionCount+'</strong> section'+(sectionCount!==1?'s':'')+'</span>':'')
     +(!isExcel?'<span>Job Category: <strong style="color:var(--text)">'+esc(rec.job_category_name||rec._cat_name||'—')+'</strong></span>':'')
     +'<span style="background:var(--primary-tint);color:var(--primary);font-size:.7rem;font-weight:600;padding:2px 10px;border-radius:20px;border:1px solid var(--sec-border)">'+(isExcel?'Excel import':'JSON import')+'</span>'
     +'</div>'
-    +'<div style="margin-top:10px;font-size:.78rem;color:var(--text-sub)">'+opts.map(o=>'<span style="display:inline-block;background:var(--primary-tint);border:1px solid var(--sec-border);border-radius:6px;padding:2px 10px;margin:2px">'+esc(o.option_name||'Option')+'</span>').join(' ')+'</div>';
+    +'<div style="margin-top:10px;font-size:.78rem;color:var(--text-sub)">'+opts.map(o=>'<span style="display:inline-block;background:var(--primary-tint);border:1px solid var(--sec-border);border-radius:6px;padding:2px 10px;margin:2px">'+esc(o.option_name||'Option')+'</span>').join(' ')+'</div>'
+    +(ruleCount?'<div class="msg msg-warn" style="margin-top:10px;font-size:.76rem">⚠ '+ruleCount+' item(s) have a Rule Summary — Zuper\'s public API has no endpoint to create CPQ conditional rules, so these will need to be set up manually after import (Settings → Modules → Quotes & Invoice → Zuper IQ → Proposal Templates).</div>':'');
 }
 
 function onTplImportFile(input){
@@ -7322,6 +7422,9 @@ async function startTplImport(){
   const finalName=isExcel?tplName:tplName+' (Copy)';
   const opts0=_tplImportData.proposal_options||_tplImportData._opts||[];
   if(isExcel&&!tplName){const n=$('ti-msg2');n.className='msg msg-err';n.textContent='✗ Enter a template name before importing.';n.style.display='block';return;}
+  const catMode=document.querySelector('input[name="ti-catmode"]:checked')?.value||'auto';
+  const catSelectVal=$('ti-category-select')?.value||'__new__';
+  const newCatName=($('ti-newcategory-input')?.value||'').trim()||'Imported Products';
   tiGoTo(3);
   const logEl=$('ti-log');logEl.innerHTML='';logEl.style.display='block';
   const progBar=$('ti-prog-bar'),progLbl=$('ti-prog-lbl');
@@ -7334,11 +7437,85 @@ async function startTplImport(){
     logEl.appendChild(d);logEl.scrollTop=logEl.scrollHeight;
   }
   try{
+    // ── Excel only: resolve product + formula + category catalogs (safe read-only, runs for dry run too) ──
+    const prodMap={},fmlMap={};
+    let categoryMap=new Map(),sectionCatMap=new Map(),manualCategoryUid=null;
+    let uniqueSections=[],unmatchedFormulaNames=[],ruleItemCount=0;
+    if(isExcel){
+      tiLog('info','Fetching product catalog (matching by Product No)…');
+      try{
+        let pg=1;
+        while(pg<=50){
+          const pr=await fetch(baseUrl()+'product?page='+pg+'&count=150',{headers:getHdrs()});
+          if(!pr.ok) break;
+          const pd=await pr.json().catch(()=>({}));
+          const precs=extractRecords(pd,'product')||[];
+          if(!precs.length) break;
+          precs.forEach(p=>{
+            const pUid=p.product_uid||p.uid||'';
+            const ids=[p.product_id,p.product_code,p.sku,p.product_no].map(v=>String(v||'').trim()).filter(Boolean);
+            ids.forEach(id=>{if(!prodMap[id]) prodMap[id]=pUid;});
+            const pname=(p.product_name||'').trim().toLowerCase();
+            if(pname&&!prodMap[pname]) prodMap[pname]=pUid;
+          });
+          if(precs.length<150) break; pg++;
+        }
+        tiLog('ok','Catalog: '+Object.keys(prodMap).length+' product(s) indexed');
+      }catch(e){tiLog('warn','Product fetch error: '+e.message);}
+      tiLog('info','Fetching formula catalog (matching by name)…');
+      try{
+        const fr=await fetch(baseUrl()+'invoice_estimate/cpq/formulas?count=500&page=1',{headers:getHdrs()});
+        if(fr.ok){const fd=await fr.json().catch(()=>({}));(extractRecords(fd,'formula')||[]).forEach(f=>{const n=(f.formula_name||'').trim().toLowerCase();if(n) fmlMap[n]=f.formula_uid||f.uid||'';});}
+        tiLog('ok','Formulas: '+Object.keys(fmlMap).length+' indexed');
+      }catch(e){tiLog('warn','Formula fetch error: '+e.message);}
+      tiLog('info','Fetching product categories…');
+      try{ categoryMap=await tiFetchCategories(); tiLog('ok','Categories: '+categoryMap.size+' indexed'); }
+      catch(e){ tiLog('warn','Category fetch error: '+e.message); }
+
+      const flatItems=opts0.flatMap(o=>itemsWithSection(o._raw_items||[]));
+      uniqueSections=[...new Set(flatItems.map(i=>i._section).filter(Boolean))];
+      unmatchedFormulaNames=[...new Set(flatItems.filter(i=>i.formula_name&&!fmlMap[i.formula_name.toLowerCase()]).map(i=>i.formula_name))];
+      ruleItemCount=flatItems.filter(i=>i.rule_summary).length;
+
+      if(catMode==='auto'&&uniqueSections.length){
+        tiLog('info',(dry?'[Dry Run] Would ensure ':'Ensuring ')+uniqueSections.length+' section categor'+(uniqueSections.length!==1?'ies':'y')+'…');
+        for(const sec of uniqueSections){
+          const key=sec.toLowerCase();
+          if(categoryMap.has(key)){ sectionCatMap.set(key,categoryMap.get(key)); tiLog('info','  "'+sec+'" already exists'); continue; }
+          if(dry){ tiLog('info','  "'+sec+'" would be created'); continue; }
+          try{ const uid=await tiEnsureCategory(sec,categoryMap); sectionCatMap.set(key,uid); tiLog('ok','  "'+sec+'" → '+uid); }
+          catch(e){ tiLog('err','  '+e.message); }
+        }
+      } else if(catMode==='manual'){
+        if(catSelectVal==='__new__'){
+          const key=newCatName.toLowerCase();
+          if(categoryMap.has(key)){ manualCategoryUid=categoryMap.get(key); tiLog('info','Category "'+newCatName+'" already exists — reusing'); }
+          else if(dry){ tiLog('info','[Dry Run] Would create category "'+newCatName+'"'); }
+          else { try{ manualCategoryUid=await tiEnsureCategory(newCatName,categoryMap); tiLog('ok','Category "'+newCatName+'" → '+manualCategoryUid); }catch(e){ tiLog('err',e.message); } }
+        } else {
+          manualCategoryUid=catSelectVal;
+        }
+      }
+      if(unmatchedFormulaNames.length) tiLog('warn',unmatchedFormulaNames.length+' formula name(s) not found in this account: '+unmatchedFormulaNames.join(', ')+' — those items will import as MANUAL quantity type.');
+      if(ruleItemCount) tiLog('warn',ruleItemCount+' item(s) have a Rule Summary — the Zuper public API has no endpoint for CPQ conditional rules; set these up manually after import.');
+    }
+
     if(dry){
       tiLog('info','[Dry Run] Would create: "'+finalName+'"'+(isExcel?' (from Excel)':' (from JSON)'));
       tiLog('info','POST '+baseUrl()+'invoice_estimate/proposal_template');
-      opts0.forEach((o,i)=>{const items=o._raw_items||o.line_items||o.items||o.proposal_line_items||[];tiLog('info','  Option '+(i+1)+': "'+(o.option_name||'Option')+'" — '+items.length+' item(s)');});
-      if(isExcel){tiLog('warn','[Excel] Product catalog and formula catalog will be fetched on live run to resolve UIDs.');}
+      let willCreateProd=0,willReuseProd=0;
+      opts0.forEach((o,i)=>{
+        const items=o._raw_items||o.line_items||o.items||o.proposal_line_items||[];
+        tiLog('info','  Option '+(i+1)+': "'+(o.option_name||'Option')+'" — '+items.length+' item(s)');
+      });
+      if(isExcel){
+        const flatItems=opts0.flatMap(o=>itemsWithSection(o._raw_items||[]));
+        flatItems.forEach(item=>{
+          const matched=prodMap[item.product_no]||prodMap[(item.product_name||'').toLowerCase()];
+          matched?willReuseProd++:willCreateProd++;
+        });
+        tiLog('info','Products: '+willCreateProd+' to create, '+willReuseProd+' to reuse');
+      }
       progBar.style.width='100%';progLbl.textContent='✓ Dry run complete — no changes made';
       msg.className='msg msg-ok';msg.textContent='✓ Dry run passed. Uncheck "Dry Run" and run again to create the template.';msg.style.display='block';
     } else {
@@ -7356,41 +7533,10 @@ async function startTplImport(){
       const newTplUid=tplData.data?.proposal_template_uid||tplData.data?.template_uid||tplData.proposal_template_uid||tplData.template_uid||'';
       if(!newTplUid) throw new Error('No template UID in response: '+JSON.stringify(tplData).slice(0,200));
       tiLog('ok','Template created: '+newTplUid);
-      progBar.style.width='10%';progLbl.textContent='Template created…';
-      // ── Excel only: resolve product + formula catalogs ────────────────────
-      const prodMap={},fmlMap={};
-      if(isExcel){
-        tiLog('info','Fetching product catalog (matching by Product No)…');
-        try{
-          let pg=1;
-          while(pg<=50){
-            const pr=await fetch(baseUrl()+'product?page='+pg+'&count=150',{headers:getHdrs()});
-            if(!pr.ok) break;
-            const pd=await pr.json().catch(()=>({}));
-            const precs=extractRecords(pd,'product')||[];
-            if(!precs.length) break;
-            precs.forEach(p=>{
-              const pUid=p.product_uid||p.uid||'';
-              const ids=[p.product_id,p.product_code,p.sku,p.product_no].map(v=>String(v||'').trim()).filter(Boolean);
-              ids.forEach(id=>{if(!prodMap[id]) prodMap[id]=pUid;});
-              const pname=(p.product_name||'').trim().toLowerCase();
-              if(pname&&!prodMap[pname]) prodMap[pname]=pUid;
-            });
-            if(precs.length<150) break; pg++;
-          }
-          tiLog('ok','Catalog: '+Object.keys(prodMap).length+' product(s) indexed');
-        }catch(e){tiLog('warn','Product fetch error: '+e.message);}
-        tiLog('info','Fetching formula catalog (matching by name)…');
-        try{
-          const fr=await fetch(baseUrl()+'invoice_estimate/cpq/formulas?count=500&page=1',{headers:getHdrs()});
-          if(fr.ok){const fd=await fr.json().catch(()=>({}));(extractRecords(fd,'formula')||[]).forEach(f=>{const n=(f.formula_name||'').trim().toLowerCase();if(n) fmlMap[n]=f.formula_uid||f.uid||'';});}
-          tiLog('ok','Formulas: '+Object.keys(fmlMap).length+' indexed');
-        }catch(e){tiLog('warn','Formula fetch error: '+e.message);}
-        progBar.style.width='20%';
-      }
+      progBar.style.width=(isExcel?'30%':'10%');progLbl.textContent='Template created…';
       // ── Steps 2+: Create each option then add its line items ─────────────
-      const optStep=(isExcel?80:80)/(opts.length||1);
-      const startPct=isExcel?20:10;
+      const optStep=(isExcel?70:80)/(opts.length||1);
+      const startPct=isExcel?30:10;
       for(let i=0;i<opts.length;i++){
         const opt=opts[i];
         const optName=opt.option_name||('Option '+(i+1));
@@ -7402,19 +7548,43 @@ async function startTplImport(){
         const newOptUid=optData.data?.option_uid||optData.data?.proposal_option_uid||optData.option_uid||optData.proposal_option_uid||'';
         if(!newOptUid){tiLog('err','No option UID returned for "'+optName+'": '+JSON.stringify(optData).slice(0,100));progBar.style.width=(startPct+optStep*(i+1)).toFixed(1)+'%';continue;}
         tiLog('ok','Option "'+optName+'" created: '+newOptUid);
-        // Build line items — Excel: convert _raw_items; JSON: strip server fields
+        // Build line items — Excel: convert _raw_items (creating missing products as needed); JSON: strip server fields
         const rawItems=isExcel?(opt._raw_items||[]):(opt.line_items||opt.items||opt.proposal_line_items||[]);
         if(rawItems.length){
           let cleanItems;
           if(isExcel){
-            cleanItems=rawItems.map(item=>{
-              if(item._type==='HEADER') return{line_item_type:'HEADER',product_name:item.section_name||''};
-              const pUid=prodMap[item.product_no]||prodMap[(item.product_name||'').toLowerCase()]||'';
-              if(!pUid) tiLog('warn','Product "'+item.product_no+'" ('+item.product_name+') not matched in catalog — will import without product UID');
+            cleanItems=[];
+            let currentSection=null;
+            for(const item of rawItems){
+              if(item._type==='HEADER'){
+                currentSection=item.section_name||null;
+                cleanItems.push({line_item_type:'HEADER',product_name:item.section_name||''});
+                continue;
+              }
+              let pUid=prodMap[item.product_no]||prodMap[(item.product_name||'').toLowerCase()]||'';
+              if(!pUid){
+                const catUid=catMode==='auto'?(currentSection?sectionCatMap.get(currentSection.toLowerCase()):null):manualCategoryUid;
+                if(!catUid){
+                  tiLog('warn','"'+item.product_name+'" — no category resolved (section: "'+(currentSection||'—')+'"); importing without product UID');
+                } else {
+                  try{
+                    const prodBody={product:{product_name:item.product_name,product_type:item.product_type||'PARTS',price:item.price||0,uom:item.uom||'EA',product_category:catUid,is_available:true,is_billable:true,quantity:1,min_quantity:1,...(item.product_no?{product_id:String(item.product_no)}:{})},vendor:[]};
+                    const pr=await fetch(baseUrl()+'product',{method:'POST',headers:hdrs(),body:JSON.stringify(prodBody)});
+                    const pd=await pr.json().catch(()=>({}));
+                    const pdata=Array.isArray(pd.data)?pd.data[0]:pd.data;
+                    pUid=pdata?.product_uid||'';
+                    if(!pr.ok||!pUid){ tiLog('err','Create product "'+item.product_name+'" failed (HTTP '+pr.status+'): '+JSON.stringify(pd).slice(0,150)); }
+                    else{
+                      tiLog('ok','Created product "'+item.product_name+'" → '+pUid);
+                      prodMap[(item.product_name||'').toLowerCase()]=pUid;
+                      if(item.product_no) prodMap[item.product_no]=pUid;
+                    }
+                  }catch(e){ tiLog('err','Create product "'+item.product_name+'": '+e.message); }
+                }
+              }
               const fUid=item.formula_name?fmlMap[item.formula_name.toLowerCase()]||'':'';
-              if(item.formula_name&&!fUid) tiLog('warn','Formula "'+item.formula_name+'" not found — quantity_type will default to MANUAL');
-              return{line_item_type:'ITEM',product_uid:pUid,product_name:item.product_name||'',product_type:item.product_type||'',unit_price:item.price||0,quantity:1,quantity_type:fUid?item.quantity_type||'FORMULA':'MANUAL',formula_uid:fUid,uom:item.uom||''};
-            });
+              cleanItems.push({line_item_type:'ITEM',product_uid:pUid,product_name:item.product_name||'',product_type:item.product_type||'',unit_price:item.price||0,quantity:1,quantity_type:fUid?item.quantity_type||'FORMULA':'MANUAL',formula_uid:fUid,uom:item.uom||''});
+            }
           } else {
             cleanItems=rawItems.map(item=>{const c={...item};delete c.line_item_uid;delete c.created_at;delete c.updated_at;delete c.proposal_template_uid;delete c.option_uid;delete c.section_uid;return c;});
           }
