@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in — Internal Tools</title>
+<style>
+  :root { --orange:#E8500A; --purple:#5B2D8E; --navy:#1a1a2e; --text-light:#f4f4f8; --muted:#a0a0b8; }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:linear-gradient(135deg,var(--navy),var(--purple)); color:var(--text-light); padding:1rem;
+  }
+  .card {
+    background:#fff; color:#1a1a2e; border-radius:16px; padding:2rem; width:100%; max-width:360px;
+    box-shadow:0 20px 48px rgba(0,0,0,.35); border-top:4px solid var(--orange);
+  }
+  h1 { margin:0 0 .3rem; font-size:1.35rem; }
+  p.sub { margin:0 0 1.4rem; color:#6b7280; font-size:.85rem; }
+  label { display:block; font-size:.8rem; font-weight:600; color:#444; margin:0 0 .3rem; }
+  input {
+    width:100%; font:inherit; padding:.6rem .75rem; border:1px solid #d7d7e0; border-radius:8px;
+    margin-bottom:1rem;
+  }
+  input:focus { outline:none; border-color:var(--purple); }
+  button {
+    width:100%; font:inherit; font-weight:600; color:#fff; background:var(--orange); border:none;
+    border-radius:999px; padding:.65rem; cursor:pointer;
+  }
+  button:disabled { opacity:.6; cursor:not-allowed; }
+  .err { color:#b3261e; background:#fdecea; border-radius:8px; padding:.55rem .7rem; font-size:.82rem; margin:0 0 1rem; }
+</style>
+</head>
+<body>
+  <form class="card" id="login-form">
+    <h1>Internal Tools</h1>
+    <p class="sub">Sign in to continue</p>
+    <p class="err" id="err" hidden></p>
+    <label for="u">Username</label>
+    <input type="text" id="u" autocomplete="username" required autofocus>
+    <label for="p">Password</label>
+    <input type="password" id="p" autocomplete="current-password" required>
+    <button type="submit" id="btn">Sign in</button>
+  </form>
+
+<script>
+  var form = document.getElementById('login-form');
+  var err = document.getElementById('err');
+  var btn = document.getElementById('btn');
+
+  function nextUrl() {
+    var params = new URLSearchParams(window.location.search);
+    var n = params.get('next') || '/';
+    // Only allow same-origin relative paths.
+    if (!n.startsWith('/') || n.startsWith('//')) n = '/';
+    return n;
+  }
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    err.hidden = true;
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+    try {
+      var res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('u').value,
+          password: document.getElementById('p').value
+        })
+      });
+      var data = {};
+      try { data = await res.json(); } catch (e2) {}
+      if (!res.ok) throw new Error(data.error || 'Sign in failed.');
+      window.location.href = nextUrl();
+    } catch (ex) {
+      err.textContent = ex.message || 'Sign in failed.';
+      err.hidden = false;
+      btn.disabled = false;
+      btn.textContent = 'Sign in';
+    }
+  });
+</script>
+</body>
+</html>
