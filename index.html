@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Internal Tools Dashboard</title>
+<script>try{if(localStorage.getItem('zuper_tools_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
@@ -13,10 +14,18 @@
   <p>Quick access to internal utilities</p>
 </header>
 
-<main class="dashboard-grid" id="dashboard-grid">
-  <!-- Tiles are rendered here below; the Add/Update Tool tiles are appended by manage-tools.js -->
-</main>
+<div class="board-controls">
+  <input type="search" id="board-search" class="board-search" placeholder="Search tools…" autocomplete="off">
+  <button type="button" class="board-btn" id="manage-toggle" title="Enable delete &amp; drag-to-reorder">⚙ Manage</button>
+  <button type="button" class="board-btn" data-theme-toggle>🌙 Dark</button>
+</div>
 
+<main class="dashboard-grid" id="dashboard-grid">
+  <!-- Tool tiles + the Add/Update tiles are rendered by board.js / manage-tools.js -->
+</main>
+<div class="board-empty" id="board-empty" hidden>No tools match your search.</div>
+
+<!-- Add Tool modal -->
 <div class="modal-overlay" id="add-tool-overlay" hidden>
   <form class="modal" id="add-tool-form">
     <h2>Add a new tool</h2>
@@ -29,6 +38,11 @@
     <label>
       Description
       <input type="text" id="at-description" required maxlength="300" placeholder="One line describing what it does">
+    </label>
+
+    <label>
+      Help text (optional)
+      <input type="text" id="at-help" maxlength="500" placeholder="Longer explanation shown in the ⓘ popover">
     </label>
 
     <label>
@@ -57,6 +71,7 @@
   </form>
 </div>
 
+<!-- Update Tool modal -->
 <div class="modal-overlay" id="update-tool-overlay" hidden>
   <form class="modal" id="update-tool-form">
     <h2>Update an existing tool</h2>
@@ -87,46 +102,21 @@
   </form>
 </div>
 
+<!-- Help popover -->
+<div class="modal-overlay" id="help-overlay" hidden>
+  <div class="modal" style="max-width:460px">
+    <h2 id="help-title">Tool</h2>
+    <p class="help-body" id="help-body"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" id="help-close">Close</button>
+    </div>
+  </div>
+</div>
+
 <script src="assets/tools.config.js"></script>
-<script>
-  const grid = document.getElementById("dashboard-grid");
-
-  function renderTile(tool, exists) {
-    const tag = exists ? "a" : "div";
-    const el = document.createElement(tag);
-    el.className = "tile" + (exists ? "" : " tile-disabled");
-    if (exists) el.href = tool.file;
-
-    el.innerHTML = `
-      <div class="tile-icon">${tool.icon || "🔧"}</div>
-      <h2>${tool.name}</h2>
-      <p>${tool.description || ""}</p>
-      ${exists ? "" : '<span class="tile-badge">Not yet available</span>'}
-    `;
-    return el;
-  }
-
-  async function fileExists(path) {
-    try {
-      const res = await fetch(path, { method: "HEAD", cache: "no-store" });
-      return res.ok;
-    } catch (err) {
-      return false;
-    }
-  }
-
-  async function init() {
-    for (const tool of TOOLS) {
-      const exists = await fileExists(tool.file);
-      grid.appendChild(renderTile(tool, exists));
-    }
-    if (window.renderAddToolTile) window.renderAddToolTile(grid);
-    if (window.renderUpdateToolTile) window.renderUpdateToolTile(grid);
-  }
-
-  init();
-</script>
 <script src="assets/manage-tools.js"></script>
+<script src="assets/board.js"></script>
+<script src="assets/theme.js"></script>
 
 </body>
 </html>

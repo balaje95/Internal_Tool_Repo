@@ -67,7 +67,7 @@ module.exports = async (req, res) => {
   }
 
   const branch = GITHUB_BRANCH || "main";
-  const { name, description, icon, password, filename, fileContent } = req.body || {};
+  const { name, description, help, icon, password, filename, fileContent } = req.body || {};
 
   if (password !== ADMIN_PASSWORD) {
     res.status(401).json({ error: "Incorrect password." });
@@ -96,7 +96,9 @@ module.exports = async (req, res) => {
 
   const trimmedName = name.trim().slice(0, 120);
   const trimmedDescription = description.trim().slice(0, 300);
+  const trimmedHelp = (help || "").trim().slice(0, 500);
   const trimmedIcon = (icon || "🔧").trim().slice(0, 8) || "🔧";
+  const today = new Date().toISOString().slice(0, 10);
 
   try {
     const configPath = "assets/tools.config.js";
@@ -128,12 +130,16 @@ module.exports = async (req, res) => {
       })
     });
 
-    tools.push({
+    var entry = {
       name: trimmedName,
       description: trimmedDescription,
       file: toolFilePath,
-      icon: trimmedIcon
-    });
+      icon: trimmedIcon,
+      added: today,
+      updated: today
+    };
+    if (trimmedHelp) entry.help = trimmedHelp;
+    tools.push(entry);
 
     const newConfigText = configText.replace(
       fullMatch,

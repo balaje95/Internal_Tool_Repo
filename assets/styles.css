@@ -7,6 +7,23 @@
   --text-muted: #a0a0b8;
   --card-bg: #ffffff;
   --page-bg: #f4f5f9;
+  --tile-title: var(--navy);
+  --tile-desc: #5a5a6e;
+  --border-soft: rgba(26, 26, 46, 0.06);
+  --input-bg: #ffffff;
+  --input-border: #d7d7e0;
+  --text-body: #222;
+}
+
+[data-theme="dark"] {
+  --card-bg: #1d2130;
+  --page-bg: #14151f;
+  --tile-title: #f0f1f6;
+  --tile-desc: #a8adbe;
+  --border-soft: rgba(255, 255, 255, 0.08);
+  --input-bg: #232838;
+  --input-border: #363c50;
+  --text-body: #e6e8ef;
 }
 
 * {
@@ -17,7 +34,8 @@ body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--page-bg);
-  color: #222;
+  color: var(--text-body);
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 header.dashboard-header {
@@ -50,13 +68,14 @@ main.dashboard-grid {
 }
 
 .tile {
+  position: relative;
   background: var(--card-bg);
   border-radius: 14px;
   padding: 1.5rem;
   text-decoration: none;
   color: inherit;
   box-shadow: 0 2px 8px rgba(26, 26, 46, 0.08);
-  border: 1px solid rgba(26, 26, 46, 0.06);
+  border: 1px solid var(--border-soft);
   border-top: 3px solid var(--orange);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   display: flex;
@@ -69,6 +88,16 @@ main.dashboard-grid {
   box-shadow: 0 10px 24px rgba(26, 26, 46, 0.14);
 }
 
+/* Tool tiles wrap their content in an <a class="tile-link"> so action buttons
+   (help/delete) can sit on top without nesting interactive elements. */
+.tile-link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: inherit;
+}
+
 .tile .tile-icon {
   font-size: 2rem;
   line-height: 1;
@@ -78,13 +107,13 @@ main.dashboard-grid {
   margin: 0;
   font-size: 1.1rem;
   font-weight: 600;
-  color: var(--navy);
+  color: var(--tile-title);
 }
 
 .tile p {
   margin: 0;
   font-size: 0.9rem;
-  color: #5a5a6e;
+  color: var(--tile-desc);
   line-height: 1.4;
 }
 
@@ -263,3 +292,112 @@ main.dashboard-grid {
   background: #eee;
   color: #333;
 }
+
+/* ---- Board controls (search / manage / theme) ---- */
+.board-controls {
+  max-width: 1100px;
+  margin: 1.25rem auto -0.5rem;
+  padding: 0 1.5rem;
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.board-search {
+  flex: 1;
+  min-width: 180px;
+  font: inherit;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--input-border);
+  border-radius: 999px;
+  background: var(--input-bg);
+  color: var(--text-body);
+}
+.board-search:focus { outline: none; border-color: var(--purple); }
+.board-btn {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 0.95rem;
+  border-radius: 999px;
+  border: 1px solid var(--input-border);
+  background: var(--card-bg);
+  color: var(--text-body);
+  cursor: pointer;
+}
+.board-btn:hover { border-color: var(--purple); }
+.board-btn.active { background: var(--orange); color: #fff; border-color: var(--orange); }
+.board-empty {
+  max-width: 1100px;
+  margin: 1rem auto;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  color: var(--tile-desc);
+  font-size: 0.9rem;
+}
+
+/* ---- Tile flags (New / Updated) ---- */
+.tile-flag {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--orange);
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+}
+
+/* ---- Tile action buttons (help / delete) ---- */
+.tile-actions {
+  position: absolute;
+  bottom: 0.6rem;
+  right: 0.6rem;
+  display: flex;
+  gap: 0.35rem;
+}
+.tile-action {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border-soft);
+  background: var(--card-bg);
+  color: var(--tile-desc);
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+.tile-action:hover { color: var(--purple); border-color: var(--purple); }
+.tile-action.tile-delete:hover { color: #d1453b; border-color: #d1453b; }
+
+/* ---- Manage mode / drag-reorder ---- */
+.tile.dragging { opacity: 0.5; }
+.tile.drag-over { outline: 2px dashed var(--purple); outline-offset: 2px; }
+body.manage-mode .tile[draggable="true"] { cursor: grab; }
+
+/* ---- Help popover reuses the modal styles ---- */
+.help-body {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--tile-desc);
+  margin: 0;
+}
+
+/* ---- Dark-mode modal + header tweaks ---- */
+[data-theme="dark"] .modal { background: #1d2130; }
+[data-theme="dark"] .modal h2 { color: #f0f1f6; }
+[data-theme="dark"] .modal label { color: #c7ccda; }
+[data-theme="dark"] .modal input,
+[data-theme="dark"] .modal select {
+  background: var(--input-bg); border-color: var(--input-border); color: var(--text-body);
+}
+[data-theme="dark"] .modal-status { background: #23283a; color: #dfe3ef; }
+[data-theme="dark"] .btn-secondary { background: #2a3042; color: #dfe3ef; }
+[data-theme="dark"] .tile.tile-disabled .tile-badge { background: #2a3042; color: #9aa1b4; }

@@ -86,6 +86,7 @@
 
       const name = document.getElementById("at-name").value.trim();
       const description = document.getElementById("at-description").value.trim();
+      const help = (document.getElementById("at-help") ? document.getElementById("at-help").value : "").trim();
       const icon = document.getElementById("at-icon").value.trim();
       const password = document.getElementById("at-password").value;
       const file = document.getElementById("at-file").files[0];
@@ -107,7 +108,7 @@
 
       try {
         const fileContent = await readFileAsBase64(file);
-        await postJson("/api/add-tool", { name, description, icon, password, filename: file.name, fileContent });
+        await postJson("/api/add-tool", { name, description, help, icon, password, filename: file.name, fileContent });
         statusEl.textContent = "Added! Vercel is redeploying now — this page will refresh in a moment.";
         setTimeout(() => window.location.reload(), 45000);
       } catch (err) {

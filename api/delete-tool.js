@@ -1,18 +1,11 @@
-// Vercel serverless function: overwrites an EXISTING tool's HTML file in the GitHub
-// repo with newly uploaded content. Unlike add-tool.js, this does not touch
-// assets/tools.config.js — the tool's name/description/icon/path stay the same,
-// only the file content changes.
+// Serverless function: deletes a registered tool — removes its HTML file and its
+// entry in assets/tools.config.js via GitHub commits. Vercel then auto-redeploys.
 //
-// Security: the target file path is only ever taken from tools.config.js's own
-// TOOLS list (never trusted from the client as a free-form path), so this endpoint
-// can only ever overwrite files that are already registered as tools — never
-// arbitrary repo paths like api/*.js.
-//
-// Required env vars: same as api/add-tool.js (GITHUB_TOKEN, GITHUB_OWNER,
-// GITHUB_REPO, GITHUB_BRANCH, ADMIN_PASSWORD).
+// Security: the target path is only ever accepted if it matches a `file` already
+// registered in tools.config.js, so this can only delete real tool files — never
+// arbitrary repo paths. Same env vars as add-tool.js (ADMIN_PASSWORD gate).
 
 const GITHUB_API = "https://api.github.com";
-const MAX_FILE_BYTES = 3 * 1024 * 1024; // 3MB decoded size, matching the client-side check
 
 async function githubRequest(path, token, options = {}) {
   const res = await fetch(`${GITHUB_API}${path}`, {
@@ -31,20 +24,11 @@ async function githubRequest(path, token, options = {}) {
   return res.json();
 }
 
-function extractToolsArray(fileText) {
-  const match = fileText.match(/const TOOLS = (\[[\s\S]*\]);\s*$/);
-  if (!match) {
-    throw new Error("Could not find `const TOOLS = [...]` in tools.config.js");
-  }
-  return JSON.parse(match[1]);
-}
-
 module.exports = async (req, res) => {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
-
   const { GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO, GITHUB_BRANCH, ADMIN_PASSWORD } = process.env;
   if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO || !ADMIN_PASSWORD) {
     res.status(500).json({ error: "Server is missing required configuration. Check Vercel environment variables." });
@@ -52,7 +36,7 @@ module.exports = async (req, res) => {
   }
 
   const branch = GITHUB_BRANCH || "main";
-  const { toolFile, password, fileContent } = req.body || {};
+  const { toolFile, password } = req.body || {};
 
   if (password !== ADMIN_PASSWORD) {
     res.status(401).json({ error: "Incorrect password." });
@@ -60,14 +44,6 @@ module.exports = async (req, res) => {
   }
   if (!toolFile || typeof toolFile !== "string") {
     res.status(400).json({ error: "Missing toolFile." });
-    return;
-  }
-  if (!fileContent || typeof fileContent !== "string" || !/^[A-Za-z0-9+/]+=*$/.test(fileContent)) {
-    res.status(400).json({ error: "Missing or invalid (non-base64) file content." });
-    return;
-  }
-  if (Buffer.byteLength(fileContent, "base64") > MAX_FILE_BYTES) {
-    res.status(400).json({ error: `File is over the ${(MAX_FILE_BYTES / (1024 * 1024)).toFixed(0)}MB limit for this upload form.` });
     return;
   }
 
@@ -88,28 +64,26 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const existing = await githubRequest(
-      `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${toolFile}?ref=${branch}`,
-      GITHUB_TOKEN
-    );
+    // Delete the tool file (look up its blob sha first). Tolerate a missing file.
+    try {
+      const existing = await githubRequest(
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${toolFile}?ref=${branch}`,
+        GITHUB_TOKEN
+      );
+      await githubRequest(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${toolFile}`, GITHUB_TOKEN, {
+        method: "DELETE",
+        body: JSON.stringify({ message: `Delete tool file: ${tool.name}`, sha: existing.sha, branch })
+      });
+    } catch (e) {
+      // If the file was already gone, keep going to clean up the config entry.
+    }
 
-    await githubRequest(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${toolFile}`, GITHUB_TOKEN, {
-      method: "PUT",
-      body: JSON.stringify({
-        message: `Update tool: ${tool.name}`,
-        content: fileContent,
-        sha: existing.sha,
-        branch
-      })
-    });
-
-    // Stamp the tool's `updated` date so the board shows an "Updated" badge.
-    tool.updated = new Date().toISOString().slice(0, 10);
-    const newConfigText = configText.replace(configMatch[0], `const TOOLS = ${JSON.stringify(tools, null, 2)};\n`);
+    const remaining = tools.filter((t) => t.file !== toolFile);
+    const newConfigText = configText.replace(configMatch[0], `const TOOLS = ${JSON.stringify(remaining, null, 2)};\n`);
     await githubRequest(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${configPath}`, GITHUB_TOKEN, {
       method: "PUT",
       body: JSON.stringify({
-        message: `Bump updated date: ${tool.name}`,
+        message: `Unregister tool: ${tool.name}`,
         content: Buffer.from(newConfigText, "utf-8").toString("base64"),
         sha: configFile.sha,
         branch
