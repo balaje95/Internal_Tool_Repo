@@ -1182,7 +1182,8 @@ input[type=checkbox]{accent-color:var(--primary)}
   <div style="display:flex;margin-bottom:20px;border-bottom:1.5px solid var(--sec-border)">
     <div class="istep active" id="wfistep1-tab">① Upload</div>
     <div class="istep" id="wfistep2-tab">② Preview</div>
-    <div class="istep" id="wfistep3-tab">③ Import</div>
+    <div class="istep" id="wfistep3-tab">③ Map</div>
+    <div class="istep" id="wfistep4-tab">④ Import</div>
   </div>
   <!-- Step 1: Upload -->
   <div id="wfistep1">
@@ -1211,14 +1212,32 @@ input[type=checkbox]{accent-color:var(--primary)}
       <div id="wfi-sel-count" style="font-size:.8rem;color:var(--text-sub);font-weight:600"></div>
     </div>
     <div id="wfi-preview" style="margin-bottom:14px;padding:14px;background:var(--th-bg);border-radius:10px;border:1px solid var(--border);font-size:.82rem;max-height:420px;overflow-y:auto"></div>
+    <label style="display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:600;cursor:pointer;margin-bottom:12px">
+      <input type="checkbox" id="wfi-activate">
+      Activate imported workflows immediately (publish live)
+    </label>
     <div class="btn-row">
-      <button class="btn btn-p" id="wfi-run-btn" onclick="startWfImport()">Import Selected →</button>
+      <button class="btn btn-p" id="wfi-run-btn" onclick="wfiProceedFromPreview()">Next →</button>
       <button class="btn btn-o" onclick="wfiGoTo(1);$('wfi-file').value=''">← Back</button>
     </div>
     <div id="wfi-msg2" class="msg" style="display:none;margin-top:10px"></div>
   </div>
-  <!-- Step 3: Result -->
+  <!-- Step 3: Map placeholder tokens -->
   <div id="wfistep3" style="display:none">
+    <p style="font-size:.85rem;color:var(--text-sub);margin:0 0 12px">
+      These converted workflows contain <code>[MAP → …]</code> placeholders that need a real value from this account before they'll run.
+      Pick a value (or type one) for each. Leave a row blank to import the placeholder as-is and fix it later in the Workflow Builder.
+    </p>
+    <div id="wfi-map-body" style="max-height:380px;overflow-y:auto;margin-bottom:14px"></div>
+    <div class="btn-row">
+      <button class="btn btn-p" id="wfi-map-apply" onclick="applyMappingsAndImport()">Apply &amp; Import →</button>
+      <button class="btn btn-o" onclick="startWfImport(true)">Skip — import as-is</button>
+      <button class="btn btn-o" onclick="wfiGoTo(2)">← Back</button>
+    </div>
+    <div id="wfi-msg-map" class="msg" style="display:none;margin-top:10px"></div>
+  </div>
+  <!-- Step 4: Result -->
+  <div id="wfistep4" style="display:none">
     <div id="wfi-msg3" class="msg" style="display:none;margin-bottom:10px"></div>
     <pre id="wfi-log" style="background:var(--th-bg);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.78rem;max-height:320px;overflow:auto;white-space:pre-wrap"></pre>
     <div class="btn-row" style="margin-top:12px">
@@ -6739,10 +6758,101 @@ function showWfImportCard(){
 function hideWfImportCard(){const c=$('wf-import-card');if(c) c.style.display='none';}
 
 function wfiGoTo(step){
-  [1,2,3].forEach(n=>{
+  [1,2,3,4].forEach(n=>{
     const s=$('wfistep'+n);if(s) s.style.display=n===step?'block':'none';
     const t=$('wfistep'+n+'-tab');if(t){t.classList.toggle('active',n===step);t.classList.toggle('done',n<step);}
   });
+}
+
+// ── [MAP →] placeholder resolver ─────────────────────────────────────────────
+let _wfMapTokens=[];
+let _wfMapLookups={categories:[],statuses:[]};
+
+function wfiSelected(){
+  const sel=_wfImportSelected||(_wfImportData||[]).map(()=>true);
+  return (_wfImportData||[]).filter((_,i)=>sel[i]);
+}
+
+function wfDeepStrings(obj,cb){
+  if(typeof obj==='string'){cb(obj);return;}
+  if(Array.isArray(obj)){obj.forEach(v=>wfDeepStrings(v,cb));return;}
+  if(obj&&typeof obj==='object'){Object.keys(obj).forEach(k=>wfDeepStrings(obj[k],cb));}
+}
+function scanMapTokens(arr){
+  const set=new Set();
+  wfDeepStrings(arr,s=>{const m=s.match(/\[MAP[^\]]*\]/g);if(m)m.forEach(t=>set.add(t));});
+  return [...set];
+}
+function wfApplyMap(s,map){let out=s;for(const tok of Object.keys(map))out=out.split(tok).join(map[tok]);return out;}
+function wfSubstitute(obj,map){
+  if(Array.isArray(obj)){for(let i=0;i<obj.length;i++){if(typeof obj[i]==='string')obj[i]=wfApplyMap(obj[i],map);else wfSubstitute(obj[i],map);}return;}
+  if(obj&&typeof obj==='object'){for(const k of Object.keys(obj)){if(typeof obj[k]==='string')obj[k]=wfApplyMap(obj[k],map);else wfSubstitute(obj[k],map);}}
+}
+
+// Best-effort fetch of the account's categories + statuses to offer as dropdowns.
+async function buildMapLookups(){
+  _wfMapLookups={categories:[],statuses:[]};
+  try{
+    const r=await fetch(baseUrl()+'jobs/category?populate_statuses=true',{headers:getHdrs()});
+    if(r.ok){
+      const d=await r.json().catch(()=>({}));
+      const cats=Array.isArray(d.data)?d.data:(Array.isArray(d)?d:[]);
+      cats.forEach(c=>{
+        if(c.category_uid)_wfMapLookups.categories.push({uid:c.category_uid,name:c.category_name||c.category_uid});
+        (c.job_statuses||[]).forEach(s=>{if(s.status_uid)_wfMapLookups.statuses.push({uid:s.status_uid,name:(s.status_name||s.status_uid)+' · '+(c.category_name||'')});});
+      });
+    }
+  }catch(e){/* dropdowns just stay empty; text inputs still work */}
+}
+
+async function wfiProceedFromPreview(){
+  const arr=wfiSelected();
+  const m2=$('wfi-msg2');
+  if(!arr.length){m2.className='msg msg-err';m2.textContent='✗ No workflows selected — check at least one.';m2.style.display='block';return;}
+  if(!_workflowBaseUrl){m2.className='msg msg-err';m2.textContent='✗ Workflow Service URL not set. Go back to the connection screen and set it.';m2.style.display='block';return;}
+  m2.style.display='none';
+  const tokens=scanMapTokens(arr);
+  if(!tokens.length){ startWfImport(arr); return; }
+  const btn=$('wfi-run-btn');btn.disabled=true;btn.textContent='Loading account values…';
+  await buildMapLookups();
+  btn.disabled=false;btn.textContent='Next →';
+  renderMappingTable(tokens);
+  wfiGoTo(3);
+}
+
+function renderMappingTable(tokens){
+  _wfMapTokens=tokens;
+  const body=$('wfi-map-body');
+  body.innerHTML=tokens.map((tok,i)=>{
+    const lower=tok.toLowerCase();
+    let opts=null;
+    if(/categor/.test(lower)) opts=_wfMapLookups.categories;
+    else if(/status/.test(lower)) opts=_wfMapLookups.statuses;
+    const picker = (opts&&opts.length)
+      ? '<select class="inp wfi-map-pick" data-idx="'+i+'" style="max-width:260px;margin-right:8px"><option value="">— pick from account —</option>'+opts.map(o=>'<option value="'+esc(o.uid)+'">'+esc(o.name)+'</option>').join('')+'</select>'
+      : '';
+    return '<div style="padding:8px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="font-size:.74rem;color:var(--text-sub);margin-bottom:4px;font-family:monospace;word-break:break-all">'+esc(tok)+'</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+picker
+      +'<input class="inp wfi-map-val" data-idx="'+i+'" placeholder="Value / UID (blank = leave placeholder)" style="max-width:320px">'
+      +'</div></div>';
+  }).join('');
+  body.querySelectorAll('.wfi-map-pick').forEach(s=>s.addEventListener('change',()=>{
+    const inp=body.querySelector('.wfi-map-val[data-idx="'+s.dataset.idx+'"]');if(inp)inp.value=s.value;
+  }));
+}
+
+function applyMappingsAndImport(){
+  const body=$('wfi-map-body');
+  const map={};
+  _wfMapTokens.forEach((tok,i)=>{
+    const inp=body.querySelector('.wfi-map-val[data-idx="'+i+'"]');
+    const v=inp&&inp.value.trim();
+    if(v) map[tok]=v;
+  });
+  const arr=JSON.parse(JSON.stringify(wfiSelected()));
+  wfSubstitute(arr,map);
+  startWfImport(arr);
 }
 
 function onWfImportFile(input){
@@ -6839,10 +6949,9 @@ function renderWfImportPreview(){
   wfiUpdateSelCount();
 }
 
-async function startWfImport(){
+async function startWfImport(payload){
   const full=_wfImportData;if(!full) return;
-  const sel=_wfImportSelected||full.map(()=>true);
-  const arr=full.filter((_,i)=>sel[i]);
+  const arr = Array.isArray(payload) ? payload : wfiSelected();
   if(!arr.length){
     const m=$('wfi-msg2');m.className='msg msg-err';m.textContent='✗ No workflows selected — check at least one before importing.';m.style.display='block';
     return;
@@ -6851,9 +6960,14 @@ async function startWfImport(){
     const m=$('wfi-msg2');m.className='msg msg-err';m.textContent='✗ Workflow Service URL not set. Go back and set it on the connection screen.';m.style.display='block';
     return;
   }
-  const btn=$('wfi-run-btn');btn.disabled=true;btn.textContent='Importing…';
-  wfiGoTo(3);
-  const log=$('wfi-log');log.textContent='Uploading '+arr.length+' of '+full.length+' workflow(s) to '+_workflowBaseUrl+'workflows/import …\n';
+  const activate = $('wfi-activate') && $('wfi-activate').checked;
+  if(activate) arr.forEach(w=>{ if(w && typeof w==='object') w.is_active=true; });
+
+  const applyBtn=$('wfi-map-apply'); if(applyBtn) applyBtn.disabled=true;
+  wfiGoTo(4);
+  const log=$('wfi-log');
+  log.textContent='Uploading '+arr.length+' of '+full.length+' workflow(s) to '+_workflowBaseUrl+'workflows/import …\n';
+  if(activate) log.textContent+='Activation requested (is_active=true). If the API imports them as drafts, publish them in the Workflow Builder.\n';
   try{
     const blob=new Blob([JSON.stringify(arr)],{type:'application/json'});
     const form=new FormData();
@@ -6872,7 +6986,7 @@ async function startWfImport(){
     log.textContent+='\n✗ Network error: '+e.message;
     const m=$('wfi-msg3');m.className='msg msg-err';m.textContent='✗ Network error — see log below.';m.style.display='block';
   }finally{
-    btn.disabled=false;btn.textContent='Import Selected →';
+    if(applyBtn) applyBtn.disabled=false;
   }
 }
 
