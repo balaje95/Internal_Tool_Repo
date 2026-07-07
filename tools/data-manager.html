@@ -1407,7 +1407,7 @@ const MIGRATE_MODULES={
   workflow:   {supported:true, native:true},
   email_template:{supported:true, ownUidField:'template_uid', fetchFullRecord:(rec)=>`misc/email_template/${rec.template_uid}`, buildPayload:(rec)=>buildTemplatePayload(rec), putAfterCreate:(newUid,rec)=>({endpoint:'misc/email_template/'+newUid,payload:buildTemplateFullPayload(rec,newUid)})},
   formula:    {supported:true, ownUidField:'formula_uid', migrateNative:(rec,dry)=>migrateFormulaRecord(rec,dry)},
-  product_category:{supported:true, createEndpoint:'products/category', ownUidField:'category_uid', buildPayload:(rec)=>({product_category_name:rec.category_name||rec.product_category_name||''})},
+  product_category:{supported:true, createEndpoint:'products/category', ownUidField:'category_uid', buildPayload:(rec)=>({product_category_name:rec.category_name||rec.product_category_name||''}), altPayloads:(rec)=>{const n=rec.category_name||rec.product_category_name||'';const d=rec.category_description||rec.product_category_description||'';return [{category_name:n},{product_category:{product_category_name:n,category_description:d}},{product_category:{category_name:n,description:d}},{product_category_name:n,category_description:d,is_active:true}];}},
   trade_type: {supported:true, createEndpoint:'business_units', ownUidField:'bu_uid', buildPayload:(rec)=>({bu_name:rec.bu_name||rec.business_unit_name||''})},
   package:    {supported:true, ownUidField:'package_uid', migrateNative:(rec,dry)=>migratePackageFull(rec,dry)},
   product:    {
@@ -4069,12 +4069,20 @@ async function migrateOneRecord(rec,migCfg,dry){
   if(modKey()==='job_status'&&(postUrl.endsWith('status_new/')||!_statusCatMapping[rec._category_uid])){
     return{ok:false,status:'err',error:'No destination category mapped for "'+rec._category+'" — connect destination and complete the category mapping step.',payload};
   }
+  // Some endpoints accept different payload shapes across accounts/API versions.
+  // Try the primary payload, then any module-declared alternatives on a 400/422.
+  let payloadsToTry=[payload];
+  if(typeof migCfg.altPayloads==='function'){ try{ payloadsToTry=payloadsToTry.concat(migCfg.altPayloads(rec)||[]); }catch(e){} }
+  let payloadUsed=payload;
   try{
-    const res=await fetch(postUrl,{
-      method:'POST',headers:destHdrs(),body:JSON.stringify(payload)
-    });
-    let body={};let rawBody='';
-    try{rawBody=await res.text();body=JSON.parse(rawBody);}catch{body={message:rawBody};}
+    let res, body={}, rawBody='';
+    for(let pi=0; pi<payloadsToTry.length; pi++){
+      payloadUsed=payloadsToTry[pi];
+      res=await fetch(postUrl,{method:'POST',headers:destHdrs(),body:JSON.stringify(payloadUsed)});
+      rawBody=''; body={};
+      try{rawBody=await res.text();body=JSON.parse(rawBody);}catch{body={message:rawBody};}
+      if(res.ok || (res.status!==400 && res.status!==422)) break;
+    }
     if(res.ok){
       // Step 2: PUT full content after initial create (e.g. email_template)
       if(!dry && typeof migCfg.putAfterCreate==='function'){
@@ -4100,8 +4108,8 @@ async function migrateOneRecord(rec,migCfg,dry){
     }
     const errDetail=body?.message||body?.error||body?.info||rawBody.slice(0,300)||'(empty response)';
     const missingFields=body?.validation_errors||body?.errors||null;
-    return{ok:false,status:res.status,error:'HTTP '+res.status+': '+errDetail+(missingFields?'\nValidation: '+JSON.stringify(missingFields):''),payload};
-  }catch(e){return{ok:false,status:'err',error:'Network: '+e.message+' | URL: '+postUrl+(e.message==='Failed to fetch'?' — Re-connect destination and try again.':''),payload};}
+    return{ok:false,status:res.status,error:'HTTP '+res.status+': '+errDetail+(missingFields?'\nValidation: '+JSON.stringify(missingFields):''),payload:payloadUsed};
+  }catch(e){return{ok:false,status:'err',error:'Network: '+e.message+' | URL: '+postUrl+(e.message==='Failed to fetch'?' — Re-connect destination and try again.':''),payload:payloadUsed};}
 }
 
 // ── JOB CATEGORY FULL MIGRATION (category + statuses + parent deps + checklists) ─
