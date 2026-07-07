@@ -1354,7 +1354,7 @@ const MODULES={
   product_category:{label:'Product Categories',uid:['category_uid','product_category_uid','uid'],del:'products/category',endpoint:'products/category',noPageLimit:true,fetchParams:'count=200&page=1&filter.keyword=',cols:[{h:'Name',f:'category_name'},{h:'Description',f:'category_description'},{h:'Business Units',f:'_bu_names'},{h:'Order',f:'display_order'}],transform:(recs)=>recs.map(r=>({...r,_bu_names:(r.business_unit||[]).map(b=>b.bu_name).join(', ')||'—'}))},
   // Trade Types — Zuper UI calls these "Trade Types" (Settings → Miscellaneous → Trade Type) but the backend is the business_units API
   trade_type:{label:'Trade Types',uid:['bu_uid','business_unit_uid','uid'],del:'business_units',endpoint:'business_units',noPageLimit:true,fetchParams:'filter.keyword=&page=1&count=200&filter.show_all_bu=true',cols:[{h:'Name',f:'bu_name'},{h:'Status',f:'_status'},{h:'Order',f:'display_order'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_status:r.is_active===false?'Inactive':'Active'}))},
-  package:{label:'Service Packages',uid:['package_uid','uid','_id'],del:'invoice_estimate/service_packages',endpoint:'invoice_estimate/service_packages',noPageLimit:true,fetchParams:'count=1000',cols:[{h:'Name',f:'package_name'},{h:'Price',f:'package_price'},{h:'Active',f:'is_active'},{h:'Items',f:'_item_count'},{h:'Description',f:'package_description'}],transform:(recs)=>recs.map(r=>({...r,_item_count:(r.line_items||[]).length}))},
+  package:{label:'Service Packages',uid:['package_uid','uid','_id'],del:'invoice_estimate/package',endpoint:'invoice_estimate/package',altEndpoints:['invoice_estimate/service_packages','invoice_estimate/packages'],noPageLimit:true,fetchParams:'count=1000',cols:[{h:'Name',f:'package_name'},{h:'Price',f:'package_price'},{h:'Active',f:'is_active'},{h:'Items',f:'_item_count'},{h:'Description',f:'package_description'}],transform:(recs)=>recs.map(r=>({...r,_item_count:(r.line_items||[]).length}))},
   // Measurement Categories: categories with nested tokens
   measurement_category:{label:'Measurement Categories',uid:['measurement_category_uid','category_uid','uid','_id'],del:'measurements/categories',dryRunSkipGet:true,deleteWarning:(recs)=>{const total=recs.reduce((s,r)=>s+(r.measurement_tokens||[]).length,0);return total>0?'The '+recs.length+' selected categor'+(recs.length===1?'y':'ies')+' contain '+total+' token(s). All tokens will be permanently deleted — formulas referencing them will break.':null;},endpoint:'measurements/categories',noPageLimit:true,fetchParams:'sort=ASC&sort_by=created_at',cols:[{h:'Name',f:'measurement_category_name'},{h:'Tokens',f:'_token_count'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_token_count:(r.measurement_tokens||[]).length}))},
   // Proposal Templates (Intelligent Quote Builder)
@@ -1607,15 +1607,25 @@ async function doFetch(){
       const recs=extractRecords(data,endpoint);
       allRecs.push(...recs);
     }
-    // Modules with noPageLimit fetch once without pagination params
+    // Modules with noPageLimit fetch once without pagination params.
+    // Some endpoints differ across accounts/regions — try alternates on failure
+    // (a wrong path shows up in the browser as a CORS-preflight failure, i.e. a 404).
     else if(cfg.noPageLimit){
       showMsg('fetch-msg','📥 Fetching…','info');
-      const url=fetchBase+endpoint+'?'+(cfg.fetchParams||'');
-      console.log('[ZDM] Fetching (no-page):', url);
-      const res=await fetch(url,{method:'GET',headers:getHdrs()});
-      if(!res.ok){const b=await res.text().catch(()=>'');throw new Error(res.status+' — '+b.slice(0,300)+'\n\nURL: '+url);}
-      const data=await res.json();
-      const recs=extractRecords(data,endpoint);
+      const candidates=[endpoint].concat(cfg.altEndpoints||[]);
+      let data=null,lastErr='';
+      for(const ep of candidates){
+        const url=fetchBase+ep+'?'+(cfg.fetchParams||'');
+        console.log('[ZDM] Fetching (no-page):', url);
+        try{
+          const res=await fetch(url,{method:'GET',headers:getHdrs()});
+          if(!res.ok){const b=await res.text().catch(()=>'');lastErr='HTTP '+res.status+' — '+b.slice(0,150)+' @ '+ep;continue;}
+          data=await res.json();
+          break;
+        }catch(e){ lastErr=e.message+' (blocked/CORS or 404) @ '+ep; continue; }
+      }
+      if(data===null) throw new Error('Could not fetch this module. Tried: '+candidates.join(', ')+'\nLast error: '+lastErr);
+      const recs=extractRecords(data,modKey());
       console.log('[ZDM] no-page result: '+recs.length+' records. Top-level keys: '+Object.keys(data).join(', '));
       if(!recs.length) console.log('[ZDM] Raw response sample:', JSON.stringify(data).slice(0,400));
       allRecs.push(...recs);
