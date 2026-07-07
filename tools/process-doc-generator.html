@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zuper Process Doc Generator</title>
+
+<!-- ==========================================================================
+     Zuper Process / Configuration Document Generator
+     --------------------------------------------------------------------------
+     Enter a customer's Zuper API key → auto-detect region → identify account →
+     fetch job categories + statuses + checklists → render a polished, branded
+     process document (same visual style as the Roof & Nail sample). The document
+     is a live, editable preview; export to Word / PDF / HTML / JSON.
+
+     API rules (from the zuper-pro skill):
+       - GET requests send ONLY the x-api-key header (no Content-Type).
+       - Region discovered by hitting {base}/user/company across regional bases.
+       - settings/checklist returns { data:[ ...fields ] } where each element is
+         one checklist field (field_name / field_type / is_required / display_order).
+     The API key is never written into any export.
+     ========================================================================== -->
+
+<script src="https://unpkg.com/html-docx-js@0.3.1/dist/html-docx.js"></script>
+
+<style id="docStyle">
+  /* ---- Palette (matches the Roof & Nail sample document) ---- */
+  :root{
+    --ink:#1f2937; --muted:#6b7280; --head:#2e74b5; --accent:#1d4ed8;
+    --note:#b91c1c; --line:#d5dbe3; --paper:#ffffff; --bg:#eef1f5;
+    --good:#1f9d55; --bad:#d64545;
+    --font:Calibri,Carlito,"Segoe UI",Candara,Optima,-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:var(--bg);font-family:var(--font);color:var(--ink);line-height:1.5;}
+
+  /* ---- Sticky app toolbar (screen only) ---- */
+  .bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;
+       background:#ffffffee;backdrop-filter:blur(6px);border-bottom:1px solid var(--line);
+       padding:11px 20px;flex-wrap:wrap;}
+  .bar .title{font-size:13px;color:var(--muted);flex:1;min-width:200px;}
+  .bar button{font-family:var(--font);font-size:13.5px;font-weight:600;cursor:pointer;
+       border-radius:8px;padding:8px 14px;border:1px solid var(--line);background:#fff;color:var(--ink);}
+  .bar button:hover{border-color:var(--accent);background:#f5f8ff;}
+  .bar button.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .bar button.primary:hover{background:#1a43c0;}
+  .bar button.active{background:#fff4e6;border-color:#e08a1e;color:#a4600c;}
+  .bar button:disabled{opacity:.45;cursor:not-allowed;}
+  .edit-hint{display:none;font-size:12px;color:#a4600c;background:#fff4e6;
+       border:1px solid #f0d6a8;border-radius:7px;padding:5px 10px;margin:0 20px;}
+  .edit-hint.show{display:block;}
+
+  /* ---- Connect card ---- */
+  .connect-wrap{max-width:640px;margin:40px auto;padding:0 16px;}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:12px;
+        box-shadow:0 1px 3px rgba(20,30,50,.08),0 10px 30px rgba(20,30,50,.06);padding:28px 30px;}
+  .card h2{font-size:16px;margin:0 0 6px;}
+  .card p.hint{color:var(--muted);font-size:13px;margin:0 0 18px;line-height:1.55;}
+  label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;font-weight:600;}
+  .key-row{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;}
+  .key-field{position:relative;flex:1;min-width:240px;}
+  input[type=text],input[type=password]{width:100%;background:#fff;border:1px solid var(--line);
+       border-radius:9px;color:var(--ink);padding:11px 42px 11px 13px;font-size:14px;font-family:var(--font);}
+  input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px #e8efff;}
+  .toggle-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;
+       border:none;cursor:pointer;font-size:15px;padding:6px;color:var(--muted);}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:11px 20px;
+       font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap;}
+  .btn:hover{background:#1a43c0;}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .status-msg{margin-top:16px;font-size:13px;padding:11px 14px;border-radius:9px;display:none;line-height:1.5;}
+  .status-msg.show{display:block;}
+  .status-msg.info{background:#eef4ff;color:#274b8f;border:1px solid #d5e2fb;}
+  .status-msg.err{background:#fdeeee;color:var(--bad);border:1px solid #f6d4d4;}
+  .progress{margin-top:14px;display:none;}
+  .progress.show{display:block;}
+  .progress .track{height:8px;background:#e7ecf2;border-radius:6px;overflow:hidden;}
+  .progress .fill{height:100%;width:0;background:var(--accent);transition:width .2s ease;}
+  .progress .label{font-size:12.5px;color:var(--muted);margin-top:7px;}
+
+  /* ---- The page / paper ---- */
+  .page-wrap{padding:26px 16px 90px;}
+  .page{max-width:850px;margin:0 auto;background:var(--paper);border:1px solid var(--line);
+        border-radius:8px;box-shadow:0 1px 3px rgba(20,30,50,.08),0 10px 30px rgba(20,30,50,.06);
+        padding:64px 72px;}
+  .page[contenteditable="true"]{outline:2px dashed #e0a94a;outline-offset:10px;}
+
+  /* ---- Cover ---- */
+  .cover{text-align:center;margin-bottom:26px;}
+  .cover .brand{font-weight:700;font-size:28pt;color:var(--ink);letter-spacing:.5px;margin:0 0 6px;}
+  .cover .doc-title{font-size:16pt;color:var(--accent);margin:0 0 4px;}
+  .cover .doc-sub{font-size:12pt;color:var(--muted);margin:0 0 18px;}
+  .cover .cover-logo{max-height:64px;max-width:220px;object-fit:contain;margin:0 auto 14px;display:block;}
+  .cover .footer-line{font-size:10.5pt;color:var(--muted);}
+
+  /* ---- Generated lifecycle flow diagram (CSS boxes from category colors) ---- */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;justify-content:center;gap:6px;margin:18px 0 8px;}
+  .flow .node{color:#fff;border-radius:8px;padding:12px 14px;font-weight:700;font-size:11pt;
+        min-width:120px;max-width:190px;text-align:center;line-height:1.25;
+        text-shadow:0 1px 2px rgba(0,0,0,.25);-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .flow .arrow{align-self:center;color:var(--muted);font-size:18px;font-weight:700;}
+
+  /* ---- Summary stat row ---- */
+  .summary{display:flex;gap:14px;flex-wrap:wrap;margin:22px 0 8px;}
+  .summary .stat{flex:1;min-width:120px;background:#f4f7fb;border:1px solid var(--line);border-radius:10px;padding:14px 16px;}
+  .summary .stat .v{font-size:22pt;font-weight:700;color:var(--head);line-height:1;}
+  .summary .stat .l{font-size:9pt;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;}
+
+  /* ---- Headings ---- */
+  h1.h{color:var(--head);font-size:16pt;font-weight:700;margin:30px 0 8px;line-height:1.2;}
+  h1.h .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:8px;vertical-align:middle;}
+  h2.h{color:var(--head);font-size:13pt;font-weight:700;margin:18px 0 8px;line-height:1.2;}
+  p{font-size:11pt;margin:0 0 11px;}
+  .note{color:var(--note);font-size:11pt;margin:0 0 11px;}
+  .muted-line{color:var(--muted);font-size:10.5pt;font-style:italic;margin:2px 0 12px;}
+
+  /* ---- Tables ---- */
+  table{width:100%;border-collapse:collapse;font-size:10.5pt;margin:6px 0 14px;}
+  th,td{border:1px solid #b9c2cc;padding:8px 10px;text-align:left;vertical-align:top;}
+  thead th{background:#2e74b5;color:#fff;font-weight:700;}
+  tbody tr:nth-child(even){background:#f6f9fc;}
+  .checklist-wrap{margin:2px 0 16px 14px;border-left:3px solid #e6eefc;padding-left:14px;}
+  .checklist-wrap .cl-title{font-size:10.5pt;font-weight:700;color:var(--muted);margin:8px 0 5px;}
+  .checklist-wrap thead th{background:#5a6b7d;}
+  .cl-empty{font-size:10.5pt;color:var(--muted);font-style:italic;margin:4px 0 12px 14px;}
+  .type-pill{display:inline-block;font-size:9pt;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;}
+  .req-list{margin:0;padding-left:16px;} .req-list li{margin:1px 0;font-size:10pt;}
+  .req-none{color:var(--muted);}
+
+  /* ---- Print ---- */
+  @media print{
+    body{background:#fff;}
+    .bar,.edit-hint,.connect-wrap{display:none !important;}
+    .page-wrap{padding:0;}
+    .page{max-width:none;margin:0;border:none;border-radius:0;box-shadow:none;padding:0;outline:none !important;}
+    h1.h,h2.h{page-break-after:avoid;break-after:avoid;}
+    tr,li{page-break-inside:avoid;break-inside:avoid;}
+    thead th,.type-pill,.flow .node,.summary .stat{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    @page{margin:18mm 16mm;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== App toolbar ===== -->
+<div class="bar" id="bar">
+  <span class="title" id="barTitle">Zuper Process Doc Generator</span>
+  <button id="btnReconnect" style="display:none;">↺ New key</button>
+  <button id="btnEdit" disabled>✎ Edit</button>
+  <button id="btnJson" disabled>⬇ JSON</button>
+  <button id="btnHtml" disabled>⬇ HTML</button>
+  <button id="btnPrint" disabled>🖨 Print / PDF</button>
+  <button id="btnWord" class="primary" disabled>⬇ Word (.docx)</button>
+</div>
+<div class="edit-hint" id="editHint">Editing on — click any text to change it. Enter adds a new bullet/paragraph. Click <b>Done</b> when finished, then export.</div>
+
+<!-- ===== Connect card ===== -->
+<div class="connect-wrap" id="connectWrap">
+  <div class="card">
+    <h2>Generate a process document from a Zuper account</h2>
+    <p class="hint">Paste the customer's API key (Zuper → Settings → Developer Hub → API Keys). The region is detected automatically, the account is identified, and the document below is built from that account's job categories, statuses, and checklists.</p>
+    <label for="apiKey">Zuper API key</label>
+    <div class="key-row">
+      <div class="key-field">
+        <input type="password" id="apiKey" placeholder="Paste x-api-key value here" autocomplete="off" spellcheck="false" />
+        <button class="toggle-eye" id="toggleEye" title="Show / hide" type="button">👁</button>
+      </div>
+      <button class="btn" id="btnConnect">Connect &amp; Generate</button>
+    </div>
+    <div class="status-msg" id="connectStatus"></div>
+    <div class="progress" id="fetchProgress">
+      <div class="track"><div class="fill" id="progressFill"></div></div>
+      <div class="label" id="progressLabel"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== The document (built dynamically; live preview + edit surface) ===== -->
+<div class="page-wrap" id="pageWrap" style="display:none;">
+  <article class="page" id="doc"></article>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================================
+   SECTION 1 — CONFIG & STATE
+   ========================================================================== */
+// Canonical Zuper data-center list (mirrors the dashboard's assets/zuper-regions.js).
+// us-east-1 is tried first (most common); detection walks the list until one authenticates.
+const REGION_KEYS = [
+  "us-east-1","us-east-1a","us-east-1b","us-east-1c",
+  "us-west-1","us-west-1a","us-west-1b","us-west-1c","us-west-2",
+  "eu-west-1","eu-west-2","eu-central-1",
+  "ap-south-1","ap-south-2","ap-southeast-1","ap-southeast-2",
+  "ca-central-1","sa-east-1",
+];
+const REGIONS = REGION_KEYS.map((k) => ({ key:k, label:k, base:"https://"+k+".zuperpro.com/api" }));
+const CHECKLIST_CONCURRENCY = 3;
+
+const state = {
+  apiKey:null, region:null, company:null,
+  categories:[], checklists:{}, generatedOn:null,
+};
+
+/* ============================================================================
+   SECTION 2 — HELPERS
+   ========================================================================== */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+  .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+const clKey = (c,s) => c+"::"+s;
+
+function showStatus(msg, kind){ const el=$("connectStatus"); el.className="status-msg show "+(kind||"info"); el.innerHTML=msg; }
+function hideStatus(){ $("connectStatus").className="status-msg"; }
+
+// GET — only x-api-key header (never Content-Type on GETs).
+async function apiGet(base, path){
+  const res = await fetch(base+path, { headers:{ "x-api-key":state.apiKey } });
+  if(!res.ok){ const e=new Error("HTTP "+res.status); e.status=res.status; throw e; }
+  return res.json();
+}
+
+/* ============================================================================
+   SECTION 3 — CONNECT & REGION DETECTION
+   ========================================================================== */
+function extractCompany(json){
+  const d=(json&&json.data)?json.data:json||{};
+  const c=d.company||d;
+  const name=c.company_name||c.name||d.company_name||d.name||"Unknown Company";
+  const logo=c.company_logo||c.logo||d.company_logo||d.logo||
+             (c.company_settings&&c.company_settings.company_logo)||null;
+  return { name, logo };
+}
+
+async function connect(){
+  const key=$("apiKey").value.trim();
+  if(!key){ showStatus("Please paste an API key first.","err"); return; }
+  state.apiKey=key;
+  $("btnConnect").disabled=true;
+  showStatus("Detecting region &amp; identifying account…","info");
+
+  let sawHttp=false;
+  for(const region of REGIONS){
+    showStatus("Trying <b>"+esc(region.label)+"</b>…","info");
+    try{
+      const res=await fetch(region.base+"/user/company",{ headers:{ "x-api-key":key } });
+      sawHttp=true;
+      if(res.ok){ const json=await res.json(); state.region=region; state.company=extractCompany(json); await fetchConfiguration(); return; }
+    }catch(err){ /* network/CORS for this base — try next */ }
+  }
+  state.apiKey=null; $("btnConnect").disabled=false;
+  if(sawHttp) showStatus("<b>Invalid API key.</b> None of the Zuper regions accepted this key. Re-check it in Settings → Developer Hub → API Keys.","err");
+  else showStatus("<b>Network / CORS error.</b> Couldn't reach any Zuper region — check connection, VPN, or a blocking extension.","err");
+}
+
+/* ============================================================================
+   SECTION 4 — FETCH CONFIGURATION
+   ========================================================================== */
+async function fetchConfiguration(){
+  const base=state.region.base;
+  showStatus("Fetching job categories &amp; statuses…","info");
+  let cats;
+  try{
+    const json=await apiGet(base,"/jobs/category?populate_statuses=true");
+    cats=Array.isArray(json.data)?json.data:(Array.isArray(json)?json:[]);
+  }catch(err){
+    showStatus("Failed to fetch job categories ("+esc(err.message)+"). The key connected but may lack job-config permissions.","err");
+    $("btnConnect").disabled=false; return;
+  }
+  cats=cats.filter(isActive).sort(byDisplayOrder);
+  state.categories=cats;
+
+  const pairs=[];
+  for(const cat of cats){
+    for(const st of (cat.job_statuses||[]).filter(isActive)){
+      pairs.push({ catUid:cat.category_uid, statusUid:st.status_uid });
+    }
+  }
+
+  hideStatus();
+  $("fetchProgress").classList.add("show");
+  let done=0; const total=pairs.length; updateProgress(0,total);
+  await runThrottled(pairs, CHECKLIST_CONCURRENCY, async (pair)=>{
+    try{
+      const path="/settings/checklist?category_uid="+encodeURIComponent(pair.catUid)+
+                 "&job_status_uid="+encodeURIComponent(pair.statusUid);
+      state.checklists[clKey(pair.catUid,pair.statusUid)]=normalizeChecklist(await apiGet(base,path));
+    }catch(err){ state.checklists[clKey(pair.catUid,pair.statusUid)]=null; }
+    finally{ done++; updateProgress(done,total); }
+  });
+  $("fetchProgress").classList.remove("show");
+
+  state.generatedOn=new Date();
+  renderDocument();
+}
+
+function updateProgress(done,total){
+  const pct=total?Math.round((done/total)*100):100;
+  $("progressFill").style.width=pct+"%";
+  $("progressLabel").textContent=total?("Fetching checklists… "+done+"/"+total):"No statuses to fetch.";
+}
+async function runThrottled(items,limit,worker){
+  let idx=0;
+  const runners=new Array(Math.min(limit,items.length||1)).fill(0).map(async()=>{
+    while(idx<items.length){ await worker(items[idx++]); }
+  });
+  await Promise.all(runners);
+}
+
+/* ============================================================================
+   SECTION 5 — DEFENSIVE PARSING
+   ========================================================================== */
+function isActive(o){ if(!o) return false; if(o.is_deleted===true) return false; if(o.is_active===false) return false; return true; }
+function byDisplayOrder(a,b){
+  const da=Number.isFinite(+a.display_order)?+a.display_order:9999;
+  const db=Number.isFinite(+b.display_order)?+b.display_order:9999;
+  return da-db;
+}
+
+// settings/checklist → { data:[ ...fields ] }; each element is one field.
+function normalizeChecklist(json){
+  if(!json) return null;
+  let arr=(json.data!==undefined)?json.data:json;
+  if(!Array.isArray(arr)){ arr=(arr&&typeof arr==="object")?(findItems(arr)||(looksLikeItem(arr)?[arr]:[])):[]; }
+  if(!arr.length) return null;
+  let name=null, rawFields=[];
+  for(const el of arr){
+    if(!el||typeof el!=="object") continue;
+    if(!name) name=el.checklist_name||el.name||null;
+    if(looksLikeItem(el)){ rawFields.push(el); continue; }
+    const nested=findItems(el); if(nested&&nested.length) rawFields.push(...nested);
+  }
+  rawFields=rawFields.filter(isActive);
+  if(!rawFields.length) return null;
+  rawFields.sort(byDisplayOrder);
+  return { name, items:rawFields.map(normalizeItem) };
+}
+function findItems(obj){
+  if(!obj) return null;
+  const keys=["check_list_fields","checklist_fields","check_list","checklist","checklist_items",
+              "check_list_items","items","questions","fields","checklist_field"];
+  for(const k of keys){ if(Array.isArray(obj[k])) return obj[k]; }
+  return null;
+}
+function looksLikeItem(o){
+  if(!o||typeof o!=="object") return false;
+  return ["field_name","label","title","question","field_label","checklist_item","checklist_item_name"]
+    .some(k=>typeof o[k]==="string");
+}
+function normalizeItem(it){
+  const label=it.field_name||it.label||it.title||it.question||it.field_label||
+              it.checklist_item||it.checklist_item_name||it.name||"—";
+  const rawType=it.field_type||it.type||it.input_type||it.data_type||it.checklist_type||it.answer_type||null;
+  const mand=it.is_required===true||it.is_mandatory===true||it.mandatory===true||it.required===true;
+  return { label:String(label), type:prettyType(rawType), mandatory:mand };
+}
+function prettyType(t){
+  if(!t) return "—";
+  const map={SINGLE_LINE:"Text",MULTI_LINE:"Paragraph",TEXT:"Text",STRING:"Text",NUMBER:"Number",
+    NUMERIC:"Number",INTEGER:"Number",DECIMAL:"Number",DATE:"Date",DATETIME:"Date & Time",TIME:"Time",
+    SINGLE_ITEM:"Dropdown",DROPDOWN:"Dropdown",SELECT:"Dropdown",MULTI_ITEM:"Multi-select",
+    MULTISELECT:"Multi-select",CHECKBOX:"Checkbox",RADIO:"Single choice",BOOLEAN:"Yes / No",
+    TOGGLE:"Yes / No",FILE:"File upload",IMAGE:"Photo",PHOTO:"Photo",SIGNATURE:"Signature",
+    BARCODE:"Barcode",RATING:"Rating",URL:"URL",EMAIL:"Email",PHONE:"Phone"};
+  const up=String(t).toUpperCase();
+  if(map[up]) return map[up];
+  return String(t).replace(/[_-]+/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+}
+function orderStatuses(statuses){
+  const list=statuses.filter(isActive);
+  const parentsOf=(s)=>{ const p=s.parent_status; if(!p) return []; return (Array.isArray(p)?p:[p]).filter(Boolean); };
+  const uidSet=new Set(list.map(s=>s.status_uid));
+  const origIndex=new Map(list.map((s,i)=>[s.status_uid,i]));
+  const ordered=[], placed=new Set();
+  while(ordered.length<list.length){
+    const ready=list.filter(s=>!placed.has(s.status_uid) &&
+        parentsOf(s).filter(u=>uidSet.has(u)).every(u=>placed.has(u)))
+      .sort((a,b)=>origIndex.get(a.status_uid)-origIndex.get(b.status_uid));
+    if(!ready.length){
+      list.filter(s=>!placed.has(s.status_uid))
+        .sort((a,b)=>origIndex.get(a.status_uid)-origIndex.get(b.status_uid))
+        .forEach(s=>{ ordered.push(s); placed.add(s.status_uid); });
+      break;
+    }
+    ordered.push(ready[0]); placed.add(ready[0].status_uid);
+  }
+  return ordered;
+}
+function statusRequirements(st){
+  const r=[];
+  if(st.require_customer_signature)    r.push("Customer signature required");
+  if(st.require_preview)               r.push("Photo / preview required");
+  if(st.require_customer_feedback)     r.push("Customer feedback captured");
+  if(st.require_facial_authentication) r.push("Facial authentication");
+  if(st.require_geo_fencing){ const rad=st.geo_fencing_radius; r.push("Geo-fencing"+(rad?" ("+rad+" m radius)":"")); }
+  if(st.capture_geo_cords)             r.push("Captures GPS location");
+  if(st.track_time_in_status)          r.push("Time-in-status tracking");
+  if(st.allow_remarks)                 r.push("Remarks allowed");
+  if(st.restrict_to_access_role){
+    const roles=Array.isArray(st.enabled_to_access_role)?st.enabled_to_access_role:[];
+    const named=roles.map(x=>x&&(x.access_role_name||x.role_name||x.name)).filter(Boolean);
+    r.push("Role-restricted"+(named.length?" ("+named.join(", ")+")":""));
+  }
+  return r;
+}
+function typePillStyle(type){
+  const t=String(type||"").toUpperCase();
+  const c={NEW:["#eef4ff","#274b8f"],SCHEDULED:["#eaf6ff","#1c6fa8"],ON_MY_WAY:["#fff4e6","#b3610a"],
+    IN_PROGRESS:["#fff8e6","#9a7400"],COMPLETED:["#eefaf1","#1f7a44"],CANCELLED:["#fdeeee","#b53838"],
+    CUSTOM:["#f2eefc","#6a44b3"]}[t]||["#eef2f6","#63707f"];
+  return "background:"+c[0]+";color:"+c[1]+";";
+}
+const prettyStatusType=(t)=>String(t||"CUSTOM").replace(/_/g," ");
+
+/* ============================================================================
+   SECTION 6 — RENDER THE DOCUMENT (Roof & Nail style, dynamic content)
+   ========================================================================== */
+function renderDocument(){
+  const cats=state.categories;
+  let totalStatuses=0, totalItems=0, mandatoryGates=[];
+  for(const cat of cats){
+    const statuses=(cat.job_statuses||[]).filter(isActive);
+    totalStatuses+=statuses.length;
+    for(const st of statuses){
+      const cl=state.checklists[clKey(cat.category_uid,st.status_uid)];
+      if(cl&&cl.items){
+        totalItems+=cl.items.length;
+        for(const it of cl.items){ if(it.mandatory) mandatoryGates.push({cat:cat.category_name,status:st.status_name,item:it.label}); }
+      }
+    }
+  }
+  const dateStr=state.generatedOn.toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
+
+  let h="";
+
+  /* ---- Cover ---- */
+  const logo=state.company.logo
+    ? '<img class="cover-logo" src="'+esc(state.company.logo)+'" alt="" onerror="this.style.display=\'none\'"/>' : "";
+  h+='<div class="cover">';
+  h+= logo;
+  h+= '<p class="brand">'+esc(state.company.name)+'</p>';
+  h+= '<p class="doc-title">Process &amp; Configuration Document</p>';
+  h+= '<p class="doc-sub">Job categories, workflow statuses &amp; checklists — how work flows through the account</p>';
+  h+= renderFlowDiagram(cats);
+  h+= '<p class="footer-line">'+esc(state.region.label)+'&nbsp;&nbsp;|&nbsp;&nbsp;Generated '+esc(dateStr)+'</p>';
+  h+='</div>';
+
+  /* ---- Overview ---- */
+  h+='<h1 class="h">How This Document Works</h1>';
+  h+='<p>This document is generated directly from the '+esc(state.company.name)+' Zuper account. It lays out every job category, the workflow statuses a job moves through within each one, the key requirements enforced at each status, and any checklists attached — so the configuration is readable at a glance without opening Settings.</p>';
+  h+='<div class="summary">'+stat(cats.length,"Job Categories")+stat(totalStatuses,"Workflow Statuses")+stat(totalItems,"Checklist Items")+'</div>';
+
+  /* ---- Per category ---- */
+  if(!cats.length){ h+='<p class="cl-empty">No active job categories were found on this account.</p>'; }
+  cats.forEach((cat,i)=>{ h+=renderCategory(cat,i); });
+
+  /* ---- Hard gates summary (auto-derived from mandatory checklist items) ---- */
+  h+='<h1 class="h">Safety &amp; Quality Checkpoints — Where the Hard Stops Are</h1>';
+  if(mandatoryGates.length){
+    h+='<p>These checklist items are marked required — the job can\'t move on, or the checklist can\'t be submitted, without them:</p>';
+    h+='<table><thead><tr><th style="width:26%;">Job Category</th><th style="width:30%;">Status</th><th>Required item</th></tr></thead><tbody>';
+    for(const g of mandatoryGates){ h+='<tr><td>'+esc(g.cat||"—")+'</td><td>'+esc(g.status||"—")+'</td><td>'+esc(g.item||"—")+'</td></tr>'; }
+    h+='</tbody></table>';
+  }else{
+    h+='<p class="note">No checklist items on this account are currently marked required — every checklist relies on the team remembering to complete it rather than a required field enforcing it. Worth a look if consistent enforcement is a goal.</p>';
+  }
+
+  h+='<p class="muted-line">Generated with the Zuper Process Doc Generator · '+esc(dateStr)+' · '+esc(state.company.name)+'</p>';
+
+  $("doc").innerHTML=h;
+
+  /* ---- Reveal document, enable toolbar ---- */
+  $("connectWrap").style.display="none";
+  $("pageWrap").style.display="block";
+  ["btnEdit","btnJson","btnHtml","btnPrint","btnWord"].forEach(id=>$(id).disabled=false);
+  $("btnReconnect").style.display="inline-block";
+  $("barTitle").textContent=state.company.name+" — "+state.region.label+" · "+cats.length+" categories, "+totalStatuses+" statuses";
+}
+
+function stat(v,l){ return '<div class="stat"><div class="v">'+esc(v)+'</div><div class="l">'+esc(l)+'</div></div>'; }
+
+// Horizontal lifecycle flow from top-level categories, colored by category_color.
+function renderFlowDiagram(cats){
+  if(!cats.length) return "";
+  const parts=[];
+  cats.forEach((cat,i)=>{
+    const color=cat.category_color||"#5a6b7d";
+    parts.push('<div class="node" style="background:'+esc(color)+';">'+esc(cat.category_name||"—")+'</div>');
+    if(i<cats.length-1) parts.push('<div class="arrow">→</div>');
+  });
+  // data-flowtext feeds the Word export (which can't render the flex diagram well).
+  const flowText=cats.map(c=>c.category_name||"—").join(" → ");
+  return '<div class="flow" id="flowDiagram" data-flowtext="'+esc(flowText)+'">'+parts.join("")+'</div>';
+}
+
+function renderCategory(cat,idx){
+  const color=cat.category_color||"#5a6b7d";
+  const statuses=orderStatuses(cat.job_statuses||[]);
+  let h='<h1 class="h"><span class="swatch" style="background:'+esc(color)+';"></span>'+esc(cat.category_name||"Untitled Category")+'</h1>';
+
+  // Auto-written intro line.
+  if(statuses.length){
+    const first=statuses[0].status_name||"—", last=statuses[statuses.length-1].status_name||"—";
+    const clCount=statuses.filter(st=>{const cl=state.checklists[clKey(cat.category_uid,st.status_uid)];return cl&&cl.items&&cl.items.length;}).length;
+    let intro="A job in this category moves through "+statuses.length+" status"+(statuses.length===1?"":"es");
+    if(first!==last) intro+=", from “"+first+"” to “"+last+"”";
+    intro+=".";
+    if(clCount) intro+=" "+clCount+" of them carr"+(clCount===1?"ies":"y")+" a checklist.";
+    h+='<p>'+esc(intro)+'</p>';
+  }else{
+    h+='<p class="cl-empty">No active statuses configured for this category.</p>';
+    return h;
+  }
+
+  // Status flow table.
+  h+='<h2 class="h">Workflow statuses</h2>';
+  h+='<table><thead><tr><th style="width:26%;">Status</th><th style="width:16%;">Type</th><th>Key requirements</th></tr></thead><tbody>';
+  for(const st of statuses){
+    const type=st.status_type||"CUSTOM";
+    const reqs=statusRequirements(st);
+    const reqHtml=reqs.length?'<ul class="req-list">'+reqs.map(r=>'<li>'+esc(r)+'</li>').join("")+'</ul>':'<span class="req-none">—</span>';
+    h+='<tr><td>'+esc(st.status_name||"—")+'</td><td><span class="type-pill" style="'+typePillStyle(type)+'">'+esc(prettyStatusType(type))+'</span></td><td>'+reqHtml+'</td></tr>';
+  }
+  h+='</tbody></table>';
+
+  // Checklists per status.
+  let anyChecklist=false;
+  for(const st of statuses){
+    const cl=state.checklists[clKey(cat.category_uid,st.status_uid)];
+    if(cl&&cl.items&&cl.items.length){
+      anyChecklist=true;
+      h+='<div class="checklist-wrap"><div class="cl-title">Checklist — '+esc(st.status_name||"")+(cl.name?' · '+esc(cl.name):'')+'</div>';
+      h+='<table><thead><tr><th style="width:60%;">Item</th><th style="width:25%;">Field type</th><th style="width:15%;">Required</th></tr></thead><tbody>';
+      for(const it of cl.items){ h+='<tr><td>'+esc(it.label)+'</td><td>'+esc(it.type)+'</td><td>'+(it.mandatory?"Yes":"No")+'</td></tr>'; }
+      h+='</tbody></table></div>';
+    }
+  }
+  if(!anyChecklist) h+='<p class="cl-empty">No checklists attached to statuses in this category.</p>';
+  return h;
+}
+
+/* ============================================================================
+   SECTION 7 — EDIT + EXPORTS  (API key never included in any output)
+   ========================================================================== */
+const doc=$("doc");
+let editing=false;
+$("btnEdit").addEventListener("click",()=>{
+  editing=!editing;
+  doc.setAttribute("contenteditable",editing?"true":"false");
+  $("btnEdit").textContent=editing?"✓ Done":"✎ Edit";
+  $("btnEdit").classList.toggle("active",editing);
+  $("editHint").classList.toggle("show",editing);
+  if(editing) doc.focus();
+});
+
+function download(blob,filename){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+function safeName(){
+  return (state.company&&state.company.name?state.company.name:"zuper")
+    .replace(/[^a-z0-9]+/gi,"-").replace(/^-+|-+$/g,"").toLowerCase()||"zuper";
+}
+
+// Standalone HTML of the current (edited) document.
+function standaloneHtml(){
+  const css=$("docStyle").textContent;
+  return "<!doctype html><html lang='en'><head><meta charset='utf-8'>"+
+    "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"+
+    "<title>"+esc(state.company?state.company.name:"Zuper")+" — Process Document</title><style>"+css+
+    "</style></head><body><div class='page-wrap'><article class='page'>"+doc.innerHTML+
+    "</article></div></body></html>";
+}
+$("btnHtml").addEventListener("click",()=>{ download(new Blob([standaloneHtml()],{type:"text/html"}),safeName()+"-process-document.html"); });
+
+$("btnJson").addEventListener("click",()=>{
+  const payload={ company:state.company?state.company.name:null, region:state.region?state.region.key:null,
+    generated_on:state.generatedOn?state.generatedOn.toISOString():null,
+    categories:state.categories, checklists:state.checklists };
+  download(new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),safeName()+"-zuper-config.json");
+});
+
+$("btnWord").addEventListener("click",()=>{
+  if(typeof htmlDocx==="undefined"){ alert("Word export library didn't load (offline/blocked). Use Print / PDF or HTML."); return; }
+  // Word can't render the flex flow diagram — swap it for a plain text lifecycle line.
+  const clone=doc.cloneNode(true);
+  const flow=clone.querySelector("#flowDiagram");
+  if(flow){ const t=flow.getAttribute("data-flowtext")||""; const p=document.createElement("p"); p.innerHTML="<b>Job lifecycle:</b> "+esc(t); flow.replaceWith(p); }
+  const wordCss=`
+    body{font-family:Calibri,Arial,sans-serif;color:#1f2937;font-size:11pt;}
+    .cover{text-align:center;margin-bottom:18pt;}
+    .cover .brand{font-weight:bold;font-size:28pt;color:#1f2937;margin:0 0 4pt;}
+    .cover .doc-title{font-size:16pt;color:#1d4ed8;margin:0 0 3pt;}
+    .cover .doc-sub{font-size:12pt;color:#6b7280;margin:0 0 10pt;}
+    .cover .cover-logo{max-height:60px;} .cover .footer-line{font-size:10.5pt;color:#6b7280;}
+    .summary .stat{display:inline-block;border:1px solid #d5dbe3;padding:6pt 12pt;margin-right:8pt;}
+    .summary .stat .v{font-size:16pt;font-weight:bold;color:#2e74b5;} .summary .stat .l{font-size:8pt;color:#6b7280;}
+    h1.h{color:#2e74b5;font-size:16pt;font-weight:bold;margin:16pt 0 5pt;}
+    h2.h{color:#2e74b5;font-size:13pt;font-weight:bold;margin:11pt 0 4pt;}
+    p{font-size:11pt;margin:0 0 8pt;} .note{color:#b91c1c;font-size:11pt;} .muted-line{color:#6b7280;font-size:9.5pt;font-style:italic;}
+    .cl-title{font-size:10.5pt;font-weight:bold;color:#6b7280;margin:6pt 0 3pt;} .cl-empty{color:#6b7280;font-style:italic;font-size:10.5pt;}
+    table{width:100%;border-collapse:collapse;font-size:10pt;} th,td{border:1px solid #b9c2cc;padding:5pt 7pt;text-align:left;vertical-align:top;}
+    thead th{background:#2e74b5;color:#fff;} .checklist-wrap thead th{background:#5a6b7d;}
+    .type-pill{font-weight:bold;font-size:9pt;} .req-list{margin:0;padding-left:14pt;}
+  `;
+  const full="<!DOCTYPE html><html><head><meta charset='utf-8'><style>"+wordCss+"</style></head><body>"+clone.innerHTML+"</body></html>";
+  download(htmlDocx.asBlob(full),safeName()+"-process-document.docx");
+});
+
+$("btnPrint").addEventListener("click",()=>{ if(editing) $("btnEdit").click(); window.print(); });
+
+/* ---- Connect UI wiring ---- */
+$("btnConnect").addEventListener("click",connect);
+$("apiKey").addEventListener("keydown",(e)=>{ if(e.key==="Enter") connect(); });
+$("toggleEye").addEventListener("click",()=>{ const i=$("apiKey"); i.type=i.type==="password"?"text":"password"; });
+$("btnReconnect").addEventListener("click",()=>{
+  state.apiKey=null; state.region=null; state.company=null; state.categories=[]; state.checklists={}; state.generatedOn=null;
+  if(editing) $("btnEdit").click();
+  $("doc").innerHTML=""; $("pageWrap").style.display="none";
+  $("connectWrap").style.display="block"; $("apiKey").value=""; hideStatus();
+  ["btnEdit","btnJson","btnHtml","btnPrint","btnWord"].forEach(id=>$(id).disabled=true);
+  $("btnReconnect").style.display="none"; $("btnConnect").disabled=false;
+  $("barTitle").textContent="Zuper Process Doc Generator"; $("apiKey").focus();
+});
+</script>
+
+</body>
+</html>
