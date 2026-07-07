@@ -477,6 +477,7 @@ input[type=checkbox]{accent-color:var(--primary)}
     <button class="btn btn-o" id="save-conn-btn" onclick="saveCurrentConnection()" style="display:none" title="Save this connection">🔖 Save</button>
     <button class="btn btn-g" id="disconnect-btn" onclick="doDisconnect()" style="display:none">⏏ Disconnect</button>
     <button class="btn btn-o" id="backup-btn" onclick="backupAccount()" style="display:none" title="Download a JSON snapshot of this account's config">💾 Backup account</button>
+    <button class="btn btn-o" id="restore-btn" onclick="showRestoreCard()" style="display:none" title="Restore workflows/categories from a backup file">♻ Restore</button>
     <button class="btn btn-p" id="fetch-btn" onclick="doFetch()" style="display:none">📄 Fetch Records</button>
     <button class="btn btn-p" id="import-btn" onclick="showImportCard()" style="display:none">📥 Import Products</button>
     <button class="btn btn-p" id="tt-import-btn" onclick="showTtImportCard()" style="display:none">🏷 Import Trade Type Mapping</button>
@@ -540,6 +541,14 @@ input[type=checkbox]{accent-color:var(--primary)}
     <span style="font-size:.74rem;color:var(--text-sub)">→</span>
     <input type="date" id="df-to" class="inp" style="width:155px;font-size:.82rem;padding:6px 10px" onchange="applyFilters()" title="To date (inclusive)">
     <button class="btn btn-o" style="font-size:.74rem;padding:5px 10px" onclick="clearDateFilter()">✕ Clear dates</button>
+  </div>
+  <div id="recipe-row" style="display:none;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+    <span style="font-size:.74rem;font-weight:600;color:var(--lbl)">Recipes:</span>
+    <select id="recipe-select" class="inp" style="width:200px;font-size:.82rem;padding:6px 10px"><option value="">— saved recipes —</option></select>
+    <button class="btn btn-o" style="font-size:.74rem;padding:5px 10px" onclick="loadRecipe()">Load</button>
+    <button class="btn btn-o" style="font-size:.74rem;padding:5px 10px" onclick="saveRecipe()">💾 Save current</button>
+    <button class="btn btn-o" style="font-size:.74rem;padding:5px 10px" onclick="deleteRecipe()">🗑 Delete</button>
+    <span style="font-size:.7rem;color:var(--text-sub)">module + search + date filters (saved in this browser)</span>
   </div>
   <!-- Cross-page select all banner -->
   <div id="sel-all-banner" style="display:none;background:var(--msg-info-bg,#eff6ff);border:1px solid var(--msg-info-b,#bfdbfe);border-radius:6px;padding:8px 14px;margin-bottom:8px;font-size:.81rem;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1248,6 +1257,37 @@ input[type=checkbox]{accent-color:var(--primary)}
   </div>
 </div>
 
+<!-- RESTORE FROM BACKUP -->
+<div class="card" id="restore-card" style="display:none">
+  <div class="sec-title">♻ Restore from backup</div>
+  <div class="msg msg-warn" style="font-size:.8rem;margin-bottom:12px">
+    Restores <strong>into the currently connected account</strong> by re-creating records (they get new UIDs). Only the modules that re-create cleanly across accounts are supported here — <strong>Product Categories</strong> and <strong>Workflows</strong>. Products, templates and formulas reference other records by UID, so restore those with their dedicated importers instead. <strong>Dry Run is on by default — leave it on and review the log before running live.</strong> Test on a sandbox account first.
+  </div>
+  <div id="rs-drop" onclick="$('rs-file').click()" ondragover="event.preventDefault()" ondrop="event.preventDefault();onRestoreFile({files:event.dataTransfer.files})" style="border:2px dashed var(--border-inp);border-radius:14px;padding:28px;background:var(--inp-bg);text-align:center;cursor:pointer;margin-bottom:12px">
+    <div style="font-size:1.6rem;margin-bottom:6px">📂</div>
+    <p style="font-size:.85rem;color:var(--text-sub)"><strong style="color:var(--text)">Click to upload</strong> or drag a backup .json (from “Backup account”)</p>
+    <input type="file" id="rs-file" accept=".json" style="display:none" onchange="onRestoreFile(this)">
+  </div>
+  <div id="rs-summary" style="display:none;margin-bottom:12px"></div>
+  <div id="rs-options" style="display:none;margin-bottom:12px">
+    <label style="display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:600;cursor:pointer;margin-bottom:8px">
+      <input type="checkbox" id="rs-cat" checked> Restore Product Categories
+    </label>
+    <label style="display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:600;cursor:pointer;margin-bottom:8px">
+      <input type="checkbox" id="rs-wf" checked> Restore Workflows
+    </label>
+    <label style="display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:600;cursor:pointer;padding:8px 12px;background:var(--th-bg);border-radius:8px;border:1px solid var(--border)">
+      <input type="checkbox" id="rs-dry" checked> Dry Run <span id="rs-pill" class="mode-safe" style="margin-left:4px">● Safe</span>
+    </label>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-p" id="rs-run" style="display:none" onclick="runRestore()">Restore →</button>
+    <button class="btn btn-o" id="rs-undo" style="display:none" onclick="undoLastRestore()">↩ Undo last restore</button>
+    <button class="btn btn-g" onclick="hideRestoreCard()">Close</button>
+  </div>
+  <pre id="rs-log" style="display:none;background:var(--th-bg);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.78rem;max-height:300px;overflow:auto;white-space:pre-wrap;margin-top:12px"></pre>
+</div>
+
 <!-- KEYBOARD SHORTCUTS OVERLAY (FEAT-5) -->
 <div id="shortcuts-overlay" onclick="if(event.target===this)closeShortcuts()" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1002;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
   <div style="background:var(--card);border-radius:16px;width:520px;max-width:95vw;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:24px">
@@ -1402,6 +1442,8 @@ function showConnected(accountName, region){
   $('connect-btn').style.display='none';
   $('disconnect-btn').style.display='inline-flex';
   { const b=$('backup-btn'); if(b) b.style.display='inline-flex'; }
+  { const b=$('restore-btn'); if(b) b.style.display='inline-flex'; }
+  { const r=$('recipe-row'); if(r){ r.style.display='flex'; renderRecipeOptions(); } }
   $('fetch-btn').style.display='inline-flex';
   $('import-btn').style.display = modKey()==='product' ? 'inline-flex' : 'none';
   const _ttIBtn=$('tt-import-btn');if(_ttIBtn) _ttIBtn.style.display=modKey()==='product'?'inline-flex':'none';
@@ -1447,6 +1489,8 @@ function doDisconnect(){
   $('connect-btn').style.display='inline-flex';
   $('disconnect-btn').style.display='none';
   { const b=$('backup-btn'); if(b) b.style.display='none'; }
+  { const b=$('restore-btn'); if(b) b.style.display='none'; }
+  { const rc=$('restore-card'); if(rc) rc.style.display='none'; }
   $('fetch-btn').style.display='none';
   $('import-btn').style.display='none';
   const _ttIBtnD=$('tt-import-btn');if(_ttIBtnD) _ttIBtnD.style.display='none';
@@ -7020,6 +7064,158 @@ async function backupAccount(){
   }catch(e){
     if(cm){cm.className='msg msg-err';cm.textContent='✗ Backup failed: '+e.message;}
   }finally{ if(btn) btn.disabled=false; }
+}
+
+// ── Saved recipes (module + search + date filters, localStorage) ─────────────
+const RECIPES_KEY='zdm_recipes_v1';
+function getRecipes(){ try{ return JSON.parse(localStorage.getItem(RECIPES_KEY)||'[]'); }catch(e){ return []; } }
+function setRecipes(a){ try{ localStorage.setItem(RECIPES_KEY, JSON.stringify(a)); }catch(e){} }
+function renderRecipeOptions(){
+  const sel=$('recipe-select'); if(!sel) return;
+  const recs=getRecipes();
+  sel.innerHTML='<option value="">— saved recipes ('+recs.length+') —</option>'+recs.map((r,i)=>'<option value="'+i+'">'+esc(r.name)+'</option>').join('');
+}
+function saveRecipe(){
+  const name=prompt('Name this recipe (captures the current module, search, and date filters):'); if(!name||!name.trim()) return;
+  const rec={name:name.trim(), module:($('module')?$('module').value:''), search:($('search')?$('search').value:''), dfFrom:($('df-from')?$('df-from').value:''), dfTo:($('df-to')?$('df-to').value:'')};
+  const recs=getRecipes();
+  const i=recs.findIndex(r=>r.name.toLowerCase()===rec.name.toLowerCase());
+  if(i>=0) recs[i]=rec; else recs.push(rec);
+  setRecipes(recs); renderRecipeOptions();
+}
+function loadRecipe(){
+  const sel=$('recipe-select'); if(!sel||sel.value==='') return;
+  const rec=getRecipes()[+sel.value]; if(!rec) return;
+  if(rec.module && $('module')){ $('module').value=rec.module; if(typeof onModuleChange==='function') onModuleChange(); }
+  if($('search')){ $('search').value=rec.search||''; if(typeof doSearch==='function') doSearch(); }
+  if($('df-from')) $('df-from').value=rec.dfFrom||'';
+  if($('df-to')) $('df-to').value=rec.dfTo||'';
+  if(typeof applyFilters==='function') applyFilters();
+}
+function deleteRecipe(){
+  const sel=$('recipe-select'); if(!sel||sel.value==='') return;
+  const recs=getRecipes(); recs.splice(+sel.value,1); setRecipes(recs); renderRecipeOptions();
+}
+
+// ── Restore from backup (workflows + product categories only) ────────────────
+let _restoreArchive=null;
+const RESTORE_UNDO_KEY='zdm_restore_undo_v1';
+
+function showRestoreCard(){
+  const c=$('restore-card'); if(!c) return;
+  c.style.display='block'; c.scrollIntoView({behavior:'smooth',block:'start'});
+  $('rs-summary').style.display='none'; $('rs-options').style.display='none';
+  $('rs-run').style.display='none'; $('rs-log').style.display='none';
+  const f=$('rs-file'); if(f) f.value='';
+  _restoreArchive=null;
+  // Show undo if there's a prior restore to reverse.
+  let undo=null; try{ undo=JSON.parse(localStorage.getItem(RESTORE_UNDO_KEY)||'null'); }catch(e){}
+  $('rs-undo').style.display=(undo&&undo.categories&&undo.categories.length)?'inline-flex':'none';
+}
+function hideRestoreCard(){ const c=$('restore-card'); if(c) c.style.display='none'; }
+
+function onRestoreFile(input){
+  const f=input.files&&input.files[0]; if(!f) return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const a=JSON.parse(e.target.result);
+      const mods=a.modules||{};
+      _restoreArchive=a;
+      const catN=(mods.product_category&&mods.product_category.count)||0;
+      const wfN=(mods.workflow&&mods.workflow.count)||0;
+      $('rs-summary').style.display='block';
+      $('rs-summary').innerHTML='<div style="padding:10px 12px;background:var(--th-bg);border:1px solid var(--border);border-radius:8px;font-size:.82rem">'
+        +'<div style="font-weight:600;margin-bottom:4px">'+esc(a.meta&&a.meta.account||'Backup')+'</div>'
+        +'<div style="color:var(--text-sub)">Product Categories: <strong style="color:var(--text)">'+catN+'</strong> · Workflows: <strong style="color:var(--text)">'+wfN+'</strong>'
+        +(a.meta&&a.meta.exported_at?(' · exported '+esc(a.meta.exported_at.slice(0,10))):'')+'</div></div>';
+      $('rs-cat').checked=catN>0; $('rs-cat').disabled=catN===0;
+      $('rs-wf').checked=wfN>0; $('rs-wf').disabled=wfN===0;
+      $('rs-options').style.display='block';
+      $('rs-run').style.display='inline-flex';
+    }catch(ex){ alert('Invalid backup file: '+ex.message); }
+  };
+  reader.readAsText(f);
+}
+
+async function runRestore(){
+  if(!_restoreArchive){ alert('Upload a backup file first.'); return; }
+  const dry=$('rs-dry').checked;
+  const doCat=$('rs-cat').checked, doWf=$('rs-wf').checked;
+  const logEl=$('rs-log'); logEl.style.display='block'; logEl.textContent='';
+  const rlog=(t)=>{ logEl.textContent+=t+'\n'; logEl.scrollTop=logEl.scrollHeight; };
+  $('rs-run').disabled=true;
+  const mods=_restoreArchive.modules||{};
+  const undo={categories:[],at:new Date().toISOString()};
+  try{
+    rlog(dry?'─── DRY RUN (no changes) ───':'─── LIVE RESTORE ───');
+    // Product categories
+    if(doCat && mods.product_category){
+      const cats=(mods.product_category.records||[]);
+      rlog('\nProduct Categories: '+cats.length);
+      // Load existing names to avoid duplicates.
+      const existing=new Set();
+      try{
+        const r=await fetch(baseUrl()+'products/category?count=500&page=1',{headers:getHdrs()});
+        if(r.ok){ const d=await r.json().catch(()=>({})); (extractRecords(d,'product_category')||d.data||[]).forEach(c=>existing.add(String(c.category_name||c.product_category_name||'').toLowerCase())); }
+      }catch(e){}
+      for(const c of cats){
+        const name=c.category_name||c.product_category_name; if(!name) continue;
+        if(existing.has(String(name).toLowerCase())){ rlog('  = exists, skip: '+name); continue; }
+        if(dry){ rlog('  + would create: '+name); continue; }
+        try{
+          const r=await fetch(baseUrl()+'products/category',{method:'POST',headers:hdrs(),body:JSON.stringify({product_category_name:name})});
+          const d=await r.json().catch(()=>({}));
+          const uid=d.data?.product_category_uid||d.data?.category_uid||d.product_category_uid;
+          if(r.ok&&uid){ rlog('  ✓ created: '+name); undo.categories.push({uid,name}); }
+          else rlog('  ✗ failed: '+name+' — '+JSON.stringify(d).slice(0,100));
+        }catch(e){ rlog('  ✗ error: '+name+' — '+e.message); }
+      }
+    }
+    // Workflows (bulk import — reuses the proven workflows/import endpoint)
+    if(doWf && mods.workflow){
+      const wfs=(mods.workflow.records||[]);
+      const wfBase=_workflowBaseUrl||((typeof deriveWorkflowUrl==='function')?deriveWorkflowUrl(baseUrl().replace(/\/api\/?$/,'')):'');
+      rlog('\nWorkflows: '+wfs.length);
+      if(!wfBase){ rlog('  ✗ Workflow Service URL unknown — connect once with the Workflows module first.'); }
+      else if(dry){ rlog('  + would import '+wfs.length+' workflow(s) via '+wfBase+'workflows/import'); }
+      else if(wfs.length){
+        try{
+          const blob=new Blob([JSON.stringify(wfs)],{type:'application/json'});
+          const form=new FormData(); form.append('file',blob,'Workflow-Restore.json');
+          const r=await fetch(wfBase+'workflows/import',{method:'POST',headers:getHdrs(),body:form});
+          const t=await r.text();
+          rlog(r.ok?('  ✓ imported '+wfs.length+' workflow(s)'):('  ✗ import failed HTTP '+r.status+' '+t.slice(0,120)));
+        }catch(e){ rlog('  ✗ error: '+e.message); }
+      }
+    }
+    if(!dry){
+      try{ localStorage.setItem(RESTORE_UNDO_KEY, JSON.stringify(undo)); }catch(e){}
+      $('rs-undo').style.display=undo.categories.length?'inline-flex':'none';
+      rlog('\n✓ Restore complete.'+(undo.categories.length?(' '+undo.categories.length+' categor(ies) can be undone.'):''));
+    } else {
+      rlog('\n✓ Dry run complete — uncheck Dry Run to apply.');
+    }
+  }catch(e){ rlog('\n✗ Restore failed: '+e.message); }
+  finally{ $('rs-run').disabled=false; }
+}
+
+async function undoLastRestore(){
+  let undo=null; try{ undo=JSON.parse(localStorage.getItem(RESTORE_UNDO_KEY)||'null'); }catch(e){}
+  if(!undo||!undo.categories||!undo.categories.length){ alert('Nothing to undo.'); return; }
+  if(!confirm('Delete the '+undo.categories.length+' product categor(ies) created by the last restore? (Workflows imported by restore cannot be auto-undone.)')) return;
+  const logEl=$('rs-log'); logEl.style.display='block'; logEl.textContent='─── UNDO LAST RESTORE ───\n';
+  const rlog=(t)=>{ logEl.textContent+=t+'\n'; logEl.scrollTop=logEl.scrollHeight; };
+  let ok=0;
+  for(const c of undo.categories){
+    try{
+      const r=await fetch(baseUrl()+'products/category/'+encodeURIComponent(c.uid),{method:'DELETE',headers:getHdrs()});
+      if(r.ok){ ok++; rlog('  ✓ deleted: '+c.name); } else rlog('  ✗ failed: '+c.name+' HTTP '+r.status);
+    }catch(e){ rlog('  ✗ error: '+c.name+' — '+e.message); }
+  }
+  localStorage.removeItem(RESTORE_UNDO_KEY);
+  $('rs-undo').style.display='none';
+  rlog('\n✓ Undo complete — '+ok+'/'+undo.categories.length+' removed.');
 }
 
 // ── Workflow-import log CSV ───────────────────────────────────────────────────
