@@ -142,6 +142,8 @@ main{flex:1;display:flex;overflow:hidden;height:calc(100vh - 54px)}
 ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:3px}
 #fi{display:none}
 </style>
+<script src="../assets/zuper-regions.js"></script>
+<script src="../assets/zuper-connect.js"></script>
 </head>
 <body>
 
@@ -156,6 +158,7 @@ main{flex:1;display:flex;overflow:hidden;height:calc(100vh - 54px)}
   <div class="hr">
     <label for="fi" class="btn btn-ghost">📂 Load JN JSON</label>
     <button class="btn btn-white" id="btnAll" disabled onclick="dlAll()">⬇ Export All</button>
+    <button class="btn btn-white" id="btnPush" disabled onclick="openPush()">☁ Push to account</button>
     <button class="btn btn-ghost" id="btnTestExport" disabled onclick="exportTestRunCSV()">📊 Test Log (Excel)</button>
   </div>
 </header>
@@ -169,7 +172,8 @@ main{flex:1;display:flex;overflow:hidden;height:calc(100vh - 54px)}
       <div class="dz-h">
         Input: JN automation array<br>
         Output: Valid Zuper Workflow Builder JSON<br><br>
-        <strong>v2 fixes:</strong> Trigger placement · Module names · Task schema · SMS action_key · Node positions · get_record injection · Edge handles
+        <strong>v2 fixes:</strong> Trigger placement · Module names · Task schema · SMS action_key · Node positions · get_record injection · Edge handles<br><br>
+        This tool is the <strong>converter/inspector</strong>: convert, review, resolve <code>[MAP →]</code> placeholders, then export or <strong>push directly</strong> to an account. For bulk management across many accounts, use the <strong>Data Manager</strong> tool's Import Workflow JSON.
       </div>
     </div>
     <div id="listp">
@@ -216,6 +220,30 @@ main{flex:1;display:flex;overflow:hidden;height:calc(100vh - 54px)}
     </div>
   </div>
 </main>
+
+<div id="pushModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:1000;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:88vh;overflow:auto;padding:22px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h3 style="margin:0;font-size:16px;color:#1a1a2e">☁ Push workflows to a Zuper account</h3>
+      <button class="btn btn-outline" onclick="closePush()">✕</button>
+    </div>
+    <p style="font-size:12.5px;color:#64748B;margin:0 0 14px">Imports the currently <strong>visible</strong> converted workflows (excluding SKIP) straight into an account. Resolve any <code>[MAP →]</code> placeholders first. Import into a sandbox and keep workflows deactivated until verified.</p>
+    <label style="font-size:12px;font-weight:600;color:#475569">Zuper API Key</label>
+    <input id="pushKey" type="password" placeholder="x-api-key" style="width:100%;padding:9px 11px;border:1px solid #E2E8F0;border-radius:8px;margin:4px 0 10px">
+    <button class="btn btn-orange" id="pushConnect" onclick="pushConnect()">Connect &amp; detect region</button>
+    <span id="pushConnStatus" style="font-size:12.5px;margin-left:8px"></span>
+    <div id="pushBody" style="display:none;margin-top:14px">
+      <div id="pushScope" style="font-size:12.5px;color:#475569;margin-bottom:10px"></div>
+      <label style="display:flex;gap:7px;align-items:center;font-size:12.5px;font-weight:600;margin-bottom:10px"><input type="checkbox" id="pushActivate"> Activate imported workflows (publish live)</label>
+      <div id="pushMapWrap" style="display:none;margin-bottom:12px">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">Resolve [MAP →] placeholders</div>
+        <div id="pushMapBody" style="max-height:220px;overflow:auto"></div>
+      </div>
+      <button class="btn btn-green" id="pushGo" onclick="doPush()">Push to account →</button>
+    </div>
+    <pre id="pushLog" style="display:none;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px;font-size:12px;max-height:240px;overflow:auto;white-space:pre-wrap;margin-top:12px"></pre>
+  </div>
+</div>
 
 <input type="file" id="fi" accept=".json">
 
@@ -849,6 +877,7 @@ function initList() {
   document.getElementById('dz').style.display='none';
   document.getElementById('listp').classList.add('show');
   document.getElementById('btnAll').disabled=false;
+  document.getElementById('btnPush').disabled=false;
   document.getElementById('btnTestExport').disabled=false;
   document.getElementById('cnt').textContent=converted.length;
   renderList();
@@ -1435,6 +1464,85 @@ function cpJson() { const c=converted[activeIdx]; if(!c)return; navigator.clipbo
 function dl(data,name) { const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),u=URL.createObjectURL(b),a=document.createElement('a'); a.href=u; a.download=name; a.click(); URL.revokeObjectURL(u); }
 function san(s) { return(s||'wf').replace(/[^a-zA-Z0-9_-]/g,'_').substring(0,50); }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── PUSH TO ACCOUNT (uses shared assets/zuper-connect.js) ────────────────────
+let _pushConn=null, _pushTokens=[];
+function pushable(){ return visible().filter(c=>!String(c.status||'').startsWith('SKIP')); }
+function openPush(){
+  if(!converted.length){ alert('Load a JN file first.'); return; }
+  if(!pushable().length){ alert('No pushable workflows are visible (all filtered out or marked SKIP).'); return; }
+  document.getElementById('pushModal').style.display='flex';
+  document.getElementById('pushBody').style.display='none';
+  document.getElementById('pushLog').style.display='none';
+  document.getElementById('pushConnStatus').textContent='';
+  _pushConn=null;
+}
+function closePush(){ document.getElementById('pushModal').style.display='none'; }
+
+async function pushConnect(){
+  const key=document.getElementById('pushKey').value.trim();
+  const st=document.getElementById('pushConnStatus');
+  if(!key){ st.textContent='Enter an API key'; st.style.color='#DC2626'; return; }
+  if(typeof ZuperConnect==='undefined'){ st.textContent='Connect module not loaded'; st.style.color='#DC2626'; return; }
+  st.textContent='Detecting region…'; st.style.color='#64748B';
+  try{
+    const r=await ZuperConnect.resolve(key);
+    const wfBase=ZuperConnect.workflowUrl(r.dcUrl);
+    if(!wfBase) throw new Error('Could not derive the workflow service URL for this region.');
+    _pushConn={key,wfBase,accountName:r.accountName};
+    st.textContent='✓ '+(r.accountName||'connected'); st.style.color='#16A34A';
+    const vis=pushable();
+    document.getElementById('pushScope').innerHTML='Will push <strong>'+vis.length+'</strong> visible workflow(s) to <strong>'+esc(r.accountName||'account')+'</strong>.';
+    _pushTokens=scanPushTokens(vis.map(c=>c.zuperWorkflow));
+    if(_pushTokens.length){ renderPushMap(_pushTokens); document.getElementById('pushMapWrap').style.display='block'; }
+    else document.getElementById('pushMapWrap').style.display='none';
+    document.getElementById('pushBody').style.display='block';
+  }catch(e){ st.textContent='✗ '+e.message; st.style.color='#DC2626'; }
+}
+
+function scanPushTokens(arr){
+  const set=new Set();
+  (function walk(o){
+    if(typeof o==='string'){ const m=o.match(/\[MAP[^\]]*\]/g); if(m) m.forEach(t=>set.add(t)); return; }
+    if(Array.isArray(o)) o.forEach(walk);
+    else if(o&&typeof o==='object') Object.keys(o).forEach(k=>walk(o[k]));
+  })(arr);
+  return [...set];
+}
+function renderPushMap(tokens){
+  document.getElementById('pushMapBody').innerHTML=tokens.map((t,i)=>
+    '<div style="padding:6px 0;border-bottom:1px solid #EEF2F6">'
+    +'<div style="font-size:11px;font-family:monospace;color:#64748B;word-break:break-all;margin-bottom:3px">'+esc(t)+'</div>'
+    +'<input class="pushmap" data-i="'+i+'" placeholder="Value / UID (blank = leave as-is)" style="width:100%;padding:6px 9px;border:1px solid #E2E8F0;border-radius:6px">'
+    +'</div>').join('');
+}
+function applyPushMap(obj,map){
+  if(typeof obj==='string'){ let s=obj; for(const k in map) s=s.split(k).join(map[k]); return s; }
+  if(Array.isArray(obj)) return obj.map(v=>applyPushMap(v,map));
+  if(obj&&typeof obj==='object'){ const o={}; for(const k in obj) o[k]=applyPushMap(obj[k],map); return o; }
+  return obj;
+}
+async function doPush(){
+  if(!_pushConn){ alert('Connect first.'); return; }
+  let arr=JSON.parse(JSON.stringify(pushable().map(c=>c.zuperWorkflow)));
+  const map={};
+  document.querySelectorAll('#pushMapBody .pushmap').forEach(inp=>{ const v=inp.value.trim(); if(v) map[_pushTokens[+inp.dataset.i]]=v; });
+  if(Object.keys(map).length) arr=applyPushMap(arr,map);
+  if(document.getElementById('pushActivate').checked) arr.forEach(w=>{ if(w&&typeof w==='object') w.is_active=true; });
+  const log=document.getElementById('pushLog'); log.style.display='block';
+  log.textContent='Pushing '+arr.length+' workflow(s) to '+_pushConn.wfBase+'workflows/import …\n';
+  document.getElementById('pushGo').disabled=true;
+  try{
+    const blob=new Blob([JSON.stringify(arr)],{type:'application/json'});
+    const form=new FormData(); form.append('file',blob,'Workflow-Import.json');
+    const res=await fetch(_pushConn.wfBase+'workflows/import',{method:'POST',headers:{'x-api-key':_pushConn.key,'x-zuper-client':'WEB_APP','x-zuper-client-version':'3.0'},body:form});
+    const t=await res.text();
+    log.textContent+= res.ok
+      ? ('\n✓ Imported '+arr.length+' workflow(s) (HTTP '+res.status+')\n'+t.slice(0,600))
+      : ('\n✗ Failed (HTTP '+res.status+')\n'+t.slice(0,600));
+  }catch(e){ log.textContent+='\n✗ Network error: '+e.message; }
+  finally{ document.getElementById('pushGo').disabled=false; }
+}
 </script>
   <script src="../assets/back-link.js"></script>
 </body>
