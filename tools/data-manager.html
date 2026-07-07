@@ -2690,14 +2690,14 @@ async function ensureFormulasExist(srcFormulas){
       formula_description: full.formula_description||sf.formula_description||'',
       formula:             formulaObj,
     };
-    // Try formula_category in several accepted forms (object, uid, name, wrapped).
+    // The API expects formula_category as a STRING (name or uid) — never an object.
+    // Try the category name first (most portable across accounts), then the uid.
     const variants=[
-      { ...base, formula_category: cat },
-      { ...base, formula_category: catUid },
       { ...base, formula_category: catName },
-      { ...base, formula_category: { category_name: catName } },
+      { ...base, formula_category: catUid },
+      { ...base, formula_category: catName, formula_category_uid: catUid, is_custom:true },
       { ...base, formula_category: catUid, formula_category_uid: catUid, is_custom:true },
-    ];
+    ].filter(v=>v.formula_category!=='' || v.formula_category_uid!=='');
     let done=false, lastErr='';
     for(const payload of variants){
       try{
