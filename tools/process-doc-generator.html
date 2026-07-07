@@ -38,7 +38,7 @@
   /* ---- Sticky app toolbar (screen only) ---- */
   .bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;
        background:#ffffffee;backdrop-filter:blur(6px);border-bottom:1px solid var(--line);
-       padding:11px 20px;flex-wrap:wrap;}
+       padding:11px 20px 11px 172px;flex-wrap:wrap;} /* left padding clears the Back-to-Dashboard pill */
   .bar .title{font-size:13px;color:var(--muted);flex:1;min-width:200px;}
   .bar button{font-family:var(--font);font-size:13.5px;font-weight:600;cursor:pointer;
        border-radius:8px;padding:8px 14px;border:1px solid var(--line);background:#fff;color:var(--ink);}
@@ -627,6 +627,9 @@ $("btnReconnect").addEventListener("click",()=>{
   $("barTitle").textContent="Zuper Process Doc Generator"; $("apiKey").focus();
 });
 </script>
+
+<!-- Shared dashboard back-link (resolves when served from the repo's /tools/ folder) -->
+<script src="../assets/back-link.js"></script>
 
 </body>
 </html>
