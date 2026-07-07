@@ -2661,21 +2661,36 @@ async function ensureFormulasExist(srcFormulas){
       console.warn('[ZDM] System formula not found in dest by key:',sf.formula_key,'—',sf.formula_name);
       continue;
     }
-    // Create custom formula in destination
-    const payload={
+    // Create custom formula in destination. Try a few payload shapes across API
+    // versions, and remember the real error so the caller can surface it.
+    window._formulaCreateErr = window._formulaCreateErr || {};
+    const base={
       formula_name:        sf.formula_name||'',
       formula_key:         sf.formula_key||'',
       formula_description: sf.formula_description||'',
       formula:             sf.formula||{},
     };
-    try{
-      const r=await fetch(_destBaseUrl+'invoice_estimate/cpq/formulas',{method:'POST',headers:destHdrs(),body:JSON.stringify(payload)});
-      if(r.ok){
-        const d=await r.json().catch(()=>({}));
-        const newUid=d?.data?.formula_uid||d?.formula_uid||'';
-        if(newUid){_formulaUidMap[srcUid]=newUid;created++;destByKey[sf.formula_key]={formula_uid:newUid};}
-      }else{console.warn('[ZDM] formula create HTTP',r.status,'—',sf.formula_name);}
-    }catch(e){console.warn('[ZDM] formula create error:',e.message);}
+    const variants=[
+      base,
+      { ...base, formula_category_uid: (sf.formula_category&&(sf.formula_category.category_uid||sf.formula_category.formula_category_uid))||sf.formula_category_uid||'', is_custom:true },
+      { formula: { ...(sf.formula||{}), formula_name: sf.formula_name||'', formula_key: sf.formula_key||'', formula_description: sf.formula_description||'' } },
+    ];
+    let done=false, lastErr='';
+    for(const payload of variants){
+      try{
+        const r=await fetch(_destBaseUrl+'invoice_estimate/cpq/formulas',{method:'POST',headers:destHdrs(),body:JSON.stringify(payload)});
+        let raw=''; let d={}; try{raw=await r.text();d=JSON.parse(raw);}catch{d={message:raw};}
+        if(r.ok){
+          const newUid=d?.data?.formula_uid||d?.formula_uid||'';
+          if(newUid){_formulaUidMap[srcUid]=newUid;created++;destByKey[sf.formula_key]={formula_uid:newUid};done=true;break;}
+          lastErr='created but no formula_uid returned: '+raw.slice(0,150);
+        }else{
+          lastErr='HTTP '+r.status+': '+(d?.message||d?.error||d?.info||raw.slice(0,200)||'(empty response)');
+          if(r.status!==400&&r.status!==422) break; // only cycle shapes on validation errors
+        }
+      }catch(e){ lastErr='Network: '+e.message; break; }
+    }
+    if(!done){ window._formulaCreateErr[srcUid]=lastErr||'unknown error'; console.warn('[ZDM] formula create failed —',sf.formula_name,'—',lastErr); }
   }
   console.log('[ZDM] Formulas: matched='+matched+' created='+created+' total_map='+Object.keys(_formulaUidMap).length);
 }
@@ -2692,7 +2707,10 @@ async function migrateFormulaRecord(rec,dry){
   }
   await ensureFormulasExist([rec]);
   const destUid=_formulaUidMap[uid]||'';
-  if(!destUid) return{ok:false,status:'err',uid,error:rec.is_custom?'Failed to create formula in destination':'System formula "'+rec.formula_key+'" not found in destination'};
+  if(!destUid){
+    const detail=(window._formulaCreateErr&&window._formulaCreateErr[uid])||'';
+    return{ok:false,status:'err',uid,error:rec.is_custom?('Failed to create formula'+(detail?': '+detail:' in destination')):'System formula "'+rec.formula_key+'" not found in destination'};
+  }
   return{ok:true,status:201,uid,warn:(rec.is_custom?'created':'matched')+' → dest uid: '+destUid.slice(0,8)+'…'};
 }
 
