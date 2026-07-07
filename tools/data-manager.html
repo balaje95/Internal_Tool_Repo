@@ -2661,19 +2661,32 @@ async function ensureFormulasExist(srcFormulas){
       console.warn('[ZDM] System formula not found in dest by key:',sf.formula_key,'—',sf.formula_name);
       continue;
     }
-    // Create custom formula in destination. Try a few payload shapes across API
-    // versions, and remember the real error so the caller can surface it.
+    // Create custom formula in destination. The create endpoint requires both a
+    // full `formula` body and a `formula_category` — the list response usually
+    // lacks both, so fetch the full source record first.
     window._formulaCreateErr = window._formulaCreateErr || {};
+    let full=sf;
+    try{
+      const fr=await fetch(_baseUrl+'invoice_estimate/cpq/formulas/'+srcUid,{headers:getHdrs()});
+      if(fr.ok){ const fd=await fr.json().catch(()=>({})); full=fd?.data||fd||sf; }
+    }catch(e){}
+    const cat = full.formula_category || sf.formula_category || null;
+    const catUid = (cat&&(cat.category_uid||cat.formula_category_uid))||full.formula_category_uid||'';
+    const catName = (cat&&(cat.category_name||cat.name)) || (typeof cat==='string'?cat:'') || '';
+    const formulaObj = full.formula || sf.formula || {};
     const base={
-      formula_name:        sf.formula_name||'',
-      formula_key:         sf.formula_key||'',
-      formula_description: sf.formula_description||'',
-      formula:             sf.formula||{},
+      formula_name:        full.formula_name||sf.formula_name||'',
+      formula_key:         full.formula_key||sf.formula_key||'',
+      formula_description: full.formula_description||sf.formula_description||'',
+      formula:             formulaObj,
     };
+    // Try formula_category in several accepted forms (object, uid, name, wrapped).
     const variants=[
-      base,
-      { ...base, formula_category_uid: (sf.formula_category&&(sf.formula_category.category_uid||sf.formula_category.formula_category_uid))||sf.formula_category_uid||'', is_custom:true },
-      { formula: { ...(sf.formula||{}), formula_name: sf.formula_name||'', formula_key: sf.formula_key||'', formula_description: sf.formula_description||'' } },
+      { ...base, formula_category: cat },
+      { ...base, formula_category: catUid },
+      { ...base, formula_category: catName },
+      { ...base, formula_category: { category_name: catName } },
+      { ...base, formula_category: catUid, formula_category_uid: catUid, is_custom:true },
     ];
     let done=false, lastErr='';
     for(const payload of variants){
