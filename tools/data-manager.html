@@ -1816,6 +1816,14 @@ function renderTable(){
     renderRows();
     $('rec-count').textContent=filtRecs.length+' of '+allRecs.length+' templates';
     renderPagination();
+    // Show the action buttons (this branch returns early, so mirror the standard path)
+    { const b=$('dedup-btn'); if(b) b.style.display='inline-flex'; }
+    { const b=$('mig-btn'); if(b) b.style.display='inline-flex'; }
+    { const b=$('compare-btn'); if(b) b.style.display='inline-flex'; }
+    { const b=$('update-sel-btn'); if(b) b.style.display='inline-flex'; }
+    { const b=$('tpl-import-btn'); if(b) b.style.display='inline-flex'; }
+    { const b=$('date-filter-row'); if(b) b.style.display='flex'; }
+    buildDedupFieldOptions(cfg);
     updSel();
     return;
   }
