@@ -48,5 +48,13 @@ const TOOLS = [
     "icon": "🗂️",
     "updated": "2026-07-02",
     "help": "Bulk fetch, delete, dedupe, migrate, and import Zuper records across many modules — jobs, products, CPQ, workflows and more. Dry Run is on by default for destructive actions."
+  },
+  {
+    "name": "Zuper Process Doc Generator",
+    "description": "Generate an editable, branded process document from a Zuper account",
+    "file": "tools/process-doc-generator.html",
+    "icon": "📝",
+    "updated": "2026-07-07",
+    "help": "Connect with a Zuper API key (region auto-detected) and it builds a polished process document from the account's job categories, statuses, and checklists — with a generated lifecycle flow diagram and a required-items checkpoint table. Edit any text inline, then export to Word, PDF, HTML, or raw JSON. The API key is never written into any export."
   }
 ];
