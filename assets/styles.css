@@ -60,7 +60,7 @@ header.dashboard-header p {
 
 main.dashboard-grid {
   max-width: 1100px;
-  margin: -2rem auto 0;
+  margin: 1.25rem auto 0;
   padding: 0 1.5rem 3rem;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -295,8 +295,10 @@ main.dashboard-grid {
 
 /* ---- Board controls (search / manage / theme) ---- */
 .board-controls {
+  position: relative;
+  z-index: 10;
   max-width: 1100px;
-  margin: 1.25rem auto -0.5rem;
+  margin: -1.6rem auto 0;
   padding: 0 1.5rem;
   display: flex;
   gap: 0.6rem;
