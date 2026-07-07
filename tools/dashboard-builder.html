@@ -423,6 +423,14 @@ td.mono{font-family:monospace;font-size:11px;color:var(--text2)}
       <div class="status-dot" id="statusDot"></div>
       <span class="status-txt" id="statusTxt">Ready</span>
       <button class="theme-ico" onclick="toggleTheme()" id="dashThemeBtn" title="Toggle theme">🌙</button>
+      <select class="theme-ico" id="accentPick" onchange="setAccent(this.value)" title="Accent color" style="width:auto;padding:0 6px">
+        <option value="#FF6B2C">🎨 Orange</option>
+        <option value="#7c3aed">🎨 Purple</option>
+        <option value="#2563eb">🎨 Blue</option>
+        <option value="#15803d">🎨 Green</option>
+        <option value="#0f766e">🎨 Teal</option>
+        <option value="#dc2626">🎨 Red</option>
+      </select>
       <button class="top-btn" onclick="refreshModule()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Refresh
       </button>
@@ -644,8 +652,11 @@ td.mono{font-family:monospace;font-size:11px;color:var(--text2)}
   </div>
 </div>
 
+<script src="../assets/zuper-regions.js"></script>
+<script src="../assets/zuper-connect.js"></script>
 <script>
-const REGIONS=['https://us-east-1.zuperpro.com/api/','https://us-west-1c.zuperpro.com/api/'];
+// Region detection uses the shared connect module (all known DCs); this list is a fallback.
+const REGIONS=(window.ZUPER_DCS||['https://us-east-1.zuperpro.com','https://us-west-1c.zuperpro.com']).map(d=>d+'/api/');
 const CL=['#FF6B2C','#2563eb','#15803d','#7c3aed','#d97706','#0f766e','#dc2626','#db2777'];
 const CD=['#FF6B2C','#4f8ef7','#22c98a','#9b6dff','#f5a623','#14b8a6','#f05252','#e879a0'];
 let apiKey='',baseUrl='',isDark=false,charts={},cache={},activePage='overview';
@@ -666,6 +677,21 @@ function toggleTheme(){
 
 function toggleVis(){const i=document.getElementById('apiKeyInp');i.type=i.type==='password'?'text':'password';}
 
+// Custom accent palette — overrides the --zuper CSS var + primary chart color.
+const ACCENT_KEY='db_accent';
+function setAccent(color,skipRender){
+  if(!color) return;
+  document.documentElement.style.setProperty('--zuper',color);
+  CL[0]=color; CD[0]=color;
+  try{ localStorage.setItem(ACCENT_KEY,color); }catch(e){}
+  const pick=document.getElementById('accentPick'); if(pick&&pick.value!==color) pick.value=color;
+  if(!skipRender && Object.keys(charts).length){ Object.values(charts).forEach(c=>c.destroy()); charts={}; renderPage(activePage); }
+}
+(function initAccent(){
+  let saved=null; try{ saved=localStorage.getItem(ACCENT_KEY); }catch(e){}
+  if(saved) setAccent(saved,true);
+})();
+
 async function tryR(key,url){
   const r=await fetch(url+'user/company',{headers:{'x-api-key':key}});
   if(!r.ok)throw new Error('HTTP '+r.status);
@@ -680,14 +706,19 @@ async function startLoad(){
   btn.disabled=true;
   document.getElementById('loadTxt').innerHTML='<div class="spinner"></div>';
   setErr('');
-  let co=null;
-  for(const url of REGIONS){try{co=await tryR(apiKey,url);baseUrl=url;break;}catch(e){}}
+  let co=null,acctName='Your Account';
+  // Prefer the shared connect module (probes all known DCs in parallel).
+  if(typeof ZuperConnect!=='undefined'){
+    try{ const res=await ZuperConnect.resolve(apiKey); baseUrl=res.baseUrl; acctName=res.accountName||acctName; co=true; }catch(e){}
+  }
+  // Fallback: sequential probe of the region list.
+  if(!co){ for(const url of REGIONS){try{const j=await tryR(apiKey,url);baseUrl=url;acctName=j?.company_name||j?.data?.company_name||acctName;co=true;break;}catch(e){}} }
   if(!co){setErr('Could not connect — check your API key.');btn.disabled=false;document.getElementById('loadTxt').textContent='Load dashboard';return;}
-  const name=co?.company_name||co?.data?.company_name||'Your Account';
+  const name=acctName;
   document.getElementById('loginScreen').style.display='none';
   const shell=document.getElementById('appShell');shell.style.display='flex';
   document.getElementById('topCo').textContent=name;
-  document.getElementById('topRegion').textContent=baseUrl.includes('east')?'US East':'US West';
+  document.getElementById('topRegion').textContent=(baseUrl.match(/https:\/\/([\w-]+)\.zuperpro/)||[])[1]||'—';
   setStatus('loading','Loading data...');
   try{
     await loadAll();
@@ -720,14 +751,22 @@ function logout(){
 }
 
 async function zGet(path){
-  const ctrl=new AbortController();
-  const t=setTimeout(()=>ctrl.abort(),15000);
-  try{
-    const r=await fetch(baseUrl+path,{headers:{'x-api-key':apiKey},signal:ctrl.signal});
-    clearTimeout(t);
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    return r.json();
-  }catch(e){clearTimeout(t);throw e;}
+  let lastErr;
+  for(let attempt=0;attempt<3;attempt++){
+    const ctrl=new AbortController();
+    const t=setTimeout(()=>ctrl.abort(),30000);
+    try{
+      const r=await fetch(baseUrl+path,{headers:{'x-api-key':apiKey},signal:ctrl.signal});
+      clearTimeout(t);
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      return r.json();
+    }catch(e){
+      clearTimeout(t);
+      lastErr=e;
+      if(attempt<2) await new Promise(res=>setTimeout(res,600*(attempt+1)));
+    }
+  }
+  throw lastErr;
 }
 
 async function zGetAll(path){
