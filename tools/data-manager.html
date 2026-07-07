@@ -2980,17 +2980,23 @@ async function migrateMeasCategoryRecord(rec,dry){
 
 // ── PROPOSAL TEMPLATE MIGRATION ───────────────────────────────────────────────
 async function migrateProposalTemplateRecord(rec,dry){
-  const uid=rec.proposal_template_uid||'';
-  const opts=rec.proposal_options||rec.options||rec.template_options||[];
+  const uid=rec.proposal_template_uid||rec.template_uid||'';
+  const _fT=(url,fo,ms=12000)=>{const ctl=new AbortController();const t=setTimeout(()=>ctl.abort(),ms);return fetch(url,{...fo,signal:ctl.signal}).finally(()=>clearTimeout(t));};
+  const isHeader=(i)=>((i.line_item_type||i.type||'').toString().toUpperCase()==='HEADER');
+
+  // Fetch the FULL source template — the list response often lacks complete options/line_items.
+  let full=rec;
+  if(!dry){
+    try{const r=await _fT(_baseUrl+'invoice_estimate/proposal_template/'+uid,{headers:getHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));full=d?.data||d||rec;}}catch{}
+  }
+  const opts=full.proposal_options||full.options||full.template_options||rec.proposal_options||rec._opts||[];
   const allItems=opts.flatMap(o=>o.line_items||o.items||o.proposal_line_items||[]);
-  const productItems=allItems.filter(i=>i.product_uid||i.product_name);
 
   if(dry){
     const formulaCount=allItems.filter(i=>i.formula_uid||i.cpq_formula_uid).length;
     return{ok:true,status:'dry-run',uid,
       warn:opts.length+' option(s), '+allItems.length+' total item(s)'+(formulaCount?' ('+formulaCount+' with formulas)':'')};
   }
-  const _fT=(url,fo,ms=8000)=>{const ctl=new AbortController();const t=setTimeout(()=>ctl.abort(),ms);return fetch(url,{...fo,signal:ctl.signal}).finally(()=>clearTimeout(t));};
 
   // Step 0: Ensure referenced formulas exist in destination
   const lineItemFormulas=[];
@@ -3005,7 +3011,7 @@ async function migrateProposalTemplateRecord(rec,dry){
   // Step 1: Load destination products by name
   const destProdsByName={};
   try{
-    for(let pg=1;pg<=2;pg++){
+    for(let pg=1;pg<=3;pg++){
       const r=await _fT(_destBaseUrl+'product?page='+pg+'&count=150',{headers:destGetHdrs()});
       if(!r.ok) break;
       const d=await r.json().catch(()=>({}));
@@ -3018,35 +3024,37 @@ async function migrateProposalTemplateRecord(rec,dry){
   const destCatsByName={};
   for(const c of destCategories) destCatsByName[(catObjName(c)||'').toLowerCase().trim()]=catObjUid(c);
 
-  // Step 2: Ensure products exist in destination, build productUidMap
-  const productUidMap={};
+  // Step 2: Ensure products exist in destination (skip HEADER rows and blanks), build productUidMap by name
+  const productItems=allItems.filter(i=>!isHeader(i)&&(i.product_uid||i.product_name));
+  const productUidMap={}; // keyed by source product_uid AND by lowercased name
   let prodCreated=0,prodMatched=0,prodFailed=0;
   for(const item of productItems){
     const nameKey=(item.product_name||'').toLowerCase().trim();
-    if(nameKey&&destProdsByName[nameKey]){productUidMap[item.product_uid]=destProdsByName[nameKey].product_uid||'';prodMatched++;continue;}
+    const setMap=(v)=>{ if(item.product_uid) productUidMap[item.product_uid]=v; if(nameKey) productUidMap[nameKey]=v; };
+    if(nameKey&&destProdsByName[nameKey]){setMap(destProdsByName[nameKey].product_uid||'');prodMatched++;continue;}
     let srcProduct=null;
-    try{const r=await _fT(_baseUrl+'product/'+item.product_uid,{headers:getHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));srcProduct=d?.data||d;}}catch{}
-    if(!srcProduct||!srcProduct.product_name) srcProduct={product_name:item.product_name||'',product_type:(item.product_type||'PARTS').toUpperCase(),price:parseFloat(item.unit_price||item.price)||0,product_description:item.description||''};
-    if(!srcProduct.product_name){productUidMap[item.product_uid]='';prodFailed++;continue;}
+    if(item.product_uid){ try{const r=await _fT(_baseUrl+'product/'+item.product_uid,{headers:getHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));srcProduct=d?.data||d;}}catch{} }
+    if(!srcProduct||!srcProduct.product_name) srcProduct={product_name:item.product_name||'',product_type:(item.product_type||'PARTS').toUpperCase(),price:parseFloat(item.unit_price||item.price)||0,uom:item.uom||'EA',product_description:item.description||''};
+    if(!srcProduct.product_name){setMap('');prodFailed++;continue;}
     const catRaw=srcProduct.product_category||item.product_category||'';
     const cName=(typeof catRaw==='string'?catRaw:catRaw?.product_category_name||catRaw?.category_name||'').toLowerCase().trim();
     let dCatUid=destCatsByName[cName]||'';
-    if(cName&&!dCatUid){try{const cr=await _fT(_destBaseUrl+'products/category',{method:'POST',headers:destHdrs(),body:JSON.stringify({product_category_name:typeof catRaw==='string'?catRaw:catRaw?.product_category_name||cName})});if(cr.ok){const cd=await cr.json().catch(()=>({}));dCatUid=cd?.data?.product_category_uid||cd?.product_category_uid||'';}}catch{}}
+    if(cName&&!dCatUid){try{const cr=await _fT(_destBaseUrl+'products/category',{method:'POST',headers:destHdrs(),body:JSON.stringify({product_category_name:typeof catRaw==='string'?catRaw:catRaw?.product_category_name||cName})});if(cr.ok){const cd=await cr.json().catch(()=>({}));dCatUid=cd?.data?.product_category_uid||cd?.product_category_uid||'';if(dCatUid) destCatsByName[cName]=dCatUid;}}catch{}}
     const p=JSON.parse(JSON.stringify(srcProduct));
     ['product_uid','created_at','updated_at','created_by','_id','__v','company_uid','product_ref_id','is_deleted','stock_alert'].forEach(k=>delete p[k]);
-    p.product_category=dCatUid||'';p.quantity=p.available_qty||0;delete p.available_qty;
+    p.product_category=dCatUid||'';p.uom=p.uom||item.uom||'EA';p.quantity=p.available_qty||1;p.min_quantity=p.min_quantity||1;p.is_available=true;p.is_billable=true;delete p.available_qty;
     try{
       const cr=await _fT(_destBaseUrl+'product',{method:'POST',headers:destHdrs(),body:JSON.stringify({product:p,vendor:[]})});
-      if(cr.ok){const cd=await cr.json().catch(()=>({}));const nUid=cd?.data?.product_uid||cd?.product_uid||'';productUidMap[item.product_uid]=nUid;if(nUid){destProdsByName[nameKey]={product_uid:nUid};prodCreated++;}else prodFailed++;}
-      else{productUidMap[item.product_uid]='';prodFailed++;}
-    }catch{productUidMap[item.product_uid]='';prodFailed++;}
+      if(cr.ok){const cd=await cr.json().catch(()=>({}));const dd=Array.isArray(cd?.data)?cd.data[0]:cd?.data;const nUid=dd?.product_uid||cd?.product_uid||'';setMap(nUid);if(nUid){destProdsByName[nameKey]={product_uid:nUid};prodCreated++;}else prodFailed++;}
+      else{setMap('');prodFailed++;}
+    }catch{setMap('');prodFailed++;}
     await new Promise(r=>setTimeout(r,100));
   }
 
   // Step 3: Map job_category_uid and job_status_uid by name in destination
   let destJobCatUid='',destJobStatUid='';
-  const srcCatName=(rec.job_category_name||rec.job_category?.category_name||rec.trigger?.job_category_name||'').trim();
-  const srcStatName=(rec.job_status_name||rec.job_status?.status_name||rec.trigger?.job_status_name||'').trim();
+  const srcCatName=(full.job_category_name||full.job_category?.category_name||full.trigger?.job_category_name||rec.job_category_name||'').trim();
+  const srcStatName=(full.job_status_name||full.job_status?.status_name||full.trigger?.job_status_name||rec.job_status_name||'').trim();
   if(srcCatName){
     if(!destJobCategories.length){
       try{const r=await _fT(_destBaseUrl+'jobs/category?populate_statuses=true',{headers:destGetHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));const cats=Array.isArray(d?.data)?d.data:(Array.isArray(d)?d:[]);destJobCategories=cats;destJobStatuses=cats.flatMap(c=>(c.job_statuses||[]).map(s=>({...s,_cat_uid:c.category_uid})));}}catch{}
@@ -3055,17 +3063,49 @@ async function migrateProposalTemplateRecord(rec,dry){
     if(dc){destJobCatUid=dc.category_uid||'';if(srcStatName){const ds=destJobStatuses.find(s=>s._cat_uid===destJobCatUid&&(s.status_name||'').trim().toLowerCase()===srcStatName.toLowerCase());if(ds) destJobStatUid=ds.status_uid||'';}}
   }
 
-  // Step 4: Build payload and POST to destination
-  const payload=buildProposalTemplatePayload(rec,productUidMap,destJobCatUid,destJobStatUid);
-  const res=await _fT(_destBaseUrl+'invoice_estimate/proposal_template',{method:'POST',headers:destHdrs(),body:JSON.stringify(payload)});
-  if(!res.ok){const e=await res.text().catch(()=>'');return{ok:false,status:res.status,error:'HTTP '+res.status+': '+e.slice(0,200),uid};}
+  // Step 4: STAGED create — template shell, then options, then line items (mirrors the
+  // proven Import Template flow; the single-POST approach is rejected as "Template data missing").
+  const tplName=full.template_name||full.proposal_template_name||rec._tpl_name||rec.template_name||'Template';
+  const trigger=destJobCatUid?[{job_category_uid:destJobCatUid,job_status_uid:destJobStatUid||''}]:[];
+  const shell={template_name:tplName,template_description:full.template_description||'',template_type:'CPQ',cpq_config:{trigger},layout_template_uid:null,is_draft:false};
+  const tr=await _fT(_destBaseUrl+'invoice_estimate/proposal_template',{method:'POST',headers:destHdrs(),body:JSON.stringify(shell)});
+  if(!tr.ok){const e=await tr.text().catch(()=>'');return{ok:false,status:tr.status,error:'Create template: HTTP '+tr.status+': '+e.slice(0,200),uid};}
+  let td={};try{td=await tr.json();}catch{}
+  const newTplUid=td?.data?.proposal_template_uid||td?.data?.template_uid||td?.proposal_template_uid||td?.template_uid||'';
+  if(!newTplUid) return{ok:false,status:tr.status,error:'Template created but no UID returned',uid};
 
-  const parts=[];
+  const mapProd=(item)=>productUidMap[item.product_uid]||productUidMap[(item.product_name||'').toLowerCase().trim()]||'';
+  let optCreated=0,liOk=0,liFail=0;
+  for(let oi=0;oi<opts.length;oi++){
+    const opt=opts[oi];
+    const optName=opt.option_name||('Option '+(oi+1));
+    const optRes=await _fT(_destBaseUrl+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options',{method:'POST',headers:destHdrs(),body:JSON.stringify({option_name:optName,option_description:opt.option_description||'',option_image:opt.option_image||''})});
+    if(!optRes.ok) continue;
+    let od={};try{od=await optRes.json();}catch{}
+    const newOptUid=od?.data?.option_uid||od?.data?.proposal_option_uid||od?.option_uid||od?.proposal_option_uid||'';
+    optCreated++;
+    if(!newOptUid) continue;
+    const items=(opt.line_items||opt.items||opt.proposal_line_items||[]);
+    const cleanItems=items.map(item=>{
+      if(isHeader(item)) return{line_item_type:'HEADER',product_name:item.product_name||item.section_name||''};
+      const fUid=item.formula_uid?(_formulaUidMap[item.formula_uid]||''):(item.cpq_formula_uid?(_formulaUidMap[item.cpq_formula_uid]||''):'');
+      return{line_item_type:'ITEM',product_uid:mapProd(item),product_name:item.product_name||'',product_type:item.product_type||'',unit_price:(item.unit_price!=null?item.unit_price:(item.price||0)),quantity:item.quantity||1,quantity_type:fUid?(item.quantity_type||'FORMULA'):(item.quantity_type||'MANUAL'),formula_uid:fUid,uom:item.uom||''};
+    });
+    if(cleanItems.length){
+      const liRes=await _fT(_destBaseUrl+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options/'+encodeURIComponent(newOptUid)+'/line_items?items_type=LINE_ITEMS',{method:'POST',headers:destHdrs(),body:JSON.stringify({line_items:cleanItems})});
+      if(liRes.ok) liOk+=cleanItems.length; else liFail+=cleanItems.length;
+    }
+    await new Promise(r=>setTimeout(r,80));
+  }
+
+  const parts=[optCreated+'/'+opts.length+' option(s)'];
+  if(liOk) parts.push(liOk+' line item(s)');
+  if(liFail) parts.push(liFail+' line item(s) failed');
   if(prodCreated) parts.push(prodCreated+' product(s) created');
   if(prodMatched) parts.push(prodMatched+' matched');
-  if(prodFailed) parts.push(prodFailed+' product(s) failed — line item left empty');
-  if(!destJobCatUid&&srcCatName) parts.push('job category "'+srcCatName+'" not found in dest — trigger cleared');
-  return{ok:true,status:201,uid,warn:parts.join(' | ')||'template created'};
+  if(prodFailed) parts.push(prodFailed+' product(s) failed');
+  if(!destJobCatUid&&srcCatName) parts.push('job category "'+srcCatName+'" not found — trigger cleared');
+  return{ok:true,status:201,uid,warn:parts.join(' | ')};
 }
 
 function buildProposalTemplatePayload(rec,productUidMap,destJobCatUid,destJobStatUid){
