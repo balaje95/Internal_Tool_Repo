@@ -2689,8 +2689,10 @@ async function ensureFormulasExist(srcFormulas){
       if(fr.ok){ const fd=await fr.json().catch(()=>({})); full=fd?.data||fd||sf; }
     }catch(e){}
     const cat = full.formula_category || sf.formula_category || null;
-    const catUid = (cat&&(cat.category_uid||cat.formula_category_uid))||full.formula_category_uid||'';
-    const catName = (cat&&(cat.category_name||cat.name)) || (typeof cat==='string'?cat:'') || '';
+    // Coerce to plain strings — the API rejects an object for formula_category.
+    const _s = (v)=> (typeof v==='string') ? v : '';
+    const catUid = _s(cat&&(cat.category_uid||cat.formula_category_uid)) || _s(full.formula_category_uid) || '';
+    const catName = _s(cat&&(cat.category_name||cat.name)) || _s(cat) || '';
     const formulaObj = full.formula || sf.formula || {};
     const base={
       formula_name:        full.formula_name||sf.formula_name||'',
@@ -3063,48 +3065,65 @@ async function migrateProposalTemplateRecord(rec,dry){
     if(dc){destJobCatUid=dc.category_uid||'';if(srcStatName){const ds=destJobStatuses.find(s=>s._cat_uid===destJobCatUid&&(s.status_name||'').trim().toLowerCase()===srcStatName.toLowerCase());if(ds) destJobStatUid=ds.status_uid||'';}}
   }
 
-  // Step 4: STAGED create — template shell, then options, then line items (mirrors the
-  // proven Import Template flow; the single-POST approach is rejected as "Template data missing").
+  // Step 4: STAGED create using the CPQ Importer's proven payload shapes:
+  // {proposal_template:{...}} shell, {proposal_options:[...]}, per-item {line_item:{...}}
+  // with a `product` field, then PUT to publish out of draft.
   const tplName=full.template_name||full.proposal_template_name||rec._tpl_name||rec.template_name||'Template';
-  const trigger=destJobCatUid?[{job_category_uid:destJobCatUid,job_status_uid:destJobStatUid||''}]:[];
-  const shell={template_name:tplName,template_description:full.template_description||'',template_type:'CPQ',cpq_config:{trigger},layout_template_uid:null,is_draft:false};
-  const tr=await _fT(_destBaseUrl+'invoice_estimate/proposal_template',{method:'POST',headers:destHdrs(),body:JSON.stringify(shell)});
+  const tr=await _fT(_destBaseUrl+'invoice_estimate/proposal_template',{method:'POST',headers:destHdrs(),body:JSON.stringify({proposal_template:{template_name:tplName,template_description:full.template_description||'',template_type:'CPQ'}})});
   if(!tr.ok){const e=await tr.text().catch(()=>'');return{ok:false,status:tr.status,error:'Create template: HTTP '+tr.status+': '+e.slice(0,200),uid};}
   let td={};try{td=await tr.json();}catch{}
-  const newTplUid=td?.data?.proposal_template_uid||td?.data?.template_uid||td?.proposal_template_uid||td?.template_uid||'';
+  const newTplUid=td?.data?.template_uid||td?.data?.proposal_template_uid||td?.template_uid||td?.proposal_template_uid||'';
   if(!newTplUid) return{ok:false,status:tr.status,error:'Template created but no UID returned',uid};
 
+  // Create all options in one call
+  const optPayloads=opts.map((o,i)=>({option_name:o.option_name||('Option '+(i+1)),option_description:o.option_description||'',is_recommended:opts.length===1?true:i===1}));
+  const or_=await _fT(_destBaseUrl+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options?items_type=LINE_ITEMS',{method:'POST',headers:destHdrs(),body:JSON.stringify({proposal_options:optPayloads})});
+  let ojson={};try{ojson=await or_.json();}catch{}
+  const destOptions=Array.isArray(ojson?.data)?ojson.data:[];
+
+  // Publish out of draft
+  try{await _fT(_destBaseUrl+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid),{method:'PUT',headers:destHdrs(),body:JSON.stringify({proposal_template:{template_name:tplName,template_description:full.template_description||'',template_type:'CPQ',template_uid:newTplUid,is_draft:false}})});}catch{}
+
+  const liPath=(oUid)=>_destBaseUrl+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options/'+encodeURIComponent(oUid)+'/line_items?items_type=LINE_ITEMS';
   const mapProd=(item)=>productUidMap[item.product_uid]||productUidMap[(item.product_name||'').toLowerCase().trim()]||'';
-  let optCreated=0,liOk=0,liFail=0;
+  let optOk=0,liOk=0,liFail=0;
   for(let oi=0;oi<opts.length;oi++){
     const opt=opts[oi];
-    const optName=opt.option_name||('Option '+(oi+1));
-    const optRes=await _fT(_destBaseUrl+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options',{method:'POST',headers:destHdrs(),body:JSON.stringify({option_name:optName,option_description:opt.option_description||'',option_image:opt.option_image||''})});
-    if(!optRes.ok) continue;
-    let od={};try{od=await optRes.json();}catch{}
-    const newOptUid=od?.data?.option_uid||od?.data?.proposal_option_uid||od?.option_uid||od?.proposal_option_uid||'';
-    optCreated++;
-    if(!newOptUid) continue;
+    const destOpt=destOptions[oi]||destOptions.find(d=>(d.option_name||'')===(opt.option_name||''));
+    const optUid=destOpt&&(destOpt.option_uid||destOpt.proposal_option_uid);
+    if(!optUid) continue;
+    optOk++;
     const items=(opt.line_items||opt.items||opt.proposal_line_items||[]);
-    const cleanItems=items.map(item=>{
-      if(isHeader(item)) return{line_item_type:'HEADER',product_name:item.product_name||item.section_name||''};
-      const fUid=item.formula_uid?(_formulaUidMap[item.formula_uid]||''):(item.cpq_formula_uid?(_formulaUidMap[item.cpq_formula_uid]||''):'');
-      return{line_item_type:'ITEM',product_uid:mapProd(item),product_name:item.product_name||'',product_type:item.product_type||'',unit_price:(item.unit_price!=null?item.unit_price:(item.price||0)),quantity:item.quantity||1,quantity_type:fUid?(item.quantity_type||'FORMULA'):(item.quantity_type||'MANUAL'),formula_uid:fUid,uom:item.uom||''};
-    });
-    if(cleanItems.length){
-      const liRes=await _fT(_destBaseUrl+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options/'+encodeURIComponent(newOptUid)+'/line_items?items_type=LINE_ITEMS',{method:'POST',headers:destHdrs(),body:JSON.stringify({line_items:cleanItems})});
-      if(liRes.ok) liOk+=cleanItems.length; else liFail+=cleanItems.length;
+    const sectionUidByName={};
+    for(const item of items){
+      try{
+        if(isHeader(item)){
+          const secName=item.product_name||item.section_name||'';
+          const sr=await _fT(liPath(optUid),{method:'POST',headers:destHdrs(),body:JSON.stringify({line_item:{type:'HEADER',line_item_type:'HEADER',product_name:secName,section_type:'EXPANDED',show_section_total:false,show_child_prices:true}})});
+          if(sr.ok){let sd={};try{sd=await sr.json();}catch{}const s=Array.isArray(sd?.data)?sd.data[0]:sd?.data;const su=s?.section_uid||s?.line_item_uid||s?.uid||'';if(su)sectionUidByName[secName]=su;liOk++;}else liFail++;
+          continue;
+        }
+        const prodUid=mapProd(item);
+        const fUid=item.formula_uid?(_formulaUidMap[item.formula_uid]||''):(item.cpq_formula_uid?(_formulaUidMap[item.cpq_formula_uid]||''):'');
+        const secName=item.section_name||item._section||'';
+        const li={type:'ITEM',line_item_type:'ITEM',product_name:item.product_name||'',product_type:item.product_type||'',quantity:item.quantity||1,quantity_type:fUid?(item.quantity_type||'FORMULA'):(item.quantity_type||'MANUAL')};
+        if(prodUid) li.product=prodUid;
+        if(fUid) li.formula=fUid;
+        if(secName&&sectionUidByName[secName]){li.section_uid=sectionUidByName[secName];li.section_name=secName;}
+        let lr=await _fT(liPath(optUid),{method:'POST',headers:destHdrs(),body:JSON.stringify({line_item:li})});
+        if(!lr.ok&&fUid){const fb={...li,quantity_type:'MANUAL'};delete fb.formula;lr=await _fT(liPath(optUid),{method:'POST',headers:destHdrs(),body:JSON.stringify({line_item:fb})});}
+        if(lr.ok) liOk++; else liFail++;
+      }catch{liFail++;}
+      await new Promise(r=>setTimeout(r,60));
     }
-    await new Promise(r=>setTimeout(r,80));
   }
 
-  const parts=[optCreated+'/'+opts.length+' option(s)'];
+  const parts=[optOk+'/'+opts.length+' option(s)'];
   if(liOk) parts.push(liOk+' line item(s)');
-  if(liFail) parts.push(liFail+' line item(s) failed');
+  if(liFail) parts.push(liFail+' failed');
   if(prodCreated) parts.push(prodCreated+' product(s) created');
   if(prodMatched) parts.push(prodMatched+' matched');
-  if(prodFailed) parts.push(prodFailed+' product(s) failed');
-  if(!destJobCatUid&&srcCatName) parts.push('job category "'+srcCatName+'" not found — trigger cleared');
+  if(!destJobCatUid&&srcCatName) parts.push('job category "'+srcCatName+'" not found');
   return{ok:true,status:201,uid,warn:parts.join(' | ')};
 }
 
