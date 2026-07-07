@@ -476,6 +476,7 @@ input[type=checkbox]{accent-color:var(--primary)}
     <button class="btn btn-o" id="connect-btn" onclick="doConnect()">🔌 Connect</button>
     <button class="btn btn-o" id="save-conn-btn" onclick="saveCurrentConnection()" style="display:none" title="Save this connection">🔖 Save</button>
     <button class="btn btn-g" id="disconnect-btn" onclick="doDisconnect()" style="display:none">⏏ Disconnect</button>
+    <button class="btn btn-o" id="backup-btn" onclick="backupAccount()" style="display:none" title="Download a JSON snapshot of this account's config">💾 Backup account</button>
     <button class="btn btn-p" id="fetch-btn" onclick="doFetch()" style="display:none">📄 Fetch Records</button>
     <button class="btn btn-p" id="import-btn" onclick="showImportCard()" style="display:none">📥 Import Products</button>
     <button class="btn btn-p" id="tt-import-btn" onclick="showTtImportCard()" style="display:none">🏷 Import Trade Type Mapping</button>
@@ -1242,6 +1243,7 @@ input[type=checkbox]{accent-color:var(--primary)}
     <pre id="wfi-log" style="background:var(--th-bg);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.78rem;max-height:320px;overflow:auto;white-space:pre-wrap"></pre>
     <div class="btn-row" style="margin-top:12px">
       <button class="btn btn-g" onclick="hideWfImportCard();doFetch()">Done — Refresh List</button>
+      <button class="btn btn-o" id="wfi-report-btn" style="display:none" onclick="downloadWfReport()">⬇ Log (CSV)</button>
     </div>
   </div>
 </div>
@@ -1399,6 +1401,7 @@ function showConnected(accountName, region){
   $('badge').textContent='✓ '+accountName+' ('+region+')';
   $('connect-btn').style.display='none';
   $('disconnect-btn').style.display='inline-flex';
+  { const b=$('backup-btn'); if(b) b.style.display='inline-flex'; }
   $('fetch-btn').style.display='inline-flex';
   $('import-btn').style.display = modKey()==='product' ? 'inline-flex' : 'none';
   const _ttIBtn=$('tt-import-btn');if(_ttIBtn) _ttIBtn.style.display=modKey()==='product'?'inline-flex':'none';
@@ -1443,6 +1446,7 @@ function doDisconnect(){
   $('badge').textContent='○ Not connected';
   $('connect-btn').style.display='inline-flex';
   $('disconnect-btn').style.display='none';
+  { const b=$('backup-btn'); if(b) b.style.display='none'; }
   $('fetch-btn').style.display='none';
   $('import-btn').style.display='none';
   const _ttIBtnD=$('tt-import-btn');if(_ttIBtnD) _ttIBtnD.style.display='none';
@@ -6949,6 +6953,86 @@ function renderWfImportPreview(){
   wfiUpdateSelCount();
 }
 
+// ── Account backup (read-only export of config modules) ──────────────────────
+const BACKUP_SET=[
+  {key:'job_category',label:'Job Categories & Statuses',endpoint:'jobs/category',params:'populate_statuses=true',single:true},
+  {key:'product_category',label:'Product Categories',endpoint:'products/category',params:'filter.keyword='},
+  {key:'product',label:'Parts & Services',endpoint:'product/filter',method:'POST'},
+  {key:'formula',label:'CPQ Formulas',endpoint:'invoice_estimate/cpq/formulas'},
+  {key:'proposal_template',label:'Proposal Templates',endpoint:'invoice_estimate/proposal_template',params:'filter.keyword='},
+  {key:'package',label:'Service Packages',endpoint:'invoice_estimate/service_packages',params:'count=1000',single:true},
+  {key:'trade_type',label:'Trade Types',endpoint:'business_units',params:'filter.show_all_bu=true'},
+  {key:'email_template',label:'Email / SMS Templates',endpoint:'misc/email_template',params:'sort=DESC&sort_by=created_at&filter.keyword='},
+  {key:'measurement_category',label:'Measurement Categories',endpoint:'measurements/categories'},
+  {key:'customer_notification',label:'Customer Notifications',endpoint:'customer_notification'},
+  {key:'workflow',label:'Workflows',endpoint:'workflows',workflow:true,params:'sort=ASC&sort_by=created_at'}
+];
+
+async function backupFetch(item, wfBase){
+  const base = item.workflow ? wfBase : baseUrl();
+  if(!base) return {records:[],error:'no base URL'};
+  const out=[];
+  if(item.method==='POST'){
+    let page=1;
+    while(page<=25){
+      const r=await fetch(base+item.endpoint,{method:'POST',headers:{...getHdrs(),'Content-Type':'application/json'},body:JSON.stringify({page,count:200})});
+      if(!r.ok) break;
+      const d=await r.json().catch(()=>({}));
+      const recs=extractRecords(d,item.key)||[];
+      out.push(...recs);
+      if(recs.length<200) break; page++;
+    }
+    return {records:out};
+  }
+  let page=1;
+  while(page<=25){
+    const sep=item.endpoint.includes('?')?'&':'?';
+    const url=base+item.endpoint+sep+'page='+page+'&count=200'+(item.params?('&'+item.params):'');
+    const r=await fetch(url,{headers:getHdrs()});
+    if(!r.ok) break;
+    const d=await r.json().catch(()=>({}));
+    const recs=extractRecords(d,item.key)||[];
+    out.push(...recs);
+    if(item.single||recs.length<200) break; page++;
+  }
+  return {records:out};
+}
+
+async function backupAccount(){
+  const btn=$('backup-btn'); if(btn) btn.disabled=true;
+  const cm=$('conn-msg');
+  const acct=($('badge').textContent||'').replace(/^✓\s*/,'').trim();
+  const wfBase=_workflowBaseUrl||((typeof deriveWorkflowUrl==='function')?deriveWorkflowUrl(baseUrl().replace(/\/api\/?$/,'')):'');
+  const archive={meta:{account:acct,base_url:baseUrl(),exported_at:new Date().toISOString(),source:'Zuper Data Manager backup v1'},modules:{}};
+  try{
+    for(let i=0;i<BACKUP_SET.length;i++){
+      const item=BACKUP_SET[i];
+      if(cm){cm.className='msg msg-info';cm.style.display='block';cm.textContent='💾 Backing up '+item.label+' ('+(i+1)+'/'+BACKUP_SET.length+')…';}
+      let res; try{ res=await backupFetch(item,wfBase); }catch(e){ res={records:[],error:e.message}; }
+      archive.modules[item.key]={label:item.label,count:res.records.length,records:res.records,...(res.error?{error:res.error}:{})};
+    }
+    const total=Object.values(archive.modules).reduce((s,m)=>s+(m.count||0),0);
+    const blob=new Blob([JSON.stringify(archive,null,2)],{type:'application/json'});
+    const a=document.createElement('a');
+    const safeName=(acct||'account').replace(/[^a-z0-9]+/gi,'_').slice(0,40);
+    a.href=URL.createObjectURL(blob); a.download='zuper_backup_'+safeName+'.json'; a.click(); URL.revokeObjectURL(a.href);
+    if(cm){cm.className='msg msg-ok';cm.textContent='✓ Backup downloaded — '+total+' record(s) across '+BACKUP_SET.length+' module(s).';}
+  }catch(e){
+    if(cm){cm.className='msg msg-err';cm.textContent='✗ Backup failed: '+e.message;}
+  }finally{ if(btn) btn.disabled=false; }
+}
+
+// ── Workflow-import log CSV ───────────────────────────────────────────────────
+let _wfReportRows=[];
+function downloadWfReport(){
+  if(!_wfReportRows.length) return;
+  const cols=['workflow_name','nodes','result'];
+  const cell=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const lines=[cols.join(',')].concat(_wfReportRows.map(r=>cols.map(c=>cell(r[c])).join(',')));
+  const blob=new Blob([lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zuper_workflow_import_log.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
+
 async function startWfImport(payload){
   const full=_wfImportData;if(!full) return;
   const arr = Array.isArray(payload) ? payload : wfiSelected();
@@ -6963,6 +7047,8 @@ async function startWfImport(payload){
   const activate = $('wfi-activate') && $('wfi-activate').checked;
   if(activate) arr.forEach(w=>{ if(w && typeof w==='object') w.is_active=true; });
 
+  _wfReportRows = arr.map(w=>({workflow_name:(w&&w.workflow_name)||'Untitled', nodes:(w&&w.nodes||[]).length, result:'sent'}));
+  const reportBtn=$('wfi-report-btn'); if(reportBtn) reportBtn.style.display='none';
   const applyBtn=$('wfi-map-apply'); if(applyBtn) applyBtn.disabled=true;
   wfiGoTo(4);
   const log=$('wfi-log');
@@ -6978,13 +7064,19 @@ async function startWfImport(payload){
     if(!res.ok){
       log.textContent+='\n✗ Import failed (HTTP '+res.status+')\n'+bodyText.slice(0,800);
       m.className='msg msg-err';m.textContent='✗ Import failed — see log below.';m.style.display='block';
+      _wfReportRows.forEach(r=>r.result='failed');
+      { const rb=$('wfi-report-btn'); if(rb) rb.style.display='inline-flex'; }
       return;
     }
     log.textContent+='\n✓ Import succeeded (HTTP '+res.status+')\n'+bodyText.slice(0,1500);
     m.className='msg msg-ok';m.textContent='✓ Imported '+arr.length+' workflow(s). Click "Refresh List" below to see them.';m.style.display='block';
+    _wfReportRows.forEach(r=>r.result='imported');
+    { const rb=$('wfi-report-btn'); if(rb) rb.style.display='inline-flex'; }
   }catch(e){
     log.textContent+='\n✗ Network error: '+e.message;
     const m=$('wfi-msg3');m.className='msg msg-err';m.textContent='✗ Network error — see log below.';m.style.display='block';
+    _wfReportRows.forEach(r=>r.result='error');
+    { const rb=$('wfi-report-btn'); if(rb) rb.style.display='inline-flex'; }
   }finally{
     if(applyBtn) applyBtn.disabled=false;
   }
