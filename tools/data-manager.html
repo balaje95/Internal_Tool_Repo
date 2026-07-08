@@ -8036,6 +8036,74 @@ async function startTplImport(){
       }
       progBar.style.width='100%';progLbl.textContent='✓ Dry run complete — no changes made';
       msg.className='msg msg-ok';msg.textContent='✓ Dry run passed. Uncheck "Dry Run" and run again to create the template.';msg.style.display='block';
+    } else if(!isExcel){
+      // ── JSON restore (same account): keep original product/formula/checklist UIDs,
+      // recreate sections (remap uids), preserve conditional rules + conditions.
+      // Uses the proven wrapped payload shapes. ──
+      const rec=_tplImportData;
+      const opts=rec.proposal_options||rec._opts||[];
+      const newName=(rec.template_name||rec._tpl_name||'Template');
+      const isHeaderItem=(it)=>((it.line_item_type||it.type||'').toString().toUpperCase()==='HEADER');
+      tiLog('info','Restoring template "'+newName+'"…');
+      const tr=await fetch(baseUrl()+'invoice_estimate/proposal_template',{method:'POST',headers:hdrs(),body:JSON.stringify({proposal_template:{template_name:newName,template_description:rec.template_description||'',template_type:'CPQ'}})});
+      let td;try{td=await tr.json();}catch{td={};}
+      if(!tr.ok) throw new Error('Create template: '+tr.status+' — '+(td.message||td.error||JSON.stringify(td).slice(0,150)));
+      const newTplUid=td.data?.template_uid||td.data?.proposal_template_uid||td.template_uid||td.proposal_template_uid||'';
+      if(!newTplUid) throw new Error('No template UID in response: '+JSON.stringify(td).slice(0,200));
+      tiLog('ok','Template created: '+newTplUid);
+      progBar.style.width='15%';
+      // Create all options in one call
+      const optPayloads=opts.map((o,i)=>({option_name:o.option_name||('Option '+(i+1)),option_description:o.option_description||'',is_recommended:!!o.is_recommended}));
+      const or_=await fetch(baseUrl()+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options?items_type=LINE_ITEMS',{method:'POST',headers:hdrs(),body:JSON.stringify({proposal_options:optPayloads})});
+      let oj;try{oj=await or_.json();}catch{oj={};}
+      const destOptions=Array.isArray(oj?.data)?oj.data:[];
+      // Publish out of draft
+      try{await fetch(baseUrl()+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid),{method:'PUT',headers:hdrs(),body:JSON.stringify({proposal_template:{template_name:newName,template_description:rec.template_description||'',template_type:'CPQ',template_uid:newTplUid,is_draft:false}})});}catch{}
+      const liPath=(oUid)=>baseUrl()+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options/'+encodeURIComponent(oUid)+'/line_items?items_type=LINE_ITEMS';
+      let liOk=0,liFail=0,ruleOk=0,ruleDropped=0;
+      for(let i=0;i<opts.length;i++){
+        const opt=opts[i];
+        const destOpt=destOptions[i]||destOptions.find(d=>(d.option_name||'')===(opt.option_name||''));
+        const optUid=destOpt&&(destOpt.option_uid||destOpt.proposal_option_uid);
+        if(!optUid){tiLog('err','Option "'+(opt.option_name||(i+1))+'" not created');continue;}
+        tiLog('info','Option '+(i+1)+'/'+opts.length+': "'+(opt.option_name||('Option '+(i+1)))+'"');
+        const items=opt.line_items||opt.items||opt.proposal_line_items||[];
+        const sectionMap={}; // old header uid -> new section uid
+        for(const item of items){
+          try{
+            if(isHeaderItem(item)){
+              const body={line_item:{type:'HEADER',line_item_type:'HEADER',product_name:item.product_name||'',section_type:item.section_type||'EXPANDED',show_section_total:!!item.show_section_total,show_child_prices:item.show_child_prices!==false}};
+              const sr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify(body)});
+              if(sr.ok){let sd;try{sd=await sr.json();}catch{sd={};}const s=Array.isArray(sd?.data)?sd.data[0]:sd?.data;const su=s?.section_uid||s?.line_item_uid||s?.uid||'';const oldKey=item.line_item_uid||item.section_uid||'';if(su&&oldKey)sectionMap[oldKey]=su;liOk++;}else liFail++;
+              continue;
+            }
+            const li={type:'ITEM',line_item_type:'ITEM',product_name:item.product_name||'',product_type:item.product_type||'',quantity:item.quantity||1,quantity_type:item.quantity_type||'MANUAL'};
+            if(item.product) li.product=item.product;         // original product UID (still valid)
+            if(item.formula) li.formula=item.formula;          // original formula UID (still valid)
+            const newSec=item.section_uid?sectionMap[item.section_uid]:'';
+            if(newSec){li.section_uid=newSec;li.section_name=item.section_name||'';}
+            const hasRules=item.rules&&typeof item.rules==='object'&&Object.keys(item.rules).length;
+            const hasConds=Array.isArray(item.conditions)&&item.conditions.length;
+            if(hasRules) li.rules=item.rules;
+            if(hasConds) li.conditions=item.conditions;
+            let lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li})});
+            if(!lr.ok&&(hasRules||hasConds)){
+              const li2={...li};delete li2.rules;delete li2.conditions;
+              lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li2})});
+              if(lr.ok){ruleDropped++;}
+            } else if(lr.ok&&(hasRules||hasConds)) ruleOk++;
+            if(lr.ok) liOk++; else {liFail++; if(liFail<=4){let ed='';try{ed=await lr.text();}catch{}tiLog('warn','Line item "'+(item.product_name||'?')+'" failed: '+lr.status+' '+ed.slice(0,120));}}
+          }catch(e){liFail++;}
+          await new Promise(r=>setTimeout(r,45));
+        }
+        progBar.style.width=(15+70*(i+1)/(opts.length||1)).toFixed(1)+'%';
+      }
+      progBar.style.width='100%';progLbl.textContent='✓ Restore complete';
+      const summ=liOk+' line item(s) restored'+(liFail?', '+liFail+' failed':'')+(ruleOk?', '+ruleOk+' with conditional rules':'')+(ruleDropped?', '+ruleDropped+' created without rules (API rejected them)':'');
+      tiLog('ok',summ);
+      msg.className='msg msg-ok';
+      msg.innerHTML='✓ Template "<strong>'+esc(newName)+'</strong>" restored. <a href="javascript:void(0)" onclick="doFetch();hideTplImportCard()">Refresh list →</a>';
+      msg.style.display='block';
     } else {
       // ── Step 1: Create template ─────────────────────────────────────────────
       const rec=_tplImportData;
