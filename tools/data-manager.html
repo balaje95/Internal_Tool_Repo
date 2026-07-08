@@ -1130,7 +1130,8 @@ input[type=checkbox]{accent-color:var(--primary)}
       <input type="file" id="ti-file" accept=".json,.xlsx,.xls" style="display:none" onchange="onTplImportFile(this)">
     </div>
     <div class="msg msg-info" style="margin-bottom:12px;font-size:.8rem">
-      <strong>.json</strong> — exported via <em>JSON ↓</em> button. Round-trip clone; preserves all product UIDs and formula references.<br>
+      <strong>.json (export)</strong> — exported via <em>JSON ↓</em> button. Round-trip clone; preserves product UIDs and formula references.<br>
+      <strong>.json (spec)</strong> — a name-based spec (products/formulas/conditions by name). Pre-flighted against this account: if anything's missing it reports it and creates nothing. Auto-detected.<br>
       <strong>.xlsx</strong> — atlas format (one sheet per proposal option). Products matched by Product No; formulas matched by name.
     </div>
     <div class="btn-row">
@@ -7903,8 +7904,15 @@ function onTplImportFile(input){
       try{
         const data=JSON.parse(e.target.result);
         const rec=data.data||data;
-        if(!rec.proposal_options&&!rec._opts){msg.className='msg msg-err';msg.textContent='✗ No proposal_options found in this JSON.';msg.style.display='block';return;}
-        _tplImportData={...rec,_format:'json'};
+        const opts=rec.proposal_options||rec.options||rec._opts;
+        if(!opts||!opts.length){msg.className='msg msg-err';msg.textContent='✗ No "options" or "proposal_options" array found in this JSON.';msg.style.display='block';return;}
+        // Detect a name-based spec (references products/formulas by name, no UIDs)
+        // vs a full export (line items carry product/formula UIDs).
+        const flat=opts.flatMap(o=>o.line_items||o.items||[]);
+        const hasUid=flat.some(it=>it.product||it.formula);
+        const hasName=flat.some(it=>it.product_name||it.formula_name);
+        const isSpec=hasName&&!hasUid;
+        _tplImportData={...rec,proposal_options:opts,_format:isSpec?'spec':'json'};
         renderTplImportPreview();
         tiGoTo(2);
       }catch(ex){msg.className='msg msg-err';msg.textContent='✗ Invalid JSON: '+ex.message;msg.style.display='block';}
@@ -7955,6 +7963,96 @@ async function startTplImport(){
     logEl.appendChild(d);logEl.scrollTop=logEl.scrollHeight;
   }
   try{
+    // ── SPEC import: name-based, pre-flight validated, blocks on any missing dependency ──
+    if(_tplImportData._format==='spec'){
+      const rec=_tplImportData;
+      const opts=rec.proposal_options||rec.options||[];
+      const newName=(rec.template_name||'Template').toString().trim()||'Template';
+      const isHeaderItem=(it)=>((it.type||it.line_item_type||'').toString().toUpperCase()==='HEADER');
+      const norm=(s)=>String(s||'').trim().toLowerCase();
+
+      // Pre-flight: load account products, formulas, and custom fields (by name)
+      tiLog('info','Pre-flight: loading account products, formulas, and fields…');
+      const prodByName={},fmlByName={},fieldByName={};
+      try{let pg=1;while(pg<=50){const r=await fetch(baseUrl()+'product?page='+pg+'&count=150',{headers:getHdrs()});if(!r.ok)break;const d=await r.json().catch(()=>({}));const recs=extractRecords(d,'product')||[];if(!recs.length)break;recs.forEach(p=>{const n=norm(p.product_name);if(n&&!prodByName[n])prodByName[n]=p.product_uid||p.uid||'';});if(recs.length<150)break;pg++;}}catch(e){}
+      try{const r=await fetch(baseUrl()+'invoice_estimate/cpq/formulas?count=500&page=1',{headers:getHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));(extractRecords(d,'formula')||[]).forEach(f=>{const n=norm(f.formula_name);if(n)fmlByName[n]=f.formula_uid||f.uid||'';});}}catch(e){}
+      try{const r=await fetch(baseUrl()+'settings/custom_fields?module_name=JOB',{headers:getHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));(extractRecords(d,'custom_fields')||[]).forEach(f=>{const n=norm(f.field_name);if(n)fieldByName[n]=f.custom_field_uid||f.field_uid||f._id||'';});}}catch(e){}
+      tiLog('ok','Loaded '+Object.keys(prodByName).length+' product(s), '+Object.keys(fmlByName).length+' formula(s), '+Object.keys(fieldByName).length+' custom field(s)');
+
+      // Resolve every reference; collect what's missing
+      const missProd=new Set(),missFml=new Set(),missField=new Set();
+      const flat=opts.flatMap(o=>o.line_items||o.items||[]);
+      for(const it of flat){
+        if(isHeaderItem(it)) continue;
+        if(it.product_name&&!prodByName[norm(it.product_name)]) missProd.add(it.product_name);
+        if(it.formula_name&&!fmlByName[norm(it.formula_name)]) missFml.add(it.formula_name);
+        if(Array.isArray(it.conditions)) for(const c of it.conditions){ if(c.field_name&&!c.field_uid&&!fieldByName[norm(c.field_name)]) missField.add(c.field_name); }
+      }
+
+      if(missProd.size||missFml.size||missField.size){
+        progBar.style.width='100%';progLbl.textContent='✗ Pre-flight failed — missing dependencies';
+        if(missProd.size) tiLog('err','Missing products ('+missProd.size+'): '+[...missProd].join(', '));
+        if(missFml.size) tiLog('err','Missing formulas ('+missFml.size+'): '+[...missFml].join(', '));
+        if(missField.size) tiLog('err','Missing custom/checklist fields ('+missField.size+'): '+[...missField].join(', '));
+        tiLog('info','Import/migrate these into this account first (Parts & Services / CPQ Formulas / Custom Fields), then re-upload. Nothing was created.');
+        msg.className='msg msg-err';msg.textContent='✗ Pre-flight failed — '+(missProd.size+missFml.size+missField.size)+' missing dependenc(ies). Nothing was created; see the list above.';msg.style.display='block';
+        return;
+      }
+      tiLog('ok','Pre-flight passed — all products, formulas, and fields resolved.');
+      if(dry){progBar.style.width='100%';progLbl.textContent='✓ Dry run — pre-flight passed';msg.className='msg msg-ok';msg.textContent='✓ Pre-flight passed. Uncheck Dry Run and run again to create the template.';msg.style.display='block';return;}
+
+      // Create — staged wrapped shapes, resolved UIDs
+      tiLog('info','Creating template "'+newName+'"…');
+      const tr=await fetch(baseUrl()+'invoice_estimate/proposal_template',{method:'POST',headers:hdrs(),body:JSON.stringify({proposal_template:{template_name:newName,template_description:rec.template_description||'',template_type:'CPQ'}})});
+      let td;try{td=await tr.json();}catch{td={};}
+      if(!tr.ok) throw new Error('Create template: '+tr.status+' — '+(td.message||td.error||JSON.stringify(td).slice(0,150)));
+      const newTplUid=td.data?.template_uid||td.data?.proposal_template_uid||td.template_uid||td.proposal_template_uid||'';
+      if(!newTplUid) throw new Error('No template UID returned: '+JSON.stringify(td).slice(0,200));
+      tiLog('ok','Template created: '+newTplUid);progBar.style.width='15%';
+      const optPayloads=opts.map((o,i)=>({option_name:o.option_name||('Option '+(i+1)),option_description:o.option_description||'',is_recommended:!!o.is_recommended}));
+      const or_=await fetch(baseUrl()+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options?items_type=LINE_ITEMS',{method:'POST',headers:hdrs(),body:JSON.stringify({proposal_options:optPayloads})});
+      let oj;try{oj=await or_.json();}catch{oj={};}
+      const destOptions=Array.isArray(oj?.data)?oj.data:[];
+      try{await fetch(baseUrl()+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid),{method:'PUT',headers:hdrs(),body:JSON.stringify({proposal_template:{template_name:newName,template_description:rec.template_description||'',template_type:'CPQ',template_uid:newTplUid,is_draft:false}})});}catch{}
+      const liPath=(oUid)=>baseUrl()+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options/'+encodeURIComponent(oUid)+'/line_items?items_type=LINE_ITEMS';
+      let liOk=0,liFail=0,ruleOk=0,ruleDropped=0;
+      for(let i=0;i<opts.length;i++){
+        const opt=opts[i];const destOpt=destOptions[i]||destOptions.find(d=>(d.option_name||'')===(opt.option_name||''));const optUid=destOpt&&(destOpt.option_uid||destOpt.proposal_option_uid);
+        if(!optUid){tiLog('err','Option "'+(opt.option_name||(i+1))+'" not created');continue;}
+        tiLog('info','Option '+(i+1)+'/'+opts.length+': "'+(opt.option_name||('Option '+(i+1)))+'"');
+        const items=opt.line_items||opt.items||[];let lastSec='';
+        for(const it of items){
+          try{
+            if(isHeaderItem(it)){
+              const secName=it.section_name||it.product_name||'';
+              const sr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:{type:'HEADER',line_item_type:'HEADER',product_name:secName,section_type:it.section_type||'EXPANDED',show_section_total:!!it.show_section_total,show_child_prices:it.show_child_prices!==false}})});
+              if(sr.ok){let sd;try{sd=await sr.json();}catch{sd={};}const s=Array.isArray(sd?.data)?sd.data[0]:sd?.data;lastSec=s?.section_uid||s?.line_item_uid||s?.uid||'';liOk++;}else liFail++;
+              continue;
+            }
+            const prodUid=prodByName[norm(it.product_name)]||'';
+            const fUid=it.formula_name?(fmlByName[norm(it.formula_name)]||''):'';
+            const li={type:'ITEM',line_item_type:'ITEM',product_name:it.product_name||'',product_type:it.product_type||'PRODUCT',quantity:it.quantity||1,quantity_type:it.quantity_type||(fUid?'FORMULA':'MANUAL')};
+            if(prodUid) li.product=prodUid;
+            if(fUid) li.formula=fUid;
+            if(lastSec){li.section_uid=lastSec;if(it.section_name)li.section_name=it.section_name;}
+            const hasC=Array.isArray(it.conditions)&&it.conditions.length;
+            if(hasC) li.conditions=it.conditions.map(c=>({...c,field_uid:c.field_uid||fieldByName[norm(c.field_name)]||''}));
+            if(it.rules&&typeof it.rules==='object'&&Object.keys(it.rules).length) li.rules=it.rules;
+            let lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li})});
+            if(!lr.ok&&(li.conditions||li.rules)){const li2={...li};delete li2.conditions;delete li2.rules;lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li2})});if(lr.ok)ruleDropped++;}
+            else if(lr.ok&&(li.conditions||li.rules)) ruleOk++;
+            if(lr.ok) liOk++; else {liFail++;if(liFail<=4){let ed='';try{ed=await lr.text();}catch{}tiLog('warn','"'+(it.product_name||'?')+'" failed: '+lr.status+' '+ed.slice(0,110));}}
+          }catch(e){liFail++;}
+          await new Promise(r=>setTimeout(r,45));
+        }
+        progBar.style.width=(15+80*(i+1)/(opts.length||1)).toFixed(1)+'%';
+      }
+      progBar.style.width='100%';progLbl.textContent='✓ Import complete';
+      tiLog('ok',liOk+' line item(s) created'+(liFail?', '+liFail+' failed':'')+(ruleOk?', '+ruleOk+' with rules/conditions':'')+(ruleDropped?', '+ruleDropped+' created without rules (API rejected them)':''));
+      msg.className='msg msg-ok';msg.innerHTML='✓ Template "<strong>'+esc(newName)+'</strong>" created from spec. <a href="javascript:void(0)" onclick="doFetch();hideTplImportCard()">Refresh list →</a>';msg.style.display='block';
+      return;
+    }
+
     // ── Excel only: resolve product + formula + category catalogs (safe read-only, runs for dry run too) ──
     const prodMap={},fmlMap={};
     let categoryMap=new Map(),sectionCatMap=new Map(),manualCategoryUid=null;
