@@ -1389,6 +1389,7 @@ let _formulaUidMap={};        // source_formula_uid → dest_formula_uid
 let migRunning=false,migPaused=false,migCancelled=false,migDryCtx=null,migFailedItems=[],migLogRows=[];
 let destCategories=[];
 let _migProductFallbackCatUid=''; // UID of fallback destination category for products with no category match
+let _destProductIndexP=null;      // promise → {ids:Set, names:Set} of existing destination products (for idempotent skip)
 // Notification mapping state
 let srcJobCategories=[],srcJobStatuses=[],destJobCategories=[],destJobStatuses=[];
 let notifCatMapping={}, notifStatusMapping={}; // src_uid → dest_uid
@@ -2700,21 +2701,27 @@ async function ensureFormulasExist(srcFormulas){
     const _s = (v)=> (typeof v==='string') ? v : '';
     const catUid = _s(cat&&(cat.category_uid||cat.formula_category_uid)) || _s(full.formula_category_uid) || '';
     const catName = _s(cat&&(cat.category_name||cat.name)) || _s(cat) || '';
-    const formulaObj = full.formula || sf.formula || {};
+    let formulaObj = full.formula || sf.formula || {};
+    if(!formulaObj || !Object.keys(formulaObj).length){
+      const expr=full.formatted_expression||sf.formatted_expression||full.expression||sf.expression||'';
+      if(expr) formulaObj={formatted_expression:expr};
+    }
     const base={
       formula_name:        full.formula_name||sf.formula_name||'',
       formula_key:         full.formula_key||sf.formula_key||'',
       formula_description: full.formula_description||sf.formula_description||'',
       formula:             formulaObj,
     };
-    // The API expects formula_category as a STRING (name or uid) — never an object.
-    // Try the category name first (most portable across accounts), then the uid.
+    // The API expects formula_category as a STRING (name or uid) — never an object —
+    // and it's actually optional (the working package-import create omits it entirely).
+    // Try name, then uid, then WITHOUT a category (most reliable across accounts).
     const variants=[
       { ...base, formula_category: catName },
       { ...base, formula_category: catUid },
+      { ...base },                                                   // no category — mirrors the proven create path
       { ...base, formula_category: catName, formula_category_uid: catUid, is_custom:true },
       { ...base, formula_category: catUid, formula_category_uid: catUid, is_custom:true },
-    ].filter(v=>v.formula_category!=='' || v.formula_category_uid!=='');
+    ].filter(v=> !('formula_category' in v) || v.formula_category!=='' || (v.formula_category_uid&&v.formula_category_uid!==''));
     let done=false, lastErr='';
     for(const payload of variants){
       try{
@@ -3943,12 +3950,50 @@ async function resolveDestProductCategory(srcRec){
   return _migProductFallbackCatUid||'';
 }
 
+// Build/return an index of existing destination products so migration is idempotent
+// (skip products that already exist by product_id/number or by name). Promise-guarded
+// so concurrent workers share a single fetch. Reset in startMigration for a fresh run.
+function ensureDestProductIndex(){
+  if(_destProductIndexP) return _destProductIndexP;
+  _destProductIndexP=(async()=>{
+    const ids=new Set(), names=new Set();
+    try{
+      let pg=1;
+      while(pg<=60){
+        const r=await fetch(_destBaseUrl+'product?page='+pg+'&count=150',{headers:destGetHdrs()});
+        if(!r.ok) break;
+        const d=await r.json().catch(()=>({}));
+        const recs=extractRecords(d,'product')||[];
+        if(!recs.length) break;
+        recs.forEach(p=>{
+          const pid=safeStr(p.product_id||p.product_code||p.sku||'').trim().toLowerCase();
+          const nm=safeStr(p.product_name||'').trim().toLowerCase();
+          if(pid) ids.add(pid);
+          if(nm) names.add(nm);
+        });
+        if(recs.length<150) break; pg++;
+      }
+    }catch(e){console.warn('[ZDM] ensureDestProductIndex error',e.message);}
+    console.log('[ZDM] Dest product index: '+ids.size+' id(s), '+names.size+' name(s)');
+    return {ids,names};
+  })();
+  return _destProductIndexP;
+}
+
 // Full per-product migration with async category resolution (replaces buildPayload path)
 async function migrateProductRecord(rec,dry){
   const uid=String(rec.product_uid||rec._id||'');
   if(dry){
     const rawCat=rec.category??rec.product_category??'';
     const catName=typeof rawCat==='object'?(rawCat.product_category_name||rawCat.category_name||''):String(rawCat||'');
+    // Accurate preview: flag products that already exist in the destination.
+    try{
+      const p=buildMigrationProductPayload(rec);
+      const pid=safeStr(p.product?.product_id||'').trim().toLowerCase();
+      const nm =safeStr(p.product?.product_name||'').trim().toLowerCase();
+      const idx=await ensureDestProductIndex();
+      if((pid&&idx.ids.has(pid))||(nm&&idx.names.has(nm))) return{ok:true,status:'skipped',uid,warn:'already exists in destination — will skip'};
+    }catch(e){}
     const warn=catName?'category: "'+catName+'"':'';
     return{ok:true,status:'dry-run',uid,warn};
   }
@@ -3960,15 +4005,51 @@ async function migrateProductRecord(rec,dry){
   // Build payload then guarantee the resolved catUid is set (overrides sync lookup result)
   const payload=buildMigrationProductPayload(rec);
   if(payload.product) payload.product.product_category=catUid;
+  // Idempotent skip: if a product with the same ID/number or name already exists, skip it.
+  const pid=safeStr(payload.product?.product_id||'').trim().toLowerCase();
+  const nm =safeStr(payload.product?.product_name||'').trim().toLowerCase();
+  const idx=await ensureDestProductIndex();
+  if((pid&&idx.ids.has(pid))||(nm&&idx.names.has(nm))){
+    return{ok:true,status:'skipped',uid,warn:'already exists in destination — skipped'};
+  }
+  const isDup=(m)=>/already\s*exist|same\s*id|same\s*number|duplicate/i.test(String(m||''));
+  const post=async(body)=>{
+    const res=await fetch(_destBaseUrl+'product',{method:'POST',headers:destHdrs(),body:JSON.stringify(body)});
+    let d={};try{d=await res.json();}catch{}
+    return {res,d};
+  };
   try{
-    const res=await fetch(_destBaseUrl+'product',{method:'POST',headers:destHdrs(),body:JSON.stringify(payload)});
-    const d=await res.json().catch(()=>({}));
+    let {res,d}=await post(payload);
     if(res.ok){
       const newUid=d?.data?.product_uid||d?.data?._id||d?.product_uid||'';
+      if(pid)idx.ids.add(pid); if(nm)idx.names.add(nm);
       return{ok:true,status:res.status,uid,warn:newUid?'→ dest uid: '+newUid.slice(0,8)+'…':''};
     }
-    const msg=d?.message||d?.error||('HTTP '+res.status);
-    return{ok:false,status:'err',uid,error:msg};
+    let msg=d?.message||d?.error||('HTTP '+res.status);
+    // Already exists → treat as an idempotent skip, not a failure.
+    if(res.status===400&&isDup(msg)){
+      if(pid)idx.ids.add(pid); if(nm)idx.names.add(nm);
+      return{ok:true,status:'skipped',uid,warn:'already exists in destination — skipped'};
+    }
+    // Transient 5xx → retry once, then retry with a lean payload (drops optional/complex fields).
+    if(res.status>=500){
+      await new Promise(r=>setTimeout(r,500));
+      ({res,d}=await post(payload));
+      if(!res.ok&&res.status>=500){
+        const lean={product:{...payload.product}};
+        delete lean.product.tax; delete lean.product.option; delete lean.product.meta_data;
+        delete lean.product.location_availability; delete lean.product.product_files;
+        ({res,d}=await post(lean));
+      }
+      if(res.ok){
+        const newUid=d?.data?.product_uid||d?.data?._id||d?.product_uid||'';
+        if(pid)idx.ids.add(pid); if(nm)idx.names.add(nm);
+        return{ok:true,status:res.status,uid,warn:(newUid?'→ dest uid: '+newUid.slice(0,8)+'… ':'')+'(after retry)'};
+      }
+      msg=d?.message||d?.error||('HTTP '+res.status);
+      if(res.status===400&&isDup(msg)){ if(pid)idx.ids.add(pid); if(nm)idx.names.add(nm); return{ok:true,status:'skipped',uid,warn:'already exists in destination — skipped'}; }
+    }
+    return{ok:false,status:'err',uid,error:msg,payload};
   }catch(e){
     return{ok:false,status:'err',uid,error:'Network: '+e.message};
   }
@@ -4466,8 +4547,9 @@ async function runMigEngine(records,dry){
   $('mig-pause-btn').style.display='inline-flex';$('mig-pause-btn').textContent='⏸ Pause';
   $('mig-cancel-btn').style.display='inline-flex';
   migRunning=true;migPaused=false;migCancelled=false;
+  _destProductIndexP=null; // fresh idempotent-skip index per run
   const conc=parseInt($('mig-concurrency').value)||3;
-  let ok=0,fail=0,done=0,idx=0;const failed_=[];
+  let ok=0,fail=0,skip=0,done=0,idx=0;const failed_=[];
   async function worker(){
     while(true){
       if(migCancelled)return;
@@ -4481,7 +4563,11 @@ async function runMigEngine(records,dry){
       try{
         result=typeof migCfg.migrateNative==='function'?await migCfg.migrateNative(rec,dry):migCfg.native?await migrateWorkflowNative(rec,dry):await migrateOneRecord(rec,migCfg,dry);
       }catch(e){result={ok:false,error:e.message};}
-      if(result.ok){
+      if(result.ok&&result.status==='skipped'){
+        skip++;
+        $('mig-rs-skip').textContent=skip;
+        addMigLog('warn',uid,name,'skipped',result.warn||'Already exists — skipped');
+      }else if(result.ok){
         ok++;
         $('mig-rs-ok').textContent=ok;
         const detail=dry?(result.warn?'⚠ Would migrate ('+result.warn+')':'Would migrate'):'Created in destination';
@@ -4502,8 +4588,8 @@ async function runMigEngine(records,dry){
   $('mig-pause-btn').style.display='none';$('mig-cancel-btn').style.display='none';
   $('mig-log-actions').style.display='block';
   $('mig-prog-lbl').textContent=migCancelled
-    ?'⚠ Cancelled — '+ok+' OK, '+fail+' failed out of '+done
-    :'✓ Complete — '+ok+' '+(dry?'would migrate':'migrated')+', '+fail+' failed out of '+records.length;
+    ?'⚠ Cancelled — '+ok+' OK, '+fail+' failed'+(skip?', '+skip+' skipped':'')+' out of '+done
+    :'✓ Complete — '+ok+' '+(dry?'would migrate':'migrated')+(skip?', '+skip+' skipped (already exist)':'')+', '+fail+' failed out of '+records.length;
   // 5. Persist migration summary
   _lastMigrationSummary={module:modCfg()?.label||modKey(),account:_destBaseUrl?(_destBaseUrl.replace('https://','').replace('/api/','').split('.')[0]):'—',date:new Date().toLocaleString(),total:records.length,ok,failed:fail,dry};
   if(!dry) addImportHistoryEntry({module:modCfg()?.label||modKey(),account:_destBaseUrl?(_destBaseUrl.replace('https://','').replace('/api/','').split('.')[0]):'—',total:records.length,ok,failed:fail});
