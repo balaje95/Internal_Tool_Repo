@@ -1182,6 +1182,7 @@ input[type=checkbox]{accent-color:var(--primary)}
     <div class="log" id="ti-log" style="display:none"></div>
     <div id="ti-msg3" class="msg" style="display:none;margin-top:10px"></div>
     <div class="btn-row" style="margin-top:12px">
+      <button class="btn btn-p" id="ti-proceed-btn" style="display:none" onclick="tiProceedImport()">✅ Import for real →</button>
       <button class="btn btn-g" onclick="hideTplImportCard()">← Close</button>
     </div>
   </div>
@@ -7728,6 +7729,13 @@ function updateTiPill(){
   const d=$('ti-dryrun').checked,p=$('ti-mode-pill');
   p.className='mode-'+(d?'safe':'live');p.textContent=d?'● Safe':'● LIVE';
 }
+// After a successful dry run, this button runs the real import without re-toggling Dry Run.
+function tiProceedImport(){
+  const dr=$('ti-dryrun'); if(dr) dr.checked=false;
+  updateTiPill();
+  const pb=$('ti-proceed-btn'); if(pb) pb.style.display='none';
+  startTplImport();
+}
 
 function tiGoTo(step){
   [1,2,3].forEach(n=>{
@@ -7956,6 +7964,7 @@ async function startTplImport(){
   const progBar=$('ti-prog-bar'),progLbl=$('ti-prog-lbl');
   progBar.style.width='0%';progLbl.textContent='Starting…';
   $('ti-run-btn').disabled=true;
+  {const pb=$('ti-proceed-btn');if(pb)pb.style.display='none';}
   const msg=$('ti-msg3');msg.style.display='none';
   function tiLog(level,text){
     const d=document.createElement('div');d.className='log-'+level;
@@ -7999,7 +8008,7 @@ async function startTplImport(){
         return;
       }
       tiLog('ok','Pre-flight passed — all products, formulas, and fields resolved.');
-      if(dry){progBar.style.width='100%';progLbl.textContent='✓ Dry run — pre-flight passed';msg.className='msg msg-ok';msg.textContent='✓ Pre-flight passed. Uncheck Dry Run and run again to create the template.';msg.style.display='block';return;}
+      if(dry){progBar.style.width='100%';progLbl.textContent='✓ Dry run — pre-flight passed';msg.className='msg msg-ok';msg.textContent='✓ Pre-flight passed — nothing missing. Click "Import for real →" below to create it.';msg.style.display='block';{const pb=$('ti-proceed-btn');if(pb)pb.style.display='inline-flex';}return;}
 
       // Create — staged wrapped shapes, resolved UIDs
       tiLog('info','Creating template "'+newName+'"…');
@@ -8050,6 +8059,91 @@ async function startTplImport(){
       progBar.style.width='100%';progLbl.textContent='✓ Import complete';
       tiLog('ok',liOk+' line item(s) created'+(liFail?', '+liFail+' failed':'')+(ruleOk?', '+ruleOk+' with rules/conditions':'')+(ruleDropped?', '+ruleDropped+' created without rules (API rejected them)':''));
       msg.className='msg msg-ok';msg.innerHTML='✓ Template "<strong>'+esc(newName)+'</strong>" created from spec. <a href="javascript:void(0)" onclick="doFetch();hideTplImportCard()">Refresh list →</a>';msg.style.display='block';
+      return;
+    }
+
+    // ── JSON restore/import: validate against the account (UID first, then name),
+    // block on any missing product, and (dry) offer an "Import for real" button. ──
+    if(_tplImportData._format==='json'){
+      const rec=_tplImportData;
+      const opts=rec.proposal_options||rec._opts||[];
+      const newName=(rec.template_name||rec._tpl_name||'Template');
+      const isHeaderItem=(it)=>((it.line_item_type||it.type||'').toString().toUpperCase()==='HEADER');
+      const norm=(s)=>String(s||'').trim().toLowerCase();
+      tiLog('info','Validating against account (products, formulas)…');
+      const prodUidSet=new Set(),prodByName={},fmlUidSet=new Set(),fmlByName={};
+      try{let pg=1;while(pg<=50){const r=await fetch(baseUrl()+'product?page='+pg+'&count=150',{headers:getHdrs()});if(!r.ok)break;const d=await r.json().catch(()=>({}));const recs=extractRecords(d,'product')||[];if(!recs.length)break;recs.forEach(p=>{const u=p.product_uid||p.uid||'';if(u)prodUidSet.add(u);const n=norm(p.product_name);if(n&&!prodByName[n])prodByName[n]=u;});if(recs.length<150)break;pg++;}}catch(e){}
+      try{const r=await fetch(baseUrl()+'invoice_estimate/cpq/formulas?count=500&page=1',{headers:getHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));(extractRecords(d,'formula')||[]).forEach(f=>{const u=f.formula_uid||f.uid||'';if(u)fmlUidSet.add(u);const n=norm(f.formula_name);if(n)fmlByName[n]=u;});}}catch(e){}
+      tiLog('ok','Account has '+prodUidSet.size+' product(s), '+fmlUidSet.size+' formula(s)');
+      const resolveProd=(it)=>{ if(it.product&&prodUidSet.has(it.product))return it.product; const n=norm(it.product_name); if(n&&prodByName[n])return prodByName[n]; return ''; };
+      const resolveFml=(it)=>{ if(it.formula&&fmlUidSet.has(it.formula))return it.formula; const n=norm(it.formula_name); if(n&&fmlByName[n])return fmlByName[n]; return ''; };
+      const flat=opts.flatMap(o=>o.line_items||o.items||o.proposal_line_items||[]).filter(it=>!isHeaderItem(it));
+      const missProd=[]; let remapProd=0, missFml=0;
+      for(const it of flat){ const pu=resolveProd(it); if(!pu) missProd.push(it.product_name||('UID '+it.product)||'(unnamed)'); else if(pu!==it.product) remapProd++; if((it.formula||it.formula_name)&&!resolveFml(it)) missFml++; }
+      const uniqMiss=[...new Set(missProd)];
+      if(uniqMiss.length){
+        progBar.style.width='100%';progLbl.textContent='✗ Validation failed — missing products';
+        tiLog('err','Missing products ('+uniqMiss.length+' of '+flat.length+' items) — not found by UID or name in this account:');
+        uniqMiss.slice(0,40).forEach(n=>tiLog('err','   • '+n));
+        if(uniqMiss.length>40) tiLog('err','   …and '+(uniqMiss.length-40)+' more');
+        tiLog('info','Import/migrate these products into this account first (Parts & Services), then re-run. Nothing was created.');
+        msg.className='msg msg-err';msg.textContent='✗ Validation failed — '+uniqMiss.length+' product(s) missing in this account. Nothing was created; see the list above.';msg.style.display='block';
+        return;
+      }
+      if(missFml) tiLog('warn',missFml+' item(s) reference a formula not found here — those will import as MANUAL quantity.');
+      if(remapProd) tiLog('info',remapProd+' product(s) matched by name (different UID in this account).');
+      tiLog('ok','Validation passed — all products resolved'+(remapProd?' ('+remapProd+' by name)':'')+'.');
+      if(dry){ progBar.style.width='100%';progLbl.textContent='✓ Dry run — validation passed'; msg.className='msg msg-ok';msg.textContent='✓ Validation passed — nothing missing. Click "Import for real →" below to create the template.';msg.style.display='block';{const pb=$('ti-proceed-btn');if(pb)pb.style.display='inline-flex';} return; }
+      // Create (staged wrapped, resolved UIDs)
+      tiLog('info','Creating template "'+newName+'"…');
+      const tr=await fetch(baseUrl()+'invoice_estimate/proposal_template',{method:'POST',headers:hdrs(),body:JSON.stringify({proposal_template:{template_name:newName,template_description:rec.template_description||'',template_type:'CPQ'}})});
+      let td;try{td=await tr.json();}catch{td={};}
+      if(!tr.ok) throw new Error('Create template: '+tr.status+' — '+(td.message||td.error||JSON.stringify(td).slice(0,150)));
+      const newTplUid=td.data?.template_uid||td.data?.proposal_template_uid||td.template_uid||td.proposal_template_uid||'';
+      if(!newTplUid) throw new Error('No template UID in response: '+JSON.stringify(td).slice(0,200));
+      tiLog('ok','Template created: '+newTplUid);progBar.style.width='15%';
+      const optPayloads=opts.map((o,i)=>({option_name:o.option_name||('Option '+(i+1)),option_description:o.option_description||'',is_recommended:!!o.is_recommended}));
+      const or_=await fetch(baseUrl()+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options?items_type=LINE_ITEMS',{method:'POST',headers:hdrs(),body:JSON.stringify({proposal_options:optPayloads})});
+      let oj;try{oj=await or_.json();}catch{oj={};}
+      const destOptions=Array.isArray(oj?.data)?oj.data:[];
+      try{await fetch(baseUrl()+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid),{method:'PUT',headers:hdrs(),body:JSON.stringify({proposal_template:{template_name:newName,template_description:rec.template_description||'',template_type:'CPQ',template_uid:newTplUid,is_draft:false}})});}catch{}
+      const liPath=(oUid)=>baseUrl()+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options/'+encodeURIComponent(oUid)+'/line_items?items_type=LINE_ITEMS';
+      let liOk=0,liFail=0,ruleOk=0,ruleDropped=0;
+      for(let i=0;i<opts.length;i++){
+        const opt=opts[i];const destOpt=destOptions[i]||destOptions.find(d=>(d.option_name||'')===(opt.option_name||''));const optUid=destOpt&&(destOpt.option_uid||destOpt.proposal_option_uid);
+        if(!optUid){tiLog('err','Option "'+(opt.option_name||(i+1))+'" not created');continue;}
+        tiLog('info','Option '+(i+1)+'/'+opts.length+': "'+(opt.option_name||('Option '+(i+1)))+'"');
+        const items=opt.line_items||opt.items||opt.proposal_line_items||[];const sectionMap={};
+        for(const item of items){
+          try{
+            if(isHeaderItem(item)){
+              const body={line_item:{type:'HEADER',line_item_type:'HEADER',product_name:item.product_name||'',section_type:item.section_type||'EXPANDED',show_section_total:!!item.show_section_total,show_child_prices:item.show_child_prices!==false}};
+              const sr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify(body)});
+              if(sr.ok){let sd;try{sd=await sr.json();}catch{sd={};}const s=Array.isArray(sd?.data)?sd.data[0]:sd?.data;const su=s?.section_uid||s?.line_item_uid||s?.uid||'';const oldKey=item.line_item_uid||item.section_uid||'';if(su&&oldKey)sectionMap[oldKey]=su;liOk++;}else liFail++;
+              continue;
+            }
+            const prodUid=resolveProd(item); const fUid=resolveFml(item);
+            const li={type:'ITEM',line_item_type:'ITEM',product_name:item.product_name||'',product_type:item.product_type||'',quantity:item.quantity||1,quantity_type:(fUid?(item.quantity_type||'FORMULA'):'MANUAL')};
+            if(prodUid) li.product=prodUid;
+            if(fUid) li.formula=fUid;
+            const newSec=item.section_uid?sectionMap[item.section_uid]:'';
+            if(newSec){li.section_uid=newSec;li.section_name=item.section_name||'';}
+            const hasRules=item.rules&&typeof item.rules==='object'&&Object.keys(item.rules).length;
+            const hasConds=Array.isArray(item.conditions)&&item.conditions.length;
+            if(hasRules) li.rules=item.rules;
+            if(hasConds) li.conditions=item.conditions;
+            let lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li})});
+            if(!lr.ok&&(hasRules||hasConds)){const li2={...li};delete li2.rules;delete li2.conditions;lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li2})});if(lr.ok)ruleDropped++;}
+            else if(lr.ok&&(hasRules||hasConds)) ruleOk++;
+            if(lr.ok) liOk++; else {liFail++;if(liFail<=4){let ed='';try{ed=await lr.text();}catch{}tiLog('warn','Line item "'+(item.product_name||'?')+'" failed: '+lr.status+' '+ed.slice(0,120));}}
+          }catch(e){liFail++;}
+          await new Promise(r=>setTimeout(r,45));
+        }
+        progBar.style.width=(15+80*(i+1)/(opts.length||1)).toFixed(1)+'%';
+      }
+      progBar.style.width='100%';progLbl.textContent='✓ Import complete';
+      tiLog('ok',liOk+' line item(s) created'+(liFail?', '+liFail+' failed':'')+(ruleOk?', '+ruleOk+' with rules/conditions':'')+(ruleDropped?', '+ruleDropped+' without rules (API rejected)':''));
+      msg.className='msg msg-ok';msg.innerHTML='✓ Template "<strong>'+esc(newName)+'</strong>" imported. <a href="javascript:void(0)" onclick="doFetch();hideTplImportCard()">Refresh list →</a>';msg.style.display='block';
       return;
     }
 
@@ -8133,7 +8227,8 @@ async function startTplImport(){
         tiLog('info','Products: '+willCreateProd+' to create, '+willReuseProd+' to reuse');
       }
       progBar.style.width='100%';progLbl.textContent='✓ Dry run complete — no changes made';
-      msg.className='msg msg-ok';msg.textContent='✓ Dry run passed. Uncheck "Dry Run" and run again to create the template.';msg.style.display='block';
+      msg.className='msg msg-ok';msg.textContent='✓ Dry run passed. Click "Import for real →" below to create it.';msg.style.display='block';
+      {const pb=$('ti-proceed-btn');if(pb)pb.style.display='inline-flex';}
     } else if(!isExcel){
       // ── JSON restore (same account): keep original product/formula/checklist UIDs,
       // recreate sections (remap uids), preserve conditional rules + conditions.
