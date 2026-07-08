@@ -10,6 +10,14 @@
 // "New/Updated" badge), help (optional longer text shown in the info popover).
 const TOOLS = [
   {
+    "name": "Product ↔ Formula Mapper",
+    "description": "Bulk-map CPQ formulas to Parts & Services line items",
+    "file": "tools/product-formula-mapper.html",
+    "icon": "🧮",
+    "updated": "2026-07-08",
+    "help": "Connect with a Zuper API key (region auto-detected), fetch all Parts & Services and CPQ Formulas, then assign a formula to each product. Map individually via dropdowns, bulk-assign to selected rows, auto-match by name, or import a Product UID / Formula UID sheet (CSV/Excel). Filter by category and mapped/unmapped state. Run a Dry Run, then Apply — it sends PUT product/{uid} with the formula set. Export a results CSV when done."
+  },
+  {
     "name": "Zuper CPQ Importer",
     "description": "Push Acculynx CPQ templates/products into Zuper via API",
     "file": "tools/cpq-importer.html",

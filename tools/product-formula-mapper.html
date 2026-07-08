@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zuper Product ↔ Formula Mapper</title>
+<script>try{if(localStorage.getItem('zuper_tools_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+<style>
+  /* Light is the default theme; dark is opt-in via [data-theme="dark"]. */
+  :root{
+    --bg:#eef1f7; --panel:#ffffff; --panel2:#f3f6fc; --line:#dbe2ee; --line2:#c4cede;
+    --txt:#1b2436; --muted:#5f6b84; --accent:#2f6fe6; --accent2:#2257c2;
+    --ok:#1f9d57; --okbg:#e4f7ec; --err:#d13b3b; --errbg:#fdebeb; --warn:#a9781a; --warnbg:#fbf1dc;
+    --chip:#e7eefb; --code:#f6f8fc; --headbg:linear-gradient(180deg,#ffffff,#f4f7fd);
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1420; --panel:#171e2e; --panel2:#1e2740; --line:#2a3450; --line2:#374363;
+    --txt:#e6ebf5; --muted:#8f9bb5; --accent:#4f8cff; --accent2:#3a6fe0;
+    --ok:#37c978; --okbg:#123324; --err:#ff6b6b; --errbg:#3a1a1e; --warn:#f0b32a; --warnbg:#3a2f12;
+    --chip:#233052; --code:#0b0f18; --headbg:linear-gradient(180deg,#141b2b,#0f1420);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
+  a{color:var(--accent)}
+  header{padding:18px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;background:var(--headbg)}
+  .theme-btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:.8rem;font-weight:600;cursor:pointer}
+  .theme-btn:hover{border-color:var(--accent)}
+  header h1{font-size:1.15rem;margin:0;font-weight:600;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:.8rem}
+  #badge{font-size:.8rem;color:var(--ok);background:var(--okbg);padding:6px 12px;border-radius:20px;display:none}
+  .head-spacer{flex:1}
+  .wrap{max-width:1240px;margin:0 auto;padding:22px 26px 80px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-bottom:18px}
+  .card h2{font-size:.95rem;margin:0 0 4px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .card .desc{color:var(--muted);font-size:.82rem;margin:0 0 16px}
+  .step{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:.75rem;font-weight:700}
+  label{display:block;font-size:.78rem;color:var(--muted);margin:0 0 5px;font-weight:500}
+  .inp{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 12px;font-size:.9rem;outline:none}
+  .inp:focus{border-color:var(--accent)}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:end}
+  .row>div{flex:1;min-width:180px}
+  button{cursor:pointer;font-family:inherit;font-size:.87rem;font-weight:600;border:none;border-radius:8px;padding:9px 18px;transition:.15s}
+  .btn{background:var(--accent);color:#fff}
+  .btn:hover{background:var(--accent2)}
+  .btn.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+  .btn.sec:hover{border-color:var(--accent)}
+  .btn.warn{background:var(--warn);color:#111}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .msg{display:none;margin-top:12px;padding:9px 13px;border-radius:8px;font-size:.83rem}
+  .msg-ok{background:var(--okbg);color:var(--ok)}
+  .msg-err{background:var(--errbg);color:var(--err)}
+  .msg-info{background:var(--chip);color:var(--accent2)}
+  .msg-warn{background:var(--warnbg);color:var(--warn)}
+  .hidden{display:none!important}
+  .stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 15px;min-width:96px}
+  .stat b{display:block;font-size:1.25rem}
+  .stat span{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.4px}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px;padding:14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px}
+  .toolbar>div{display:flex;flex-direction:column}
+  .tablewrap{border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:60vh}
+  table{border-collapse:collapse;width:100%;font-size:.84rem}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+  th{position:sticky;top:0;background:var(--panel2);z-index:2;font-weight:600;color:var(--muted);font-size:.74rem;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+  tr:hover td{background:#1b2338}
+  td select{width:100%;min-width:210px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:6px 8px;font-size:.82rem}
+  td select.changed{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  td select.clear{border-color:var(--warn)}
+  .chip{display:inline-block;background:var(--chip);border-radius:12px;padding:2px 9px;font-size:.74rem;color:#a9bbe0}
+  .chip.none{background:#2a2030;color:#c9a}
+  .cur{font-size:.8rem}
+  .cur .none{color:var(--muted)}
+  .muted{color:var(--muted)}
+  .status{font-size:.78rem;font-weight:600}
+  .status.ok{color:var(--ok)} .status.err{color:var(--err)} .status.skip{color:var(--muted)} .status.pend{color:var(--warn)}
+  .progress{height:9px;background:var(--panel2);border-radius:6px;overflow:hidden;margin:12px 0}
+  .progress>div{height:100%;background:var(--accent);width:0;transition:width .2s}
+  .log{background:var(--code);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:.78rem;max-height:220px;overflow:auto;white-space:pre-wrap;margin-top:12px}
+  .log .l-ok{color:var(--ok)} .log .l-err{color:var(--err)} .log .l-info{color:var(--accent2)} .log .l-warn{color:var(--warn)}
+  .flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .checkcol{width:34px;text-align:center}
+  input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+  .small{font-size:.78rem}
+  details summary{cursor:pointer;color:var(--accent);font-size:.82rem;margin-top:6px}
+  .pill{font-size:.7rem;padding:2px 8px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:.82rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>🧮 Zuper Product ↔ Formula Mapper</h1>
+  <span class="sub">Fetch Parts &amp; Services + CPQ Formulas, then bulk-map them</span>
+  <span class="head-spacer"></span>
+  <span id="badge"></span>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light / dark">🌙 Dark</button>
+</header>
+
+<div class="wrap">
+
+  <!-- 1. CONNECT -->
+  <div class="card">
+    <h2><span class="step">1</span> Connect to a Zuper account</h2>
+    <p class="desc">Enter the account's API key. The data-center region is detected automatically (same as Zuper Data Manager).</p>
+    <div class="row">
+      <div style="flex:2"><label>API Key</label><input class="inp" id="apikey" placeholder="x-api-key" autocomplete="off"></div>
+      <div style="flex:0 0 auto"><button class="btn" id="connectBtn" onclick="connect()">Connect</button></div>
+    </div>
+    <div class="msg" id="conn-msg"></div>
+    <div style="margin-top:10px">
+      <label style="display:inline">Saved connections</label>
+      <select class="inp" id="saved" style="max-width:340px;display:inline-block;width:auto" onchange="loadSaved()"><option value="">— pick a saved account —</option></select>
+      <button class="btn sec small" onclick="saveConn()">💾 Save current</button>
+      <button class="btn sec small" onclick="delSaved()">🗑 Delete</button>
+    </div>
+  </div>
+
+  <!-- 2. FETCH -->
+  <div class="card hidden" id="fetchCard">
+    <h2><span class="step">2</span> Fetch data</h2>
+    <p class="desc">Pulls all Parts &amp; Services and all CPQ Formulas from the connected account.</p>
+    <div class="flex">
+      <button class="btn" id="fetchBtn" onclick="fetchAll()">⬇ Fetch products &amp; formulas</button>
+      <span id="fetch-status" class="muted small"></span>
+    </div>
+    <div class="msg" id="fetch-msg"></div>
+  </div>
+
+  <!-- 3. MAP -->
+  <div class="card hidden" id="mapCard">
+    <h2><span class="step">3</span> Map formulas to line items</h2>
+    <p class="desc">Pick a formula per product, or use the bulk tools. Only rows where you change the formula are applied.</p>
+
+    <div class="stats">
+      <div class="stat"><b id="s-total">0</b><span>Products</span></div>
+      <div class="stat"><b id="s-formulas">0</b><span>Formulas</span></div>
+      <div class="stat"><b id="s-mapped">0</b><span>Have formula</span></div>
+      <div class="stat"><b id="s-changed">0</b><span>Changes queued</span></div>
+    </div>
+
+    <div class="toolbar">
+      <div style="flex:1;min-width:200px"><label>Search products</label><input class="inp" id="search" placeholder="name, id, category…" oninput="renderRows()"></div>
+      <div><label>Category</label>
+        <select class="inp" id="catFilter" onchange="renderRows()">
+          <option value="">All categories</option>
+        </select>
+      </div>
+      <div><label>Show</label>
+        <select class="inp" id="filter" onchange="renderRows()">
+          <option value="all">All products</option>
+          <option value="unmapped">Only without a formula</option>
+          <option value="mapped">Only with a formula</option>
+          <option value="changed">Only queued changes</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:220px"><label>Bulk-assign a formula to selected rows</label>
+        <select class="inp" id="bulkFormula"></select>
+      </div>
+      <div><label>&nbsp;</label><button class="btn sec" onclick="bulkAssign()">Apply to selected</button></div>
+      <div><label>&nbsp;</label><button class="btn sec" onclick="clearSelected()">Clear formula on selected</button></div>
+    </div>
+
+    <div class="flex" style="margin-bottom:12px">
+      <button class="btn sec small" onclick="autoMatch()">✨ Auto-match by name</button>
+      <button class="btn sec small" onclick="resetChanges()">↺ Reset all changes</button>
+      <label class="pill" style="cursor:pointer"><input type="checkbox" id="importChk" onchange="document.getElementById('importBox').classList.toggle('hidden',!this.checked)" style="vertical-align:-2px"> Import mapping from CSV / Excel</label>
+    </div>
+
+    <div id="importBox" class="hidden" style="padding:14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+      <p class="small muted" style="margin-top:0">Upload a file with a <b>Product UID</b> (or "Line Item UID") column and a <b>Formula UID</b> column — matches your existing Excel format. Rows are matched to loaded products by UID and queued as changes.</p>
+      <div class="flex">
+        <input type="file" id="mapFile" class="inp" style="max-width:340px" accept=".csv,.xlsx,.xls" onchange="importMapping()">
+        <span id="import-status" class="muted small"></span>
+      </div>
+    </div>
+
+    <div class="tablewrap">
+      <table id="tbl">
+        <thead><tr>
+          <th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th>
+          <th>Product</th><th>ID</th><th>Category</th><th>Current formula</th><th>Map to →</th><th>Status</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <p class="small muted" id="rowcount" style="margin-bottom:0"></p>
+  </div>
+
+  <!-- 4. APPLY -->
+  <div class="card hidden" id="applyCard">
+    <h2><span class="step">4</span> Apply changes</h2>
+    <p class="desc">Sends <code>PUT product/&lt;uid&gt;</code> with <code>{ product, vendor:[] }</code> — the same call as your script. Run a dry-run first.</p>
+    <div class="flex">
+      <button class="btn sec" id="dryBtn" onclick="apply(true)">🧪 Dry run</button>
+      <button class="btn" id="applyBtn" onclick="apply(false)">🚀 Apply changes</button>
+      <button class="btn warn hidden" id="cancelBtn" onclick="_cancel=true">⏹ Cancel</button>
+      <span id="apply-count" class="muted small"></span>
+    </div>
+    <div class="progress hidden" id="prog"><div id="progbar"></div></div>
+    <div class="log hidden" id="log"></div>
+    <div class="flex hidden" id="resultActions" style="margin-top:12px">
+      <button class="btn sec small" onclick="exportResults()">⬇ Export results CSV</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Injects a "← Back to Dashboard" link only when served from the dashboard's /tools folder -->
+<script src="../assets/back-link.js"></script>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const ZUPER_CLIENT_HDRS={'x-zuper-client':'WEB_APP','x-zuper-client-version':'3.0'};
+const apiKey=()=>$('apikey').value.trim();
+const hdrs=()=>({...ZUPER_CLIENT_HDRS,'x-api-key':apiKey(),'Content-Type':'application/json'});
+const getHdrs=()=>({...ZUPER_CLIENT_HDRS,'x-api-key':apiKey()});
+let _base='', _account='';
+let products=[], formulas=[], formulaByUid={};
+let changes={}; // product_uid -> formulaUid ('' means clear) ; absent means no change
+let selected=new Set();
+let _cancel=false, _results=[];
+
+/* ---------- helpers ---------- */
+function showMsg(id,txt,type){const e=$(id);e.className='msg msg-'+type;e.textContent=txt;e.style.display='block';}
+function hideMsg(id){$(id).style.display='none';}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function norm(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');}
+function log(msg,cls){const l=$('log');l.classList.remove('hidden');const s=document.createElement('div');if(cls)s.className='l-'+cls;s.textContent=msg;l.appendChild(s);l.scrollTop=l.scrollHeight;}
+
+/* ---------- DC resolution (matches Zuper Data Manager) ---------- */
+const ZUPER_DCS=[
+  'us-east-1','us-east-1a','us-east-1b','us-east-1c','us-west-1','us-west-2',
+  'eu-west-1','eu-west-2','eu-central-1','ap-south-1','ap-south-2',
+  'ap-southeast-1','ap-southeast-2','ca-central-1','sa-east-1'
+].map(r=>`https://${r}.zuperpro.com`);
+
+async function resolveByApiKey(key){
+  let resolved=null;
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),12000);
+  const eps=['user/company','company','users/me','user/me'];
+  try{
+    await Promise.any(ZUPER_DCS.map(dc=>(async()=>{
+      for(const ep of eps){
+        if(controller.signal.aborted) throw new Error('aborted');
+        const res=await fetch(dc+'/api/'+ep,{headers:{...ZUPER_CLIENT_HDRS,'x-api-key':key},signal:controller.signal}).catch(()=>null);
+        if(res&&res.ok){
+          const data=await res.json().catch(()=>({}));
+          const name=data?.company_name||data?.data?.company_name||data?.name||data?.data?.name||data?.company?.company_name||'';
+          if(!resolved) resolved={dcUrl:dc,baseUrl:dc+'/api/',accountName:name};
+          controller.abort(); return resolved;
+        }
+      }
+      throw new Error('no match');
+    })())).catch(()=>{});
+  }finally{clearTimeout(timer);}
+  if(!resolved) throw new Error('API key not recognised on any known Zuper server. Check the key and try again.');
+  return resolved;
+}
+
+async function connect(){
+  hideMsg('conn-msg');
+  if(!apiKey()){showMsg('conn-msg','✗ Please enter an API key.','err');return;}
+  const btn=$('connectBtn');btn.disabled=true;btn.textContent='Connecting…';
+  try{
+    const {baseUrl,accountName,dcUrl}=await resolveByApiKey(apiKey());
+    _base=baseUrl; _account=accountName||'Account';
+    const region=dcUrl.replace('https://','').replace('.zuperpro.com','');
+    showMsg('conn-msg','✓ Connected to "'+_account+'" on '+region,'ok');
+    $('badge').textContent='✓ '+_account+' ('+region+')';$('badge').style.display='inline-block';
+    $('fetchCard').classList.remove('hidden');
+  }catch(e){showMsg('conn-msg','✗ '+e.message,'err');}
+  finally{btn.disabled=false;btn.textContent='Connect';}
+}
+
+/* ---------- saved connections ---------- */
+const SKEY='zpfm_saved';
+function loadSavedList(){
+  const arr=JSON.parse(localStorage.getItem(SKEY)||'[]');
+  const sel=$('saved');sel.innerHTML='<option value="">— pick a saved account —</option>';
+  arr.forEach((c,i)=>{const o=document.createElement('option');o.value=i;o.textContent=c.name;sel.appendChild(o);});
+}
+function saveConn(){
+  if(!apiKey())return;
+  const arr=JSON.parse(localStorage.getItem(SKEY)||'[]');
+  const name=prompt('Label for this connection:',_account||'Zuper account');
+  if(!name)return;
+  const ex=arr.findIndex(c=>c.key===apiKey());
+  if(ex>=0)arr[ex]={name,key:apiKey()}; else arr.push({name,key:apiKey()});
+  localStorage.setItem(SKEY,JSON.stringify(arr));loadSavedList();
+}
+function loadSaved(){
+  const i=$('saved').value;if(i==='')return;
+  const arr=JSON.parse(localStorage.getItem(SKEY)||'[]');
+  if(arr[i]){$('apikey').value=arr[i].key;connect();}
+}
+function delSaved(){
+  const i=$('saved').value;if(i==='')return;
+  const arr=JSON.parse(localStorage.getItem(SKEY)||'[]');arr.splice(i,1);
+  localStorage.setItem(SKEY,JSON.stringify(arr));loadSavedList();
+}
+
+/* ---------- fetch ---------- */
+async function fetchAll(){
+  hideMsg('fetch-msg');
+  const btn=$('fetchBtn');btn.disabled=true;btn.textContent='Fetching…';
+  try{
+    $('fetch-status').textContent='Loading products…';
+    products=await fetchProducts();
+    $('fetch-status').textContent='Loading formulas…';
+    formulas=await fetchFormulas();
+    formulaByUid={};formulas.forEach(f=>formulaByUid[f.formula_uid]=f);
+    changes={};selected.clear();
+    buildFormulaSelects();buildCategoryFilter();
+    $('mapCard').classList.remove('hidden');$('applyCard').classList.remove('hidden');
+    renderRows();updateStats();
+    showMsg('fetch-msg','✓ Loaded '+products.length+' products and '+formulas.length+' formulas.','ok');
+    $('fetch-status').textContent='';
+  }catch(e){showMsg('fetch-msg','✗ '+e.message,'err');$('fetch-status').textContent='';}
+  finally{btn.disabled=false;btn.textContent='⬇ Fetch products & formulas';}
+}
+
+async function fetchProducts(){
+  const out=[];let page=1;const count=150;
+  while(true){
+    const r=await fetch(_base+'product?page='+page+'&count='+count,{headers:getHdrs()});
+    if(!r.ok)throw new Error('Product fetch failed (HTTP '+r.status+')');
+    const d=await r.json().catch(()=>({}));
+    const recs=Array.isArray(d)?d:(d.data||d.products||[]);
+    if(!recs.length)break;
+    out.push(...recs);
+    if(recs.length<count)break;
+    page++; if(page>200)break;
+  }
+  return out;
+}
+
+async function fetchFormulas(){
+  const out=[];let page=1;const count=500;
+  while(true){
+    const r=await fetch(_base+'invoice_estimate/cpq/formulas?count='+count+'&page='+page,{headers:getHdrs()});
+    if(!r.ok)throw new Error('Formula fetch failed (HTTP '+r.status+')');
+    const d=await r.json().catch(()=>({}));
+    const recs=Array.isArray(d)?d:(d.data||d.formulas||[]);
+    if(!recs.length)break;
+    out.push(...recs);
+    if(recs.length<count)break;
+    page++; if(page>50)break;
+  }
+  return out.filter(f=>f.formula_uid);
+}
+
+/* ---------- formula <select> building ---------- */
+function formulaOptionsHtml(selectedUid){
+  let h='<option value="__none__">— No formula —</option>';
+  const sorted=[...formulas].sort((a,b)=>(a.formula_name||'').localeCompare(b.formula_name||''));
+  for(const f of sorted){
+    const cat=f.formula_category?.category_name?' ['+esc(f.formula_category.category_name)+']':'';
+    h+='<option value="'+esc(f.formula_uid)+'"'+(f.formula_uid===selectedUid?' selected':'')+'>'+esc(f.formula_name||f.formula_uid)+cat+'</option>';
+  }
+  return h;
+}
+function buildFormulaSelects(){
+  const b=$('bulkFormula');
+  b.innerHTML='<option value="">— choose a formula —</option>'+formulaOptionsHtml(null).replace('<option value="__none__">— No formula —</option>','');
+}
+
+/* ---------- current formula on a product ---------- */
+function curFormulaUid(p){
+  const f=p.formula;
+  if(!f)return '';
+  if(typeof f==='string')return f;
+  if(typeof f==='object')return f.formula_uid||'';
+  return '';
+}
+function curFormulaName(p){
+  const uid=curFormulaUid(p);
+  if(!uid)return '';
+  if(typeof p.formula==='object'&&p.formula.formula_name)return p.formula.formula_name;
+  return formulaByUid[uid]?.formula_name||uid;
+}
+// what the row is targeting: returns {uid, isChange, isClear}
+function targetFor(p){
+  const uid=p.product_uid;
+  const cur=curFormulaUid(p);
+  if(!(uid in changes))return {uid:cur,isChange:false,isClear:false};
+  const t=changes[uid]; // '' means clear
+  return {uid:t,isChange:(t!==cur),isClear:t===''};
+}
+
+/* ---------- render ---------- */
+function catName(p){return p.product_category?.category_name||(typeof p.product_category==='string'?p.product_category:'')||'—';}
+function matchesFilter(p){
+  const f=$('filter').value;
+  const cat=$('catFilter').value;
+  if(cat&&catName(p)!==cat)return false;
+  const cur=curFormulaUid(p);
+  const chg=(p.product_uid in changes)&&changes[p.product_uid]!==cur;
+  if(f==='unmapped')return !cur;
+  if(f==='mapped')return !!cur;
+  if(f==='changed')return chg;
+  return true;
+}
+function buildCategoryFilter(){
+  const cats=[...new Set(products.map(catName).filter(c=>c&&c!=='—'))].sort((a,b)=>a.localeCompare(b));
+  const sel=$('catFilter');const prev=sel.value;
+  sel.innerHTML='<option value="">All categories</option>'+cats.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
+  if([...sel.options].some(o=>o.value===prev))sel.value=prev;
+}
+function matchesSearch(p){
+  const q=$('search').value.trim().toLowerCase();
+  if(!q)return true;
+  return (p.product_name||'').toLowerCase().includes(q)
+    ||(p.product_id||'').toLowerCase().includes(q)
+    ||catName(p).toLowerCase().includes(q)
+    ||(p.product_uid||'').toLowerCase().includes(q);
+}
+function renderRows(){
+  const tb=$('tbody');tb.innerHTML='';
+  const rows=products.filter(p=>matchesSearch(p)&&matchesFilter(p));
+  for(const p of rows){
+    const uid=p.product_uid;
+    const t=targetFor(p);
+    const tr=document.createElement('tr');
+    const cur=curFormulaUid(p);
+    const curHtml=cur?'<span class="chip">'+esc(curFormulaName(p))+'</span>':'<span class="cur none">none</span>';
+    tr.innerHTML=
+      '<td class="checkcol"><input type="checkbox" data-uid="'+esc(uid)+'" '+(selected.has(uid)?'checked':'')+' onchange="toggleRow(this)"></td>'+
+      '<td>'+esc(p.product_name||'—')+'<div class="muted small">'+esc(p.product_type||'')+'</div></td>'+
+      '<td class="muted small">'+esc(p.product_id||'—')+'</td>'+
+      '<td>'+esc(catName(p))+'</td>'+
+      '<td class="cur">'+curHtml+'</td>'+
+      '<td><select data-uid="'+esc(uid)+'" onchange="onSelect(this)">'+formulaOptionsHtml(t.isChange?(t.isClear?null:t.uid):cur)+'</select></td>'+
+      '<td class="status '+(t.isChange?'pend':'')+'">'+(t.isChange?(t.isClear?'will clear':'queued'):'')+'</td>';
+    // reflect clear as __none__ selected
+    const sel=tr.querySelector('select');
+    if(t.isChange&&t.isClear)sel.value='__none__';
+    if(t.isChange)sel.classList.add(t.isClear?'clear':'changed');
+    tb.appendChild(tr);
+  }
+  $('rowcount').textContent=rows.length+' of '+products.length+' products shown';
+  const allVis=rows.length&&rows.every(p=>selected.has(p.product_uid));
+  $('selAll').checked=!!allVis;
+}
+function onSelect(el){
+  const uid=el.dataset.uid;const p=products.find(x=>x.product_uid===uid);
+  const cur=curFormulaUid(p);
+  const val=el.value==='__none__'?'':el.value;
+  if(val===cur)delete changes[uid]; else changes[uid]=val;
+  const t=targetFor(p);
+  el.classList.toggle('changed',t.isChange&&!t.isClear);
+  el.classList.toggle('clear',t.isChange&&t.isClear);
+  const st=el.closest('tr').querySelector('.status');
+  st.className='status '+(t.isChange?'pend':'');
+  st.textContent=t.isChange?(t.isClear?'will clear':'queued'):'';
+  updateStats();
+}
+function toggleRow(el){el.checked?selected.add(el.dataset.uid):selected.delete(el.dataset.uid);}
+function toggleAll(on){
+  const rows=products.filter(p=>matchesSearch(p)&&matchesFilter(p));
+  rows.forEach(p=>on?selected.add(p.product_uid):selected.delete(p.product_uid));
+  renderRows();
+}
+
+/* ---------- bulk tools ---------- */
+function bulkAssign(){
+  const fUid=$('bulkFormula').value;
+  if(!fUid){alert('Pick a formula in the bulk-assign dropdown first.');return;}
+  if(!selected.size){alert('Select some rows first (checkboxes).');return;}
+  selected.forEach(uid=>{
+    const p=products.find(x=>x.product_uid===uid);if(!p)return;
+    if(curFormulaUid(p)===fUid)delete changes[uid]; else changes[uid]=fUid;
+  });
+  renderRows();updateStats();
+}
+function clearSelected(){
+  if(!selected.size){alert('Select some rows first.');return;}
+  selected.forEach(uid=>{
+    const p=products.find(x=>x.product_uid===uid);if(!p)return;
+    if(curFormulaUid(p)==='')delete changes[uid]; else changes[uid]='';
+  });
+  renderRows();updateStats();
+}
+function autoMatch(){
+  const idx={};formulas.forEach(f=>{idx[norm(f.formula_name)]=f.formula_uid;});
+  let n=0;
+  products.forEach(p=>{
+    const cur=curFormulaUid(p);if(cur)return; // don't override existing
+    const hit=idx[norm(p.product_name)];
+    if(hit){changes[p.product_uid]=hit;n++;}
+  });
+  renderRows();updateStats();
+  showMsg('fetch-msg','✨ Auto-matched '+n+' product(s) by exact name.', n?'ok':'warn');
+}
+function resetChanges(){changes={};renderRows();updateStats();}
+
+/* ---------- import CSV / Excel ---------- */
+function importMapping(){
+  const file=$('mapFile').files[0];if(!file)return;
+  const ext=file.name.toLowerCase().split('.').pop();
+  if(ext==='csv'){
+    const rd=new FileReader();
+    rd.onload=e=>applyImportedRows(parseCSV(e.target.result));
+    rd.readAsText(file);
+  }else{
+    if(!window.XLSX){$('import-status').textContent='Excel support needs internet (SheetJS). Save the file as CSV and retry.';return;}
+    const rd=new FileReader();
+    rd.onload=e=>{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      applyImportedRows(XLSX.utils.sheet_to_json(ws,{defval:''}));
+    };
+    rd.readAsArrayBuffer(file);
+  }
+}
+function parseCSV(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length)return [];
+  const split=l=>{const o=[];let c='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];if(ch==='"'){if(q&&l[i+1]==='"'){c+='"';i++;}else q=!q;}else if(ch===','&&!q){o.push(c);c='';}else c+=ch;}o.push(c);return o.map(s=>s.trim());};
+  const head=split(lines[0]);
+  return lines.slice(1).map(l=>{const cells=split(l);const o={};head.forEach((h,i)=>o[h]=cells[i]??'');return o;});
+}
+function applyImportedRows(rows){
+  if(!rows.length){$('import-status').textContent='No rows found.';return;}
+  const keys=Object.keys(rows[0]);
+  const findCol=(preds)=>keys.find(k=>preds(k.toLowerCase().trim()));
+  const itemCol=findCol(l=>l==='line item uid'||l==='product uid')||findCol(l=>l.includes('uid')&&(l.includes('line item')||l.includes('lineitem')||l.includes('product')));
+  const fCol=findCol(l=>l==='formula uid'||l==='formula_uid')||findCol(l=>l.includes('formula')&&l.includes('uid'));
+  if(!itemCol||!fCol){$('import-status').textContent='Could not find "Product/Line Item UID" and "Formula UID" columns. Found: '+keys.join(', ');return;}
+  const known=new Set(products.map(p=>p.product_uid));
+  const bad=['nan','none','#n/a','#ref!','#value!','#name?','#div/0!','#null!',''];
+  let ok=0,miss=0,skip=0;
+  rows.forEach(r=>{
+    const pu=String(r[itemCol]??'').trim();
+    const fu=String(r[fCol]??'').trim();
+    if(!pu||bad.includes(pu.toLowerCase())||pu.startsWith('#')){skip++;return;}
+    if(!fu||bad.includes(fu.toLowerCase())||fu.startsWith('#')||fu===pu){skip++;return;}
+    if(!known.has(pu)){miss++;return;}
+    const p=products.find(x=>x.product_uid===pu);
+    if(curFormulaUid(p)===fu)return;
+    changes[pu]=fu;ok++;
+  });
+  renderRows();updateStats();
+  $('import-status').textContent='Queued '+ok+' change(s). '+(miss?miss+' UID(s) not found in this account. ':'')+(skip?skip+' invalid row(s) skipped.':'');
+}
+
+/* ---------- stats ---------- */
+function updateStats(){
+  $('s-total').textContent=products.length;
+  $('s-formulas').textContent=formulas.length;
+  $('s-mapped').textContent=products.filter(p=>curFormulaUid(p)).length;
+  const chg=Object.keys(changes).filter(uid=>{const p=products.find(x=>x.product_uid===uid);return p&&changes[uid]!==curFormulaUid(p);}).length;
+  $('s-changed').textContent=chg;
+  $('apply-count').textContent=chg?chg+' change(s) queued':'no changes queued';
+}
+
+/* ---------- apply ---------- */
+function queuedList(){
+  return Object.keys(changes).map(uid=>{
+    const p=products.find(x=>x.product_uid===uid);if(!p)return null;
+    const cur=curFormulaUid(p);
+    if(changes[uid]===cur)return null;
+    return {product:p,formulaUid:changes[uid]};
+  }).filter(Boolean);
+}
+
+async function updateProductFormula(product,formulaUid,dry){
+  const uid=product.product_uid;
+  // Get a fresh, complete product object (matches the Python script). Fall back to the cached list record if GET-by-id is unavailable.
+  let full=null;
+  try{
+    const r=await fetch(_base+'product/'+uid,{headers:getHdrs()});
+    if(r.ok){const d=await r.json().catch(()=>({}));if(d&&(d.type==='success'||d.data))full=d.data||d;}
+  }catch{}
+  if(!full)full=product;
+  const p=JSON.parse(JSON.stringify(full));
+  p.formula=formulaUid||null;
+  p.location_availability=[];
+  if(p.product_category&&typeof p.product_category==='object')p.product_category=p.product_category.category_uid;
+  if(dry)return {ok:true,msg:'Dry run — would '+(formulaUid?'set formula':'clear formula')};
+  const put=await fetch(_base+'product/'+uid,{method:'PUT',headers:hdrs(),body:JSON.stringify({product:p,vendor:[]})});
+  const jd=await put.json().catch(()=>({}));
+  if(jd&&jd.type==='success')return {ok:true,msg:'Success'};
+  return {ok:false,msg:(jd&&jd.message)||('HTTP '+put.status)};
+}
+
+async function apply(dry){
+  const list=queuedList();
+  if(!list.length){alert('No changes queued.');return;}
+  if(!dry&&!confirm('Apply '+list.length+' formula change(s) to live products in "'+_account+'"?\n\nRun a dry-run first if you haven\'t.'))return;
+  _cancel=false;_results=[];
+  $('log').innerHTML='';$('log').classList.remove('hidden');
+  $('prog').classList.remove('hidden');$('resultActions').classList.add('hidden');
+  $('dryBtn').disabled=true;$('applyBtn').disabled=true;$('cancelBtn').classList.remove('hidden');
+  log((dry?'— DRY RUN — ':'— APPLYING — ')+list.length+' change(s) on "'+_account+'"','info');
+  let done=0,ok=0,fail=0;
+  const CONC=4;
+  const queue=[...list];
+  async function worker(){
+    while(queue.length&&!_cancel){
+      const item=queue.shift();
+      const p=item.product;
+      const fName=item.formulaUid?(formulaByUid[item.formulaUid]?.formula_name||item.formulaUid):'(none)';
+      let res;
+      try{res=await updateProductFormula(p,item.formulaUid,dry);}
+      catch(e){res={ok:false,msg:e.message};}
+      done++; res.ok?ok++:fail++;
+      _results.push({product_uid:p.product_uid,product_name:p.product_name,formula_uid:item.formulaUid,formula_name:fName,status:res.ok?'Success':'Failed: '+res.msg});
+      log('['+done+'/'+list.length+'] '+(p.product_name||p.product_uid)+' → '+fName+'  '+(res.ok?'✓ '+res.msg:'✗ '+res.msg),res.ok?'ok':'err');
+      $('progbar').style.width=(done/list.length*100)+'%';
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(CONC,list.length)},worker));
+  log('— DONE — '+ok+' succeeded, '+fail+' failed'+(_cancel?' (cancelled)':''),fail?'warn':'ok');
+  if(!dry&&ok){
+    // update in-memory products & clear applied changes so stats/table refresh
+    _results.filter(r=>r.status==='Success').forEach(r=>{
+      const p=products.find(x=>x.product_uid===r.product_uid);
+      if(p){p.formula=r.formula_uid?(formulaByUid[r.formula_uid]||r.formula_uid):null;delete changes[r.product_uid];}
+    });
+    renderRows();updateStats();
+  }
+  $('dryBtn').disabled=false;$('applyBtn').disabled=false;$('cancelBtn').classList.add('hidden');
+  $('resultActions').classList.remove('hidden');
+}
+
+function exportResults(){
+  if(!_results.length)return;
+  const head=['Product UID','Product Name','Formula UID','Formula Name','Status'];
+  const rows=_results.map(r=>[r.product_uid,r.product_name,r.formula_uid,r.formula_name,r.status]);
+  const csv=[head,...rows].map(row=>row.map(c=>'"'+String(c??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='formula_mapping_results.csv';a.click();
+}
+
+/* ---------- theme ---------- */
+function applyThemeLabel(){
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  $('themeBtn').textContent=dark?'☀️ Light':'🌙 Dark';
+}
+function toggleTheme(){
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  if(dark){document.documentElement.removeAttribute('data-theme');try{localStorage.setItem('zuper_tools_theme','light');}catch{}}
+  else{document.documentElement.setAttribute('data-theme','dark');try{localStorage.setItem('zuper_tools_theme','dark');}catch{}}
+  applyThemeLabel();
+}
+
+/* ---------- optional SheetJS for Excel import ---------- */
+(function(){const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';s.onerror=()=>{};document.head.appendChild(s);})();
+applyThemeLabel();
+loadSavedList();
+</script>
+</body>
+</html>
