@@ -1168,6 +1168,10 @@ input[type=checkbox]{accent-color:var(--primary)}
         <input type="checkbox" id="ti-dryrun" checked onchange="updateTiPill()">
         Dry Run <span id="ti-mode-pill" class="mode-safe">● Safe</span>
       </label>
+      <label style="display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:600;cursor:pointer" title="When on, the import creates every line item whose product & formula exist in this account and SKIPS the rest, instead of blocking. Skipped items are recorded in a downloadable error log.">
+        <input type="checkbox" id="ti-skip-missing">
+        Skip missing dependencies <span style="font-weight:400;color:var(--text-sub)">(import what resolves, log the rest)</span>
+      </label>
     </div>
     <div class="btn-row">
       <button class="btn btn-p" id="ti-run-btn" onclick="startTplImport()">Start Import →</button>
@@ -1183,6 +1187,7 @@ input[type=checkbox]{accent-color:var(--primary)}
     <div id="ti-msg3" class="msg" style="display:none;margin-top:10px"></div>
     <div class="btn-row" style="margin-top:12px">
       <button class="btn btn-p" id="ti-proceed-btn" style="display:none" onclick="tiProceedImport()">✅ Import for real →</button>
+      <button class="btn btn-o" id="ti-errlog-btn" style="display:none" onclick="tiDownloadErrorLog()">⬇ Download error log</button>
       <button class="btn btn-g" onclick="hideTplImportCard()">← Close</button>
     </div>
   </div>
@@ -7737,6 +7742,17 @@ function tiProceedImport(){
   startTplImport();
 }
 
+// Collected skipped/failed line items from the last template import (for the CSV download)
+let _tiErrorLog=[];
+function tiDownloadErrorLog(){
+  if(!_tiErrorLog.length){alert('No errors were logged for the last import.');return;}
+  const cols=['option','section','item','kind','reason'];
+  const cell=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const lines=[cols.join(',')].concat(_tiErrorLog.map(r=>cols.map(c=>cell(r[c])).join(',')));
+  const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='zuper_template_import_errors.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
+
 function tiGoTo(step){
   [1,2,3].forEach(n=>{
     const s=$('tistep'+n);if(s) s.style.display=n===step?'block':'none';
@@ -7965,6 +7981,9 @@ async function startTplImport(){
   progBar.style.width='0%';progLbl.textContent='Starting…';
   $('ti-run-btn').disabled=true;
   {const pb=$('ti-proceed-btn');if(pb)pb.style.display='none';}
+  {const eb=$('ti-errlog-btn');if(eb)eb.style.display='none';}
+  _tiErrorLog=[];
+  const skipMissing=!!($('ti-skip-missing')&&$('ti-skip-missing').checked);
   const msg=$('ti-msg3');msg.style.display='none';
   function tiLog(level,text){
     const d=document.createElement('div');d.className='log-'+level;
@@ -7998,17 +8017,35 @@ async function startTplImport(){
         if(Array.isArray(it.conditions)) for(const c of it.conditions){ if(c.field_name&&!c.field_uid&&!fieldByName[norm(c.field_name)]) missField.add(c.field_name); }
       }
 
-      if(missProd.size||missFml.size||missField.size){
-        progBar.style.width='100%';progLbl.textContent='✗ Pre-flight failed — missing dependencies';
-        if(missProd.size) tiLog('err','Missing products ('+missProd.size+'): '+[...missProd].join(', '));
-        if(missFml.size) tiLog('err','Missing formulas ('+missFml.size+'): '+[...missFml].join(', '));
-        if(missField.size) tiLog('err','Missing custom/checklist fields ('+missField.size+'): '+[...missField].join(', '));
-        tiLog('info','Import/migrate these into this account first (Parts & Services / CPQ Formulas / Custom Fields), then re-upload. Nothing was created.');
-        msg.className='msg msg-err';msg.textContent='✗ Pre-flight failed — '+(missProd.size+missFml.size+missField.size)+' missing dependenc(ies). Nothing was created; see the list above.';msg.style.display='block';
-        return;
+      const anyMiss=missProd.size||missFml.size||missField.size;
+      if(anyMiss){
+        // Build detailed error-log rows (with option/section context) for the CSV download
+        for(const o of opts){ let sec=''; for(const it of (o.line_items||o.items||[])){
+          if(isHeaderItem(it)){sec=it.section_name||it.product_name||'';continue;}
+          if(it.product_name&&!prodByName[norm(it.product_name)]){ _tiErrorLog.push({option:o.option_name||'',section:sec,item:it.product_name,kind:'product',reason:'Product not found in account by name — line item skipped'}); continue; }
+          if(it.formula_name&&!fmlByName[norm(it.formula_name)]) _tiErrorLog.push({option:o.option_name||'',section:sec,item:it.product_name||it.formula_name,kind:'formula',reason:'Formula "'+it.formula_name+'" not found — imported as MANUAL quantity'});
+          if(Array.isArray(it.conditions)) for(const c of it.conditions){ if(c.field_name&&!c.field_uid&&!fieldByName[norm(c.field_name)]) _tiErrorLog.push({option:o.option_name||'',section:sec,item:it.product_name||'',kind:'condition_field',reason:'Field "'+c.field_name+'" not found — condition dropped'}); }
+        } }
+        if(missProd.size) tiLog(skipMissing?'warn':'err','Missing products ('+missProd.size+'): '+[...missProd].join(', '));
+        if(missFml.size) tiLog('warn','Missing formulas ('+missFml.size+'): '+[...missFml].join(', '));
+        if(missField.size) tiLog('warn','Missing custom/checklist fields ('+missField.size+'): '+[...missField].join(', '));
+        {const eb=$('ti-errlog-btn');if(eb&&_tiErrorLog.length)eb.style.display='inline-flex';}
+        if(!skipMissing){
+          progBar.style.width='100%';progLbl.textContent='✗ Pre-flight failed — missing dependencies';
+          tiLog('info','Import/migrate these into this account first (Parts & Services / CPQ Formulas / Custom Fields), then re-upload — or tick "Skip missing dependencies" to import what resolves. Nothing was created.');
+          msg.className='msg msg-err';msg.textContent='✗ Pre-flight failed — '+(missProd.size+missFml.size+missField.size)+' missing dependenc(ies). Nothing was created; see the list above or download the error log.';msg.style.display='block';
+          return;
+        }
+        tiLog('warn','Skip mode ON — items with a missing product will be SKIPPED; missing formulas import as MANUAL; missing condition fields are dropped. See the error log.');
+      } else {
+        tiLog('ok','Pre-flight passed — all products, formulas, and fields resolved.');
       }
-      tiLog('ok','Pre-flight passed — all products, formulas, and fields resolved.');
-      if(dry){progBar.style.width='100%';progLbl.textContent='✓ Dry run — pre-flight passed';msg.className='msg msg-ok';msg.textContent='✓ Pre-flight passed — nothing missing. Click "Import for real →" below to create it.';msg.style.display='block';{const pb=$('ti-proceed-btn');if(pb)pb.style.display='inline-flex';}return;}
+      if(dry){
+        progBar.style.width='100%';progLbl.textContent=anyMiss?'✓ Dry run — will skip missing':'✓ Dry run — pre-flight passed';
+        msg.className='msg msg-ok';
+        msg.textContent=anyMiss?('✓ Dry run — '+missProd.size+' product(s) will be skipped, the rest imported. Download the error log for the full list, then click "Import for real →".'):'✓ Pre-flight passed — nothing missing. Click "Import for real →" below to create it.';
+        msg.style.display='block';{const pb=$('ti-proceed-btn');if(pb)pb.style.display='inline-flex';}{const eb=$('ti-errlog-btn');if(eb&&_tiErrorLog.length)eb.style.display='inline-flex';}return;
+      }
 
       // Create — staged wrapped shapes, resolved UIDs
       tiLog('info','Creating template "'+newName+'"…');
@@ -8029,16 +8066,17 @@ async function startTplImport(){
         const opt=opts[i];const destOpt=destOptions[i]||destOptions.find(d=>(d.option_name||'')===(opt.option_name||''));const optUid=destOpt&&(destOpt.option_uid||destOpt.proposal_option_uid);
         if(!optUid){tiLog('err','Option "'+(opt.option_name||(i+1))+'" not created');continue;}
         tiLog('info','Option '+(i+1)+'/'+opts.length+': "'+(opt.option_name||('Option '+(i+1)))+'"');
-        const items=opt.line_items||opt.items||[];let lastSec='';
+        const items=opt.line_items||opt.items||[];let lastSec='',lastSecName='';
         for(const it of items){
           try{
             if(isHeaderItem(it)){
-              const secName=it.section_name||it.product_name||'';
+              const secName=it.section_name||it.product_name||'';lastSecName=secName;
               const sr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:{type:'HEADER',line_item_type:'HEADER',product_name:secName,section_type:it.section_type||'EXPANDED',show_section_total:!!it.show_section_total,show_child_prices:it.show_child_prices!==false}})});
               if(sr.ok){let sd;try{sd=await sr.json();}catch{sd={};}const s=Array.isArray(sd?.data)?sd.data[0]:sd?.data;lastSec=s?.section_uid||s?.line_item_uid||s?.uid||'';liOk++;}else liFail++;
               continue;
             }
             const prodUid=prodByName[norm(it.product_name)]||'';
+            if(!prodUid) continue; // missing product (skip mode) — already recorded in the error log
             const fUid=it.formula_name?(fmlByName[norm(it.formula_name)]||''):'';
             const li={type:'ITEM',line_item_type:'ITEM',product_name:it.product_name||'',product_type:it.product_type||'PRODUCT',quantity:it.quantity||1,quantity_type:it.quantity_type||(fUid?'FORMULA':'MANUAL')};
             if(prodUid) li.product=prodUid;
@@ -8050,15 +8088,17 @@ async function startTplImport(){
             let lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li})});
             if(!lr.ok&&(li.conditions||li.rules)){const li2={...li};delete li2.conditions;delete li2.rules;lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li2})});if(lr.ok)ruleDropped++;}
             else if(lr.ok&&(li.conditions||li.rules)) ruleOk++;
-            if(lr.ok) liOk++; else {liFail++;if(liFail<=4){let ed='';try{ed=await lr.text();}catch{}tiLog('warn','"'+(it.product_name||'?')+'" failed: '+lr.status+' '+ed.slice(0,110));}}
-          }catch(e){liFail++;}
+            if(lr.ok) liOk++; else {liFail++;let ed='';try{ed=await lr.text();}catch{}_tiErrorLog.push({option:opt.option_name||('Option '+(i+1)),section:lastSecName,item:it.product_name||'?',kind:'line_item',reason:'API rejected: HTTP '+lr.status+' '+ed.slice(0,140)});if(liFail<=4)tiLog('warn','"'+(it.product_name||'?')+'" failed: '+lr.status+' '+ed.slice(0,110));}
+          }catch(e){liFail++;_tiErrorLog.push({option:opt.option_name||('Option '+(i+1)),section:lastSecName,item:it.product_name||'?',kind:'line_item',reason:'Exception: '+(e&&e.message||e)});}
           await new Promise(r=>setTimeout(r,45));
         }
         progBar.style.width=(15+80*(i+1)/(opts.length||1)).toFixed(1)+'%';
       }
       progBar.style.width='100%';progLbl.textContent='✓ Import complete';
-      tiLog('ok',liOk+' line item(s) created'+(liFail?', '+liFail+' failed':'')+(ruleOk?', '+ruleOk+' with rules/conditions':'')+(ruleDropped?', '+ruleDropped+' created without rules (API rejected them)':''));
-      msg.className='msg msg-ok';msg.innerHTML='✓ Template "<strong>'+esc(newName)+'</strong>" created from spec. <a href="javascript:void(0)" onclick="doFetch();hideTplImportCard()">Refresh list →</a>';msg.style.display='block';
+      const spSkip=_tiErrorLog.filter(r=>r.kind==='product').length;
+      tiLog('ok',liOk+' line item(s) created'+(spSkip?', '+spSkip+' skipped (missing product)':'')+(liFail?', '+liFail+' failed':'')+(ruleOk?', '+ruleOk+' with rules/conditions':'')+(ruleDropped?', '+ruleDropped+' created without rules (API rejected them)':''));
+      if(_tiErrorLog.length){const eb=$('ti-errlog-btn');if(eb)eb.style.display='inline-flex';}
+      msg.className='msg msg-ok';msg.innerHTML='✓ Template "<strong>'+esc(newName)+'</strong>" created from spec'+(_tiErrorLog.length?' — '+_tiErrorLog.length+' item(s) skipped/failed (download the error log).':'')+' <a href="javascript:void(0)" onclick="doFetch();hideTplImportCard()">Refresh list →</a>';msg.style.display='block';
       return;
     }
 
@@ -8077,23 +8117,43 @@ async function startTplImport(){
       tiLog('ok','Account has '+prodUidSet.size+' product(s), '+fmlUidSet.size+' formula(s)');
       const resolveProd=(it)=>{ if(it.product&&prodUidSet.has(it.product))return it.product; const n=norm(it.product_name); if(n&&prodByName[n])return prodByName[n]; return ''; };
       const resolveFml=(it)=>{ if(it.formula&&fmlUidSet.has(it.formula))return it.formula; const n=norm(it.formula_name); if(n&&fmlByName[n])return fmlByName[n]; return ''; };
-      const flat=opts.flatMap(o=>o.line_items||o.items||o.proposal_line_items||[]).filter(it=>!isHeaderItem(it));
-      const missProd=[]; let remapProd=0, missFml=0;
-      for(const it of flat){ const pu=resolveProd(it); if(!pu) missProd.push(it.product_name||('UID '+it.product)||'(unnamed)'); else if(pu!==it.product) remapProd++; if((it.formula||it.formula_name)&&!resolveFml(it)) missFml++; }
-      const uniqMiss=[...new Set(missProd)];
+      // Validate, tracking option/section context for the error log
+      let flatCount=0, remapProd=0, missFml=0;
+      const missProdSet=new Set();
+      for(const o of opts){
+        let sec='';
+        for(const it of (o.line_items||o.items||o.proposal_line_items||[])){
+          if(isHeaderItem(it)){ sec=it.product_name||it.section_name||''; continue; }
+          flatCount++;
+          const pu=resolveProd(it);
+          if(!pu){ const nm=it.product_name||('UID '+it.product)||'(unnamed)'; missProdSet.add(nm); _tiErrorLog.push({option:o.option_name||'',section:sec,item:nm,kind:'product',reason:'Product not found by UID or name — line item skipped'}); continue; }
+          if(pu!==it.product) remapProd++;
+          if((it.formula||it.formula_name)&&!resolveFml(it)){ missFml++; _tiErrorLog.push({option:o.option_name||'',section:sec,item:it.product_name||'',kind:'formula',reason:'Formula not found — imported as MANUAL quantity'}); }
+        }
+      }
+      const uniqMiss=[...missProdSet];
       if(uniqMiss.length){
-        progBar.style.width='100%';progLbl.textContent='✗ Validation failed — missing products';
-        tiLog('err','Missing products ('+uniqMiss.length+' of '+flat.length+' items) — not found by UID or name in this account:');
-        uniqMiss.slice(0,40).forEach(n=>tiLog('err','   • '+n));
-        if(uniqMiss.length>40) tiLog('err','   …and '+(uniqMiss.length-40)+' more');
-        tiLog('info','Import/migrate these products into this account first (Parts & Services), then re-run. Nothing was created.');
-        msg.className='msg msg-err';msg.textContent='✗ Validation failed — '+uniqMiss.length+' product(s) missing in this account. Nothing was created; see the list above.';msg.style.display='block';
-        return;
+        tiLog(skipMissing?'warn':'err','Missing products ('+uniqMiss.length+' of '+flatCount+' items) — not found by UID or name in this account:');
+        uniqMiss.slice(0,40).forEach(n=>tiLog(skipMissing?'warn':'err','   • '+n));
+        if(uniqMiss.length>40) tiLog(skipMissing?'warn':'err','   …and '+(uniqMiss.length-40)+' more');
+        {const eb=$('ti-errlog-btn');if(eb&&_tiErrorLog.length)eb.style.display='inline-flex';}
+        if(!skipMissing){
+          progBar.style.width='100%';progLbl.textContent='✗ Validation failed — missing products';
+          tiLog('info','Import/migrate these products first (Parts & Services), then re-run — or tick "Skip missing dependencies" to import what resolves. Nothing was created.');
+          msg.className='msg msg-err';msg.textContent='✗ Validation failed — '+uniqMiss.length+' product(s) missing. Nothing was created; see the list above or download the error log.';msg.style.display='block';
+          return;
+        }
+        tiLog('warn','Skip mode ON — '+uniqMiss.length+' line item(s) with a missing product will be SKIPPED.');
       }
       if(missFml) tiLog('warn',missFml+' item(s) reference a formula not found here — those will import as MANUAL quantity.');
       if(remapProd) tiLog('info',remapProd+' product(s) matched by name (different UID in this account).');
-      tiLog('ok','Validation passed — all products resolved'+(remapProd?' ('+remapProd+' by name)':'')+'.');
-      if(dry){ progBar.style.width='100%';progLbl.textContent='✓ Dry run — validation passed'; msg.className='msg msg-ok';msg.textContent='✓ Validation passed — nothing missing. Click "Import for real →" below to create the template.';msg.style.display='block';{const pb=$('ti-proceed-btn');if(pb)pb.style.display='inline-flex';} return; }
+      if(!uniqMiss.length) tiLog('ok','Validation passed — all products resolved'+(remapProd?' ('+remapProd+' by name)':'')+'.');
+      if(dry){
+        progBar.style.width='100%';progLbl.textContent=uniqMiss.length?'✓ Dry run — will skip missing':'✓ Dry run — validation passed';
+        msg.className='msg msg-ok';
+        msg.textContent=uniqMiss.length?('✓ Dry run — '+uniqMiss.length+' item(s) will be skipped, the rest imported. Download the error log for the full list, then click "Import for real →".'):'✓ Validation passed — nothing missing. Click "Import for real →" below to create the template.';
+        msg.style.display='block';{const pb=$('ti-proceed-btn');if(pb)pb.style.display='inline-flex';}{const eb=$('ti-errlog-btn');if(eb&&_tiErrorLog.length)eb.style.display='inline-flex';} return;
+      }
       // Create (staged wrapped, resolved UIDs)
       tiLog('info','Creating template "'+newName+'"…');
       const tr=await fetch(baseUrl()+'invoice_estimate/proposal_template',{method:'POST',headers:hdrs(),body:JSON.stringify({proposal_template:{template_name:newName,template_description:rec.template_description||'',template_type:'CPQ'}})});
@@ -8113,16 +8173,19 @@ async function startTplImport(){
         const opt=opts[i];const destOpt=destOptions[i]||destOptions.find(d=>(d.option_name||'')===(opt.option_name||''));const optUid=destOpt&&(destOpt.option_uid||destOpt.proposal_option_uid);
         if(!optUid){tiLog('err','Option "'+(opt.option_name||(i+1))+'" not created');continue;}
         tiLog('info','Option '+(i+1)+'/'+opts.length+': "'+(opt.option_name||('Option '+(i+1)))+'"');
-        const items=opt.line_items||opt.items||opt.proposal_line_items||[];const sectionMap={};
+        const items=opt.line_items||opt.items||opt.proposal_line_items||[];const sectionMap={};let lastSecName='';
         for(const item of items){
           try{
             if(isHeaderItem(item)){
+              lastSecName=item.product_name||item.section_name||'';
               const body={line_item:{type:'HEADER',line_item_type:'HEADER',product_name:item.product_name||'',section_type:item.section_type||'EXPANDED',show_section_total:!!item.show_section_total,show_child_prices:item.show_child_prices!==false}};
               const sr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify(body)});
               if(sr.ok){let sd;try{sd=await sr.json();}catch{sd={};}const s=Array.isArray(sd?.data)?sd.data[0]:sd?.data;const su=s?.section_uid||s?.line_item_uid||s?.uid||'';const oldKey=item.line_item_uid||item.section_uid||'';if(su&&oldKey)sectionMap[oldKey]=su;liOk++;}else liFail++;
               continue;
             }
-            const prodUid=resolveProd(item); const fUid=resolveFml(item);
+            const prodUid=resolveProd(item);
+            if(!prodUid) continue; // missing product (skip mode) — already recorded in the error log
+            const fUid=resolveFml(item);
             const li={type:'ITEM',line_item_type:'ITEM',product_name:item.product_name||'',product_type:item.product_type||'',quantity:item.quantity||1,quantity_type:(fUid?(item.quantity_type||'FORMULA'):'MANUAL')};
             if(prodUid) li.product=prodUid;
             if(fUid) li.formula=fUid;
@@ -8135,15 +8198,17 @@ async function startTplImport(){
             let lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li})});
             if(!lr.ok&&(hasRules||hasConds)){const li2={...li};delete li2.rules;delete li2.conditions;lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li2})});if(lr.ok)ruleDropped++;}
             else if(lr.ok&&(hasRules||hasConds)) ruleOk++;
-            if(lr.ok) liOk++; else {liFail++;if(liFail<=4){let ed='';try{ed=await lr.text();}catch{}tiLog('warn','Line item "'+(item.product_name||'?')+'" failed: '+lr.status+' '+ed.slice(0,120));}}
-          }catch(e){liFail++;}
+            if(lr.ok) liOk++; else {liFail++;let ed='';try{ed=await lr.text();}catch{}_tiErrorLog.push({option:opt.option_name||('Option '+(i+1)),section:lastSecName,item:item.product_name||'?',kind:'line_item',reason:'API rejected: HTTP '+lr.status+' '+ed.slice(0,140)});if(liFail<=4)tiLog('warn','Line item "'+(item.product_name||'?')+'" failed: '+lr.status+' '+ed.slice(0,120));}
+          }catch(e){liFail++;_tiErrorLog.push({option:opt.option_name||('Option '+(i+1)),section:lastSecName,item:item.product_name||'?',kind:'line_item',reason:'Exception: '+(e&&e.message||e)});}
           await new Promise(r=>setTimeout(r,45));
         }
         progBar.style.width=(15+80*(i+1)/(opts.length||1)).toFixed(1)+'%';
       }
       progBar.style.width='100%';progLbl.textContent='✓ Import complete';
-      tiLog('ok',liOk+' line item(s) created'+(liFail?', '+liFail+' failed':'')+(ruleOk?', '+ruleOk+' with rules/conditions':'')+(ruleDropped?', '+ruleDropped+' without rules (API rejected)':''));
-      msg.className='msg msg-ok';msg.innerHTML='✓ Template "<strong>'+esc(newName)+'</strong>" imported. <a href="javascript:void(0)" onclick="doFetch();hideTplImportCard()">Refresh list →</a>';msg.style.display='block';
+      const jsSkip=_tiErrorLog.filter(r=>r.kind==='product').length;
+      tiLog('ok',liOk+' line item(s) created'+(jsSkip?', '+jsSkip+' skipped (missing product)':'')+(liFail?', '+liFail+' failed':'')+(ruleOk?', '+ruleOk+' with rules/conditions':'')+(ruleDropped?', '+ruleDropped+' without rules (API rejected)':''));
+      if(_tiErrorLog.length){const eb=$('ti-errlog-btn');if(eb)eb.style.display='inline-flex';}
+      msg.className='msg msg-ok';msg.innerHTML='✓ Template "<strong>'+esc(newName)+'</strong>" imported'+(_tiErrorLog.length?' — '+_tiErrorLog.length+' item(s) skipped/failed (download the error log).':'')+' <a href="javascript:void(0)" onclick="doFetch();hideTplImportCard()">Refresh list →</a>';msg.style.display='block';
       return;
     }
 
