@@ -3113,12 +3113,14 @@ async function migrateProposalTemplateRecord(rec,dry){
         const prodUid=mapProd(item);
         const fUid=item.formula_uid?(_formulaUidMap[item.formula_uid]||''):(item.cpq_formula_uid?(_formulaUidMap[item.cpq_formula_uid]||''):'');
         const secName=item.section_name||item._section||'';
-        const li={type:'ITEM',line_item_type:'ITEM',product_name:item.product_name||'',product_type:item.product_type||'',quantity:item.quantity||1,quantity_type:fUid?(item.quantity_type||'FORMULA'):(item.quantity_type||'MANUAL')};
+        // Zuper only accepts quantity_type FORMULA or FIXED (never MANUAL).
+        const useFormula=!!fUid&&String(item.quantity_type||'').toUpperCase()==='FORMULA';
+        const li={type:'ITEM',line_item_type:'ITEM',product_name:item.product_name||'',product_type:item.product_type||'',quantity:item.quantity||1,quantity_type:useFormula?'FORMULA':'FIXED'};
         if(prodUid) li.product=prodUid;
-        if(fUid) li.formula=fUid;
+        if(useFormula) li.formula=fUid;
         if(secName&&sectionUidByName[secName]){li.section_uid=sectionUidByName[secName];li.section_name=secName;}
         let lr=await _fT(liPath(optUid),{method:'POST',headers:destHdrs(),body:JSON.stringify({line_item:li})});
-        if(!lr.ok&&fUid){const fb={...li,quantity_type:'MANUAL'};delete fb.formula;lr=await _fT(liPath(optUid),{method:'POST',headers:destHdrs(),body:JSON.stringify({line_item:fb})});}
+        if(!lr.ok&&useFormula){const fb={...li,quantity_type:'FIXED'};delete fb.formula;lr=await _fT(liPath(optUid),{method:'POST',headers:destHdrs(),body:JSON.stringify({line_item:fb})});}
         if(lr.ok) liOk++; else liFail++;
       }catch{liFail++;}
       await new Promise(r=>setTimeout(r,60));
@@ -7816,7 +7818,7 @@ function parseTplExcel(wb){
           product_type:String(row[cType]||'').trim(),
           uom:_uom,
           price:_price,
-          quantity_type:String(row[cQtyT]||'MANUAL').trim()||'MANUAL',
+          quantity_type:String(row[cQtyT]||'FIXED').trim()||'FIXED',
           formula_name:String(row[cFName]||'').trim(),
           rule_summary:cRule?String(row[cRule]||'').trim():'',
         });
@@ -8023,7 +8025,7 @@ async function startTplImport(){
         for(const o of opts){ let sec=''; for(const it of (o.line_items||o.items||[])){
           if(isHeaderItem(it)){sec=it.section_name||it.product_name||'';continue;}
           if(it.product_name&&!prodByName[norm(it.product_name)]){ _tiErrorLog.push({option:o.option_name||'',section:sec,item:it.product_name,kind:'product',reason:'Product not found in account by name — line item skipped'}); continue; }
-          if(it.formula_name&&!fmlByName[norm(it.formula_name)]) _tiErrorLog.push({option:o.option_name||'',section:sec,item:it.product_name||it.formula_name,kind:'formula',reason:'Formula "'+it.formula_name+'" not found — imported as MANUAL quantity'});
+          if(it.formula_name&&!fmlByName[norm(it.formula_name)]) _tiErrorLog.push({option:o.option_name||'',section:sec,item:it.product_name||it.formula_name,kind:'formula',reason:'Formula "'+it.formula_name+'" not found — imported with FIXED quantity (no formula)'});
           if(Array.isArray(it.conditions)) for(const c of it.conditions){ if(c.field_name&&!c.field_uid&&!fieldByName[norm(c.field_name)]) _tiErrorLog.push({option:o.option_name||'',section:sec,item:it.product_name||'',kind:'condition_field',reason:'Field "'+c.field_name+'" not found — condition dropped'}); }
         } }
         if(missProd.size) tiLog(skipMissing?'warn':'err','Missing products ('+missProd.size+'): '+[...missProd].join(', '));
@@ -8036,7 +8038,7 @@ async function startTplImport(){
           msg.className='msg msg-err';msg.textContent='✗ Pre-flight failed — '+(missProd.size+missFml.size+missField.size)+' missing dependenc(ies). Nothing was created; see the list above or download the error log.';msg.style.display='block';
           return;
         }
-        tiLog('warn','Skip mode ON — items with a missing product will be SKIPPED; missing formulas import as MANUAL; missing condition fields are dropped. See the error log.');
+        tiLog('warn','Skip mode ON — items with a missing product will be SKIPPED; missing formulas import with FIXED quantity; missing condition fields are dropped. See the error log.');
       } else {
         tiLog('ok','Pre-flight passed — all products, formulas, and fields resolved.');
       }
@@ -8078,9 +8080,11 @@ async function startTplImport(){
             const prodUid=prodByName[norm(it.product_name)]||'';
             if(!prodUid) continue; // missing product (skip mode) — already recorded in the error log
             const fUid=it.formula_name?(fmlByName[norm(it.formula_name)]||''):'';
-            const li={type:'ITEM',line_item_type:'ITEM',product_name:it.product_name||'',product_type:it.product_type||'PRODUCT',quantity:it.quantity||1,quantity_type:it.quantity_type||(fUid?'FORMULA':'MANUAL')};
+            // Zuper only accepts quantity_type FORMULA or FIXED (never MANUAL).
+            const useFormula=!!fUid&&String(it.quantity_type||'').toUpperCase()==='FORMULA';
+            const li={type:'ITEM',line_item_type:'ITEM',product_name:it.product_name||'',product_type:it.product_type||'PRODUCT',quantity:it.quantity||1,quantity_type:useFormula?'FORMULA':'FIXED'};
             if(prodUid) li.product=prodUid;
-            if(fUid) li.formula=fUid;
+            if(useFormula) li.formula=fUid;
             if(lastSec){li.section_uid=lastSec;if(it.section_name)li.section_name=it.section_name;}
             const hasC=Array.isArray(it.conditions)&&it.conditions.length;
             if(hasC) li.conditions=it.conditions.map(c=>({...c,field_uid:c.field_uid||fieldByName[norm(c.field_name)]||''}));
@@ -8088,6 +8092,7 @@ async function startTplImport(){
             let lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li})});
             if(!lr.ok&&(li.conditions||li.rules)){const li2={...li};delete li2.conditions;delete li2.rules;lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li2})});if(lr.ok)ruleDropped++;}
             else if(lr.ok&&(li.conditions||li.rules)) ruleOk++;
+            if(!lr.ok&&useFormula){const li3={...li};delete li3.formula;delete li3.conditions;delete li3.rules;li3.quantity_type='FIXED';lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li3})});}
             if(lr.ok) liOk++; else {liFail++;let ed='';try{ed=await lr.text();}catch{}_tiErrorLog.push({option:opt.option_name||('Option '+(i+1)),section:lastSecName,item:it.product_name||'?',kind:'line_item',reason:'API rejected: HTTP '+lr.status+' '+ed.slice(0,140)});if(liFail<=4)tiLog('warn','"'+(it.product_name||'?')+'" failed: '+lr.status+' '+ed.slice(0,110));}
           }catch(e){liFail++;_tiErrorLog.push({option:opt.option_name||('Option '+(i+1)),section:lastSecName,item:it.product_name||'?',kind:'line_item',reason:'Exception: '+(e&&e.message||e)});}
           await new Promise(r=>setTimeout(r,45));
@@ -8128,7 +8133,7 @@ async function startTplImport(){
           const pu=resolveProd(it);
           if(!pu){ const nm=it.product_name||('UID '+it.product)||'(unnamed)'; missProdSet.add(nm); _tiErrorLog.push({option:o.option_name||'',section:sec,item:nm,kind:'product',reason:'Product not found by UID or name — line item skipped'}); continue; }
           if(pu!==it.product) remapProd++;
-          if((it.formula||it.formula_name)&&!resolveFml(it)){ missFml++; _tiErrorLog.push({option:o.option_name||'',section:sec,item:it.product_name||'',kind:'formula',reason:'Formula not found — imported as MANUAL quantity'}); }
+          if((it.formula||it.formula_name)&&!resolveFml(it)){ missFml++; _tiErrorLog.push({option:o.option_name||'',section:sec,item:it.product_name||'',kind:'formula',reason:'Formula not found — imported with FIXED quantity (no formula)'}); }
         }
       }
       const uniqMiss=[...missProdSet];
@@ -8145,7 +8150,7 @@ async function startTplImport(){
         }
         tiLog('warn','Skip mode ON — '+uniqMiss.length+' line item(s) with a missing product will be SKIPPED.');
       }
-      if(missFml) tiLog('warn',missFml+' item(s) reference a formula not found here — those will import as MANUAL quantity.');
+      if(missFml) tiLog('warn',missFml+' item(s) reference a formula not found here — those import with FIXED quantity (no formula attached).');
       if(remapProd) tiLog('info',remapProd+' product(s) matched by name (different UID in this account).');
       if(!uniqMiss.length) tiLog('ok','Validation passed — all products resolved'+(remapProd?' ('+remapProd+' by name)':'')+'.');
       if(dry){
@@ -8186,9 +8191,12 @@ async function startTplImport(){
             const prodUid=resolveProd(item);
             if(!prodUid) continue; // missing product (skip mode) — already recorded in the error log
             const fUid=resolveFml(item);
-            const li={type:'ITEM',line_item_type:'ITEM',product_name:item.product_name||'',product_type:item.product_type||'',quantity:item.quantity||1,quantity_type:(fUid?(item.quantity_type||'FORMULA'):'MANUAL')};
+            // Zuper only accepts quantity_type FORMULA or FIXED (never MANUAL). Use FORMULA
+            // only when a formula resolved AND the source item is a FORMULA; else FIXED.
+            const useFormula=!!fUid&&String(item.quantity_type||'').toUpperCase()==='FORMULA';
+            const li={type:'ITEM',line_item_type:'ITEM',product_name:item.product_name||'',product_type:item.product_type||'',quantity:item.quantity||1,quantity_type:useFormula?'FORMULA':'FIXED'};
             if(prodUid) li.product=prodUid;
-            if(fUid) li.formula=fUid;
+            if(useFormula) li.formula=fUid;
             const newSec=item.section_uid?sectionMap[item.section_uid]:'';
             if(newSec){li.section_uid=newSec;li.section_name=item.section_name||'';}
             const hasRules=item.rules&&typeof item.rules==='object'&&Object.keys(item.rules).length;
@@ -8198,6 +8206,7 @@ async function startTplImport(){
             let lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li})});
             if(!lr.ok&&(hasRules||hasConds)){const li2={...li};delete li2.rules;delete li2.conditions;lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li2})});if(lr.ok)ruleDropped++;}
             else if(lr.ok&&(hasRules||hasConds)) ruleOk++;
+            if(!lr.ok&&useFormula){const li3={...li};delete li3.formula;delete li3.rules;delete li3.conditions;li3.quantity_type='FIXED';lr=await fetch(liPath(optUid),{method:'POST',headers:hdrs(),body:JSON.stringify({line_item:li3})});}
             if(lr.ok) liOk++; else {liFail++;let ed='';try{ed=await lr.text();}catch{}_tiErrorLog.push({option:opt.option_name||('Option '+(i+1)),section:lastSecName,item:item.product_name||'?',kind:'line_item',reason:'API rejected: HTTP '+lr.status+' '+ed.slice(0,140)});if(liFail<=4)tiLog('warn','Line item "'+(item.product_name||'?')+'" failed: '+lr.status+' '+ed.slice(0,120));}
           }catch(e){liFail++;_tiErrorLog.push({option:opt.option_name||('Option '+(i+1)),section:lastSecName,item:item.product_name||'?',kind:'line_item',reason:'Exception: '+(e&&e.message||e)});}
           await new Promise(r=>setTimeout(r,45));
@@ -8271,7 +8280,7 @@ async function startTplImport(){
           manualCategoryUid=catSelectVal;
         }
       }
-      if(unmatchedFormulaNames.length) tiLog('warn',unmatchedFormulaNames.length+' formula name(s) not found in this account: '+unmatchedFormulaNames.join(', ')+' — those items will import as MANUAL quantity type.');
+      if(unmatchedFormulaNames.length) tiLog('warn',unmatchedFormulaNames.length+' formula name(s) not found in this account: '+unmatchedFormulaNames.join(', ')+' — those items import with FIXED quantity (no formula attached).');
       if(ruleItemCount) tiLog('warn',ruleItemCount+' item(s) have a Rule Summary — the Zuper public API has no endpoint for CPQ conditional rules; set these up manually after import.');
     }
 
@@ -8335,9 +8344,10 @@ async function startTplImport(){
               if(sr.ok){let sd;try{sd=await sr.json();}catch{sd={};}const s=Array.isArray(sd?.data)?sd.data[0]:sd?.data;const su=s?.section_uid||s?.line_item_uid||s?.uid||'';const oldKey=item.line_item_uid||item.section_uid||'';if(su&&oldKey)sectionMap[oldKey]=su;liOk++;}else liFail++;
               continue;
             }
-            const li={type:'ITEM',line_item_type:'ITEM',product_name:item.product_name||'',product_type:item.product_type||'',quantity:item.quantity||1,quantity_type:item.quantity_type||'MANUAL'};
+            const _useF=!!item.formula&&String(item.quantity_type||'').toUpperCase()==='FORMULA';
+            const li={type:'ITEM',line_item_type:'ITEM',product_name:item.product_name||'',product_type:item.product_type||'',quantity:item.quantity||1,quantity_type:_useF?'FORMULA':'FIXED'};
             if(item.product) li.product=item.product;         // original product UID (still valid)
-            if(item.formula) li.formula=item.formula;          // original formula UID (still valid)
+            if(_useF) li.formula=item.formula;                 // original formula UID (still valid)
             const newSec=item.section_uid?sectionMap[item.section_uid]:'';
             if(newSec){li.section_uid=newSec;li.section_name=item.section_name||'';}
             const hasRules=item.rules&&typeof item.rules==='object'&&Object.keys(item.rules).length;
@@ -8427,7 +8437,9 @@ async function startTplImport(){
                 }
               }
               const fUid=item.formula_name?fmlMap[item.formula_name.toLowerCase()]||'':'';
-              cleanItems.push({line_item_type:'ITEM',product_uid:pUid,product_name:item.product_name||'',product_type:item.product_type||'',unit_price:item.price||0,quantity:1,quantity_type:fUid?item.quantity_type||'FORMULA':'MANUAL',formula_uid:fUid,uom:item.uom||''});
+              // Zuper only accepts quantity_type FORMULA or FIXED (never MANUAL).
+              const useFormula=!!fUid&&String(item.quantity_type||'').toUpperCase()==='FORMULA';
+              cleanItems.push({line_item_type:'ITEM',product_uid:pUid,product_name:item.product_name||'',product_type:item.product_type||'',unit_price:item.price||0,quantity:1,quantity_type:useFormula?'FORMULA':'FIXED',formula_uid:useFormula?fUid:'',uom:item.uom||''});
             }
           } else {
             cleanItems=rawItems.map(item=>{const c={...item};delete c.line_item_uid;delete c.created_at;delete c.updated_at;delete c.proposal_template_uid;delete c.option_uid;delete c.section_uid;return c;});
