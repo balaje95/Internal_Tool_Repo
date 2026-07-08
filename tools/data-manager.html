@@ -2696,13 +2696,24 @@ async function ensureFormulasExist(srcFormulas){
       const fr=await fetch(_baseUrl+'invoice_estimate/cpq/formulas/'+srcUid,{headers:getHdrs()});
       if(fr.ok){ const fd=await fr.json().catch(()=>({})); full=fd?.data||fd||sf; }
     }catch(e){}
-    const cat = full.formula_category || sf.formula_category || null;
-    // Coerce to plain strings — the API rejects an object for formula_category.
-    const _s = (v)=> (typeof v==='string') ? v : '';
-    const catUid = _s(cat&&(cat.category_uid||cat.formula_category_uid)) || _s(full.formula_category_uid) || '';
-    const catName = _s(cat&&(cat.category_name||cat.name)) || _s(cat) || '';
+    // Resolve the category to a plain STRING. The source `formula_category` may be an
+    // object ({formula_category_name/category_name/name, formula_category_uid/category_uid})
+    // or a bare string. The API rejects an object — it must receive a string.
+    const _s = (v)=> (typeof v==='string' && v.trim()) ? v.trim() : '';
+    const cat = full.formula_category ?? sf.formula_category ?? full.category ?? sf.category ?? null;
+    let catName='', catUid='';
+    if(cat && typeof cat==='object'){
+      catName = _s(cat.formula_category_name) || _s(cat.category_name) || _s(cat.name) || '';
+      catUid  = _s(cat.formula_category_uid)  || _s(cat.category_uid)  || _s(cat.uid)  || '';
+    } else if(typeof cat==='string'){
+      const s=cat.trim();
+      if(s.length>=20 && !/\s/.test(s)) catUid=s; else catName=s; // long no-space token → uid, else a name
+    }
+    // Fall back to any flat fields on the record
+    if(!catName) catName = _s(full.formula_category_name) || _s(sf.formula_category_name);
+    if(!catUid)  catUid  = _s(full.formula_category_uid)  || _s(sf.formula_category_uid);
     let formulaObj = full.formula || sf.formula || {};
-    if(!formulaObj || !Object.keys(formulaObj).length){
+    if(!formulaObj || typeof formulaObj!=='object' || !Object.keys(formulaObj).length){
       const expr=full.formatted_expression||sf.formatted_expression||full.expression||sf.expression||'';
       if(expr) formulaObj={formatted_expression:expr};
     }
@@ -2712,16 +2723,14 @@ async function ensureFormulasExist(srcFormulas){
       formula_description: full.formula_description||sf.formula_description||'',
       formula:             formulaObj,
     };
-    // The API expects formula_category as a STRING (name or uid) — never an object —
-    // and it's actually optional (the working package-import create omits it entirely).
-    // Try name, then uid, then WITHOUT a category (most reliable across accounts).
-    const variants=[
-      { ...base, formula_category: catName },
-      { ...base, formula_category: catUid },
-      { ...base },                                                   // no category — mirrors the proven create path
-      { ...base, formula_category: catName, formula_category_uid: catUid, is_custom:true },
-      { ...base, formula_category: catUid, formula_category_uid: catUid, is_custom:true },
-    ].filter(v=> !('formula_category' in v) || v.formula_category!=='' || (v.formula_category_uid&&v.formula_category_uid!==''));
+    // formula_category must always be a STRING. Try the name first (most portable across
+    // accounts), then the uid, then as a last resort omit it. Every value below is a string.
+    const variants=[];
+    if(catName){ variants.push({ ...base, formula_category: catName }); }
+    if(catUid){  variants.push({ ...base, formula_category: catUid }); }
+    if(catName&&catUid){ variants.push({ ...base, formula_category: catName, formula_category_uid: catUid, is_custom:true }); }
+    variants.push({ ...base }); // no category — mirrors the proven package-import create path
+    console.log('[ZDM] formula "'+base.formula_name+'" → category name:"'+catName+'" uid:"'+catUid+'" ('+variants.length+' variant(s))');
     let done=false, lastErr='';
     for(const payload of variants){
       try{
