@@ -384,6 +384,7 @@ input[type=checkbox]{accent-color:var(--primary)}
         <option value="material_requests">Material Orders</option>
         <option value="customers">Customers</option>
         <option value="property">Properties</option>
+        <option value="organization">Organizations</option>
         <option value="assets">Assets</option>
         <option value="product">Parts &amp; Services</option>
         <option value="jobs">Jobs</option>
@@ -1332,6 +1333,7 @@ const MODULES={
   material_requests:{label:'Material Orders',uid:['material_request_uid','uid','_id'],del:'material_requests',cols:[{h:'MO #',f:'material_request_number'},{h:'Title',f:'material_request_title'},{h:'Status',f:'material_request_status'},{h:'Created',f:'created_at'}]},
   customers:{label:'Customers',uid:['customer_uid','uid','_id'],del:'customers',cols:[{h:'Name',f:['customer_first_name','customer_last_name']},{h:'Email',f:'customer_email'},{h:'Phone',f:'customer_phone'},{h:'Type',f:'customer_type'},{h:'Created',f:'created_at'}]},
   property:{label:'Properties',uid:['property_uid','uid','_id'],del:'property',cols:[{h:'Name',f:'property_name'},{h:'Address',f:'property_address'},{h:'City',f:'city'},{h:'Status',f:'property_status'},{h:'Created',f:'created_at'}]},
+  organization:{label:'Organizations',uid:['organization_uid','uid','_id'],del:'organization',cols:[{h:'Name',f:'organization_name'},{h:'Email',f:'organization_email'},{h:'Active',f:'is_active'},{h:'Created',f:'created_at'}]},
   assets:{label:'Assets',uid:['asset_uid','uid','_id'],del:'assets',cols:[{h:'Name',f:'asset_name'},{h:'Serial #',f:'serial_number'},{h:'Type',f:'asset_type'},{h:'Status',f:'asset_status'},{h:'Created',f:'created_at'}]},
   product:{label:'Parts & Services',uid:['product_uid','uid','_id'],del:'product',dryRunSkipGet:true,fetchMethod:'POST',endpoint:'product/filter',fetchBody:(page,count)=>({page,count}),cols:[{h:'Name',f:'product_name'},{h:'Type',f:'product_type'},{h:'Category',f:'_cat_name'},{h:'Price',f:'price'},{h:'Formula',f:'_formula_name'},{h:'Trade Types',f:'_bu_names'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_cat_name:(r.product_category?.category_name||r.product_category||'—'),_formula_name:(r.formula?.formula_name||'—'),_bu_names:(r.business_unit||[]).map(b=>b.bu_name||b.name||'').filter(Boolean).join(', ')||'—'}))},
   jobs:{label:'Jobs',uid:['job_uid','uid','_id'],del:'job',cols:[{h:'Job #',f:'_job_no'},{h:'Title',f:'job_title'},{h:'Status',f:'_status'},{h:'Customer',f:'_customer'},{h:'Scheduled',f:'scheduled_start_time'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_job_no:r.work_order_number||r.job_number||'—',_status:(r.current_job_status&&r.current_job_status.status_name)||'—',_customer:r.customer_name||(r.customer?[r.customer.customer_first_name,r.customer.customer_last_name].filter(Boolean).join(' '):'—')}))},
@@ -1601,7 +1603,7 @@ async function doFetch(){
   }
 
   try{
-    let page=1,maxPages=100;
+    let page=1,maxPages=350; // 350 × 150/page = 52,500 records (≥50k cap)
     const extraParams=cfg.fetchParams?'&'+cfg.fetchParams:'';
 
     // Modules with customParams use a fixed URL (no pagination)
@@ -1642,7 +1644,7 @@ async function doFetch(){
     else if(cfg.fetchFromNestedTeams){
       let tPage=1;
       const seenUids=new Set();
-      while(tPage<=100){
+      while(tPage<=350){
         showMsg('fetch-msg','📥 Fetching teams page '+tPage+'… ('+allRecs.length+' users so far)','info');
         const url=fetchBase+'team?page='+tPage+'&count=150';
         console.log('[ZDM] Fetching users via teams:', url);
