@@ -688,7 +688,10 @@ input[type=checkbox]{accent-color:var(--primary)}
             <option value="1">1 — sequential (safest)</option>
             <option value="3" selected>3 — recommended</option>
             <option value="5">5</option>
-            <option value="10">10 — fastest</option>
+            <option value="10">10</option>
+            <option value="20">20 — fast</option>
+            <option value="30">30 — faster</option>
+            <option value="50">50 — max (may hit rate limits)</option>
           </select>
         </label>
       </div>
@@ -729,7 +732,10 @@ input[type=checkbox]{accent-color:var(--primary)}
         <option value="1">1 — sequential (safest)</option>
         <option value="3" selected>3 — recommended</option>
         <option value="5">5</option>
-        <option value="10">10 — fastest</option>
+        <option value="10">10</option>
+        <option value="20">20 — fast</option>
+        <option value="30">30 — faster</option>
+        <option value="50">50 — max (may hit rate limits)</option>
       </select>
     </label>
   </div>
@@ -782,6 +788,9 @@ input[type=checkbox]{accent-color:var(--primary)}
         <option value="1">1 — sequential</option>
         <option value="3" selected>3 — recommended</option>
         <option value="5">5</option>
+        <option value="10">10</option>
+        <option value="20">20 — fast</option>
+        <option value="30">30 — faster</option>
       </select>
     </label>
   </div>
@@ -1663,31 +1672,35 @@ async function doFetch(){
         tPage++;
       }
     }
-    // Standard paginated fetch (GET or POST)
+    // Standard paginated fetch (GET or POST) — pages pulled in parallel batches for speed.
     else{
-      while(page<=maxPages){
-        showMsg('fetch-msg','📥 Fetching page '+page+'… ('+allRecs.length+' records so far)','info');
+      const fetchPage=async(p)=>{
         let res;
         if(cfg.fetchMethod==='POST'){
           // POST-based listing (e.g. product/filter)
-          const body=typeof cfg.fetchBody==='function'?cfg.fetchBody(page,limit):{page,count:limit};
-          const url=fetchBase+endpoint;
-          console.log('[ZDM] POST fetch:', url, JSON.stringify(body));
-          res=await fetch(url,{method:'POST',headers:{...getHdrs(),'Content-Type':'application/json'},body:JSON.stringify(body)});
+          const body=typeof cfg.fetchBody==='function'?cfg.fetchBody(p,limit):{page:p,count:limit};
+          res=await fetch(fetchBase+endpoint,{method:'POST',headers:{...getHdrs(),'Content-Type':'application/json'},body:JSON.stringify(body)});
         }else{
-          const url=fetchBase+endpoint+'?'+pageParam+'='+page+'&'+limitParam+'='+limit+extraParams;
-          console.log('[ZDM] Fetching:', url);
-          res=await fetch(url,{method:'GET',headers:getHdrs()});
+          res=await fetch(fetchBase+endpoint+'?'+pageParam+'='+p+'&'+limitParam+'='+limit+extraParams,{method:'GET',headers:getHdrs()});
         }
         if(!res.ok){const b=await res.text().catch(()=>'');throw new Error(res.status+' — '+b.slice(0,300));}
         const data=await res.json();
-        const recs=extractRecords(data, modKey());
-        if(!recs.length && page===1){console.log('[ZDM] Page 1 empty. Keys:', Object.keys(data).join(', '),'| data type:', Array.isArray(data.data)?'array['+data.data.length+']':typeof data.data);}
-        if(!recs.length) break;
-        allRecs.push(...recs);
-        const totalPages=data.total_pages||data.totalPages||null;
-        if(recs.length<limit || (totalPages&&page>=totalPages)) break;
-        page++;
+        return {recs:extractRecords(data,modKey())||[], totalPages:data.total_pages||data.totalPages||null, data};
+      };
+      const BATCH=8; // pages fetched concurrently per round
+      let stop=false;
+      while(page<=maxPages && !stop){
+        const pages=[];
+        for(let k=0;k<BATCH && page<=maxPages;k++) pages.push(page++);
+        showMsg('fetch-msg','📥 Fetching page'+(pages.length>1?'s '+pages[0]+'–'+pages[pages.length-1]:' '+pages[0])+'… ('+allRecs.length+' records so far)','info');
+        const results=await Promise.all(pages.map(p=>fetchPage(p)));
+        for(let j=0;j<results.length;j++){
+          const {recs,totalPages}=results[j];
+          if(pages[j]===1 && !recs.length){const d=results[j].data;console.log('[ZDM] Page 1 empty. Keys:', Object.keys(d).join(', '),'| data type:', Array.isArray(d.data)?'array['+d.data.length+']':typeof d.data);}
+          if(!recs.length){stop=true;continue;}
+          allRecs.push(...recs);
+          if(recs.length<limit || (totalPages&&pages[j]>=totalPages)) stop=true;
+        }
       }
     }
 
