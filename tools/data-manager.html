@@ -1348,7 +1348,7 @@ const MODULES={
   jobs:{label:'Jobs',uid:['job_uid','uid','_id'],del:'job',cols:[{h:'Job #',f:'_job_no'},{h:'Title',f:'job_title'},{h:'Status',f:'_status'},{h:'Customer',f:'_customer'},{h:'Scheduled',f:'scheduled_start_time'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_job_no:r.work_order_number||r.job_number||'—',_status:(r.current_job_status&&r.current_job_status.status_name)||'—',_customer:r.customer_name||(r.customer?[r.customer.customer_first_name,r.customer.customer_last_name].filter(Boolean).join(' '):'—')}))},
   invoice:{label:'Invoices',uid:['invoice_uid','uid','_id'],del:'invoice',cols:[{h:'Invoice #',f:'_inv_no'},{h:'Title',f:'invoice_title'},{h:'Status',f:'invoice_status'},{h:'Total',f:'_total'},{h:'Due',f:'due_date'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_inv_no:r.invoice_no||r.invoice_number||'—',_total:r.total||r.invoice_total||'—'}))},
   estimate:{label:'Quotes / Estimates',uid:['estimate_uid','quote_uid','uid'],del:'estimate',cols:[{h:'Quote #',f:'_est_no'},{h:'Title',f:'_est_title'},{h:'Status',f:'estimate_status'},{h:'Total',f:'_total'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_est_no:r.estimate_no||r.estimate_number||'—',_est_title:r.proposal_title||r.estimate_title||'—',_total:r.total||r.estimate_total||'—'}))},
-  user:{label:'Users',uid:['user_uid','uid','_id'],del:'user',dryRunSkipGet:true,fetchFromNestedTeams:true,cols:[{h:'Name',f:'_name'},{h:'Email',f:'email'},{h:'Role',f:'_role_name'},{h:'Status',f:'_status'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_name:[r.first_name,r.last_name].filter(Boolean).join(' ')||'—',_role_name:(r.role&&r.role.role_name)||'—',_status:r.is_active===false?'Inactive':'Active'}))},
+  user:{label:'Users',uid:['user_uid','uid','_id'],del:'user',endpoint:'user/all',dryRunSkipGet:true,delUrl:(uid)=>'user/'+encodeURIComponent(uid)+'/delete',cols:[{h:'Name',f:'_name'},{h:'Email',f:'email'},{h:'Role',f:'_role_name'},{h:'Status',f:'_status'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_name:[r.first_name,r.last_name].filter(Boolean).join(' ')||'—',_role_name:(r.role&&r.role.role_name)||'—',_status:r.is_active===false?'Inactive':'Active'}))},
   team:{label:'Teams',uid:['team_uid','uid','_id'],del:'team',dryRunSkipGet:true,cols:[{h:'Name',f:'team_name'},{h:'Members',f:'_member_count'},{h:'Active',f:'_active'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_member_count:(r.users||[]).length,_active:r.is_active===false?'No':'Yes'}))},
   workflow:{label:'Workflows',uid:['workflow_uid','uid','_id'],del:'workflows',dryRunSkipGet:true,endpoint:'workflows',customBaseUrl:'_workflowBaseUrl',paginationParam:'limit',fetchParams:'sort=ASC&sort_by=created_at',cols:[{h:'Name',f:'workflow_name'},{h:'Trigger Module',f:'trigger_module'},{h:'Trigger Event',f:'trigger_event_name'},{h:'Access',f:'workflow_access'},{h:'Active',f:'allow_workflow_to_trigger'},{h:'Created',f:'created_at'}]},
   workflow_variables:{label:'Workflow Variables',uid:['_id','uid','variable_uid'],del:'variables',dryRunSkipGet:true,endpoint:'variables',customBaseUrl:'_workflowBaseUrl',paginationParam:'count',fetchParams:'sort=ASC',cols:[{h:'Name',f:'name'},{h:'Value',f:'value'},{h:'Type',f:'type'},{h:'Description',f:'description'},{h:'Created',f:'created_at'}]},
@@ -1977,7 +1977,10 @@ function logLine(uid,level,msg){const el=$('log');const d=document.createElement
 async function hitOne(uid,dry){
   const cfg=modCfg(),delEndpoint=cfg.del||modKey();
   const useBase=cfg.customBaseUrl?(_workflowBaseUrl||baseUrl()):baseUrl();
-  const url=useBase+delEndpoint+'/'+encodeURIComponent(uid);
+  // Some modules use a non-standard delete/get path (e.g. user → /user/{uid}/delete).
+  const delUrl=useBase+(cfg.delUrl?cfg.delUrl(uid):delEndpoint+'/'+encodeURIComponent(uid));
+  const getUrl=useBase+(cfg.getUrl?cfg.getUrl(uid):delEndpoint+'/'+encodeURIComponent(uid));
+  const url=dry?getUrl:delUrl;
   // Some modules don't support GET-by-ID — skip the API call on dry run
   if(dry&&cfg.dryRunSkipGet){
     return{ok:true,msg:'200 would delete (simulated)'};
