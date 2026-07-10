@@ -3162,7 +3162,7 @@ async function migrateProposalTemplateRecord(rec,dry){
 
     // ── Step 6: Collect formulas embedded in line items (+ refresh expression_map from source) ──
     const srcFormulasByUid={};
-    const collectFormulas=(items)=>{for(const item of items||[]){if(item.line_item_type&&item.line_item_type!=='ITEM')continue;if(item.formula?.formula_uid)srcFormulasByUid[item.formula.formula_uid]=item.formula;if(item.associated_products?.length)collectFormulas(item.associated_products);}};
+    const collectFormulas=(items)=>{for(const item of items||[]){if(item.line_item_type&&item.line_item_type!=='ITEM')continue;const f=item.formula;if(f&&typeof f==='object'&&f.formula_uid)srcFormulasByUid[f.formula_uid]=f;else if(typeof f==='string'&&f)srcFormulasByUid[f]=srcFormulasByUid[f]||{formula_uid:f};if(item.associated_products?.length)collectFormulas(item.associated_products);}};
     for(const option of srcOptions)collectFormulas(option.line_items);
     for(const fuid of Object.keys(srcFormulasByUid)){
       try{const fresh=(await zsrc('GET','invoice_estimate/cpq/formulas/'+fuid))?.data;if(fresh?.formula_name)srcFormulasByUid[fuid]=fresh;else if(fresh?.formula?.expression_map?.length)srcFormulasByUid[fuid]={...srcFormulasByUid[fuid],formula:{...(srcFormulasByUid[fuid].formula||{}),...fresh.formula}};}catch(e){}
@@ -3291,8 +3291,12 @@ async function migrateProposalTemplateRecord(rec,dry){
             const srcFUid=typeof item.formula==='object'?item.formula?.formula_uid:item.formula;
             if(srcFUid){const dstFUid=formulaUidMap[srcFUid];if(dstFUid){payload.line_item.formula=dstFUid;payload.line_item.quantity_type='FORMULA';}else payload.line_item.quantity_type='FIXED';}
             const liRes=await zdst('POST',liPath(dstOptionUid),payload);
-            const dstLineItemUid=liRes?.data?.line_item_uid;itemsOk++;
-            if(dstLineItemUid&&item.cpq_rule?.rules?.conditions?.length)ruleQueue.push({dstLineItemUid,dstOptionUid,lineItemPayload:JSON.parse(JSON.stringify(payload)),srcRule:item.cpq_rule,productName:item.product_name});
+            const _ld=liRes?.data;
+            const dstLineItemUid=Array.isArray(_ld)?(_ld[0]?.line_item_uid||_ld[0]?.uid):(_ld?.line_item_uid||_ld?.uid||_ld?.line_item?.line_item_uid);
+            itemsOk++;
+            const srcRule=item.cpq_rule||item.rule||item.rules;
+            if(dstLineItemUid&&srcRule?.rules?.conditions?.length)ruleQueue.push({dstLineItemUid,dstOptionUid,lineItemPayload:JSON.parse(JSON.stringify(payload)),srcRule,productName:item.product_name});
+            else if(!dstLineItemUid&&item.cpq_rule?.rules?.conditions?.length)log('info','"'+item.product_name+'" has a rule but no line_item_uid returned — rule skipped');
           }
         }catch(e){log('error','"'+item.product_name+'" — '+e.message);itemsFail++;}
         await new Promise(r=>setTimeout(r,50));
