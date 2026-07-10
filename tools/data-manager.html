@@ -3022,152 +3022,296 @@ async function migrateMeasCategoryRecord(rec,dry){
 }
 
 // ── PROPOSAL TEMPLATE MIGRATION ───────────────────────────────────────────────
+// Remap a cpq_rule's conditions to destination UIDs. Returns { remappedConditions, skipped }.
+function remapRuleConditions(srcRule,checklistUidMap,tokenUidMap,categoryUidMap){
+  const remappedConditions=[];let skipped=0;
+  for(const condition of srcRule.rules?.conditions||[]){
+    if(condition.field_type==='CHECKLIST'){
+      const dstFieldUid=checklistUidMap[condition.field_uid];
+      if(dstFieldUid)remappedConditions.push({...condition,field_uid:dstFieldUid});
+      else skipped++;
+    }else if(condition.field_type==='MEASUREMENT'){
+      remappedConditions.push({...condition,measurement_token_uid:tokenUidMap[condition.measurement_token_uid]||condition.measurement_token_uid,measurement_category_uid:categoryUidMap[condition.measurement_category_uid]||condition.measurement_category_uid});
+    }else remappedConditions.push(condition);
+  }
+  return {remappedConditions,skipped};
+}
+
+// Full CPQ proposal-template migration — client-side port of the proven local proxy (v9).
+// Handles: products (create-missing + BUNDLEs), formulas (remaps expression_map measurement
+// tokens + checklist field UIDs, creating missing measurement categories/tokens), cpq_rules,
+// and job triggers (cpq_config.trigger). Runs entirely in the browser (Zuper CORS is open).
 async function migrateProposalTemplateRecord(rec,dry){
   const uid=rec.proposal_template_uid||rec.template_uid||'';
-  const _fT=(url,fo,ms=12000)=>{const ctl=new AbortController();const t=setTimeout(()=>ctl.abort(),ms);return fetch(url,{...fo,signal:ctl.signal}).finally(()=>clearTimeout(t));};
-  const isHeader=(i)=>((i.line_item_type||i.type||'').toString().toUpperCase()==='HEADER');
+  const logs=[];
+  const log=(type,msg)=>{logs.push({type,msg});console.log('[ZDM-TPL] ['+type+'] '+msg);};
+  window._tplMigLogs=logs;
 
-  // Fetch the FULL source template — the list response often lacks complete options/line_items.
-  let full=rec;
-  if(!dry){
-    try{const r=await _fT(_baseUrl+'invoice_estimate/proposal_template/'+uid,{headers:getHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));full=d?.data||d||rec;}}catch{}
-  }
-  const opts=full.proposal_options||full.options||full.template_options||rec.proposal_options||rec._opts||[];
-  const allItems=opts.flatMap(o=>o.line_items||o.items||o.proposal_line_items||[]);
+  // ── zuper() equivalents bound to our source / destination connections ──
+  const zfetch=async(base,hdrsObj,method,path,body)=>{
+    const opts={method,headers:hdrsObj};
+    if(body!==undefined) opts.body=JSON.stringify(body);
+    const res=await fetch(base+path,opts);
+    let data={};try{data=await res.json();}catch{}
+    if(!res.ok){const m=data?.message||data?.error||('HTTP '+res.status);const e=new Error(m);e.status=res.status;throw e;}
+    return data;
+  };
+  const zsrc=(m,p,b)=>zfetch(_baseUrl, b!==undefined?hdrs():getHdrs(), m,p,b);
+  const zdst=(m,p,b)=>zfetch(_destBaseUrl, b!==undefined?destHdrs():destGetHdrs(), m,p,b);
+  const zAll=async(z,path)=>{const out=[];let page=1;const count=150;while(true){const sep=path.includes('?')?'&':'?';const d=await z('GET',path+sep+'count='+count+'&page='+page);const items=d?.data||[];out.push(...items);if(items.length<count)break;page++;}return out;};
 
-  if(dry){
-    const formulaCount=allItems.filter(i=>i.formula_uid||i.cpq_formula_uid).length;
-    return{ok:true,status:'dry-run',uid,
-      warn:opts.length+' option(s), '+allItems.length+' total item(s)'+(formulaCount?' ('+formulaCount+' with formulas)':'')};
-  }
+  const prodUidFrom=(product)=>typeof product==='object'?(product?.product_uid||product?._id||''):(product||'');
+  const catNameFrom=(cat)=>{if(!cat)return '';if(typeof cat==='object')return (cat.category_name||cat.product_category_name||'').toLowerCase().trim();return String(cat).toLowerCase().trim();};
+  const buildMeasLookup=(categories)=>{const tokenByName={},categoryByName={};for(const cat of categories){const catKey=(cat.measurement_category_name||'').toLowerCase().trim();if(cat.measurement_category_uid)categoryByName[catKey]=cat.measurement_category_uid;for(const tok of cat.measurement_tokens||[]){tokenByName[(tok.measurement_token_name||'').toLowerCase().trim()]={token_uid:tok.measurement_token_uid,category_uid:cat.measurement_category_uid,uom:tok.uom||'EA'};}}return{tokenByName,categoryByName};};
 
-  // Step 0: Ensure referenced formulas exist in destination
-  const lineItemFormulas=[];
-  for(const item of allItems){
-    const fUid=item.formula_uid||item.cpq_formula_uid||'';
-    if(fUid&&!_formulaUidMap[fUid]){
-      try{const r=await fetch(_baseUrl+'invoice_estimate/cpq/formulas/'+fUid,{headers:getHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));const f=d?.data||d;if(f?.formula_uid) lineItemFormulas.push(f);}}catch{}
-    }
-  }
-  if(lineItemFormulas.length) await ensureFormulasExist(lineItemFormulas);
-
-  // Step 1: Load destination products by name
-  const destProdsByName={};
   try{
-    for(let pg=1;pg<=3;pg++){
-      const r=await _fT(_destBaseUrl+'product?page='+pg+'&count=150',{headers:destGetHdrs()});
-      if(!r.ok) break;
-      const d=await r.json().catch(()=>({}));
-      const precs=extractRecords(d,'product')||[];
-      for(const p of precs) destProdsByName[(p.product_name||'').toLowerCase().trim()]=p;
-      if(precs.length<150) break;
+    // ── Step 1: Fetch full source template ──
+    const srcData=await zsrc('GET','invoice_estimate/proposal_template/'+uid);
+    const srcTemplate=srcData?.data||srcData;
+    const srcOptions=srcTemplate.proposal_options||[];
+    log('ok','Fetched: "'+srcTemplate.template_name+'"');
+
+    if(dry){
+      let indiv=new Set(),bundles=new Set(),formulas=new Set();
+      for(const o of srcOptions) for(const it of (o.line_items||[])){
+        if(it.line_item_type!=='ITEM')continue;
+        const pu=prodUidFrom(it.product);
+        if(it.product_type==='BUNDLE'){if(pu)bundles.add(pu);(it.associated_products||[]).forEach(ap=>{const a=prodUidFrom(ap.product);if(a)indiv.add(a);if(ap.formula?.formula_uid)formulas.add(ap.formula.formula_uid);});}
+        else if(pu)indiv.add(pu);
+        if(it.formula?.formula_uid)formulas.add(it.formula.formula_uid);
+      }
+      return{ok:true,status:'dry-run',uid,warn:srcOptions.length+' option(s), '+indiv.size+' product(s), '+bundles.size+' bundle(s), '+formulas.size+' formula(s)'};
     }
-  }catch(e){console.warn('[ZDM] dest products:',e.message);}
 
-  const destCatsByName={};
-  for(const c of destCategories) destCatsByName[(catObjName(c)||'').toLowerCase().trim()]=catObjUid(c);
+    // ── Step 2/3: Load destination products & categories by name ──
+    const destProdsByName={};
+    try{const dstProds=await zAll(zdst,'product');for(const p of dstProds){const k=(p.product_name||'').toLowerCase().trim();if(k)destProdsByName[k]=p;}log('ok',Object.keys(destProdsByName).length+' products in destination');}catch(e){log('info','Could not load destination products: '+e.message);}
+    const destCatsByName={};
+    try{const dstCats=await zAll(zdst,'products/category');for(const c of dstCats){const n=catObjName(c).toLowerCase().trim(),u=catObjUid(c);if(n&&u)destCatsByName[n]=u;}log('ok',Object.keys(destCatsByName).length+' categories in destination');}catch(e){log('info','Could not load destination categories: '+e.message);}
 
-  // Step 2: Ensure products exist in destination (skip HEADER rows and blanks), build productUidMap by name
-  const productItems=allItems.filter(i=>!isHeader(i)&&(i.product_uid||i.product_name));
-  const productUidMap={}; // keyed by source product_uid AND by lowercased name
-  let prodCreated=0,prodMatched=0,prodFailed=0;
-  for(const item of productItems){
-    const nameKey=(item.product_name||'').toLowerCase().trim();
-    const setMap=(v)=>{ if(item.product_uid) productUidMap[item.product_uid]=v; if(nameKey) productUidMap[nameKey]=v; };
-    if(nameKey&&destProdsByName[nameKey]){setMap(destProdsByName[nameKey].product_uid||'');prodMatched++;continue;}
-    let srcProduct=null;
-    if(item.product_uid){ try{const r=await _fT(_baseUrl+'product/'+item.product_uid,{headers:getHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));srcProduct=d?.data||d;}}catch{} }
-    if(!srcProduct||!srcProduct.product_name) srcProduct={product_name:item.product_name||'',product_type:(item.product_type||'PARTS').toUpperCase(),price:parseFloat(item.unit_price||item.price)||0,uom:item.uom||'EA',product_description:item.description||''};
-    if(!srcProduct.product_name){setMap('');prodFailed++;continue;}
-    const catRaw=srcProduct.product_category||item.product_category||'';
-    const cName=(typeof catRaw==='string'?catRaw:catRaw?.product_category_name||catRaw?.category_name||'').toLowerCase().trim();
-    let dCatUid=destCatsByName[cName]||'';
-    if(cName&&!dCatUid){try{const cr=await _fT(_destBaseUrl+'products/category',{method:'POST',headers:destHdrs(),body:JSON.stringify({product_category_name:typeof catRaw==='string'?catRaw:catRaw?.product_category_name||cName})});if(cr.ok){const cd=await cr.json().catch(()=>({}));dCatUid=cd?.data?.product_category_uid||cd?.product_category_uid||'';if(dCatUid) destCatsByName[cName]=dCatUid;}}catch{}}
-    const p=JSON.parse(JSON.stringify(srcProduct));
-    ['product_uid','created_at','updated_at','created_by','_id','__v','company_uid','product_ref_id','is_deleted','stock_alert'].forEach(k=>delete p[k]);
-    p.product_category=dCatUid||'';p.uom=p.uom||item.uom||'EA';p.quantity=p.available_qty||1;p.min_quantity=p.min_quantity||1;p.is_available=true;p.is_billable=true;delete p.available_qty;
+    // ── Step 4: Collect referenced product + bundle UIDs ──
+    const neededProductUids=new Set();
+    const neededBundleItems=new Map();
+    for(const option of srcOptions) for(const item of (option.line_items||[])){
+      if(item.line_item_type!=='ITEM')continue;
+      const u=prodUidFrom(item.product);
+      if(item.product_type==='BUNDLE'){
+        if(u&&!neededBundleItems.has(u))neededBundleItems.set(u,{productName:item.product_name,associatedProducts:item.associated_products||[]});
+        for(const ap of item.associated_products||[]){const a=prodUidFrom(ap.product);if(a)neededProductUids.add(a);}
+      }else if(u)neededProductUids.add(u);
+    }
+    log('info','Template references '+neededProductUids.size+' product(s) and '+neededBundleItems.size+' bundle(s)');
+
+    const ensureCategory=async(srcCat)=>{
+      const catName=catNameFrom(srcCat);
+      if(!catName) return '';
+      if(destCatsByName[catName]) return destCatsByName[catName];
+      const catLabel=typeof srcCat==='object'?(srcCat.category_name||srcCat.product_category_name||catName):catName;
+      try{const cr=await zdst('POST','products/category',{product_category:{category_name:catLabel,category_description:'',bu_uids:[],parent_category_uid:null}});const u=cr?.data?.category_uid||'';if(u){destCatsByName[catName]=u;log('ok','Created category: "'+catLabel+'"');return u;}}
+      catch(e){if((e.message||'').toLowerCase().includes('already exists')){try{const refreshed=await zAll(zdst,'products/category');for(const c of refreshed){const n=catObjName(c).toLowerCase().trim(),u=catObjUid(c);if(n&&u)destCatsByName[n]=u;}}catch(e2){}return destCatsByName[catName]||'';}}
+      return destCatsByName[catName]||'';
+    };
+
+    // ── Step 5: Create missing individual products ──
+    const productUidMap={};
+    let prodCreated=0,prodMatched=0,prodFailed=0;
+    for(const srcUid of neededProductUids){
+      let srcProduct=null;
+      try{srcProduct=(await zsrc('GET','product/'+srcUid))?.data;}catch(e){log('error','Could not fetch source product '+srcUid+': '+e.message);prodFailed++;continue;}
+      if(!srcProduct?.product_name){prodFailed++;continue;}
+      const nameKey=srcProduct.product_name.toLowerCase().trim();
+      if(destProdsByName[nameKey]){productUidMap[srcUid]=destProdsByName[nameKey].product_uid||destProdsByName[nameKey]._id||'';prodMatched++;continue;}
+      if(srcProduct.product_type==='BUNDLE')continue;
+      const destCatUid=await ensureCategory(srcProduct.product_category);
+      const p=JSON.parse(JSON.stringify(srcProduct));
+      ['product_uid','created_at','updated_at','created_by','_id','__v','company_uid','product_ref_id','is_deleted','stock_alert','product_no','low_stock','plain_text_description','markdown_description','custom_field_internal_object','service_type','preferred_vendor','product_barcode','associated_products','formula'].forEach(k=>delete p[k]);
+      p.product_category=destCatUid||'';p.quantity=p.available_qty||p.quantity||0;p.meta_data=[];p.location_availability=[];delete p.available_qty;
+      try{const cr=await zdst('POST','product',{product:p,vendor:[]});const nUid=cr?.data?.product_uid||'';if(nUid){productUidMap[srcUid]=nUid;destProdsByName[nameKey]={product_uid:nUid};prodCreated++;log('ok','Created: "'+srcProduct.product_name+'"');}else{prodFailed++;log('error','"'+srcProduct.product_name+'" — no product_uid returned');}}
+      catch(e){prodFailed++;log('error','"'+srcProduct.product_name+'" — '+e.message);}
+      await new Promise(r=>setTimeout(r,80));
+    }
+    log('ok','Products — '+prodMatched+' matched, '+prodCreated+' created, '+prodFailed+' failed');
+
+    // ── Step 5.5: Create BUNDLE products ──
+    for(const [srcBundleUid,{productName,associatedProducts}] of neededBundleItems){
+      const nameKey=productName.toLowerCase().trim();
+      if(destProdsByName[nameKey]){productUidMap[srcBundleUid]=destProdsByName[nameKey].product_uid||destProdsByName[nameKey]._id||'';continue;}
+      let dstBundleCatUid='';
+      try{const sb=(await zsrc('GET','product/'+srcBundleUid))?.data;if(sb?.product_category)dstBundleCatUid=await ensureCategory(sb.product_category);}catch(e){}
+      const remappedAssoc=[];
+      for(const ap of associatedProducts){const dstApUid=productUidMap[prodUidFrom(ap.product)];if(dstApUid)remappedAssoc.push({product_uid:dstApUid,product_name:ap.product_name,product_type:ap.product_type||'PARTS',quantity:ap.quantity!=null?ap.quantity:1});}
+      if(!remappedAssoc.length){log('error','BUNDLE "'+productName+'" — no associated products mapped, skipping');continue;}
+      try{const cr=await zdst('POST','product',{product:{product_name:productName,product_type:'BUNDLE',product_category:dstBundleCatUid||'',pricing_level:'ROLLUP',associated_products:remappedAssoc},vendor:[]});const nUid=cr?.data?.product_uid||'';if(nUid){productUidMap[srcBundleUid]=nUid;destProdsByName[nameKey]={product_uid:nUid};log('ok','Created BUNDLE: "'+productName+'"');}}
+      catch(e){if((e.message||'').toLowerCase().includes('already exists')){try{const refreshed=await zAll(zdst,'product');const ex=refreshed.find(p=>(p.product_name||'').toLowerCase().trim()===nameKey);if(ex){productUidMap[srcBundleUid]=ex.product_uid||ex._id||'';destProdsByName[nameKey]=ex;log('info','BUNDLE "'+productName+'" already exists — reusing');}}catch(e2){}}else log('error','BUNDLE "'+productName+'" — '+e.message);}
+      await new Promise(r=>setTimeout(r,80));
+    }
+
+    // ── Step 6: Collect formulas embedded in line items (+ refresh expression_map from source) ──
+    const srcFormulasByUid={};
+    const collectFormulas=(items)=>{for(const item of items||[]){if(item.line_item_type&&item.line_item_type!=='ITEM')continue;if(item.formula?.formula_uid)srcFormulasByUid[item.formula.formula_uid]=item.formula;if(item.associated_products?.length)collectFormulas(item.associated_products);}};
+    for(const option of srcOptions)collectFormulas(option.line_items);
+    for(const fuid of Object.keys(srcFormulasByUid)){
+      try{const fresh=(await zsrc('GET','invoice_estimate/cpq/formulas/'+fuid))?.data;if(fresh?.formula_name)srcFormulasByUid[fuid]=fresh;else if(fresh?.formula?.expression_map?.length)srcFormulasByUid[fuid]={...srcFormulasByUid[fuid],formula:{...(srcFormulasByUid[fuid].formula||{}),...fresh.formula}};}catch(e){}
+      await new Promise(r=>setTimeout(r,40));
+    }
+    const formulaCount=Object.keys(srcFormulasByUid).length;
+    log('info',formulaCount+' unique formula(s) referenced');
+
+    const tokenUidMap={},categoryUidMap={},formulaUidMap={};
+
+    // ── Step 7: Remap job triggers by name ──
+    let dstJobCats=[];
+    try{dstJobCats=(await zdst('GET','jobs/category'))?.data||[];}catch(e){}
+    const dstJobCatByName={};
+    for(const c of dstJobCats){if(c.category_name)dstJobCatByName[c.category_name.trim().toLowerCase()]=c.category_uid||c.job_category_uid;}
+    const remappedTriggers=[];
+    for(const trigger of (srcTemplate.cpq_config?.trigger||[])){
+      const dstCatUid=dstJobCatByName[trigger.job_category_name?.trim().toLowerCase()];
+      if(!dstCatUid){log('info','Job category "'+trigger.job_category_name+'" not in destination — trigger skipped');continue;}
+      let dstStatusUid=null;
+      try{const sd=await zdst('GET','jobs/status/'+dstCatUid);const statuses=sd?.data?.job_statuses||sd?.data||[];const m=statuses.find(s=>s.status_name?.trim().toLowerCase()===trigger.job_status_name?.trim().toLowerCase());if(m)dstStatusUid=m.status_uid||m.job_status_uid;}catch(e){}
+      if(dstStatusUid){remappedTriggers.push({job_category_uid:dstCatUid,job_status_uid:dstStatusUid,job_category_name:trigger.job_category_name,job_status_name:trigger.job_status_name});log('ok','Mapped trigger: "'+trigger.job_category_name+'" / "'+trigger.job_status_name+'"');}
+      else log('info','Status "'+trigger.job_status_name+'" not in destination — trigger skipped');
+    }
+
+    // ── Step 7.5: Build checklist UID map (source trigger checklists → dest by field name) ──
+    const checklistUidMap={};
     try{
-      const cr=await _fT(_destBaseUrl+'product',{method:'POST',headers:destHdrs(),body:JSON.stringify({product:p,vendor:[]})});
-      if(cr.ok){const cd=await cr.json().catch(()=>({}));const dd=Array.isArray(cd?.data)?cd.data[0]:cd?.data;const nUid=dd?.product_uid||cd?.product_uid||'';setMap(nUid);if(nUid){destProdsByName[nameKey]={product_uid:nUid};prodCreated++;}else prodFailed++;}
-      else{setMap('');prodFailed++;}
-    }catch{setMap('');prodFailed++;}
-    await new Promise(r=>setTimeout(r,100));
-  }
+      const srcChecklistByUid={},dstChecklistByName={};
+      for(const trigger of (srcTemplate.cpq_config?.trigger||[])){try{const resp=await zsrc('GET','settings/checklist?category_uid='+trigger.job_category_uid+'&job_status_uid='+trigger.job_status_uid);for(const q of resp?.data||[])srcChecklistByUid[q.checklist_uid]=q;}catch(e){}}
+      for(const trigger of remappedTriggers){try{const resp=await zdst('GET','settings/checklist?category_uid='+trigger.job_category_uid+'&job_status_uid='+trigger.job_status_uid);for(const q of resp?.data||[])dstChecklistByName[(q.field_name||'').toLowerCase().trim()]=q.checklist_uid;}catch(e){}}
+      for(const [cuid,q] of Object.entries(srcChecklistByUid)){const nk=(q.field_name||'').toLowerCase().trim();if(dstChecklistByName[nk])checklistUidMap[cuid]=dstChecklistByName[nk];}
+      if(Object.keys(checklistUidMap).length)log('ok','Checklists — '+Object.keys(checklistUidMap).length+' question(s) mapped');
+    }catch(e){log('info','Checklist mapping skipped: '+e.message);}
 
-  // Step 3: Map job_category_uid and job_status_uid by name in destination
-  let destJobCatUid='',destJobStatUid='';
-  const srcCatName=(full.job_category_name||full.job_category?.category_name||full.trigger?.job_category_name||rec.job_category_name||'').trim();
-  const srcStatName=(full.job_status_name||full.job_status?.status_name||full.trigger?.job_status_name||rec.job_status_name||'').trim();
-  if(srcCatName){
-    if(!destJobCategories.length){
-      try{const r=await _fT(_destBaseUrl+'jobs/category?populate_statuses=true',{headers:destGetHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));const cats=Array.isArray(d?.data)?d.data:(Array.isArray(d)?d:[]);destJobCategories=cats;destJobStatuses=cats.flatMap(c=>(c.job_statuses||[]).map(s=>({...s,_cat_uid:c.category_uid})));}}catch{}
+    if(formulaCount>0){
+      // ── Step 8: Build measurement token UID map (create missing categories/tokens) ──
+      const srcTokenInfoByUid={};
+      for(const f of Object.values(srcFormulasByUid))for(const entry of f.formula?.expression_map||[]){if(entry.type==='MEASUREMENT'&&entry.measurement_token_uid)srcTokenInfoByUid[entry.measurement_token_uid]={field_name:entry.field_name||entry.measurement_token_name||'',srcCategoryUid:entry.measurement_category_uid||''};}
+      const srcCatResp=await zsrc('GET','measurements/categories?sort=ASC&sort_by=created_at');
+      const srcCategoryNameByUid={},srcTokenUomByUid={};
+      for(const cat of srcCatResp?.data||[]){srcCategoryNameByUid[cat.measurement_category_uid]=cat.measurement_category_name;for(const tok of cat.measurement_tokens||[])srcTokenUomByUid[tok.measurement_token_uid]=tok.uom||'EA';}
+      const dstCatResp=await zdst('GET','measurements/categories?sort=ASC&sort_by=created_at');
+      const {tokenByName:dstTokenByName,categoryByName:dstCategoryByName}=buildMeasLookup(dstCatResp?.data||[]);
+      for(const [srcUid,{field_name,srcCategoryUid}] of Object.entries(srcTokenInfoByUid)){
+        const nameKey=field_name.toLowerCase().trim();
+        if(!nameKey)continue;
+        if(dstTokenByName[nameKey]){tokenUidMap[srcUid]=dstTokenByName[nameKey].token_uid;categoryUidMap[srcCategoryUid]=dstTokenByName[nameKey].category_uid;continue;}
+        const srcCatName=srcCategoryNameByUid[srcCategoryUid]||'Migrated Measurements';
+        const catNameKey=srcCatName.toLowerCase().trim();
+        let dstCatUid=dstCategoryByName[catNameKey];
+        if(!dstCatUid){try{const cr=await zdst('POST','measurements/categories',{measurement_category:{measurement_category_name:srcCatName}});dstCatUid=cr?.data?.measurement_category_uid;if(dstCatUid){dstCategoryByName[catNameKey]=dstCatUid;log('ok','Created measurement category: "'+srcCatName+'"');}}catch(e){try{const refreshed=await zdst('GET','measurements/categories?sort=ASC&sort_by=created_at');for(const cat of refreshed?.data||[]){if((cat.measurement_category_name||'').toLowerCase().trim()===catNameKey){dstCatUid=cat.measurement_category_uid;break;}}}catch(e2){}}}
+        if(dstCatUid){try{const uom=srcTokenUomByUid[srcUid]||'EA';const tr2=await zdst('POST','measurements/categories/'+dstCatUid+'/tokens',{measurement_token:{measurement_token_name:field_name,uom}});const dstTokUid=tr2?.data?.measurement_token_uid;if(dstTokUid){tokenUidMap[srcUid]=dstTokUid;categoryUidMap[srcCategoryUid]=dstCatUid;dstTokenByName[nameKey]={token_uid:dstTokUid,category_uid:dstCatUid};log('ok','Created measurement token: "'+field_name+'"');}}catch(e){log('error','Measurement token "'+field_name+'" — '+e.message);}}
+        else log('error','No measurement category for token "'+field_name+'" — skipped');
+      }
+      log('ok','Measurement tokens — '+Object.keys(tokenUidMap).length+' remapped');
+
+      // ── Step 9: Build formula UID map (match by key, else create with remapped expression_map) ──
+      const dstFormulas=await zAll(zdst,'invoice_estimate/cpq/formulas');
+      const dstFormulaByKey={};
+      for(const f of dstFormulas){if(f.formula_key)dstFormulaByKey[f.formula_key]=f.formula_uid;}
+      let fMatched=0,fCreated=0,fFailed=0;
+      for(const [srcUid,srcFormula] of Object.entries(srcFormulasByUid)){
+        const key=srcFormula.formula_key;
+        if(dstFormulaByKey[key]){formulaUidMap[srcUid]=dstFormulaByKey[key];fMatched++;continue;}
+        const formulaCategory=typeof srcFormula.formula_category==='object'?(srcFormula.formula_category?.category_key||'AREA_MEASUREMENT'):(srcFormula.formula_category||'AREA_MEASUREMENT');
+        const remappedExprMap=(srcFormula.formula?.expression_map||[]).map(entry=>{
+          if(entry.type==='MEASUREMENT')return{key:entry.key,type:'MEASUREMENT',field_name:entry.field_name||'',measurement_token_uid:tokenUidMap[entry.measurement_token_uid]||entry.measurement_token_uid,measurement_category_uid:categoryUidMap[entry.measurement_category_uid]||entry.measurement_category_uid};
+          if(entry.type==='CHECKLIST')return{...entry,field_uid:checklistUidMap[entry.field_uid]||entry.field_uid};
+          return{...entry};
+        });
+        try{const result=await zdst('POST','invoice_estimate/cpq/formulas',{formula:{formula_name:srcFormula.formula_name,formula_key:srcFormula.formula_key,formula_category:formulaCategory,formula_description:srcFormula.formula_description||'',formula:{expression:srcFormula.formula?.expression||'',expression_map:remappedExprMap,rounding_mechanism:srcFormula.formula?.rounding_mechanism||'NO_ROUNDING'}}});const nUid=result?.data?.formula_uid;if(nUid){formulaUidMap[srcUid]=nUid;dstFormulaByKey[key]=nUid;fCreated++;log('ok','Created formula: "'+srcFormula.formula_name+'"');}else{fFailed++;log('error','Formula "'+srcFormula.formula_name+'" — no UID returned');}}
+        catch(e){if((e.message||'').toLowerCase().includes('already exists')){try{const refreshed=await zAll(zdst,'invoice_estimate/cpq/formulas');const ex=refreshed.find(f=>f.formula_key===key);if(ex){formulaUidMap[srcUid]=ex.formula_uid;dstFormulaByKey[key]=ex.formula_uid;fMatched++;log('info','Formula "'+srcFormula.formula_name+'" already exists — reusing');}else{fFailed++;log('error','Formula "'+srcFormula.formula_name+'" — '+e.message);}}catch(e2){fFailed++;}}else{fFailed++;log('error','Formula "'+srcFormula.formula_name+'" — '+e.message);}}
+      }
+      log('ok','Formulas — '+fMatched+' matched, '+fCreated+' created, '+fFailed+' failed');
     }
-    const dc=destJobCategories.find(c=>(c.category_name||'').trim().toLowerCase()===srcCatName.toLowerCase());
-    if(dc){destJobCatUid=dc.category_uid||'';if(srcStatName){const ds=destJobStatuses.find(s=>s._cat_uid===destJobCatUid&&(s.status_name||'').trim().toLowerCase()===srcStatName.toLowerCase());if(ds) destJobStatUid=ds.status_uid||'';}}
-  }
 
-  // Step 4: STAGED create using the CPQ Importer's proven payload shapes:
-  // {proposal_template:{...}} shell, {proposal_options:[...]}, per-item {line_item:{...}}
-  // with a `product` field, then PUT to publish out of draft.
-  const tplName=full.template_name||full.proposal_template_name||rec._tpl_name||rec.template_name||'Template';
-  const tr=await _fT(_destBaseUrl+'invoice_estimate/proposal_template',{method:'POST',headers:destHdrs(),body:JSON.stringify({proposal_template:{template_name:tplName,template_description:full.template_description||'',template_type:'CPQ'}})});
-  if(!tr.ok){const e=await tr.text().catch(()=>'');return{ok:false,status:tr.status,error:'Create template: HTTP '+tr.status+': '+e.slice(0,200),uid};}
-  let td={};try{td=await tr.json();}catch{}
-  const newTplUid=td?.data?.template_uid||td?.data?.proposal_template_uid||td?.template_uid||td?.proposal_template_uid||'';
-  if(!newTplUid) return{ok:false,status:tr.status,error:'Template created but no UID returned',uid};
+    // ── Step 10: Create template shell ──
+    const ts=new Date().toISOString().slice(0,16).replace('T',' ');
+    const shell=await zdst('POST','invoice_estimate/proposal_template',{proposal_template:{template_name:srcTemplate.template_name+' (Migrated '+ts+')',template_description:srcTemplate.template_description||'',template_type:srcTemplate.template_type||'CPQ'}});
+    const newTplUid=shell?.data?.template_uid;
+    if(!newTplUid)throw new Error('No template_uid returned from shell creation');
+    log('ok','Template shell created: '+newTplUid);
 
-  // Create all options in one call
-  const optPayloads=opts.map((o,i)=>({option_name:o.option_name||('Option '+(i+1)),option_description:o.option_description||'',is_recommended:opts.length===1?true:i===1}));
-  const or_=await _fT(_destBaseUrl+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options?items_type=LINE_ITEMS',{method:'POST',headers:destHdrs(),body:JSON.stringify({proposal_options:optPayloads})});
-  let ojson={};try{ojson=await or_.json();}catch{}
-  const destOptions=Array.isArray(ojson?.data)?ojson.data:[];
+    // ── Step 11: Create options ──
+    const optResult=await zdst('POST','invoice_estimate/proposal_template/'+newTplUid+'/options?items_type=LINE_ITEMS',{proposal_options:srcOptions.map(o=>({option_name:o.option_name,option_description:o.option_description||'',option_image:o.option_image||'',promo:o.promo||'',is_recommended:o.is_recommended||false}))});
+    const newOptions=optResult?.data||[];
+    const dstOptionByName={};
+    for(const o of newOptions)dstOptionByName[o.option_name]=o.option_uid;
+    log('ok','Created '+newOptions.length+' option(s)');
 
-  // Publish out of draft
-  try{await _fT(_destBaseUrl+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid),{method:'PUT',headers:destHdrs(),body:JSON.stringify({proposal_template:{template_name:tplName,template_description:full.template_description||'',template_type:'CPQ',template_uid:newTplUid,is_draft:false}})});}catch{}
-
-  const liPath=(oUid)=>_destBaseUrl+'invoice_estimate/proposal_template/'+encodeURIComponent(newTplUid)+'/options/'+encodeURIComponent(oUid)+'/line_items?items_type=LINE_ITEMS';
-  const mapProd=(item)=>productUidMap[item.product_uid]||productUidMap[(item.product_name||'').toLowerCase().trim()]||'';
-  let optOk=0,liOk=0,liFail=0;
-  for(let oi=0;oi<opts.length;oi++){
-    const opt=opts[oi];
-    const destOpt=destOptions[oi]||destOptions.find(d=>(d.option_name||'')===(opt.option_name||''));
-    const optUid=destOpt&&(destOpt.option_uid||destOpt.proposal_option_uid);
-    if(!optUid) continue;
-    optOk++;
-    const items=(opt.line_items||opt.items||opt.proposal_line_items||[]);
-    const sectionUidByName={};
-    for(const item of items){
-      try{
-        if(isHeader(item)){
-          const secName=item.product_name||item.section_name||'';
-          const sr=await _fT(liPath(optUid),{method:'POST',headers:destHdrs(),body:JSON.stringify({line_item:{type:'HEADER',line_item_type:'HEADER',product_name:secName,section_type:'EXPANDED',show_section_total:false,show_child_prices:true}})});
-          if(sr.ok){let sd={};try{sd=await sr.json();}catch{}const s=Array.isArray(sd?.data)?sd.data[0]:sd?.data;const su=s?.section_uid||s?.line_item_uid||s?.uid||'';if(su)sectionUidByName[secName]=su;liOk++;}else liFail++;
-          continue;
-        }
-        const prodUid=mapProd(item);
-        const fUid=item.formula_uid?(_formulaUidMap[item.formula_uid]||''):(item.cpq_formula_uid?(_formulaUidMap[item.cpq_formula_uid]||''):'');
-        const secName=item.section_name||item._section||'';
-        // Zuper only accepts quantity_type FORMULA or FIXED (never MANUAL).
-        const useFormula=!!fUid&&String(item.quantity_type||'').toUpperCase()==='FORMULA';
-        const li={type:'ITEM',line_item_type:'ITEM',product_name:item.product_name||'',product_type:item.product_type||'',quantity:item.quantity||1,quantity_type:useFormula?'FORMULA':'FIXED'};
-        if(prodUid) li.product=prodUid;
-        if(useFormula) li.formula=fUid;
-        if(secName&&sectionUidByName[secName]){li.section_uid=sectionUidByName[secName];li.section_name=secName;}
-        let lr=await _fT(liPath(optUid),{method:'POST',headers:destHdrs(),body:JSON.stringify({line_item:li})});
-        if(!lr.ok&&useFormula){const fb={...li,quantity_type:'FIXED'};delete fb.formula;lr=await _fT(liPath(optUid),{method:'POST',headers:destHdrs(),body:JSON.stringify({line_item:fb})});}
-        if(lr.ok) liOk++; else liFail++;
-      }catch{liFail++;}
-      await new Promise(r=>setTimeout(r,60));
+    // ── Step 12: Add line items ──
+    const liPath=(oUid)=>'invoice_estimate/proposal_template/'+newTplUid+'/options/'+oUid+'/line_items?items_type=LINE_ITEMS';
+    let itemsOk=0,itemsFail=0;
+    const ruleQueue=[];
+    const buildRemappedAssoc=(associatedProducts)=>{
+      const result=[];
+      for(const ap of associatedProducts||[]){
+        const dstApUid=productUidMap[prodUidFrom(ap.product)];
+        if(!dstApUid)continue;
+        const apEntry={line_item_type:'ITEM',product_name:ap.product_name,product:dstApUid,product_type:ap.product_type||'PARTS',quantity_type:ap.quantity_type||'FIXED',quantity:ap.quantity||1};
+        const srcFUid=typeof ap.formula==='object'?ap.formula?.formula_uid:ap.formula;
+        if(srcFUid){const dstFUid=formulaUidMap[srcFUid];if(dstFUid){apEntry.formula=dstFUid;apEntry.quantity_type='FORMULA';}else apEntry.quantity_type='FIXED';}
+        if(ap.cpq_rule?.rules?.conditions?.length){const {remappedConditions,skipped}=remapRuleConditions(ap.cpq_rule,checklistUidMap,tokenUidMap,categoryUidMap);if(skipped)log('info','rule on "'+ap.product_name+'": '+skipped+' condition(s) not found');if(remappedConditions.length)apEntry.cpq_rule={is_enabled:ap.cpq_rule.is_enabled!==undefined?ap.cpq_rule.is_enabled:true,rule_name:ap.cpq_rule.rule_name||'Conditional Rule',rules:{condition_type:ap.cpq_rule.rules?.condition_type||'AND',conditions:remappedConditions,success_actions:ap.cpq_rule.rules?.success_actions||[],failure_actions:ap.cpq_rule.rules?.failure_actions||[]}};}
+        result.push(apEntry);
+      }
+      return result;
+    };
+    for(const srcOption of srcOptions){
+      const dstOptionUid=dstOptionByName[srcOption.option_name];
+      if(!dstOptionUid){log('error','Option "'+srcOption.option_name+'" not found — skipping');continue;}
+      for(const item of (srcOption.line_items||[])){
+        try{
+          if(item.line_item_type==='HEADER'){
+            await zdst('POST',liPath(dstOptionUid),{line_item:{type:'HEADER',line_item_type:'HEADER',product_name:item.product_name}});itemsOk++;
+          }else if(item.line_item_type==='ITEM'&&item.product_type==='BUNDLE'){
+            const dstBundleUid=productUidMap[prodUidFrom(item.product)];
+            if(!dstBundleUid){log('error','BUNDLE "'+item.product_name+'" — no dst UID — skipped');itemsFail++;continue;}
+            const remapped=buildRemappedAssoc(item.associated_products);
+            await zdst('POST',liPath(dstOptionUid),{line_item:{type:'ITEM',line_item_type:'ITEM',product_name:item.product_name,product:dstBundleUid,product_type:'BUNDLE',pricing_level:item.pricing_level||'ROLLUP',quantity_type:'FIXED',quantity:item.quantity||1,associated_products:remapped}});
+            log('ok','BUNDLE "'+item.product_name+'" — '+remapped.length+' product(s)');itemsOk++;
+          }else if(item.line_item_type==='ITEM'){
+            const dstProdUid=productUidMap[prodUidFrom(item.product)];
+            if(!dstProdUid){log('error','"'+item.product_name+'" — no dst UID — skipped');itemsFail++;continue;}
+            const payload={line_item:{type:'ITEM',line_item_type:'ITEM',product_name:item.product_name,product:dstProdUid,product_type:item.product_type||'PARTS',quantity_type:item.quantity_type||'FIXED',quantity:item.quantity||1}};
+            const srcFUid=typeof item.formula==='object'?item.formula?.formula_uid:item.formula;
+            if(srcFUid){const dstFUid=formulaUidMap[srcFUid];if(dstFUid){payload.line_item.formula=dstFUid;payload.line_item.quantity_type='FORMULA';}else payload.line_item.quantity_type='FIXED';}
+            const liRes=await zdst('POST',liPath(dstOptionUid),payload);
+            const dstLineItemUid=liRes?.data?.line_item_uid;itemsOk++;
+            if(dstLineItemUid&&item.cpq_rule?.rules?.conditions?.length)ruleQueue.push({dstLineItemUid,dstOptionUid,lineItemPayload:JSON.parse(JSON.stringify(payload)),srcRule:item.cpq_rule,productName:item.product_name});
+          }
+        }catch(e){log('error','"'+item.product_name+'" — '+e.message);itemsFail++;}
+        await new Promise(r=>setTimeout(r,50));
+      }
     }
-  }
+    log('ok','Line items — '+itemsOk+' added, '+itemsFail+' failed');
 
-  const parts=[optOk+'/'+opts.length+' option(s)'];
-  if(liOk) parts.push(liOk+' line item(s)');
-  if(liFail) parts.push(liFail+' failed');
-  if(prodCreated) parts.push(prodCreated+' product(s) created');
-  if(prodMatched) parts.push(prodMatched+' matched');
-  if(!destJobCatUid&&srcCatName) parts.push('job category "'+srcCatName+'" not found');
-  return{ok:true,status:201,uid,warn:parts.join(' | ')};
+    // ── Step 12.5: Apply cpq_rules to non-bundle items ──
+    let rulesOk=0,rulesFailed=0,rulesSkipped=0;
+    for(const {dstLineItemUid,dstOptionUid,lineItemPayload,srcRule,productName} of ruleQueue){
+      const {remappedConditions,skipped}=remapRuleConditions(srcRule,checklistUidMap,tokenUidMap,categoryUidMap);
+      if(skipped)log('info','"'+productName+'": '+skipped+' condition(s) not found');
+      if(!remappedConditions.length){rulesSkipped++;continue;}
+      try{await zdst('PUT','invoice_estimate/proposal_template/'+newTplUid+'/options/'+dstOptionUid+'/line_items/'+dstLineItemUid+'?items_type=LINE_ITEMS',{line_item:{...lineItemPayload.line_item,cpq_rule:{is_enabled:srcRule.is_enabled!==undefined?srcRule.is_enabled:true,rule_name:srcRule.rule_name||'Conditional Rule',rules:{condition_type:srcRule.rules?.condition_type||'AND',conditions:remappedConditions,success_actions:srcRule.rules?.success_actions||[],failure_actions:srcRule.rules?.failure_actions||[]}}}});rulesOk++;}
+      catch(e){rulesFailed++;log('error','Rule for "'+productName+'" — '+e.message);}
+      await new Promise(r=>setTimeout(r,50));
+    }
+    if(ruleQueue.length)log('ok','Rules — '+rulesOk+' applied, '+rulesFailed+' failed, '+rulesSkipped+' skipped');
+
+    // ── Step 13: Finalize (publish + triggers) ──
+    await zdst('PUT','invoice_estimate/proposal_template/'+newTplUid,{proposal_template:{template_name:srcTemplate.template_name+' (Migrated '+ts+')',template_description:srcTemplate.template_description||'',template_type:srcTemplate.template_type||'CPQ',template_uid:newTplUid,cpq_config:{trigger:remappedTriggers},layout_template_uid:null,is_draft:false}});
+    log('ok','Template finalized: '+newTplUid);
+
+    const parts=[newOptions.length+' option(s)',itemsOk+' item(s)'];
+    if(itemsFail)parts.push(itemsFail+' failed');
+    if(prodCreated)parts.push(prodCreated+' product(s) created');
+    if(prodMatched)parts.push(prodMatched+' matched');
+    if(ruleQueue.length)parts.push(rulesOk+' rule(s)');
+    return{ok:true,status:201,uid,warn:parts.join(' | ')+' → '+newTplUid};
+
+  }catch(err){
+    return{ok:false,status:err.status||'err',uid,error:err.message};
+  }
 }
 
 function buildProposalTemplatePayload(rec,productUidMap,destJobCatUid,destJobStatUid){
