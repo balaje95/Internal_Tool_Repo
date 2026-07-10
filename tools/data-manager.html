@@ -2690,6 +2690,34 @@ async function ensureFormulasExist(srcFormulas){
     if(f.formula_name) destByName[(f.formula_name||'').toLowerCase().trim()]=f;
   }
   let created=0,matched=0;
+  const _s=(v)=>(typeof v==='string'&&v.trim())?v.trim():'';
+  // Lazy measurement-token remap: source→destination by field name, creating missing
+  // categories/tokens. Only built if a formula actually references MEASUREMENT tokens.
+  let _measReady=false;const _dstTokenByName={},_dstCategoryByName={},_srcCatNameByUid={},_srcTokenUomByUid={};
+  async function ensureMeasMaps(){
+    if(_measReady) return; _measReady=true;
+    try{const sc=await fetch(_baseUrl+'measurements/categories?sort=ASC&sort_by=created_at',{headers:getHdrs()});if(sc.ok){const scd=await sc.json().catch(()=>({}));for(const cat of (scd?.data||[])){_srcCatNameByUid[cat.measurement_category_uid]=cat.measurement_category_name;for(const t of cat.measurement_tokens||[])_srcTokenUomByUid[t.measurement_token_uid]=t.uom||'EA';}}}catch(e){}
+    try{const dc=await fetch(_destBaseUrl+'measurements/categories?sort=ASC&sort_by=created_at',{headers:destGetHdrs()});if(dc.ok){const dcd=await dc.json().catch(()=>({}));for(const cat of (dcd?.data||[])){const ck=(cat.measurement_category_name||'').toLowerCase().trim();if(cat.measurement_category_uid)_dstCategoryByName[ck]=cat.measurement_category_uid;for(const t of cat.measurement_tokens||[])_dstTokenByName[(t.measurement_token_name||'').toLowerCase().trim()]={token_uid:t.measurement_token_uid,category_uid:cat.measurement_category_uid};}}}catch(e){}
+  }
+  async function remapExprMap(exprMap){
+    const out=[];
+    for(const entry of exprMap||[]){
+      if(entry.type==='MEASUREMENT'&&entry.measurement_token_uid){
+        await ensureMeasMaps();
+        const nameKey=(entry.field_name||entry.measurement_token_name||'').toLowerCase().trim();
+        let dstTok=nameKey?_dstTokenByName[nameKey]:null;
+        if(!dstTok&&nameKey){
+          const srcCatName=_srcCatNameByUid[entry.measurement_category_uid]||'Migrated Measurements';
+          const catKey=srcCatName.toLowerCase().trim();
+          let dstCatUid=_dstCategoryByName[catKey];
+          if(!dstCatUid){try{const cr=await fetch(_destBaseUrl+'measurements/categories',{method:'POST',headers:destHdrs(),body:JSON.stringify({measurement_category:{measurement_category_name:srcCatName}})});if(cr.ok){const cd=await cr.json().catch(()=>({}));dstCatUid=cd?.data?.measurement_category_uid;if(dstCatUid)_dstCategoryByName[catKey]=dstCatUid;}}catch(e){}}
+          if(dstCatUid){try{const uom=_srcTokenUomByUid[entry.measurement_token_uid]||'EA';const tr=await fetch(_destBaseUrl+'measurements/categories/'+dstCatUid+'/tokens',{method:'POST',headers:destHdrs(),body:JSON.stringify({measurement_token:{measurement_token_name:entry.field_name||entry.measurement_token_name||'Token',uom}})});if(tr.ok){const td=await tr.json().catch(()=>({}));const tu=td?.data?.measurement_token_uid;if(tu){dstTok={token_uid:tu,category_uid:dstCatUid};_dstTokenByName[nameKey]=dstTok;}}}catch(e){}}
+        }
+        out.push({key:entry.key,type:'MEASUREMENT',field_name:entry.field_name||'',measurement_token_uid:(dstTok&&dstTok.token_uid)||entry.measurement_token_uid,measurement_category_uid:(dstTok&&dstTok.category_uid)||entry.measurement_category_uid});
+      }else out.push({...entry});
+    }
+    return out;
+  }
   for(const sf of srcFormulas){
     const srcUid=sf.formula_uid||'';
     if(!srcUid||_formulaUidMap[srcUid]) continue;
@@ -2714,57 +2742,42 @@ async function ensureFormulasExist(srcFormulas){
       const fr=await fetch(_baseUrl+'invoice_estimate/cpq/formulas/'+srcUid,{headers:getHdrs()});
       if(fr.ok){ const fd=await fr.json().catch(()=>({})); full=fd?.data||fd||sf; }
     }catch(e){}
-    // Resolve the category to a plain STRING. The source `formula_category` may be an
-    // object ({formula_category_name/category_name/name, formula_category_uid/category_uid})
-    // or a bare string. The API rejects an object — it must receive a string.
-    const _s = (v)=> (typeof v==='string' && v.trim()) ? v.trim() : '';
-    const cat = full.formula_category ?? sf.formula_category ?? full.category ?? sf.category ?? null;
-    let catName='', catUid='';
-    if(cat && typeof cat==='object'){
-      catName = _s(cat.formula_category_name) || _s(cat.category_name) || _s(cat.name) || '';
-      catUid  = _s(cat.formula_category_uid)  || _s(cat.category_uid)  || _s(cat.uid)  || '';
-    } else if(typeof cat==='string'){
-      const s=cat.trim();
-      if(s.length>=20 && !/\s/.test(s)) catUid=s; else catName=s; // long no-space token → uid, else a name
-    }
-    // Fall back to any flat fields on the record
-    if(!catName) catName = _s(full.formula_category_name) || _s(sf.formula_category_name);
-    if(!catUid)  catUid  = _s(full.formula_category_uid)  || _s(sf.formula_category_uid);
-    let formulaObj = full.formula || sf.formula || {};
-    if(!formulaObj || typeof formulaObj!=='object' || !Object.keys(formulaObj).length){
-      const expr=full.formatted_expression||sf.formatted_expression||full.expression||sf.expression||'';
-      if(expr) formulaObj={formatted_expression:expr};
-    }
-    const base={
+    // formula_category must be the category KEY string (e.g. AREA_MEASUREMENT / ACCESSORY /
+    // ROUNDING) — the source `formula_category` is an object; use its category_key.
+    const cat = full.formula_category ?? sf.formula_category ?? null;
+    let catKey='';
+    if(cat && typeof cat==='object') catKey = _s(cat.category_key) || _s(cat.formula_category_key) || '';
+    else if(typeof cat==='string') catKey = _s(cat);
+    if(!catKey) catKey = _s(full.formula_category_key) || _s(sf.formula_category_key);
+    if(!catKey) catKey = 'AREA_MEASUREMENT'; // safe default (valid category key)
+    const fObj = (full.formula && typeof full.formula==='object') ? full.formula : ((sf.formula && typeof sf.formula==='object') ? sf.formula : {});
+    const expression = fObj.expression || fObj.formatted_expression || full.formatted_expression || sf.formatted_expression || '';
+    const remappedMap = await remapExprMap(fObj.expression_map || []);
+    // Flat payload shape — matches the API spec (formula_category as a string key).
+    const payload = {
       formula_name:        full.formula_name||sf.formula_name||'',
       formula_key:         full.formula_key||sf.formula_key||'',
+      formula_category:    catKey,
       formula_description: full.formula_description||sf.formula_description||'',
-      formula:             formulaObj,
+      formula: { expression, expression_map: remappedMap, rounding_mechanism: fObj.rounding_mechanism || 'NO_ROUNDING' },
     };
-    // formula_category must always be a STRING. Try the name first (most portable across
-    // accounts), then the uid, then as a last resort omit it. Every value below is a string.
-    const variants=[];
-    if(catName){ variants.push({ ...base, formula_category: catName }); }
-    if(catUid){  variants.push({ ...base, formula_category: catUid }); }
-    if(catName&&catUid){ variants.push({ ...base, formula_category: catName, formula_category_uid: catUid, is_custom:true }); }
-    variants.push({ ...base }); // no category — mirrors the proven package-import create path
-    console.log('[ZDM] formula "'+base.formula_name+'" → category name:"'+catName+'" uid:"'+catUid+'" ('+variants.length+' variant(s))');
-    let done=false, lastErr='';
-    for(const payload of variants){
-      try{
-        const r=await fetch(_destBaseUrl+'invoice_estimate/cpq/formulas',{method:'POST',headers:destHdrs(),body:JSON.stringify(payload)});
-        let raw=''; let d={}; try{raw=await r.text();d=JSON.parse(raw);}catch{d={message:raw};}
-        if(r.ok){
-          const newUid=d?.data?.formula_uid||d?.formula_uid||'';
-          if(newUid){_formulaUidMap[srcUid]=newUid;created++;destByKey[sf.formula_key]={formula_uid:newUid};done=true;break;}
-          lastErr='created but no formula_uid returned: '+raw.slice(0,150);
-        }else{
-          lastErr='HTTP '+r.status+': '+(d?.message||d?.error||d?.info||raw.slice(0,200)||'(empty response)');
-          if(r.status!==400&&r.status!==422) break; // only cycle shapes on validation errors
-        }
-      }catch(e){ lastErr='Network: '+e.message; break; }
-    }
-    if(!done){ window._formulaCreateErr[srcUid]=lastErr||'unknown error'; console.warn('[ZDM] formula create failed —',sf.formula_name,'—',lastErr); }
+    console.log('[ZDM] formula "'+payload.formula_name+'" → category_key:"'+catKey+'", '+remappedMap.length+' token(s)');
+    try{
+      const r=await fetch(_destBaseUrl+'invoice_estimate/cpq/formulas',{method:'POST',headers:destHdrs(),body:JSON.stringify(payload)});
+      let raw=''; let d={}; try{raw=await r.text();d=JSON.parse(raw);}catch{d={message:raw};}
+      if(r.ok){
+        const newUid=d?.data?.formula_uid||d?.formula_uid||'';
+        if(newUid){_formulaUidMap[srcUid]=newUid;created++;destByKey[sf.formula_key]={formula_uid:newUid};}
+        else window._formulaCreateErr[srcUid]='created but no formula_uid returned: '+raw.slice(0,150);
+      }else if((d?.message||'').toLowerCase().includes('already exist')){
+        // Race/duplicate — re-fetch and match by key
+        try{const refreshed=await fetchDestFormulas();const ex=refreshed.find(f=>f.formula_key===payload.formula_key);if(ex){_formulaUidMap[srcUid]=ex.formula_uid;matched++;}}catch(e){}
+        if(!_formulaUidMap[srcUid]) window._formulaCreateErr[srcUid]='HTTP '+r.status+': '+(d?.message||raw.slice(0,200));
+      }else{
+        window._formulaCreateErr[srcUid]='HTTP '+r.status+': '+(d?.message||d?.error||d?.info||raw.slice(0,200)||'(empty response)');
+      }
+    }catch(e){ window._formulaCreateErr[srcUid]='Network: '+e.message; }
+    if(!_formulaUidMap[srcUid]&&window._formulaCreateErr[srcUid]) console.warn('[ZDM] formula create failed —',sf.formula_name,'—',window._formulaCreateErr[srcUid]);
   }
   console.log('[ZDM] Formulas: matched='+matched+' created='+created+' total_map='+Object.keys(_formulaUidMap).length);
 }
