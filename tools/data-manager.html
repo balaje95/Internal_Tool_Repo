@@ -2753,7 +2753,8 @@ async function ensureFormulasExist(srcFormulas){
     const fObj = (full.formula && typeof full.formula==='object') ? full.formula : ((sf.formula && typeof sf.formula==='object') ? sf.formula : {});
     const expression = fObj.expression || fObj.formatted_expression || full.formatted_expression || sf.formatted_expression || '';
     const remappedMap = await remapExprMap(fObj.expression_map || []);
-    // Flat payload shape — matches the API spec (formula_category as a string key).
+    // The API validates body.formula.* — the payload must be WRAPPED in { formula: {...} }
+    // with formula_category as a string key and a nested formula object.
     const payload = {
       formula_name:        full.formula_name||sf.formula_name||'',
       formula_key:         full.formula_key||sf.formula_key||'',
@@ -2763,7 +2764,7 @@ async function ensureFormulasExist(srcFormulas){
     };
     console.log('[ZDM] formula "'+payload.formula_name+'" → category_key:"'+catKey+'", '+remappedMap.length+' token(s)');
     try{
-      const r=await fetch(_destBaseUrl+'invoice_estimate/cpq/formulas',{method:'POST',headers:destHdrs(),body:JSON.stringify(payload)});
+      const r=await fetch(_destBaseUrl+'invoice_estimate/cpq/formulas',{method:'POST',headers:destHdrs(),body:JSON.stringify({formula:payload})});
       let raw=''; let d={}; try{raw=await r.text();d=JSON.parse(raw);}catch{d={message:raw};}
       if(r.ok){
         const newUid=d?.data?.formula_uid||d?.formula_uid||'';
