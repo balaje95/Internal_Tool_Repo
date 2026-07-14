@@ -203,6 +203,8 @@
 // button carries data-theme-toggle so it wires up automatically.
 
 const ZUPER_COLS = ["Product Name","Section","Product No","Product Type","UOM","Unit Price ($)","Quantity Type","Formula Name","Formula (Human-Readable)","Rounding","Rule Summary"];
+// Columns that must be present in an uploaded sheet before an import is allowed.
+const REQUIRED_COLS = ["Product Name","Section","Product Type","UOM","Unit Price ($)","Quantity Type"];
 
 // Region detection now comes from the shared assets/zuper-connect.js (all known DCs).
 
@@ -266,15 +268,19 @@ function parseWorkbook(){
     const colIdx = {};
     header.forEach((h, i) => colIdx[h] = i);
 
+    // Required columns missing from this sheet's header (blocks import).
+    const missingCols = REQUIRED_COLS.filter(c => !(c in colIdx));
+
     const items = [];
     const sectionsSeen = [];
+    const skippedRows = []; // Product Name present but no Section (silently dropped before)
     for (let r = 1; r < rows.length; r++){
       const row = rows[r];
       if (!row || !row.length) continue;
       const productName = row[colIdx['Product Name']];
       const section = row[colIdx['Section']];
       if (!productName) continue;
-      if (!section) continue; // ALL-CAPS group-label row; skip
+      if (!section){ skippedRows.push(String(productName)); continue; } // group-label / sectionless row
       if (!sectionsSeen.includes(section)) sectionsSeen.push(section);
       items.push({
         productName: String(productName),
@@ -290,7 +296,7 @@ function parseWorkbook(){
         ruleSummary: row[colIdx['Rule Summary']] || null,
       });
     }
-    parsedTabs[name] = { items, sections: sectionsSeen };
+    parsedTabs[name] = { items, sections: sectionsSeen, missingCols, skippedRows };
   }
   renderTabsList();
 }
@@ -509,6 +515,28 @@ async function runImport(dryRun){
   log(`Account: ${company}  |  ${base}`, 'info');
   log(dryRun ? '─── VALIDATION RUN (reads only, no writes) ───' : '─── LIVE IMPORT ───', 'info');
 
+  // ── Sheet validation: block if a selected tab is missing required columns ──
+  const _selTabs = [...selectedTabs];
+  let _hadMissing = false;
+  for (const name of _selTabs){
+    const tab = parsedTabs[name];
+    if (tab?.missingCols?.length){
+      _hadMissing = true;
+      log(`✗ Sheet "${name}" is missing required column(s): ${tab.missingCols.join(', ')}`, 'err');
+    }
+  }
+  if (_hadMissing){
+    log('Import blocked — fix the sheet columns above and re-upload. Required: ' + REQUIRED_COLS.join(', '), 'err');
+    return;
+  }
+  // ── Warn about rows dropped for having a Product Name but no Section ──
+  for (const name of _selTabs){
+    const sk = parsedTabs[name]?.skippedRows || [];
+    if (sk.length){
+      log(`⚠ Sheet "${name}": ${sk.length} row(s) skipped (Product Name but no Section): ${sk.slice(0,8).join(', ')}${sk.length>8?'…':''}`, 'info');
+    }
+  }
+
   // ── Category mode ──
   const catMode = document.querySelector('input[name="catMode"]:checked')?.value || 'auto';
   const catSelect = el('categorySelect');
@@ -712,6 +740,9 @@ async function runImport(dryRun){
       min_quantity:     1,
     };
     if (item.productNo) prod.product_id = String(item.productNo);
+    // Rounding (NONE/ROUND/CEIL/FLOOR) from the sheet — best-effort field, logged
+    // rather than silently dropped so a wrong field name surfaces in testing.
+    if (item.rounding) prod.rounding = String(item.rounding).toUpperCase();
     const body = { product: prod, vendor: [] };
 
     const r = await apiReq(base, apiKey, 'product', { method: 'POST', body: JSON.stringify(body) });
@@ -822,6 +853,7 @@ async function runImport(dryRun){
             quantity:      1,
             quantity_type: quantityType,
             ...(formulaUid                  ? { formula: formulaUid }                                              : {}),
+            ...(item.rounding               ? { rounding: String(item.rounding).toUpperCase() }                   : {}),
             ...(sectionUidMap[item.section] ? { section_uid: sectionUidMap[item.section], section_name: item.section } : {}),
           },
         };
