@@ -318,6 +318,7 @@ input[type=checkbox]{accent-color:var(--primary)}
   </div>
   <div style="display:flex;align-items:center;gap:10px">
     <span id="badge">○ Not connected</span>
+    <button class="theme-btn" onclick="openDeleteHistory()" title="Recover recently deleted records (kept 10 days)">🕘 History <span id="hist-count" style="display:none;background:var(--primary);color:#fff;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:2px">0</span></button>
     <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">🌙 Dark</button>
   </div>
 </div>
@@ -357,6 +358,25 @@ input[type=checkbox]{accent-color:var(--primary)}
   <span id="undo-msg" style="font-size:.83rem;font-weight:600;flex:1"></span>
   <button class="btn btn-p" style="font-size:.78rem;padding:5px 14px" onclick="doUndelete()">↩ Undo</button>
   <button class="btn btn-o" style="font-size:.78rem;padding:5px 10px" onclick="clearUndoBuffer()">✕</button>
+</div>
+
+<!-- Delete History & Recovery overlay (persistent 10-day recycle bin) -->
+<div id="delhist-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:flex-start;justify-content:center;padding:40px 16px" onclick="if(event.target===this)closeDeleteHistory()">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:940px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,.3)">
+    <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border)">
+      <div style="font-weight:700;font-size:1rem;flex:1">🕘 Delete History <span style="font-weight:400;color:var(--text-sub);font-size:.8rem">— recoverable for 10 days, then permanently purged</span></div>
+      <select id="delhist-fmod" class="inp" style="max-width:170px;font-size:.8rem" onchange="renderDeleteHistory()"></select>
+      <select id="delhist-facct" class="inp" style="max-width:170px;font-size:.8rem" onchange="renderDeleteHistory()"></select>
+      <button class="btn btn-o" style="font-size:.8rem;padding:5px 10px" onclick="closeDeleteHistory()">✕</button>
+    </div>
+    <div id="delhist-body" style="overflow:auto;flex:1;padding:0"></div>
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;border-top:1px solid var(--border)">
+      <button class="btn btn-p" style="font-size:.8rem" onclick="recoverSelectedHistory()">↩ Recover selected</button>
+      <button class="btn btn-o" style="font-size:.8rem" onclick="exportDeleteHistory()">⬇ Export (JSON)</button>
+      <span style="flex:1"></span>
+      <span id="delhist-summary" style="font-size:.78rem;color:var(--text-sub)"></span>
+    </div>
+  </div>
 </div>
 
 <div class="wrap">
@@ -2020,8 +2040,10 @@ async function runEngine(uids,dry){
   $('prog-lbl').textContent=cancelled?'⚠ Cancelled at '+done+'/'+uids.length+' — '+ok+' OK, '+fail+' failed':'✓ Complete — '+ok+' OK, '+fail+' failed';
   if(dry&&okUids.length&&!cancelled){dryCtx={uids:okUids};$('proceed-btn').textContent='→ DELETE '+okUids.length+' found record(s) — REAL DELETE';$('proceed-btn').style.display='inline-flex';}
   if(!dry){const deleted=new Set(okUids);const deletedRecs=allRecs.filter(r=>deleted.has(String(r[uidField]||'')));allRecs=allRecs.filter(r=>!deleted.has(String(r[uidField]||'')));filtRecs=[...allRecs];deleted.forEach(u=>selUids.delete(u));$('s-total').textContent=allRecs.length;updSel();renderTable();
-    // 8. Start undo buffer
+    // 8. Start undo buffer + persist to the 10-day Delete History (all modules,
+    // even ones without a short-window undo, and even on cancel for what got deleted).
     if(ok>0&&!cancelled) startUndoBuffer(deletedRecs,cfg||{});
+    if(ok>0) recordDeleteHistory(deletedRecs,cfg||{});
     if(ok>0&&!cancelled){const d=document.createElement('div');d.style='margin-top:10px';d.innerHTML='<button class="btn btn-o" onclick="doFetch();hideDelete()">🔄 Re-fetch Records</button>';$('log').appendChild(d);}
   }
   if(failUids_.length&&!cancelled){failUids=[...failUids_];$('retry-btn').textContent='↩ Retry '+failUids.length+' failed';$('retry-btn').style.display='inline-flex';}
@@ -5255,27 +5277,216 @@ function clearUndoBuffer(){
 }
 async function doUndelete(){
   if(!_undoBuffer.length) return;
-  const cfg=MODULES[_undoModule||modKey()];
+  const mod=_undoModule||modKey();
+  const cfg=MODULES[mod];
   if(!cfg) return;
   const btn=$('undo-banner').querySelector('.btn-p');
   if(btn){btn.disabled=true;btn.textContent='↩ Restoring…';}
-  let ok=0;
+  let ok=0;const recoveredUids=[];
   for(const rec of _undoBuffer){
     try{
-      const payload=typeof MIGRATE_MODULES[_undoModule]?.buildPayload==='function'
-        ?MIGRATE_MODULES[_undoModule].buildPayload(rec)
+      const payload=typeof MIGRATE_MODULES[mod]?.buildPayload==='function'
+        ?MIGRATE_MODULES[mod].buildPayload(rec)
         :cleanRecord(rec,cfg.uid[0]);
-      const epDef=MIGRATE_MODULES[_undoModule]?.createEndpoint;
-      const ep=(typeof epDef==='function'?epDef(rec):epDef)||_undoModule||'';
+      const epDef=MIGRATE_MODULES[mod]?.createEndpoint;
+      const ep=(typeof epDef==='function'?epDef(rec):epDef)||mod||'';
       const res=await fetch(baseUrl()+ep,{method:'POST',headers:hdrs(),body:JSON.stringify(payload)});
-      if(res.ok) ok++;
-    }catch{}
+      if(res.ok){ok++;recoveredUids.push(_recUid(rec,cfg));}
+    }catch(e){}
   }
   const total=_undoBuffer.length;
+  // Records restored via quick-undo are no longer "deleted" — drop them from the
+  // persistent history so they can't be recovered again (which would duplicate them).
+  _removeHistoryFor(mod,recoveredUids);
   clearUndoBuffer();
   showMsg('fetch-msg','↩ Restored '+ok+' of '+total+' record(s). Re-fetching…','ok');
   await doFetch();
 }
+
+// ════════════════════════════════════════════════════════════════════════
+//  DELETE HISTORY & RECOVERY  — persistent 10-day recycle bin
+//  Every LIVE delete is snapshotted to localStorage. Records can be recovered
+//  (re-created) for RETENTION_DAYS; older entries are permanently purged.
+// ════════════════════════════════════════════════════════════════════════
+const RETENTION_DAYS=10;
+const DAY_MS=86400000;
+const LS_DEL_HIST='zdm_delete_history_v1';
+let _histSeq=0;
+
+function _histLog(msg){try{console&&console.warn&&console.warn('[ZDM history] '+msg);}catch(e){}}
+function _delHistLoad(){try{return JSON.parse(localStorage.getItem(LS_DEL_HIST)||'[]')||[];}catch(e){_histLog('load failed: '+e.message);return[];}}
+function _delHistSave(list){
+  try{localStorage.setItem(LS_DEL_HIST,JSON.stringify(list));return true;}
+  catch(e){
+    // Quota exceeded — drop oldest entries until it fits, then warn.
+    const arr=[...list].sort((a,b)=>a.deletedAt-b.deletedAt);
+    while(arr.length){
+      arr.shift();
+      try{localStorage.setItem(LS_DEL_HIST,JSON.stringify(arr));
+          _histLog('quota exceeded — trimmed to '+arr.length+' entries');
+          if(typeof showMsg==='function')showMsg('fetch-msg','⚠ Delete-history storage was full — trimmed oldest entries.','err');
+          return true;}catch(e2){}
+    }
+    _histLog('quota exceeded and could not save any entries');
+    return false;
+  }
+}
+// Uid of a record given its module cfg (falls back to the global uidField).
+function _recUid(rec,cfg){
+  if(!rec) return '';
+  const fields=(cfg&&cfg.uid)||(typeof uidField!=='undefined'&&uidField?[uidField]:[]);
+  for(const f of fields){if(f&&rec[f])return String(rec[f]);}
+  return (typeof uidField!=='undefined'&&uidField)?String(rec[uidField]||''):'';
+}
+// Best-effort human label for a deleted record.
+function _histName(rec){
+  if(!rec||typeof rec!=='object') return '(record)';
+  const f=['name','customer_name','full_name','title','product_name','asset_name',
+    'work_order_number','po_number','request_number','email','category_name',
+    'status_name','template_name','display_name','property_name'];
+  for(const k of f){if(rec[k])return String(rec[k]);}
+  if(rec.first_name||rec.last_name) return ((rec.first_name||'')+' '+(rec.last_name||'')).trim();
+  const c=rec.customer||rec.property||{};
+  if(c.customer_first_name||c.customer_last_name) return ((c.customer_first_name||'')+' '+(c.customer_last_name||'')).trim();
+  return '(unnamed)';
+}
+// Which modules have a known re-create path (others are best-effort).
+function _histRecoverable(mod){return (typeof UNDO_MODULES!=='undefined'&&UNDO_MODULES.has(mod))||!!(typeof MIGRATE_MODULES!=='undefined'&&MIGRATE_MODULES[mod]);}
+
+// Called from runEngine after a LIVE delete succeeds (any module).
+function recordDeleteHistory(deletedRecs,cfg){
+  if(!deletedRecs||!deletedRecs.length) return;
+  const now=Date.now();
+  const mod=modKey();
+  const acct=($('s-account')&&$('s-account').textContent)||'';
+  const base=(typeof baseUrl==='function'&&baseUrl())||'';
+  const region=base.replace(/^https?:\/\//,'').replace(/\.zuperpro\.com.*$/,'');
+  const emp=(($('empid')&&$('empid').value)||'').trim();
+  const list=_delHistLoad();
+  for(const rec of deletedRecs){
+    list.push({
+      id:mod+'|'+_recUid(rec,cfg)+'|'+now+'|'+(_histSeq++),
+      module:mod, moduleLabel:(cfg&&cfg.label)||mod,
+      uid:_recUid(rec,cfg), name:_histName(rec), record:rec,
+      account:acct, base:base, region:region, employee:emp, deletedAt:now
+    });
+  }
+  if(_delHistSave(list)) updateHistBadge();
+}
+function _removeHistoryFor(mod,uids){
+  if(!uids||!uids.length) return;
+  const set=new Set(uids.map(String));
+  const list=_delHistLoad().filter(e=>!(e.module===mod&&set.has(String(e.uid))));
+  _delHistSave(list); updateHistBadge();
+}
+// Remove entries older than the retention window ("permanently deleted").
+function purgeDeleteHistory(){
+  const now=Date.now();
+  const list=_delHistLoad();
+  const kept=list.filter(e=>(now-e.deletedAt)<=RETENTION_DAYS*DAY_MS);
+  if(kept.length!==list.length) _delHistSave(kept);
+  return kept;
+}
+function daysLeft(e){return Math.max(0,Math.ceil((RETENTION_DAYS*DAY_MS-(Date.now()-e.deletedAt))/DAY_MS));}
+function updateHistBadge(){const n=purgeDeleteHistory().length;const b=$('hist-count');if(b){b.textContent=n;b.style.display=n?'inline-flex':'none';}}
+
+function openDeleteHistory(){purgeDeleteHistory();renderDeleteHistory();const o=$('delhist-overlay');if(o)o.style.display='flex';}
+function closeDeleteHistory(){const o=$('delhist-overlay');if(o)o.style.display='none';}
+
+function _fillHistFilters(list){
+  const fm=$('delhist-fmod'),fa=$('delhist-facct');if(!fm||!fa)return;
+  const mods=[...new Set(list.map(e=>e.moduleLabel||e.module))].sort();
+  const accts=[...new Set(list.map(e=>e.account).filter(Boolean))].sort();
+  const cur=fm.value,cua=fa.value;
+  fm.innerHTML='<option value="">All modules</option>'+mods.map(m=>'<option>'+esc(m)+'</option>').join('');
+  fa.innerHTML='<option value="">All accounts</option>'+accts.map(a=>'<option>'+esc(a)+'</option>').join('');
+  if([...fm.options].some(o=>o.value===cur))fm.value=cur;
+  if([...fa.options].some(o=>o.value===cua))fa.value=cua;
+}
+function renderDeleteHistory(){
+  const all=purgeDeleteHistory();
+  _fillHistFilters(all);
+  const fm=($('delhist-fmod')||{}).value||'', fa=($('delhist-facct')||{}).value||'';
+  const list=all.filter(e=>(!fm||(e.moduleLabel||e.module)===fm)&&(!fa||e.account===fa)).sort((a,b)=>b.deletedAt-a.deletedAt);
+  const body=$('delhist-body');if(!body)return;
+  const sum=$('delhist-summary');if(sum)sum.textContent=all.length+' recoverable record(s)';
+  if(!list.length){body.innerHTML='<div style="padding:34px;text-align:center;color:var(--text-sub)">Nothing here. Deleted records appear for '+RETENTION_DAYS+' days, then are permanently purged.</div>';return;}
+  let html='',lastDay='';
+  for(const e of list){
+    const d=new Date(e.deletedAt);
+    const day=d.toLocaleDateString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric'});
+    if(day!==lastDay){lastDay=day;html+='<div style="padding:8px 20px;background:var(--bg);font-size:.72rem;font-weight:700;color:var(--text-sub);text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0;z-index:1">'+esc(day)+'</div>';}
+    const dl=daysLeft(e);
+    const recoverable=_histRecoverable(e.module);
+    const uidShort=(e.uid||'').slice(0,10);
+    html+='<div style="display:flex;align-items:center;gap:10px;padding:9px 20px;border-bottom:1px solid var(--border)">'
+      +'<input type="checkbox" class="delhist-cb" data-id="'+esc(e.id)+'">'
+      +'<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.name)+'</div>'
+      +'<div style="font-size:.72rem;color:var(--text-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.moduleLabel||e.module)+' · '+esc(e.account||'—')+' · '+d.toLocaleTimeString()+(uidShort?(' · uid '+esc(uidShort)+'…'):'')+'</div></div>'
+      +'<div style="font-size:.72rem;color:'+(dl<=2?'var(--danger,#e11d48)':'var(--text-sub)')+';white-space:nowrap;font-weight:600">'+dl+'d left</div>'
+      +'<button class="btn '+(recoverable?'btn-p':'btn-o')+'" style="font-size:.75rem;padding:4px 10px" onclick="recoverHistoryEntry(this.closest(\'div\').querySelector(\'.delhist-cb\').dataset.id,this)"'+(recoverable?'':' title="No confirmed create endpoint for this module — best-effort recovery"')+'>↩ Recover</button>'
+      +'<button class="btn btn-o" style="font-size:.75rem;padding:4px 8px" onclick="viewHistoryRecord(this.closest(\'div\').querySelector(\'.delhist-cb\').dataset.id)" title="View stored JSON">👁</button>'
+      +'</div>';
+  }
+  body.innerHTML=html;
+}
+function viewHistoryRecord(id){
+  const e=_delHistLoad().find(x=>x.id===id);if(!e)return;
+  const w=window.open('','_blank');
+  if(w){w.document.write('<title>'+esc(e.name)+'</title><pre style="white-space:pre-wrap;font:12px/1.5 monospace;padding:16px">'+esc(JSON.stringify(e.record,null,2))+'</pre>');w.document.close();}
+  else{alert(JSON.stringify(e.record,null,2).slice(0,2000));}
+}
+async function recoverHistoryEntry(id,btn,silent){
+  const list=_delHistLoad();
+  const entry=list.find(e=>e.id===id);
+  if(!entry){if(!silent)alert('That entry is no longer available.');return false;}
+  if(typeof apiKey!=='function'||!apiKey()){if(!silent)alert('Connect to the Zuper account this record belongs to first, then recover.');return false;}
+  const curBase=(typeof baseUrl==='function'&&baseUrl())||'';
+  if(!silent && entry.base && curBase && entry.base!==curBase){
+    if(!confirm('You are connected to a different account than where this was deleted:\n\nDeleted from: '+entry.account+'\nConnected to: '+(($('s-account')&&$('s-account').textContent)||'—')+'\n\nRe-create this record in the CURRENTLY connected account anyway?'))return false;
+  }
+  if(btn){btn.disabled=true;btn.textContent='Restoring…';}
+  const cfg=(typeof MODULES!=='undefined'&&MODULES[entry.module])||{};
+  let ok=false,msg='';
+  try{
+    const payload=(typeof MIGRATE_MODULES!=='undefined'&&typeof MIGRATE_MODULES[entry.module]?.buildPayload==='function')
+      ?MIGRATE_MODULES[entry.module].buildPayload(entry.record)
+      :cleanRecord(entry.record,(cfg.uid&&cfg.uid[0])||'');
+    const epDef=typeof MIGRATE_MODULES!=='undefined'&&MIGRATE_MODULES[entry.module]?.createEndpoint;
+    const ep=(typeof epDef==='function'?epDef(entry.record):epDef)||entry.module||'';
+    const doFetchFn=(window.ZuperShared&&ZuperShared.fetchWithRetry)?ZuperShared.fetchWithRetry:fetch;
+    const res=await doFetchFn(curBase+ep,{method:'POST',headers:hdrs(),body:JSON.stringify(payload)});
+    ok=res.ok; if(!ok){let t='';try{t=await res.text();}catch(e){} msg='HTTP '+res.status+' '+String(t).slice(0,150);}
+  }catch(e){msg=e.message||String(e);}
+  if(ok){
+    const i=list.findIndex(e=>e.id===id); if(i>=0){list.splice(i,1);_delHistSave(list);}
+    updateHistBadge();
+    if(!silent){renderDeleteHistory(); if(typeof showMsg==='function')showMsg('fetch-msg','↩ Recovered "'+entry.name+'" into '+(entry.moduleLabel||entry.module)+'. Re-fetch to see it.','ok');}
+    return true;
+  }else{
+    if(btn){btn.disabled=false;btn.textContent='↩ Recover';}
+    if(!silent)alert('Could not recover "'+entry.name+'".\n\n'+msg+'\n\nThe snapshot is still in your history.');
+    _histLog('recover failed for '+entry.name+': '+msg);
+    return false;
+  }
+}
+async function recoverSelectedHistory(){
+  const ids=[...document.querySelectorAll('.delhist-cb:checked')].map(c=>c.dataset.id);
+  if(!ids.length){alert('Tick at least one record to recover.');return;}
+  if(typeof apiKey!=='function'||!apiKey()){alert('Connect to a Zuper account first.');return;}
+  if(!confirm('Re-create '+ids.length+' record(s) in the connected account "'+(($('s-account')&&$('s-account').textContent)||'—')+'"?'))return;
+  let ok=0;
+  for(const id of ids){ if(await recoverHistoryEntry(id,null,true)) ok++; }
+  renderDeleteHistory();updateHistBadge();
+  if(typeof showMsg==='function')showMsg('fetch-msg','↩ Recovered '+ok+' of '+ids.length+' selected record(s). Re-fetch to see them.','ok');
+}
+function exportDeleteHistory(){
+  const list=purgeDeleteHistory();
+  if(!list.length){alert('Delete history is empty.');return;}
+  dlFile(JSON.stringify(list,null,2),'zdm-delete-history-'+Date.now()+'.json','application/json');
+}
+// Purge expired entries + refresh the header badge on load.
+try{purgeDeleteHistory();updateHistBadge();}catch(e){_histLog('init: '+e.message);}
 
 // ════════════════════════════════════════════════════════════════════════
 // FEATURE 4: RELATIONSHIP MAPPING
