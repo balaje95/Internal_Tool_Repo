@@ -92,6 +92,7 @@
   <span class="sub">Fetch Parts &amp; Services, then bulk-map <b>formulas</b> or <b>vendors</b></span>
   <span class="head-spacer"></span>
   <span id="badge"></span>
+  <button class="theme-btn hidden" id="disconnectBtn" onclick="disconnect()" title="Disconnect this account and start over">⏻ Disconnect</button>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light / dark">🌙 Dark</button>
 </header>
 
@@ -302,9 +303,25 @@ async function connect(){
     const region=dcUrl.replace('https://','').replace('.zuperpro.com','');
     showMsg('conn-msg','✓ Connected to "'+_account+'" on '+region,'ok');
     $('badge').textContent='✓ '+_account+' ('+region+')';$('badge').style.display='inline-block';
+    $('disconnectBtn').classList.remove('hidden');
     $('fetchCard').classList.remove('hidden');
   }catch(e){showMsg('conn-msg','✗ '+e.message,'err');}
   finally{btn.disabled=false;btn.textContent='Connect';}
+}
+function disconnect(){
+  // Clear the session + all loaded data and return to the connect step.
+  _base='';_account='';
+  products=[];formulas=[];formulaByUid={};vendors=[];vendorByUid={};
+  changes={};vChanges={};selected.clear();_results=[];_cancel=false;
+  $('apikey').value='';
+  const sv=$('saved');if(sv)sv.value='';
+  $('badge').style.display='none';$('badge').textContent='';
+  $('disconnectBtn').classList.add('hidden');
+  $('fetchCard').classList.add('hidden');
+  $('mapCard').classList.add('hidden');
+  $('applyCard').classList.add('hidden');
+  hideMsg('fetch-msg');
+  showMsg('conn-msg','Disconnected. Enter an API key to connect again.','info');
 }
 
 /* ---------- saved connections ---------- */
