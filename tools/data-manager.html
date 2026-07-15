@@ -407,6 +407,7 @@ input[type=checkbox]{accent-color:var(--primary)}
         <option value="organization">Organizations</option>
         <option value="assets">Assets</option>
         <option value="product">Parts &amp; Services</option>
+        <option value="vendor">Vendors</option>
         <option value="jobs">Jobs</option>
         <option value="invoice">Invoices</option>
         <option value="estimate">Quotes / Estimates</option>
@@ -1364,7 +1365,8 @@ const MODULES={
   property:{label:'Properties',uid:['property_uid','uid','_id'],del:'property',cols:[{h:'Name',f:'property_name'},{h:'Address',f:'property_address'},{h:'City',f:'city'},{h:'Status',f:'property_status'},{h:'Created',f:'created_at'}]},
   organization:{label:'Organizations',uid:['organization_uid','uid','_id'],del:'organization',cols:[{h:'Name',f:'organization_name'},{h:'Email',f:'organization_email'},{h:'Active',f:'is_active'},{h:'Created',f:'created_at'}]},
   assets:{label:'Assets',uid:['asset_uid','uid','_id'],del:'assets',cols:[{h:'Name',f:'asset_name'},{h:'Serial #',f:'serial_number'},{h:'Type',f:'asset_type'},{h:'Status',f:'asset_status'},{h:'Created',f:'created_at'}]},
-  product:{label:'Parts & Services',uid:['product_uid','uid','_id'],del:'product',dryRunSkipGet:true,fetchMethod:'POST',endpoint:'product/filter',fetchBody:(page,count)=>({page,count}),cols:[{h:'Name',f:'product_name'},{h:'Type',f:'product_type'},{h:'Category',f:'_cat_name'},{h:'Price',f:'price'},{h:'Formula',f:'_formula_name'},{h:'Trade Types',f:'_bu_names'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_cat_name:(r.product_category?.category_name||r.product_category||'—'),_formula_name:(r.formula?.formula_name||'—'),_bu_names:(r.business_unit||[]).map(b=>b.bu_name||b.name||'').filter(Boolean).join(', ')||'—'}))},
+  product:{label:'Parts & Services',uid:['product_uid','uid','_id'],del:'product',dryRunSkipGet:true,fetchMethod:'POST',endpoint:'product/filter',fetchBody:(page,count)=>({page,count}),cols:[{h:'Name',f:'product_name'},{h:'Type',f:'product_type'},{h:'Category',f:'_cat_name'},{h:'Price',f:'price'},{h:'Formula',f:'_formula_name'},{h:'Trade Types',f:'_bu_names'},{h:'Vendors',f:'_vendors'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_cat_name:(r.product_category?.category_name||r.product_category||'—'),_formula_name:(r.formula?.formula_name||'—'),_bu_names:(r.business_unit||[]).map(b=>b.bu_name||b.name||'').filter(Boolean).join(', ')||'—',_vendors:'…'}))},
+  vendor:{label:'Vendors',uid:['vendor_uid','uid','_id'],del:'vendors',dryRunSkipGet:true,fetchMethod:'POST',endpoint:'vendors/filter',fetchBody:(page,count)=>({page,limit:count,filter_rules:[]}),cols:[{h:'Name',f:'_vname'},{h:'Email',f:'vendor_email'},{h:'Phone',f:'vendor_phone'},{h:'Contact',f:'_contact'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_vname:(r.vendor_name||r.vendor_display_name||[r.vendor_first_name,r.vendor_last_name].filter(Boolean).join(' ')||r.company_name||'—'),_contact:([r.vendor_first_name,r.vendor_last_name].filter(Boolean).join(' ')||'—')}))},
   jobs:{label:'Jobs',uid:['job_uid','uid','_id'],del:'job',cols:[{h:'Job #',f:'_job_no'},{h:'Title',f:'job_title'},{h:'Status',f:'_status'},{h:'Customer',f:'_customer'},{h:'Scheduled',f:'scheduled_start_time'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_job_no:r.work_order_number||r.job_number||'—',_status:(r.current_job_status&&r.current_job_status.status_name)||'—',_customer:r.customer_name||(r.customer?[r.customer.customer_first_name,r.customer.customer_last_name].filter(Boolean).join(' '):'—')}))},
   invoice:{label:'Invoices',uid:['invoice_uid','uid','_id'],del:'invoice',cols:[{h:'Invoice #',f:'_inv_no'},{h:'Title',f:'invoice_title'},{h:'Status',f:'invoice_status'},{h:'Total',f:'_total'},{h:'Due',f:'due_date'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_inv_no:r.invoice_no||r.invoice_number||'—',_total:r.total||r.invoice_total||'—'}))},
   estimate:{label:'Quotes / Estimates',uid:['estimate_uid','quote_uid','uid'],del:'estimate',cols:[{h:'Quote #',f:'_est_no'},{h:'Title',f:'_est_title'},{h:'Status',f:'estimate_status'},{h:'Total',f:'_total'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_est_no:r.estimate_no||r.estimate_number||'—',_est_title:r.proposal_title||r.estimate_title||'—',_total:r.total||r.estimate_total||'—'}))},
@@ -1745,12 +1747,72 @@ async function doFetch(){
     showMsg('fetch-msg','✓ Loaded '+allRecs.length+' record(s). UID field: "'+uidField+'".','ok');
     $('s-total').textContent=allRecs.length;$('s-module').textContent=cfg.label;
     filtRecs=[...allRecs];renderTable();
+    // Parts & Services: fill the "Vendors" column from vendor_catalogs (non-blocking).
+    if(modKey()==='product') annotateProductVendors().catch(err=>console.warn('[ZDM] vendor annotate failed',err));
   }catch(e){
     console.error('[ZDM] Fetch error:',e);
     showMsg('fetch-msg','✗ '+e.message,'err');
     $('tbody').innerHTML='<tr><td colspan="10" style="padding:36px;text-align:center;color:var(--red-d)">'+esc(e.message)+'</td></tr>';
   }
   finally{btn.textContent='📄 Fetch Records';btn.disabled=false;btn.classList.remove('fetching');}
+}
+
+// ── Parts & Services "Vendors" column: map product_uid → vendor names ─────────
+// Fetches every vendor, then vendor_catalogs?filter.vendor={uid}&group_by=PRODUCT
+// for each, so we know which parts each vendor is linked to. Runs after the product
+// fetch renders (non-blocking); resilient — a failure just leaves cells as "—".
+function _vendorLabel(v){return v.vendor_name||v.vendor_display_name||[v.vendor_first_name,v.vendor_last_name].filter(Boolean).join(' ')||v.company_name||v.vendor_uid;}
+async function _fetchAllVendorsList(){
+  const out=[];let page=1;const limit=100;
+  while(page<=100){
+    const r=await fetch(baseUrl()+'vendors/filter',{method:'POST',headers:hdrs(),body:JSON.stringify({page,limit,filter_rules:[]})});
+    if(!r.ok)break;
+    const d=await r.json().catch(()=>({}));
+    const recs=Array.isArray(d)?d:(d.data||d.vendors||[]);
+    if(!recs.length)break;
+    out.push(...recs);
+    if(recs.length<limit)break;
+    page++;
+  }
+  return out;
+}
+async function annotateProductVendors(){
+  const recs=allRecs;
+  if(!recs||!recs.length||modKey()!=='product')return;
+  let vendors=[];
+  try{vendors=await _fetchAllVendorsList();}catch(e){}
+  if(!vendors.length){recs.forEach(r=>{if(r._vendors==='…')r._vendors='—';});renderTable();return;}
+  const CAP=500;const capped=vendors.length>CAP;const list=capped?vendors.slice(0,CAP):vendors;
+  const map={}; // product_uid -> Set(vendor label)
+  let done=0,idx=0;const CONC=5;
+  showMsg('fetch-msg','Loading vendor mappings… (0/'+list.length+' vendors)','info');
+  async function worker(){
+    while(idx<list.length){
+      const v=list[idx++];const vu=v.vendor_uid;
+      if(vu){
+        let page=1;
+        while(page<=50){
+          try{
+            const r=await fetch(baseUrl()+'vendor_catalogs?filter.vendor='+encodeURIComponent(vu)+'&group_by=PRODUCT&page='+page+'&count=100',{headers:getHdrs()});
+            if(!r.ok)break;
+            const d=await r.json().catch(()=>({}));
+            const groups=Array.isArray(d)?d:(d.data||[]);
+            if(!groups.length)break;
+            groups.forEach(g=>{const puid=g.uid||(g.product&&g.product.product_uid)||g.product_uid;if(puid)(map[puid]=map[puid]||new Set()).add(_vendorLabel(v));});
+            if(groups.length<100)break;
+            page++;
+          }catch(e){break;}
+        }
+      }
+      done++;
+      if(done%3===0||done===list.length)showMsg('fetch-msg','Loading vendor mappings… ('+done+'/'+list.length+' vendors)','info');
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(CONC,list.length)},worker));
+  recs.forEach(r=>{const s=map[r.product_uid];r._vendors=(s&&s.size)?[...s].sort().join(', '):'—';});
+  renderTable();
+  const mapped=recs.filter(r=>r._vendors&&r._vendors!=='—').length;
+  showMsg('fetch-msg','✓ Loaded '+recs.length+' product(s). '+mapped+' mapped to a vendor'+(capped?(' (checked first '+CAP+' of '+vendors.length+' vendors — some mappings may be missing)'):'')+'.','ok');
 }
 
 // Derive the workflow service URL from a DC API URL
