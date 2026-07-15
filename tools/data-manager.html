@@ -3107,7 +3107,12 @@ async function migrateMeasCategoryRecord(rec,dry){
     const tName=(t.measurement_token_name||t.token_name||'').trim();
     if(!tName){tokFailed++;continue;}
     try{
-      const tr=await _fT(_destBaseUrl+'measurements/categories/'+encodeURIComponent(destCatUid)+'/tokens',{method:'POST',headers:destHdrs(),body:JSON.stringify({measurement_token:{measurement_token_name:tName}})});
+      // Carry the token's UOM (and sort order) so migrated tokens keep their unit —
+      // matches the measurementtoken_creation scripts. Default UOM 'EA' if missing.
+      const tUom=(t.uom||t.unit||'EA').toString().trim()||'EA';
+      const tokBody={measurement_token_name:tName,uom:tUom};
+      if(t.sort!=null&&t.sort!=='') tokBody.sort=t.sort;
+      const tr=await _fT(_destBaseUrl+'measurements/categories/'+encodeURIComponent(destCatUid)+'/tokens',{method:'POST',headers:destHdrs(),body:JSON.stringify({measurement_token:tokBody})});
       if(tr.ok) tokCreated++;
       else{const e=await tr.text().catch(()=>'');console.warn('[ZDM] token create:',tr.status,e.slice(0,80));tokFailed++;}
     }catch(e){console.warn('[ZDM] token create err:',e.message);tokFailed++;}
