@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Zuper Product ↔ Formula Mapper</title>
+<title>Zuper Product Mapper</title>
 <script>try{if(localStorage.getItem('zuper_tools_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 <style>
   /* Light is the default theme; dark is opt-in via [data-theme="dark"]. */
@@ -88,8 +88,8 @@
 </head>
 <body>
 <header>
-  <h1>🧮 Zuper Product ↔ Formula Mapper</h1>
-  <span class="sub">Fetch Parts &amp; Services + CPQ Formulas, then bulk-map them</span>
+  <h1>🧮 Zuper Product Mapper</h1>
+  <span class="sub">Fetch Parts &amp; Services, then bulk-map <b>formulas</b> or <b>vendors</b></span>
   <span class="head-spacer"></span>
   <span id="badge"></span>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light / dark">🌙 Dark</button>
@@ -114,12 +114,16 @@
     </div>
   </div>
 
-  <!-- 2. FETCH -->
+  <!-- 2. MODE + FETCH -->
   <div class="card hidden" id="fetchCard">
-    <h2><span class="step">2</span> Fetch data</h2>
-    <p class="desc">Pulls all Parts &amp; Services and all CPQ Formulas from the connected account.</p>
+    <h2><span class="step">2</span> Choose what to map, then fetch</h2>
+    <p class="desc" id="fetchDesc">Pick a mode, then pull the account's data.</p>
+    <div class="flex" style="margin-bottom:14px">
+      <label class="pill" style="cursor:pointer;padding:7px 14px"><input type="radio" name="mapmode" value="formula" checked onchange="setMode('formula')" style="vertical-align:-2px"> 🧮 Map Formulas</label>
+      <label class="pill" style="cursor:pointer;padding:7px 14px"><input type="radio" name="mapmode" value="vendor" onchange="setMode('vendor')" style="vertical-align:-2px"> 🏷️ Map Vendors</label>
+    </div>
     <div class="flex">
-      <button class="btn" id="fetchBtn" onclick="fetchAll()">⬇ Fetch products &amp; formulas</button>
+      <button class="btn" id="fetchBtn" onclick="fetchAll()"><span id="fetchBtnLabel">⬇ Fetch products &amp; formulas</span></button>
       <span id="fetch-status" class="muted small"></span>
     </div>
     <div class="msg" id="fetch-msg"></div>
@@ -127,17 +131,17 @@
 
   <!-- 3. MAP -->
   <div class="card hidden" id="mapCard">
-    <h2><span class="step">3</span> Map formulas to line items</h2>
-    <p class="desc">Pick a formula per product, or use the bulk tools. Only rows where you change the formula are applied.</p>
+    <h2><span class="step">3</span> <span id="mapTitle">Map formulas to line items</span></h2>
+    <p class="desc" id="mapDesc">Pick a formula per product, or use the bulk tools. Only rows where you change the formula are applied.</p>
 
     <div class="stats">
       <div class="stat"><b id="s-total">0</b><span>Products</span></div>
-      <div class="stat"><b id="s-formulas">0</b><span>Formulas</span></div>
-      <div class="stat"><b id="s-mapped">0</b><span>Have formula</span></div>
+      <div class="stat"><b id="s-formulas">0</b><span id="sl-2">Formulas</span></div>
+      <div class="stat"><b id="s-mapped">0</b><span id="sl-3">Have formula</span></div>
       <div class="stat"><b id="s-changed">0</b><span>Changes queued</span></div>
     </div>
 
-    <div class="toolbar">
+    <div class="toolbar" id="formulaToolbar">
       <div style="flex:1;min-width:200px"><label>Search products</label><input class="inp" id="search" placeholder="name, id, category…" oninput="renderRows()"></div>
       <div><label>Category</label>
         <select class="inp" id="catFilter" onchange="renderRows()">
@@ -159,7 +163,16 @@
       <div><label>&nbsp;</label><button class="btn sec" onclick="clearSelected()">Clear formula on selected</button></div>
     </div>
 
-    <div class="flex" style="margin-bottom:12px">
+    <!-- vendor toolbar (mode: vendor) -->
+    <div class="toolbar hidden" id="vendorToolbar">
+      <div style="flex:1;min-width:200px"><label>Search products</label><input class="inp" id="vsearch" placeholder="name, id, category…" oninput="renderRows()"></div>
+      <div><label>Category</label><select class="inp" id="vcatFilter" onchange="renderRows()"><option value="">All categories</option></select></div>
+      <div><label>Show</label><select class="inp" id="vfilter" onchange="renderRows()"><option value="all">All products</option><option value="unmapped">No vendors staged</option><option value="changed">Only staged changes</option></select></div>
+      <div style="flex:1;min-width:200px"><label>Bulk-add a vendor to selected rows</label><select class="inp" id="bulkVendor"></select></div>
+      <div><label>&nbsp;</label><button class="btn sec" onclick="bulkAddVendor()">Add to selected</button></div>
+    </div>
+
+    <div class="flex" style="margin-bottom:12px" id="formulaExtras">
       <button class="btn sec small" onclick="autoMatch()">✨ Auto-match by name</button>
       <button class="btn sec small" onclick="resetChanges()">↺ Reset all changes</button>
       <label class="pill" style="cursor:pointer"><input type="checkbox" id="importChk" onchange="document.getElementById('importBox').classList.toggle('hidden',!this.checked)" style="vertical-align:-2px"> Import mapping from CSV / Excel</label>
@@ -173,9 +186,25 @@
       </div>
     </div>
 
+    <!-- vendor extras (mode: vendor) -->
+    <div class="flex hidden" style="margin-bottom:12px" id="vendorExtras">
+      <button class="btn sec small" onclick="assignAllVendors()">➕ Add ALL vendors to selected</button>
+      <button class="btn sec small" onclick="resetChanges()">↺ Reset all changes</button>
+      <label class="pill" style="cursor:pointer"><input type="checkbox" onchange="document.getElementById('vendorImportBox').classList.toggle('hidden',!this.checked)" style="vertical-align:-2px"> Import from CSV / Excel</label>
+      <span class="muted small">New vendor rows default SKU → Product ID, cost → purchase price.</span>
+    </div>
+
+    <div id="vendorImportBox" class="hidden" style="padding:14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+      <p class="small muted" style="margin-top:0">Upload a file with a <b>Product UID</b> column and a <b>Vendor UID</b> column (optional <b>Vendor SKU</b>, <b>Vendor Cost</b>). Multiple rows for the same product stage multiple vendors. Matched to loaded products &amp; vendors by UID.</p>
+      <div class="flex">
+        <input type="file" id="vmapFile" class="inp" style="max-width:340px" accept=".csv,.xlsx,.xls" onchange="importVendorMapping()">
+        <span id="vimport-status" class="muted small"></span>
+      </div>
+    </div>
+
     <div class="tablewrap">
       <table id="tbl">
-        <thead><tr>
+        <thead id="thead"><tr>
           <th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th>
           <th>Product</th><th>ID</th><th>Category</th><th>Current formula</th><th>Map to →</th><th>Status</th>
         </tr></thead>
@@ -188,7 +217,7 @@
   <!-- 4. APPLY -->
   <div class="card hidden" id="applyCard">
     <h2><span class="step">4</span> Apply changes</h2>
-    <p class="desc">Sends <code>PUT product/&lt;uid&gt;</code> with <code>{ product, vendor:[] }</code> — the same call as your script. Run a dry-run first.</p>
+    <p class="desc" id="applyDesc">Sends <code>PUT product/&lt;uid&gt;</code> with <code>{ product, vendor:[] }</code> — the same call as your script. Run a dry-run first.</p>
     <div class="flex">
       <button class="btn sec" id="dryBtn" onclick="apply(true)">🧪 Dry run</button>
       <button class="btn" id="applyBtn" onclick="apply(false)">🚀 Apply changes</button>
@@ -219,6 +248,10 @@ let products=[], formulas=[], formulaByUid={};
 let changes={}; // product_uid -> formulaUid ('' means clear) ; absent means no change
 let selected=new Set();
 let _cancel=false, _results=[];
+/* vendor mode */
+let mode='formula';                 // 'formula' | 'vendor'
+let vendors=[], vendorByUid={};
+let vChanges={};                    // product_uid -> [ {vendor_uid, vendor_sku, vendor_cost} ]
 
 /* ---------- helpers ---------- */
 function showMsg(id,txt,type){const e=$(id);e.className='msg msg-'+type;e.textContent=txt;e.style.display='block';}
@@ -303,21 +336,33 @@ function delSaved(){
 /* ---------- fetch ---------- */
 async function fetchAll(){
   hideMsg('fetch-msg');
-  const btn=$('fetchBtn');btn.disabled=true;btn.textContent='Fetching…';
+  const btn=$('fetchBtn');btn.disabled=true;if($('fetchBtnLabel'))$('fetchBtnLabel').textContent='Fetching…';
   try{
     $('fetch-status').textContent='Loading products…';
     products=await fetchProducts();
-    $('fetch-status').textContent='Loading formulas…';
-    formulas=await fetchFormulas();
-    formulaByUid={};formulas.forEach(f=>formulaByUid[f.formula_uid]=f);
-    changes={};selected.clear();
-    buildFormulaSelects();buildCategoryFilter();
-    $('mapCard').classList.remove('hidden');$('applyCard').classList.remove('hidden');
-    renderRows();updateStats();
-    showMsg('fetch-msg','✓ Loaded '+products.length+' products and '+formulas.length+' formulas.','ok');
+    selected.clear();
+    if(mode==='vendor'){
+      $('fetch-status').textContent='Loading vendors…';
+      vendors=await fetchVendors();
+      vendorByUid={};vendors.forEach(v=>vendorByUid[v.vendor_uid]=v);
+      vChanges={};
+      buildVendorSelects();buildCategoryFilter();
+      $('mapCard').classList.remove('hidden');$('applyCard').classList.remove('hidden');
+      renderRows();updateStats();
+      showMsg('fetch-msg','✓ Loaded '+products.length+' products and '+vendors.length+' vendors.','ok');
+    }else{
+      $('fetch-status').textContent='Loading formulas…';
+      formulas=await fetchFormulas();
+      formulaByUid={};formulas.forEach(f=>formulaByUid[f.formula_uid]=f);
+      changes={};
+      buildFormulaSelects();buildCategoryFilter();
+      $('mapCard').classList.remove('hidden');$('applyCard').classList.remove('hidden');
+      renderRows();updateStats();
+      showMsg('fetch-msg','✓ Loaded '+products.length+' products and '+formulas.length+' formulas.','ok');
+    }
     $('fetch-status').textContent='';
   }catch(e){showMsg('fetch-msg','✗ '+e.message,'err');$('fetch-status').textContent='';}
-  finally{btn.disabled=false;btn.textContent='⬇ Fetch products & formulas';}
+  finally{btn.disabled=false;setMode(mode);}
 }
 
 async function fetchProducts(){
@@ -391,9 +436,15 @@ function targetFor(p){
 /* ---------- render ---------- */
 function catName(p){return p.product_category?.category_name||(typeof p.product_category==='string'?p.product_category:'')||'—';}
 function matchesFilter(p){
-  const f=$('filter').value;
-  const cat=$('catFilter').value;
+  const f=(mode==='vendor'?$('vfilter'):$('filter')).value;
+  const cat=(mode==='vendor'?$('vcatFilter'):$('catFilter')).value;
   if(cat&&catName(p)!==cat)return false;
+  if(mode==='vendor'){
+    const staged=(vChanges[p.product_uid]||[]).length>0;
+    if(f==='unmapped')return !staged;
+    if(f==='changed')return staged;
+    return true;
+  }
   const cur=curFormulaUid(p);
   const chg=(p.product_uid in changes)&&changes[p.product_uid]!==cur;
   if(f==='unmapped')return !cur;
@@ -403,12 +454,11 @@ function matchesFilter(p){
 }
 function buildCategoryFilter(){
   const cats=[...new Set(products.map(catName).filter(c=>c&&c!=='—'))].sort((a,b)=>a.localeCompare(b));
-  const sel=$('catFilter');const prev=sel.value;
-  sel.innerHTML='<option value="">All categories</option>'+cats.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
-  if([...sel.options].some(o=>o.value===prev))sel.value=prev;
+  const opts='<option value="">All categories</option>'+cats.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
+  ['catFilter','vcatFilter'].forEach(id=>{const sel=$(id);if(!sel)return;const prev=sel.value;sel.innerHTML=opts;if([...sel.options].some(o=>o.value===prev))sel.value=prev;});
 }
 function matchesSearch(p){
-  const q=$('search').value.trim().toLowerCase();
+  const q=(mode==='vendor'?$('vsearch'):$('search')).value.trim().toLowerCase();
   if(!q)return true;
   return (p.product_name||'').toLowerCase().includes(q)
     ||(p.product_id||'').toLowerCase().includes(q)
@@ -416,6 +466,7 @@ function matchesSearch(p){
     ||(p.product_uid||'').toLowerCase().includes(q);
 }
 function renderRows(){
+  if(mode==='vendor')return renderVendorRows();
   const tb=$('tbody');tb.innerHTML='';
   const rows=products.filter(p=>matchesSearch(p)&&matchesFilter(p));
   for(const p of rows){
@@ -492,7 +543,7 @@ function autoMatch(){
   renderRows();updateStats();
   showMsg('fetch-msg','✨ Auto-matched '+n+' product(s) by exact name.', n?'ok':'warn');
 }
-function resetChanges(){changes={};renderRows();updateStats();}
+function resetChanges(){if(mode==='vendor')vChanges={};else changes={};renderRows();updateStats();}
 
 /* ---------- import CSV / Excel ---------- */
 function importMapping(){
@@ -546,6 +597,15 @@ function applyImportedRows(rows){
 
 /* ---------- stats ---------- */
 function updateStats(){
+  if(mode==='vendor'){
+    $('s-total').textContent=products.length;
+    $('s-formulas').textContent=vendors.length;
+    const staged=Object.keys(vChanges).filter(uid=>(vChanges[uid]||[]).length).length;
+    $('s-mapped').textContent=staged;
+    $('s-changed').textContent=staged;
+    $('apply-count').textContent=staged?staged+' product(s) with staged vendors':'no changes queued';
+    return;
+  }
   $('s-total').textContent=products.length;
   $('s-formulas').textContent=formulas.length;
   $('s-mapped').textContent=products.filter(p=>curFormulaUid(p)).length;
@@ -585,14 +645,15 @@ async function updateProductFormula(product,formulaUid,dry){
 }
 
 async function apply(dry){
-  const list=queuedList();
+  const isV=mode==='vendor';
+  const list=isV?vendorQueuedList():queuedList();
   if(!list.length){alert('No changes queued.');return;}
-  if(!dry&&!confirm('Apply '+list.length+' formula change(s) to live products in "'+_account+'"?\n\nRun a dry-run first if you haven\'t.'))return;
+  if(!dry&&!confirm('Apply '+list.length+' '+(isV?'product vendor update(s)':'formula change(s)')+' to live products in "'+_account+'"?\n\nRun a dry-run first if you haven\'t.'))return;
   _cancel=false;_results=[];
   $('log').innerHTML='';$('log').classList.remove('hidden');
   $('prog').classList.remove('hidden');$('resultActions').classList.add('hidden');
   $('dryBtn').disabled=true;$('applyBtn').disabled=true;$('cancelBtn').classList.remove('hidden');
-  log((dry?'— DRY RUN — ':'— APPLYING — ')+list.length+' change(s) on "'+_account+'"','info');
+  log((dry?'— DRY RUN — ':'— APPLYING — ')+list.length+(isV?' product(s) on "':' change(s) on "')+_account+'"','info');
   let done=0,ok=0,fail=0;
   const CONC=4;
   const queue=[...list];
@@ -600,24 +661,29 @@ async function apply(dry){
     while(queue.length&&!_cancel){
       const item=queue.shift();
       const p=item.product;
-      const fName=item.formulaUid?(formulaByUid[item.formulaUid]?.formula_name||item.formulaUid):'(none)';
-      let res;
-      try{res=await updateProductFormula(p,item.formulaUid,dry);}
-      catch(e){res={ok:false,msg:e.message};}
+      let res,label;
+      try{
+        if(isV){label=item.entries.length+' vendor(s)';res=await updateProductVendors(p,item.entries,dry);}
+        else{label=item.formulaUid?(formulaByUid[item.formulaUid]?.formula_name||item.formulaUid):'(none)';res=await updateProductFormula(p,item.formulaUid,dry);}
+      }catch(e){res={ok:false,msg:e.message};label=label||'';}
       done++; res.ok?ok++:fail++;
-      _results.push({product_uid:p.product_uid,product_name:p.product_name,formula_uid:item.formulaUid,formula_name:fName,status:res.ok?'Success':'Failed: '+res.msg});
-      log('['+done+'/'+list.length+'] '+(p.product_name||p.product_uid)+' → '+fName+'  '+(res.ok?'✓ '+res.msg:'✗ '+res.msg),res.ok?'ok':'err');
+      if(isV)_results.push({product_uid:p.product_uid,product_name:p.product_name,detail:label,status:res.ok?(res.msg||'Success'):'Failed: '+res.msg});
+      else _results.push({product_uid:p.product_uid,product_name:p.product_name,formula_uid:item.formulaUid,formula_name:label,status:res.ok?'Success':'Failed: '+res.msg});
+      log('['+done+'/'+list.length+'] '+(p.product_name||p.product_uid)+' → '+label+'  '+(res.ok?'✓ '+res.msg:'✗ '+res.msg),res.ok?'ok':'err');
       $('progbar').style.width=(done/list.length*100)+'%';
     }
   }
   await Promise.all(Array.from({length:Math.min(CONC,list.length)},worker));
   log('— DONE — '+ok+' succeeded, '+fail+' failed'+(_cancel?' (cancelled)':''),fail?'warn':'ok');
   if(!dry&&ok){
-    // update in-memory products & clear applied changes so stats/table refresh
-    _results.filter(r=>r.status==='Success').forEach(r=>{
-      const p=products.find(x=>x.product_uid===r.product_uid);
-      if(p){p.formula=r.formula_uid?(formulaByUid[r.formula_uid]||r.formula_uid):null;delete changes[r.product_uid];}
-    });
+    if(isV){
+      _results.filter(r=>r.status&&!/^Failed/.test(r.status)).forEach(r=>{delete vChanges[r.product_uid];});
+    }else{
+      _results.filter(r=>r.status==='Success').forEach(r=>{
+        const p=products.find(x=>x.product_uid===r.product_uid);
+        if(p){p.formula=r.formula_uid?(formulaByUid[r.formula_uid]||r.formula_uid):null;delete changes[r.product_uid];}
+      });
+    }
     renderRows();updateStats();
   }
   $('dryBtn').disabled=false;$('applyBtn').disabled=false;$('cancelBtn').classList.add('hidden');
@@ -626,11 +692,212 @@ async function apply(dry){
 
 function exportResults(){
   if(!_results.length)return;
-  const head=['Product UID','Product Name','Formula UID','Formula Name','Status'];
-  const rows=_results.map(r=>[r.product_uid,r.product_name,r.formula_uid,r.formula_name,r.status]);
+  let head,rows,fname;
+  if(mode==='vendor'){
+    head=['Product UID','Product Name','Vendors','Status'];
+    rows=_results.map(r=>[r.product_uid,r.product_name,r.detail||'',r.status]);
+    fname='vendor_mapping_results.csv';
+  }else{
+    head=['Product UID','Product Name','Formula UID','Formula Name','Status'];
+    rows=_results.map(r=>[r.product_uid,r.product_name,r.formula_uid,r.formula_name,r.status]);
+    fname='formula_mapping_results.csv';
+  }
   const csv=[head,...rows].map(row=>row.map(c=>'"'+String(c??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='formula_mapping_results.csv';a.click();
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();
+}
+
+/* ================= VENDOR MODE ================= */
+function setMode(m){
+  mode=m; const isV=(m==='vendor');
+  $('formulaToolbar').classList.toggle('hidden',isV);
+  $('vendorToolbar').classList.toggle('hidden',!isV);
+  $('formulaExtras').classList.toggle('hidden',isV);
+  $('vendorExtras').classList.toggle('hidden',!isV);
+  $('importBox').classList.add('hidden');
+  $('vendorImportBox').classList.add('hidden');
+  $('mapTitle').textContent=isV?'Map vendors to parts & services':'Map formulas to line items';
+  $('mapDesc').textContent=isV?'Add one or more vendors to each part (with SKU & cost), or use the bulk tools. Vendors already linked to a part are skipped on apply.':'Pick a formula per product, or use the bulk tools. Only rows where you change the formula are applied.';
+  $('sl-2').textContent=isV?'Vendors':'Formulas';
+  $('sl-3').textContent=isV?'Staged':'Have formula';
+  if($('fetchBtnLabel'))$('fetchBtnLabel').innerHTML=isV?'⬇ Fetch products &amp; vendors':'⬇ Fetch products &amp; formulas';
+  $('applyDesc').innerHTML=isV
+    ? 'Sends <code>PUT product/&lt;uid&gt;</code> with <code>{ product:{}, vendor:[…] }</code> — the same call as your migration script (vendors already linked are skipped). Run a dry-run first.'
+    : 'Sends <code>PUT product/&lt;uid&gt;</code> with <code>{ product, vendor:[] }</code> — the same call as your script. Run a dry-run first.';
+  $('thead').innerHTML=isV
+    ? '<tr><th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th><th>Product</th><th>ID</th><th>Category</th><th>Vendors staged</th><th>Add vendor →</th><th>SKU</th><th>Cost</th><th>Status</th></tr>'
+    : '<tr><th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th><th>Product</th><th>ID</th><th>Category</th><th>Current formula</th><th>Map to →</th><th>Status</th></tr>';
+  if(isV && products.length && !vendors.length) $('fetch-status').textContent='Switched to vendor mode — click Fetch to load vendors.';
+  if(products.length){renderRows();updateStats();}
+}
+
+function vName(v){return (v&&(v.vendor_name||v.vendor_display_name||[v.vendor_first_name,v.vendor_last_name].filter(Boolean).join(' ')||v.company_name))||v&&v.vendor_uid||'—';}
+function vendorOptionsHtml(sel){
+  let h='<option value="">— add a vendor… —</option>';
+  [...vendors].sort((a,b)=>vName(a).localeCompare(vName(b))).forEach(v=>{
+    h+='<option value="'+esc(v.vendor_uid)+'"'+(v.vendor_uid===sel?' selected':'')+'>'+esc(vName(v))+'</option>';
+  });
+  return h;
+}
+function buildVendorSelects(){$('bulkVendor').innerHTML='<option value="">— choose a vendor —</option>'+vendorOptionsHtml(null).replace('<option value="">— add a vendor… —</option>','');}
+
+async function fetchVendors(){
+  const out=[];let page=1;const count=100;
+  while(true){
+    const r=await fetch(_base+'vendors?page='+page+'&count='+count,{headers:getHdrs()});
+    if(!r.ok)throw new Error('Vendor fetch failed (HTTP '+r.status+')');
+    const d=await r.json().catch(()=>({}));
+    const recs=Array.isArray(d)?d:(d.data||d.vendors||[]);
+    if(!recs.length)break;
+    out.push(...recs);
+    if(recs.length<count)break;
+    page++; if(page>200)break;
+  }
+  return out.filter(v=>v.vendor_uid);
+}
+
+function renderVendorRows(){
+  const tb=$('tbody');tb.innerHTML='';
+  if(!products.length){$('rowcount').textContent='';return;}
+  const rows=products.filter(p=>matchesSearch(p)&&matchesFilter(p));
+  if(!rows.length){tb.innerHTML='<tr><td colspan="9" class="muted small" style="padding:16px">No products match this filter.</td></tr>';}
+  for(const p of rows){
+    const uid=p.product_uid;
+    const staged=vChanges[uid]||[];
+    const chips=staged.length
+      ? staged.map(e=>'<span class="chip" style="margin:1px 3px 1px 0">'+esc(vName(vendorByUid[e.vendor_uid]||{vendor_uid:e.vendor_uid}))+' <a href="#" title="remove" onclick="removeStaged(\''+esc(uid)+'\',\''+esc(e.vendor_uid)+'\');return false" style="text-decoration:none;color:var(--err);font-weight:700">×</a></span>').join('')
+      : '<span class="cur none">none staged</span>';
+    const tr=document.createElement('tr');
+    tr.innerHTML=
+      '<td class="checkcol"><input type="checkbox" data-uid="'+esc(uid)+'" '+(selected.has(uid)?'checked':'')+' onchange="toggleRow(this)"></td>'+
+      '<td>'+esc(p.product_name||'—')+'<div class="muted small">'+esc(p.product_type||'')+'</div></td>'+
+      '<td class="muted small">'+esc(p.product_id||'—')+'</td>'+
+      '<td>'+esc(catName(p))+'</td>'+
+      '<td>'+chips+'</td>'+
+      '<td><select data-uid="'+esc(uid)+'" onchange="onVendorAdd(this)">'+vendorOptionsHtml(null)+'</select></td>'+
+      '<td><input class="inp" style="min-width:80px;padding:6px 8px" data-sku="'+esc(uid)+'" value="'+esc(p.product_id||'')+'" placeholder="SKU"></td>'+
+      '<td><input class="inp" style="min-width:76px;padding:6px 8px" type="number" step="0.01" data-cost="'+esc(uid)+'" value="'+esc(p.purchase_price??'')+'" placeholder="0.00"></td>'+
+      '<td class="status '+(staged.length?'pend':'')+'">'+(staged.length?staged.length+' staged':'')+'</td>';
+    tb.appendChild(tr);
+  }
+  $('rowcount').textContent=rows.length+' of '+products.length+' products shown';
+  const allVis=rows.length&&rows.every(p=>selected.has(p.product_uid));
+  $('selAll').checked=!!allVis;
+}
+function addStagedVendor(uid,vu,sku,cost){
+  if(!vu)return;
+  if(!vChanges[uid])vChanges[uid]=[];
+  if(vChanges[uid].some(e=>e.vendor_uid===vu))return; // dedup within staged
+  vChanges[uid].push({vendor_uid:vu,vendor_sku:String(sku??''),vendor_cost:(cost===''||cost==null)?'':cost});
+}
+function onVendorAdd(sel){
+  const uid=sel.dataset.uid, vu=sel.value; if(!vu)return;
+  const tr=sel.closest('tr');
+  const sku=tr.querySelector('[data-sku]')?tr.querySelector('[data-sku]').value:'';
+  const cost=tr.querySelector('[data-cost]')?tr.querySelector('[data-cost]').value:'';
+  addStagedVendor(uid,vu,sku,cost);
+  renderRows();updateStats();
+}
+function removeStaged(uid,vu){
+  if(!vChanges[uid])return;
+  vChanges[uid]=vChanges[uid].filter(e=>e.vendor_uid!==vu);
+  if(!vChanges[uid].length)delete vChanges[uid];
+  renderRows();updateStats();
+}
+function bulkAddVendor(){
+  const vu=$('bulkVendor').value;
+  if(!vu){alert('Pick a vendor in the bulk dropdown first.');return;}
+  if(!selected.size){alert('Select some rows first (checkboxes).');return;}
+  let n=0;
+  selected.forEach(uid=>{const p=products.find(x=>x.product_uid===uid);if(!p)return;addStagedVendor(uid,vu,p.product_id||'',p.purchase_price??'');n++;});
+  renderRows();updateStats();
+  showMsg('fetch-msg','Staged "'+vName(vendorByUid[vu]||{vendor_uid:vu})+'" on '+n+' product(s).','ok');
+}
+function assignAllVendors(){
+  if(!vendors.length){alert('No vendors loaded.');return;}
+  if(!selected.size){alert('Select some products first (checkboxes).');return;}
+  if(!confirm('Stage ALL '+vendors.length+' vendor(s) on '+selected.size+' selected product(s)? You can review before applying.'))return;
+  selected.forEach(uid=>{const p=products.find(x=>x.product_uid===uid);if(!p)return;vendors.forEach(v=>addStagedVendor(uid,v.vendor_uid,p.product_id||'',p.purchase_price??''));});
+  renderRows();updateStats();
+}
+function importVendorMapping(){
+  const file=$('vmapFile').files[0];if(!file)return;
+  const ext=file.name.toLowerCase().split('.').pop();
+  if(ext==='csv'){const rd=new FileReader();rd.onload=e=>applyImportedVendorRows(parseCSV(e.target.result));rd.readAsText(file);}
+  else{
+    if(!window.XLSX){$('vimport-status').textContent='Excel support needs internet (SheetJS). Save the file as CSV and retry.';return;}
+    const rd=new FileReader();
+    rd.onload=e=>{const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});applyImportedVendorRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''}));};
+    rd.readAsArrayBuffer(file);
+  }
+}
+function applyImportedVendorRows(rows){
+  if(!rows.length){$('vimport-status').textContent='No rows found.';return;}
+  const keys=Object.keys(rows[0]);
+  const findCol=(preds)=>keys.find(k=>preds(k.toLowerCase().trim()));
+  const pCol=findCol(l=>l==='product uid'||l==='product_uid')||findCol(l=>l.includes('product')&&l.includes('uid'));
+  const vCol=findCol(l=>l==='vendor uid'||l==='vendor_uid')||findCol(l=>l.includes('vendor')&&l.includes('uid'));
+  const skuCol=findCol(l=>l.includes('sku'));
+  const costCol=findCol(l=>l.includes('cost')||l.includes('price'));
+  if(!pCol||!vCol){$('vimport-status').textContent='Could not find "Product UID" and "Vendor UID" columns. Found: '+keys.join(', ');return;}
+  const knownP=new Set(products.map(p=>p.product_uid));
+  const knownV=new Set(vendors.map(v=>v.vendor_uid));
+  const bad=['nan','none','#n/a','#ref!','#value!',''];
+  let ok=0,missP=0,missV=0,skip=0;
+  rows.forEach(r=>{
+    const pu=String(r[pCol]??'').trim(), vu=String(r[vCol]??'').trim();
+    if(!pu||bad.includes(pu.toLowerCase())){skip++;return;}
+    if(!vu||bad.includes(vu.toLowerCase())){skip++;return;}
+    if(!knownP.has(pu)){missP++;return;}
+    if(!knownV.has(vu)){missV++;return;}
+    const p=products.find(x=>x.product_uid===pu);
+    const sku=skuCol?String(r[skuCol]??''):(p.product_id||'');
+    const cost=costCol?(r[costCol]??''):(p.purchase_price??'');
+    const before=(vChanges[pu]||[]).length;
+    addStagedVendor(pu,vu,sku,cost);
+    if((vChanges[pu]||[]).length>before)ok++;
+  });
+  renderRows();updateStats();
+  $('vimport-status').textContent='Staged '+ok+' vendor link(s). '+(missP?missP+' product UID(s) not found. ':'')+(missV?missV+' vendor UID(s) not found. ':'')+(skip?skip+' row(s) skipped.':'');
+}
+function vendorQueuedList(){
+  return Object.keys(vChanges).map(uid=>{
+    const p=products.find(x=>x.product_uid===uid);
+    const entries=vChanges[uid]||[];
+    if(!p||!entries.length)return null;
+    return {product:p,entries};
+  }).filter(Boolean);
+}
+async function updateProductVendors(product,entries,dry){
+  const uid=product.product_uid;
+  // Skip vendors already linked to this part (mirrors the migration scripts' dedup).
+  let existing=new Set();
+  try{
+    const r=await fetch(_base+'vendor_catalogs?filter.product='+encodeURIComponent(uid)+'&page=1&count=100&group_by=VENDOR',{headers:getHdrs()});
+    if(r.ok){const d=await r.json().catch(()=>({}));(d.data||[]).forEach(it=>{const vu=it&&it.vendor&&it.vendor.vendor_uid;if(vu)existing.add(vu);});}
+  }catch(e){}
+  const toAdd=entries.filter(e=>!existing.has(e.vendor_uid));
+  const alreadyN=entries.length-toAdd.length;
+  if(!toAdd.length)return {ok:true,msg:'All '+entries.length+' vendor(s) already linked — skipped'};
+  // options only for variant products (from the loaded record, if present)
+  const optVals=(product.option&&product.option.option_values)||[];
+  const options=optVals.map(o=>({option_uid:o.option_uid})).filter(o=>o.option_uid);
+  const payloadAll=toAdd.map(e=>({
+    vendor_uid:e.vendor_uid,
+    vendor_sku:String(e.vendor_sku??''),
+    vendor_cost:(e.vendor_cost===''||e.vendor_cost==null)?0:Number(e.vendor_cost),
+    remarks:'',
+    product:uid,
+    ...(options.length?{options}:{})
+  }));
+  if(dry)return {ok:true,msg:'Dry run — would add '+payloadAll.length+' vendor(s)'+(alreadyN?(' ('+alreadyN+' already linked)'):'')};
+  for(let i=0;i<payloadAll.length;i+=200){
+    const batch=payloadAll.slice(i,i+200);
+    const put=await fetch(_base+'product/'+uid,{method:'PUT',headers:hdrs(),body:JSON.stringify({vendor:batch,product:{}})});
+    const jd=await put.json().catch(()=>({}));
+    if(!(jd&&jd.type==='success'))return {ok:false,msg:(jd&&jd.message)||('HTTP '+put.status)};
+  }
+  return {ok:true,msg:'Added '+payloadAll.length+' vendor(s)'+(alreadyN?(' ('+alreadyN+' already linked)'):'')};
 }
 
 /* ---------- theme ---------- */
@@ -649,6 +916,7 @@ function toggleTheme(){
 (function(){const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';s.onerror=()=>{};document.head.appendChild(s);})();
 applyThemeLabel();
 loadSavedList();
+setMode('formula'); // sync toolbars/thead/labels on load
 </script>
 </body>
 </html>
