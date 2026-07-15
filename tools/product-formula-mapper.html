@@ -122,6 +122,7 @@
     <div class="flex" style="margin-bottom:14px">
       <label class="pill" style="cursor:pointer;padding:7px 14px"><input type="radio" name="mapmode" value="formula" checked onchange="setMode('formula')" style="vertical-align:-2px"> 🧮 Map Formulas</label>
       <label class="pill" style="cursor:pointer;padding:7px 14px"><input type="radio" name="mapmode" value="vendor" onchange="setMode('vendor')" style="vertical-align:-2px"> 🏷️ Map Vendors</label>
+      <label class="pill" style="cursor:pointer;padding:7px 14px"><input type="radio" name="mapmode" value="color" onchange="setMode('color')" style="vertical-align:-2px"> 🎨 Map Colors</label>
     </div>
     <div class="flex">
       <button class="btn" id="fetchBtn" onclick="fetchAll()"><span id="fetchBtnLabel">⬇ Fetch products &amp; formulas</span></button>
@@ -173,6 +174,15 @@
       <div><label>&nbsp;</label><button class="btn sec" onclick="bulkAddVendor()">Add to selected</button></div>
     </div>
 
+    <!-- color toolbar (mode: color) -->
+    <div class="toolbar hidden" id="colorToolbar">
+      <div style="flex:1;min-width:200px"><label>Search products</label><input class="inp" id="csearch" placeholder="name, id, category…" oninput="renderRows()"></div>
+      <div><label>Category</label><select class="inp" id="ccatFilter" onchange="renderRows()"><option value="">All categories</option></select></div>
+      <div><label>Show</label><select class="inp" id="cfilter" onchange="renderRows()"><option value="all">All products</option><option value="unmapped">No colors staged</option><option value="changed">Only staged changes</option></select></div>
+      <div style="flex:1;min-width:200px"><label>Bulk-add a color to selected rows</label><select class="inp" id="bulkColor"><option value="">— choose a color —</option></select></div>
+      <div><label>&nbsp;</label><button class="btn sec" onclick="bulkAddColor()">Add to selected</button></div>
+    </div>
+
     <div class="flex" style="margin-bottom:12px" id="formulaExtras">
       <button class="btn sec small" onclick="autoMatch()">✨ Auto-match by name</button>
       <button class="btn sec small" onclick="resetChanges()">↺ Reset all changes</button>
@@ -200,6 +210,37 @@
       <div class="flex">
         <input type="file" id="vmapFile" class="inp" style="max-width:340px" accept=".csv,.xlsx,.xls" onchange="importVendorMapping()">
         <span id="vimport-status" class="muted small"></span>
+      </div>
+    </div>
+
+    <!-- color extras (mode: color) -->
+    <div class="flex hidden" style="margin-bottom:12px;align-items:flex-end" id="colorExtras">
+      <div style="flex:1;min-width:260px;display:flex;flex-direction:column">
+        <label>Color master — add colors, then map them to products below</label>
+        <div class="flex" style="gap:6px">
+          <input class="inp" id="newColorInput" placeholder="e.g. Weathered Wood (comma-separate to add several)" style="max-width:320px" onkeydown="if(event.key==='Enter'){addColorToMaster();event.preventDefault();}">
+          <button class="btn sec small" onclick="addColorToMaster()">+ Add</button>
+        </div>
+        <div id="colorMasterChips" class="small" style="margin-top:6px"></div>
+      </div>
+      <div style="display:flex;flex-direction:column"><label>On apply</label>
+        <select class="inp" id="colorApplyMode"><option value="merge">Merge with existing</option><option value="replace">Replace existing</option></select>
+      </div>
+      <div style="display:flex;flex-direction:column"><label>Customer selection</label>
+        <select class="inp" id="colorSelMode"><option value="nonmandatory">Non-mandatory (default)</option><option value="mandatory">Mandatory</option><option value="keep">Leave unchanged</option></select>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+        <button class="btn sec small" onclick="assignAllColors()">➕ Add ALL master colors to selected</button>
+        <button class="btn sec small" onclick="resetChanges()">↺ Reset</button>
+        <label class="pill" style="cursor:pointer"><input type="checkbox" onchange="document.getElementById('colorImportBox').classList.toggle('hidden',!this.checked)" style="vertical-align:-2px"> Import CSV / Excel</label>
+      </div>
+    </div>
+
+    <div id="colorImportBox" class="hidden" style="padding:14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+      <p class="small muted" style="margin-top:0">Upload a file with a <b>Product UID</b> column and a <b>Colors</b> column of comma-separated color names (e.g. <code>Red, Blue, Forest Green</code>). New colors are added to the master and staged per product.</p>
+      <div class="flex">
+        <input type="file" id="cmapFile" class="inp" style="max-width:340px" accept=".csv,.xlsx,.xls" onchange="importColorMapping()">
+        <span id="cimport-status" class="muted small"></span>
       </div>
     </div>
 
@@ -250,9 +291,11 @@ let changes={}; // product_uid -> formulaUid ('' means clear) ; absent means no 
 let selected=new Set();
 let _cancel=false, _results=[];
 /* vendor mode */
-let mode='formula';                 // 'formula' | 'vendor'
+let mode='formula';                 // 'formula' | 'vendor' | 'color'
 let vendors=[], vendorByUid={};
 let vChanges={};                    // product_uid -> [ {vendor_uid, vendor_sku, vendor_cost} ]
+let cChanges={};                    // product_uid -> [ colorName, ... ]  (colors staged to add)
+let colorMaster=[];                 // master list of color names (persisted)
 
 /* ---------- helpers ---------- */
 function showMsg(id,txt,type){const e=$(id);e.className='msg msg-'+type;e.textContent=txt;e.style.display='block';}
@@ -368,6 +411,12 @@ async function fetchAll(){
       $('mapCard').classList.remove('hidden');$('applyCard').classList.remove('hidden');
       renderRows();updateStats();
       showMsg('fetch-msg','✓ Loaded '+products.length+' products and '+vendors.length+' vendors.','ok');
+    }else if(mode==='color'){
+      cChanges={};
+      buildColorSelects();renderColorMaster();buildCategoryFilter();
+      $('mapCard').classList.remove('hidden');$('applyCard').classList.remove('hidden');
+      renderRows();updateStats();
+      showMsg('fetch-msg','✓ Loaded '+products.length+' products. Add colors to the master, then map them.','ok');
     }else{
       $('fetch-status').textContent='Loading formulas…';
       formulas=await fetchFormulas();
@@ -454,11 +503,17 @@ function targetFor(p){
 /* ---------- render ---------- */
 function catName(p){return p.product_category?.category_name||(typeof p.product_category==='string'?p.product_category:'')||'—';}
 function matchesFilter(p){
-  const f=(mode==='vendor'?$('vfilter'):$('filter')).value;
-  const cat=(mode==='vendor'?$('vcatFilter'):$('catFilter')).value;
+  const f=$(mode==='vendor'?'vfilter':mode==='color'?'cfilter':'filter').value;
+  const cat=$(mode==='vendor'?'vcatFilter':mode==='color'?'ccatFilter':'catFilter').value;
   if(cat&&catName(p)!==cat)return false;
   if(mode==='vendor'){
     const staged=(vChanges[p.product_uid]||[]).length>0;
+    if(f==='unmapped')return !staged;
+    if(f==='changed')return staged;
+    return true;
+  }
+  if(mode==='color'){
+    const staged=(cChanges[p.product_uid]||[]).length>0;
     if(f==='unmapped')return !staged;
     if(f==='changed')return staged;
     return true;
@@ -473,10 +528,10 @@ function matchesFilter(p){
 function buildCategoryFilter(){
   const cats=[...new Set(products.map(catName).filter(c=>c&&c!=='—'))].sort((a,b)=>a.localeCompare(b));
   const opts='<option value="">All categories</option>'+cats.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
-  ['catFilter','vcatFilter'].forEach(id=>{const sel=$(id);if(!sel)return;const prev=sel.value;sel.innerHTML=opts;if([...sel.options].some(o=>o.value===prev))sel.value=prev;});
+  ['catFilter','vcatFilter','ccatFilter'].forEach(id=>{const sel=$(id);if(!sel)return;const prev=sel.value;sel.innerHTML=opts;if([...sel.options].some(o=>o.value===prev))sel.value=prev;});
 }
 function matchesSearch(p){
-  const q=(mode==='vendor'?$('vsearch'):$('search')).value.trim().toLowerCase();
+  const q=$(mode==='vendor'?'vsearch':mode==='color'?'csearch':'search').value.trim().toLowerCase();
   if(!q)return true;
   return (p.product_name||'').toLowerCase().includes(q)
     ||(p.product_id||'').toLowerCase().includes(q)
@@ -485,6 +540,7 @@ function matchesSearch(p){
 }
 function renderRows(){
   if(mode==='vendor')return renderVendorRows();
+  if(mode==='color')return renderColorRows();
   const tb=$('tbody');tb.innerHTML='';
   const rows=products.filter(p=>matchesSearch(p)&&matchesFilter(p));
   for(const p of rows){
@@ -561,7 +617,7 @@ function autoMatch(){
   renderRows();updateStats();
   showMsg('fetch-msg','✨ Auto-matched '+n+' product(s) by exact name.', n?'ok':'warn');
 }
-function resetChanges(){if(mode==='vendor')vChanges={};else changes={};renderRows();updateStats();}
+function resetChanges(){if(mode==='vendor')vChanges={};else if(mode==='color')cChanges={};else changes={};renderRows();updateStats();}
 
 /* ---------- import CSV / Excel ---------- */
 function importMapping(){
@@ -624,6 +680,15 @@ function updateStats(){
     $('apply-count').textContent=staged?staged+' product(s) with staged vendors':'no changes queued';
     return;
   }
+  if(mode==='color'){
+    $('s-total').textContent=products.length;
+    $('s-formulas').textContent=colorMaster.length;
+    const staged=Object.keys(cChanges).filter(uid=>(cChanges[uid]||[]).length).length;
+    $('s-mapped').textContent=staged;
+    $('s-changed').textContent=staged;
+    $('apply-count').textContent=staged?staged+' product(s) with staged colors':'no changes queued';
+    return;
+  }
   $('s-total').textContent=products.length;
   $('s-formulas').textContent=formulas.length;
   $('s-mapped').textContent=products.filter(p=>curFormulaUid(p)).length;
@@ -663,15 +728,15 @@ async function updateProductFormula(product,formulaUid,dry){
 }
 
 async function apply(dry){
-  const isV=mode==='vendor';
-  const list=isV?vendorQueuedList():queuedList();
+  const isV=mode==='vendor',isC=mode==='color';
+  const list=isV?vendorQueuedList():isC?colorQueuedList():queuedList();
   if(!list.length){alert('No changes queued.');return;}
-  if(!dry&&!confirm('Apply '+list.length+' '+(isV?'product vendor update(s)':'formula change(s)')+' to live products in "'+_account+'"?\n\nRun a dry-run first if you haven\'t.'))return;
+  if(!dry&&!confirm('Apply '+list.length+' '+(isV?'product vendor update(s)':isC?'product color update(s)':'formula change(s)')+' to live products in "'+_account+'"?\n\nRun a dry-run first if you haven\'t.'))return;
   _cancel=false;_results=[];
   $('log').innerHTML='';$('log').classList.remove('hidden');
   $('prog').classList.remove('hidden');$('resultActions').classList.add('hidden');
   $('dryBtn').disabled=true;$('applyBtn').disabled=true;$('cancelBtn').classList.remove('hidden');
-  log((dry?'— DRY RUN — ':'— APPLYING — ')+list.length+(isV?' product(s) on "':' change(s) on "')+_account+'"','info');
+  log((dry?'— DRY RUN — ':'— APPLYING — ')+list.length+((isV||isC)?' product(s) on "':' change(s) on "')+_account+'"','info');
   let done=0,ok=0,fail=0;
   const CONC=4;
   const queue=[...list];
@@ -682,10 +747,11 @@ async function apply(dry){
       let res,label;
       try{
         if(isV){label=item.entries.length+' vendor(s)';res=await updateProductVendors(p,item.entries,dry);}
+        else if(isC){label=item.colors.length+' color(s)';res=await updateProductColors(p,item.colors,dry);}
         else{label=item.formulaUid?(formulaByUid[item.formulaUid]?.formula_name||item.formulaUid):'(none)';res=await updateProductFormula(p,item.formulaUid,dry);}
       }catch(e){res={ok:false,msg:e.message};label=label||'';}
       done++; res.ok?ok++:fail++;
-      if(isV)_results.push({product_uid:p.product_uid,product_name:p.product_name,detail:label,status:res.ok?(res.msg||'Success'):'Failed: '+res.msg});
+      if(isV||isC)_results.push({product_uid:p.product_uid,product_name:p.product_name,detail:label,status:res.ok?(res.msg||'Success'):'Failed: '+res.msg});
       else _results.push({product_uid:p.product_uid,product_name:p.product_name,formula_uid:item.formulaUid,formula_name:label,status:res.ok?'Success':'Failed: '+res.msg});
       log('['+done+'/'+list.length+'] '+(p.product_name||p.product_uid)+' → '+label+'  '+(res.ok?'✓ '+res.msg:'✗ '+res.msg),res.ok?'ok':'err');
       $('progbar').style.width=(done/list.length*100)+'%';
@@ -696,6 +762,8 @@ async function apply(dry){
   if(!dry&&ok){
     if(isV){
       _results.filter(r=>r.status&&!/^Failed/.test(r.status)).forEach(r=>{delete vChanges[r.product_uid];});
+    }else if(isC){
+      _results.filter(r=>r.status&&!/^Failed/.test(r.status)).forEach(r=>{delete cChanges[r.product_uid];});
     }else{
       _results.filter(r=>r.status==='Success').forEach(r=>{
         const p=products.find(x=>x.product_uid===r.product_uid);
@@ -715,6 +783,10 @@ function exportResults(){
     head=['Product UID','Product Name','Vendors','Status'];
     rows=_results.map(r=>[r.product_uid,r.product_name,r.detail||'',r.status]);
     fname='vendor_mapping_results.csv';
+  }else if(mode==='color'){
+    head=['Product UID','Product Name','Colors','Status'];
+    rows=_results.map(r=>[r.product_uid,r.product_name,r.detail||'',r.status]);
+    fname='color_mapping_results.csv';
   }else{
     head=['Product UID','Product Name','Formula UID','Formula Name','Status'];
     rows=_results.map(r=>[r.product_uid,r.product_name,r.formula_uid,r.formula_name,r.status]);
@@ -727,23 +799,30 @@ function exportResults(){
 
 /* ================= VENDOR MODE ================= */
 function setMode(m){
-  mode=m; const isV=(m==='vendor');
-  $('formulaToolbar').classList.toggle('hidden',isV);
+  mode=m; const isV=(m==='vendor'), isC=(m==='color'), isF=(m==='formula');
+  $('formulaToolbar').classList.toggle('hidden',!isF);
   $('vendorToolbar').classList.toggle('hidden',!isV);
-  $('formulaExtras').classList.toggle('hidden',isV);
+  $('colorToolbar').classList.toggle('hidden',!isC);
+  $('formulaExtras').classList.toggle('hidden',!isF);
   $('vendorExtras').classList.toggle('hidden',!isV);
+  $('colorExtras').classList.toggle('hidden',!isC);
   $('importBox').classList.add('hidden');
   $('vendorImportBox').classList.add('hidden');
-  $('mapTitle').textContent=isV?'Map vendors to parts & services':'Map formulas to line items';
-  $('mapDesc').textContent=isV?'Add one or more vendors to each part (with SKU & cost), or use the bulk tools. Vendors already linked to a part are skipped on apply.':'Pick a formula per product, or use the bulk tools. Only rows where you change the formula are applied.';
-  $('sl-2').textContent=isV?'Vendors':'Formulas';
-  $('sl-3').textContent=isV?'Staged':'Have formula';
-  if($('fetchBtnLabel'))$('fetchBtnLabel').innerHTML=isV?'⬇ Fetch products &amp; vendors':'⬇ Fetch products &amp; formulas';
+  $('colorImportBox').classList.add('hidden');
+  $('mapTitle').textContent=isV?'Map vendors to parts & services':isC?'Map color options to parts & services':'Map formulas to line items';
+  $('mapDesc').textContent=isV?'Add one or more vendors to each part (with SKU & cost), or use the bulk tools. Vendors already linked to a part are skipped on apply.':isC?'Build a color master, then add one or more colors to each part — by dropdown, bulk, or comma-separated import. On apply, colors merge into the product\'s option values (customer selection defaults to non-mandatory).':'Pick a formula per product, or use the bulk tools. Only rows where you change the formula are applied.';
+  $('sl-2').textContent=isV?'Vendors':isC?'Colors in master':'Formulas';
+  $('sl-3').textContent=(isV||isC)?'Staged':'Have formula';
+  if($('fetchBtnLabel'))$('fetchBtnLabel').innerHTML=isV?'⬇ Fetch products &amp; vendors':isC?'⬇ Fetch products':'⬇ Fetch products &amp; formulas';
   $('applyDesc').innerHTML=isV
     ? 'Sends <code>PUT product/&lt;uid&gt;</code> with <code>{ product:{}, vendor:[…] }</code> — the same call as your migration script (vendors already linked are skipped). Run a dry-run first.'
+    : isC
+    ? 'Reads each product, then sends <code>PUT product/&lt;uid&gt;</code> with the colors merged into <code>option.option_values</code> (existing colors kept unless you pick Replace; everything else preserved). Run a dry-run first.'
     : 'Sends <code>PUT product/&lt;uid&gt;</code> with <code>{ product, vendor:[] }</code> — the same call as your script. Run a dry-run first.';
   $('thead').innerHTML=isV
     ? '<tr><th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th><th>Product</th><th>ID</th><th>Category</th><th>Vendors staged</th><th>Add vendor →</th><th>SKU</th><th>Cost</th><th>Status</th></tr>'
+    : isC
+    ? '<tr><th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th><th>Product</th><th>ID</th><th>Category</th><th>Colors staged</th><th>Add color →</th><th>Status</th></tr>'
     : '<tr><th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th><th>Product</th><th>ID</th><th>Category</th><th>Current formula</th><th>Map to →</th><th>Status</th></tr>';
   if(isV && products.length && !vendors.length) $('fetch-status').textContent='Switched to vendor mode — click Fetch to load vendors.';
   if(products.length){renderRows();updateStats();}
@@ -918,6 +997,163 @@ async function updateProductVendors(product,entries,dry){
   return {ok:true,msg:'Added '+payloadAll.length+' vendor(s)'+(alreadyN?(' ('+alreadyN+' already linked)'):'')};
 }
 
+/* ================= COLOR OPTIONS MODE ================= */
+const COLOR_MASTER_KEY='zpm_color_master';
+function loadColorMaster(){try{colorMaster=JSON.parse(localStorage.getItem(COLOR_MASTER_KEY)||'[]')||[];}catch(e){colorMaster=[];}}
+function saveColorMaster(){try{localStorage.setItem(COLOR_MASTER_KEY,JSON.stringify(colorMaster));}catch(e){}}
+function _hasColor(c){return colorMaster.some(x=>x.toLowerCase()===String(c).toLowerCase());}
+function addColorToMaster(){
+  const inp=$('newColorInput');const raw=(inp.value||'').trim();if(!raw)return;
+  raw.split(',').map(s=>s.trim()).filter(Boolean).forEach(c=>{if(!_hasColor(c))colorMaster.push(c);});
+  colorMaster.sort((a,b)=>a.localeCompare(b));
+  inp.value='';saveColorMaster();buildColorSelects();renderColorMaster();
+}
+function removeColorFromMasterIdx(i){colorMaster.splice(i,1);saveColorMaster();buildColorSelects();renderColorMaster();}
+function renderColorMaster(){
+  const box=$('colorMasterChips');if(!box)return;
+  box.innerHTML=colorMaster.length
+    ? colorMaster.map((c,i)=>'<span class="chip" style="margin:1px 3px 1px 0">'+esc(c)+' <a href="#" title="remove from master" onclick="removeColorFromMasterIdx('+i+');return false" style="text-decoration:none;color:var(--err);font-weight:700">×</a></span>').join('')
+    : '<span class="muted">No colors yet — add some above (or import a sheet).</span>';
+}
+function colorOptionsHtml(){return '<option value="">— add a color… —</option>'+colorMaster.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');}
+function buildColorSelects(){const b=$('bulkColor');if(b)b.innerHTML='<option value="">— choose a color —</option>'+colorMaster.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');}
+
+function renderColorRows(){
+  const tb=$('tbody');tb.innerHTML='';
+  if(!products.length){$('rowcount').textContent='';return;}
+  const rows=products.filter(p=>matchesSearch(p)&&matchesFilter(p));
+  if(!rows.length){tb.innerHTML='<tr><td colspan="7" class="muted small" style="padding:16px">No products match this filter.</td></tr>';}
+  for(const p of rows){
+    const uid=p.product_uid;
+    const staged=cChanges[uid]||[];
+    const chips=staged.length
+      ? staged.map((c,i)=>'<span class="chip" style="margin:1px 3px 1px 0">'+esc(c)+' <a href="#" title="remove" onclick="removeStagedColorIdx(\''+esc(uid)+'\','+i+');return false" style="text-decoration:none;color:var(--err);font-weight:700">×</a></span>').join('')
+      : '<span class="cur none">none staged</span>';
+    const existing=(p.option&&Array.isArray(p.option.option_values))?p.option.option_values.length:0;
+    const tr=document.createElement('tr');
+    tr.innerHTML=
+      '<td class="checkcol"><input type="checkbox" data-uid="'+esc(uid)+'" '+(selected.has(uid)?'checked':'')+' onchange="toggleRow(this)"></td>'+
+      '<td>'+esc(p.product_name||'—')+'<div class="muted small">'+esc(p.product_type||'')+'</div></td>'+
+      '<td class="muted small">'+esc(p.product_id||'—')+'</td>'+
+      '<td>'+esc(catName(p))+'</td>'+
+      '<td>'+chips+(existing?' <span class="muted small">('+existing+' existing)</span>':'')+'</td>'+
+      '<td><select data-uid="'+esc(uid)+'" onchange="onColorAdd(this)">'+colorOptionsHtml()+'</select></td>'+
+      '<td class="status '+(staged.length?'pend':'')+'">'+(staged.length?staged.length+' staged':'')+'</td>';
+    tb.appendChild(tr);
+  }
+  $('rowcount').textContent=rows.length+' of '+products.length+' products shown';
+  const allVis=rows.length&&rows.every(p=>selected.has(p.product_uid));
+  $('selAll').checked=!!allVis;
+}
+function addStagedColor(uid,color){
+  color=String(color||'').trim();if(!color)return;
+  if(!cChanges[uid])cChanges[uid]=[];
+  if(cChanges[uid].some(x=>x.toLowerCase()===color.toLowerCase()))return; // dedup staged
+  cChanges[uid].push(color);
+}
+function onColorAdd(sel){const uid=sel.dataset.uid,c=sel.value;if(!c)return;addStagedColor(uid,c);renderRows();updateStats();}
+function removeStagedColorIdx(uid,i){if(!cChanges[uid])return;cChanges[uid].splice(i,1);if(!cChanges[uid].length)delete cChanges[uid];renderRows();updateStats();}
+function bulkAddColor(){
+  const c=$('bulkColor').value;
+  if(!c){alert('Pick a color in the bulk dropdown first (add colors to the master if it\'s empty).');return;}
+  if(!selected.size){alert('Select some rows first (checkboxes).');return;}
+  selected.forEach(uid=>addStagedColor(uid,c));renderRows();updateStats();
+}
+function assignAllColors(){
+  if(!colorMaster.length){alert('Add colors to the master first.');return;}
+  if(!selected.size){alert('Select some products first (checkboxes).');return;}
+  selected.forEach(uid=>colorMaster.forEach(c=>addStagedColor(uid,c)));renderRows();updateStats();
+}
+function importColorMapping(){
+  const file=$('cmapFile').files[0];if(!file)return;
+  const ext=file.name.toLowerCase().split('.').pop();
+  if(ext==='csv'){const rd=new FileReader();rd.onload=e=>applyImportedColorRows(parseCSV(e.target.result));rd.readAsText(file);}
+  else{
+    if(!window.XLSX){$('cimport-status').textContent='Excel support needs internet (SheetJS). Save the file as CSV and retry.';return;}
+    const rd=new FileReader();
+    rd.onload=e=>{const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});applyImportedColorRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''}));};
+    rd.readAsArrayBuffer(file);
+  }
+}
+function applyImportedColorRows(rows){
+  if(!rows.length){$('cimport-status').textContent='No rows found.';return;}
+  const keys=Object.keys(rows[0]);
+  const findCol=(preds)=>keys.find(k=>preds(k.toLowerCase().trim()));
+  const pCol=findCol(l=>l==='product uid'||l==='product_uid')||findCol(l=>l.includes('product')&&l.includes('uid'));
+  const cCol=findCol(l=>l==='colors'||l==='color'||l==='color options')||findCol(l=>l.includes('color'));
+  if(!pCol||!cCol){$('cimport-status').textContent='Could not find "Product UID" and "Colors" columns. Found: '+keys.join(', ');return;}
+  const knownP=new Set(products.map(p=>p.product_uid));
+  let ok=0,missP=0,skip=0,added=0;
+  rows.forEach(r=>{
+    const pu=String(r[pCol]??'').trim();const rawColors=String(r[cCol]??'').trim();
+    if(!pu){skip++;return;}
+    if(!knownP.has(pu)){missP++;return;}
+    const cols=rawColors.split(',').map(s=>s.trim()).filter(Boolean);
+    if(!cols.length){skip++;return;}
+    cols.forEach(c=>{
+      if(!_hasColor(c)){colorMaster.push(c);added++;}
+      const before=(cChanges[pu]||[]).length;addStagedColor(pu,c);if((cChanges[pu]||[]).length>before)ok++;
+    });
+  });
+  if(added){colorMaster.sort((a,b)=>a.localeCompare(b));saveColorMaster();buildColorSelects();renderColorMaster();}
+  renderRows();updateStats();
+  $('cimport-status').textContent='Staged '+ok+' color link(s)'+(added?(', added '+added+' new color(s) to master'):'')+'. '+(missP?missP+' product UID(s) not found. ':'')+(skip?skip+' row(s) skipped.':'');
+}
+function colorQueuedList(){
+  return Object.keys(cChanges).map(uid=>{
+    const p=products.find(x=>x.product_uid===uid);
+    const colors=cChanges[uid]||[];
+    if(!p||!colors.length)return null;
+    return {product:p,colors};
+  }).filter(Boolean);
+}
+async function updateProductColors(product,colors,dry){
+  const uid=product.product_uid;
+  // Read the full product first so nothing else is overwritten (per the safe pattern).
+  let full=null;
+  try{const r=await fetch(_base+'product/'+uid,{headers:getHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));full=(d&&(d.data||d.product))||d;}}catch(e){}
+  if(!full||typeof full!=='object')full=product;
+  const replace=$('colorApplyMode')&&$('colorApplyMode').value==='replace';
+  const selMode=($('colorSelMode')&&$('colorSelMode').value)||'nonmandatory';
+  const existingOpt=(full.option&&typeof full.option==='object')?full.option:null;
+  const existingVals=(existingOpt&&Array.isArray(existingOpt.option_values))?existingOpt.option_values:[];
+  const seen=new Set(),outVals=[];
+  const norm=s=>String(s==null?'':s).trim().toLowerCase();
+  const push=(v)=>{const k=norm(v.option_value);if(!v.option_value||seen.has(k))return;seen.add(k);outVals.push(v);};
+  if(!replace) existingVals.forEach(v=>push({option_value:v.option_value,option_image:v.option_image||'',is_available:v.is_available!==false}));
+  colors.forEach(c=>push({option_value:c,option_image:'',is_available:true}));
+  // Build option block; proposal behavior defaults to non-mandatory customer selection.
+  const option={...(existingOpt||{}),option_label:(existingOpt&&existingOpt.option_label)||'Option',option_values:outVals};
+  if(selMode==='nonmandatory'){option.customer_selection=true;option.mandate_customer_selection=false;}
+  else if(selMode==='mandatory'){option.customer_selection=true;option.mandate_customer_selection=true;}
+  // selMode==='keep' leaves whatever existed (or defaults false/false if new)
+  else{if(option.customer_selection===undefined)option.customer_selection=true;if(option.mandate_customer_selection===undefined)option.mandate_customer_selection=false;}
+  const newCount=colors.filter(c=>!existingVals.some(v=>norm(v.option_value)===norm(c))).length;
+  if(dry)return {ok:true,msg:'Dry run — '+(replace?'set':'merge to')+' '+outVals.length+' color(s)'+(replace?'':(', '+newCount+' new'))};
+  let cat=full.product_category;
+  if(cat&&typeof cat==='object')cat=cat.category_uid||cat.product_category||cat._id;
+  const payload={product:{
+    product_uid:uid,
+    product_name:full.product_name,
+    product_id:full.product_id,
+    product_type:full.product_type,
+    price:full.price,
+    purchase_price:full.purchase_price,
+    is_available:full.is_available!==false,
+    track_quantity:full.track_quantity!==false,
+    product_category:cat,
+    option:option
+  }};
+  const put=await fetch(_base+'product/'+uid,{method:'PUT',headers:hdrs(),body:JSON.stringify(payload)});
+  const jd=await put.json().catch(()=>({}));
+  if(jd&&jd.type==='success'){
+    // reflect locally so re-mapping sees the new state
+    product.option=option;
+    return {ok:true,msg:(replace?'Set ':'Merged to ')+outVals.length+' color(s)'};
+  }
+  return {ok:false,msg:(jd&&jd.message)||('HTTP '+put.status)};
+}
+
 /* ---------- theme ---------- */
 function applyThemeLabel(){
   const dark=document.documentElement.getAttribute('data-theme')==='dark';
@@ -934,6 +1170,7 @@ function toggleTheme(){
 (function(){const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';s.onerror=()=>{};document.head.appendChild(s);})();
 applyThemeLabel();
 loadSavedList();
+loadColorMaster();buildColorSelects();renderColorMaster();
 setMode('formula'); // sync toolbars/thead/labels on load
 </script>
 </body>
