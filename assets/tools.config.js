@@ -10,6 +10,14 @@
 // "New/Updated" badge), help (optional longer text shown in the info popover).
 const TOOLS = [
   {
+    "name": "Lat & Long Capture",
+    "description": "Bulk-geocode an address spreadsheet to latitude/longitude",
+    "file": "tools/latlong-capture.html",
+    "icon": "📍",
+    "updated": "2026-07-16",
+    "help": "Runs entirely in your browser. Enter a Google Maps Geocoding API key (never stored or exported), upload an address spreadsheet (.xlsx/.xls/.csv), and it auto-detects Street/City/State/Zipcode/Country columns plus their Billing variants. Each row geocodes when it has Street + City or Street + Zipcode; billing coordinates copy the service address when identical or absent, otherwise geocode separately. Live progress with Stop, then download full / geocoded-only / failed-with-reason Excel files."
+  },
+  {
     "name": "Product Mapper",
     "description": "Bulk-map CPQ formulas or vendors to Parts & Services",
     "file": "tools/product-formula-mapper.html",

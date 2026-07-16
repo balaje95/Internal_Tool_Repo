@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Lat & Long Capture</title>
+<script>(function(){try{if(localStorage.getItem('zuper_tools_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="../assets/theme.js" defer></script>
+<style>
+  :root{
+    --bg:#f7f7fa; --panel:#ffffff; --panel2:#eef0f4; --border:#dcdfe6;
+    --text:#1a1a2e; --muted:#6b7280; --accent:#ff7a1a; --accent2:#e8500a;
+    --good:#1f9d55; --bad:#d1453b; --warn:#b7791f; --radius:10px;
+    --log-bg:#f0f1f5; --warn-bg:#fff4e5; --warn-border:#f3c98b; --warn-text:#8a5a10;
+  }
+  [data-theme="dark"]{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d2129; --border:#2a2f3a;
+    --text:#e6e8eb; --muted:#9aa3b2; --accent:#ff7a1a; --accent2:#ffa05c;
+    --good:#3ddc84; --bad:#ff5c5c; --warn:#e6b450;
+    --log-bg:#0a0b0e; --warn-bg:#2a1f10; --warn-border:#5a3d12; --warn-text:#ffcf9a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  header{padding:24px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;}
+  header .logo{width:28px;height:28px;border-radius:6px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:16px;}
+  header h1{font-size:18px;margin:0;font-weight:600;}
+  header span.sub{color:var(--muted);font-size:13px;}
+  main{max-width:1080px;margin:0 auto;padding:28px 32px 80px;}
+  .step{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:22px 24px;margin-bottom:20px;}
+  .step h2{display:flex;align-items:center;gap:10px;font-size:15px;margin:0 0 14px;}
+  .step h2 .num{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#1a1a1a;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none;}
+  .step.disabled{opacity:.45;pointer-events:none;}
+  .hint{color:var(--muted);font-size:12.5px;margin:4px 0 14px;line-height:1.5;}
+  .dropzone{border:1.5px dashed var(--border);border-radius:var(--radius);padding:28px;text-align:center;color:var(--muted);cursor:pointer;transition:border-color .15s;}
+  .dropzone:hover, .dropzone.drag{border-color:var(--accent);color:var(--text);}
+  input[type=file]{display:none;}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;}
+  .field{flex:1;min-width:220px;}
+  label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;}
+  input[type=text],input[type=password]{width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13.5px;}
+  input[type=text]:focus,input[type=password]:focus{outline:none;border-color:var(--accent);}
+  .pw-wrap{position:relative;}
+  .pw-wrap button.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--muted);padding:4px 8px;font-size:14px;}
+  button{background:var(--accent);color:#1a1300;border:none;border-radius:8px;padding:9px 16px;font-size:13.5px;font-weight:600;cursor:pointer;}
+  button:hover{background:var(--accent2);}
+  button.secondary{background:transparent;border:1px solid var(--border);color:var(--text);}
+  button.secondary:hover{border-color:var(--accent);background:var(--panel2);}
+  button.danger{background:var(--bad);color:#fff;}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  .badge{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:2px 7px;font-size:11px;}
+  .warn-box{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text);border-radius:8px;padding:12px 14px;font-size:12.5px;margin-bottom:14px;line-height:1.5;}
+  .ref-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;margin-top:8px;}
+  .ref-cell{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;}
+  .ref-cell .k{color:var(--muted);}
+  .ref-cell .v{font-weight:600;word-break:break-word;}
+  .ref-cell .v.miss{color:var(--bad);font-weight:500;font-style:italic;}
+  .summary-bar{display:flex;gap:12px;margin:14px 0;flex-wrap:wrap;}
+  .summary-bar .stat{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 16px;text-align:center;min-width:88px;}
+  .summary-bar .stat .v{font-size:20px;font-weight:700;}
+  .summary-bar .stat .l{font-size:11px;color:var(--muted);margin-top:2px;}
+  .stat .v.ok{color:var(--good);} .stat .v.bad{color:var(--bad);} .stat .v.warn{color:var(--warn);}
+  .progress{height:12px;background:var(--panel2);border:1px solid var(--border);border-radius:999px;overflow:hidden;margin:6px 0;}
+  .progress .fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .2s;}
+  .prog-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);}
+  pre.log{background:var(--log-bg);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12px;max-height:300px;overflow:auto;white-space:pre-wrap;margin:8px 0 0;}
+  .log-line{margin:0 0 3px;}
+  .log-ok{color:var(--good);} .log-err{color:var(--bad);} .log-skip{color:var(--warn);} .log-info{color:var(--muted);}
+  .footer-actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}
+  .tbl-wrap{overflow-x:auto;margin-top:12px;border:1px solid var(--border);border-radius:8px;}
+  table{border-collapse:collapse;width:100%;font-size:12px;}
+  th,td{border-bottom:1px solid var(--border);padding:7px 10px;text-align:left;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis;}
+  th{background:var(--panel2);position:sticky;top:0;font-weight:600;}
+  td.c-coord{font-variant-numeric:tabular-nums;color:var(--accent2);font-weight:600;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">📍</div>
+  <div>
+    <h1>Lat &amp; Long Capture</h1>
+    <span class="sub">Bulk-geocode an address spreadsheet to latitude/longitude (service &amp; billing)</span>
+  </div>
+  <button type="button" class="secondary" id="themeToggle" data-theme-toggle style="margin-left:auto;font-size:12.5px;padding:7px 14px;">🌙 Dark</button>
+</header>
+
+<main>
+
+  <!-- STEP 1: API key -->
+  <div class="step" id="step1">
+    <h2><span class="num">1</span> Google Maps Geocoding API key</h2>
+    <p class="hint">Runs entirely in your browser — your key is sent only to Google's Geocoding API and is <b>never</b> stored or written into any export. The key must have the <b>Geocoding API</b> enabled; if it's referrer-restricted, allow this site's domain.</p>
+    <div class="field" style="max-width:560px;">
+      <label for="apiKey">API key</label>
+      <div class="pw-wrap">
+        <input type="password" id="apiKey" autocomplete="off" placeholder="Paste your Google Maps Geocoding API key…" />
+        <button type="button" class="eye" id="eyeBtn" title="Show / hide">👁</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: Upload -->
+  <div class="step" id="step2">
+    <h2><span class="num">2</span> Upload your address spreadsheet</h2>
+    <p class="hint">.xlsx, .xls or .csv with address columns. The tool auto-detects columns like <span class="badge">Street</span> <span class="badge">City</span> <span class="badge">State</span> <span class="badge">Zipcode</span> <span class="badge">Country</span> and their <span class="badge">Billing …</span> variants. Rule: a row geocodes when it has <b>Street + City</b> or <b>Street + Zipcode</b>.</p>
+    <div class="dropzone" id="dropzone">
+      <div>📄 Click to choose a file, or drag it here</div>
+      <div style="font-size:11.5px;margin-top:6px;">.xlsx, .xls or .csv</div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
+    <div id="fileInfo" style="margin-top:12px;font-size:13px;color:var(--muted);"></div>
+    <div id="refBox" style="display:none;margin-top:14px;">
+      <div style="font-size:12.5px;font-weight:600;">Detected column mapping</div>
+      <div class="ref-grid" id="refGrid"></div>
+      <div id="refWarn" style="display:none;" class="warn-box" ></div>
+    </div>
+  </div>
+
+  <!-- STEP 3: Process -->
+  <div class="step disabled" id="step3">
+    <h2><span class="num">3</span> Geocode &amp; download</h2>
+    <div class="footer-actions" style="margin-top:0;">
+      <button id="btnStart" disabled>▶ Start geocoding</button>
+      <button id="btnStop" class="danger" disabled>■ Stop</button>
+      <span id="statusTxt" class="badge" style="align-self:center;">Ready</span>
+    </div>
+    <div class="summary-bar">
+      <div class="stat"><div class="v" id="sTotal">0</div><div class="l">Rows</div></div>
+      <div class="stat"><div class="v" id="sDone">0</div><div class="l">Processed</div></div>
+      <div class="stat"><div class="v ok" id="sOk">0</div><div class="l">Geocoded</div></div>
+      <div class="stat"><div class="v warn" id="sSkip">0</div><div class="l">Skipped</div></div>
+      <div class="stat"><div class="v bad" id="sFail">0</div><div class="l">Failed</div></div>
+    </div>
+    <div class="progress"><div class="fill" id="progFill"></div></div>
+    <div class="prog-meta"><span id="progLabel">0 / 0 rows</span><span id="progPct">0%</span></div>
+    <pre class="log" id="logBox"><span class="log-info">Upload a file and press Start.</span></pre>
+    <div class="footer-actions">
+      <button id="dlAll" class="secondary" disabled>⬇ Download full result</button>
+      <button id="dlOk" class="secondary" disabled>⬇ Download geocoded only</button>
+      <button id="dlFail" class="secondary" disabled>⬇ Download failed (with reason)</button>
+    </div>
+    <div class="tbl-wrap" id="resultWrap" style="display:none;"></div>
+  </div>
+
+</main>
+
+<script src="../assets/back-link.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+//  Lat & Long Capture — client-side geocoder.
+//  Ports the Flask/pandas backend (app.py) logic to the browser:
+//   • auto-detect address columns   • Street + (City | Zipcode) rule
+//   • geocode service + billing      • copy service→billing when same/absent
+//   • full / success / failed exports
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let rows = [];        // array of row objects keyed by header
+let columns = [];     // original column order
+let ref = {};         // detected column mapping
+let outCols = [];     // final export column order (original + appended)
+let results = [];     // enriched rows after a run
+let running = false, stopReq = false;
+let cOk = 0, cFail = 0, cSkip = 0;
+
+const GEO_HOST = 'https://maps.googleapis.com/maps/api/geocode/json';
+// Columns the tool appends to the sheet.
+const LAT='Latitude', LNG='Longitude', BLAT='Billing Latitude', BLNG='Billing Longitude';
+const GS='Geocode_Status', GR='Geocode_Reason', BGS='Billing_Geocode_Status', BGR='Billing_Geocode_Reason';
+
+const $ = id => document.getElementById(id);
+
+// ── COLUMN DETECTION (mirrors _get_column_reference / _first_match) ─────────
+function firstMatch(cols, candidates){
+  const lower = {}, norm = {};
+  cols.forEach(c => {
+    const s = String(c).trim();
+    lower[s.toLowerCase()] = s;
+    norm[s.toLowerCase().replace(/[^a-z0-9]/g,'')] = s;
+  });
+  for (const name of candidates){
+    const hit = lower[name.toLowerCase()];
+    if (hit) return hit;
+    const n = name.toLowerCase().replace(/[^a-z0-9]/g,'');
+    if (norm[n]) return norm[n];
+  }
+  return '';
+}
+function detectRef(cols){
+  return {
+    street:  firstMatch(cols, ['Street','Street (*)','Address','Service Street','Street Address']),
+    city:    firstMatch(cols, ['City','City (*)','Town']),
+    state:   firstMatch(cols, ['State','Province','Region']),
+    country: firstMatch(cols, ['Country','Nation']),
+    zipcode: firstMatch(cols, ['Zipcode','ZIP','Postal Code','Zip Code','Pin Code']),
+    latitude:  firstMatch(cols, ['Latitude','Lat']),
+    longitude: firstMatch(cols, ['Longitude','Long','Lng']),
+    billing_street:  firstMatch(cols, ['Billing Street','Billing Address','Bill Street']),
+    billing_city:    firstMatch(cols, ['Billing City','Bill City']),
+    billing_state:   firstMatch(cols, ['Billing State','Bill State','Billing Province']),
+    billing_country: firstMatch(cols, ['Billing Country','Bill Country']),
+    billing_zipcode: firstMatch(cols, ['Billing Zipcode','Billing ZIP','Bill Zip','Billing Postal Code']),
+    billing_latitude:  firstMatch(cols, ['Billing Latitude','Bill Latitude','Billing Lat']),
+    billing_longitude: firstMatch(cols, ['Billing Longitude','Bill Longitude','Billing Lng','Billing Long']),
+  };
+}
+
+// ── ADDRESS HELPERS (mirror the Python rules) ──────────────────────────────
+function val(row, col){ return col && row[col] != null ? String(row[col]).trim() : ''; }
+function zipOk(z){ return /^\d{5}(-\d{4})?$/.test(String(z||'').trim()); }
+function extractZip(s){
+  const str = String(s||'').trim();
+  const digits = str.replace(/[^\d-]/g,'');
+  return digits.length >= 5 ? digits.slice(0,10) : '';
+}
+function normZip(z){ return zipOk(z) ? String(z).trim() : extractZip(z); }
+function buildLine(street, city, state, zip, country){
+  return [street, city, state, zip, country].filter(Boolean).join(', ');
+}
+
+// ── GEOCODE (single address) ────────────────────────────────────────────────
+async function geocode(street, city, state, zip, country){
+  const key = $('apiKey').value.trim();
+  if (!key) throw new Error('No API key');
+  const z = normZip(zip);
+  const ctry = (country || 'United States').trim();
+  const params = new URLSearchParams({ address: buildLine(street, city, state, z, ctry), key });
+  if (!country || /^(us|usa|united states)$/i.test(ctry)) params.set('region','us');
+  const url = GEO_HOST + '?' + params.toString();
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const d = await r.json();
+  if (d.status !== 'OK' || !(d.results && d.results.length))
+    return { lat:'', lng:'', ok:false, msg:'Google: ' + d.status + (d.error_message ? ' – ' + d.error_message : '') };
+  const loc = d.results[0].geometry.location;
+  return { lat: loc.lat.toFixed(6), lng: loc.lng.toFixed(6), ok:true, msg:'' };
+}
+
+// ── FILE PARSING ─────────────────────────────────────────────────────────────
+function readFile(file){
+  const reader = new FileReader();
+  reader.onload = e => {
+    try{
+      const wb = XLSX.read(e.target.result, { type:'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const header = (XLSX.utils.sheet_to_json(ws, { header:1, blankrows:false })[0] || []).map(c => String(c).trim());
+      columns = header.filter(Boolean);
+      rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+      ref = detectRef(columns);
+      afterParse(file.name);
+    }catch(err){
+      $('fileInfo').innerHTML = '<span style="color:var(--bad)">Could not read file: ' + esc(err.message) + '</span>';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function afterParse(name){
+  $('fileInfo').innerHTML = '📄 <b>' + esc(name) + '</b> — ' + rows.length + ' rows, ' + columns.length + ' columns';
+  renderRef();
+  $('refBox').style.display = 'block';
+  const ready = rows.length > 0 && !!ref.street;
+  $('step3').classList.toggle('disabled', !ready);
+  $('btnStart').disabled = !ready;
+  $('statusTxt').textContent = ready ? 'Ready — press Start' : 'Street column required';
+  resetCounters();
+  $('sTotal').textContent = rows.length;
+}
+
+function renderRef(){
+  const labels = {
+    street:'Street', city:'City', state:'State', zipcode:'Zipcode', country:'Country',
+    billing_street:'Billing Street', billing_city:'Billing City', billing_state:'Billing State',
+    billing_zipcode:'Billing Zipcode', billing_country:'Billing Country'
+  };
+  $('refGrid').innerHTML = Object.keys(labels).map(k => {
+    const v = ref[k];
+    return '<div class="ref-cell"><div class="k">' + labels[k] + '</div><div class="v' + (v?'':' miss') + '">' + (v ? esc(v) : 'not found') + '</div></div>';
+  }).join('');
+  const miss = [];
+  if (!ref.street) miss.push('Street');
+  if (!ref.city && !ref.zipcode) miss.push('City or Zipcode');
+  const w = $('refWarn');
+  if (miss.length){
+    w.style.display = 'block';
+    w.innerHTML = '⚠ Missing required reference: <b>' + miss.join(', ') + '</b>. ' +
+      (!ref.street ? 'Street is required — most rows will fail.' : 'Rows need City or Zipcode with Street to geocode.');
+  } else { w.style.display = 'none'; }
+}
+
+// ── RUN (mirrors process_job) ───────────────────────────────────────────────
+async function run(){
+  if (running) return;
+  const key = $('apiKey').value.trim();
+  if (!key){ alert('Enter your Google Maps Geocoding API key in step 1.'); return; }
+  if (!rows.length){ alert('Upload a spreadsheet first.'); return; }
+
+  running = true; stopReq = false;
+  resetCounters();
+  results = [];
+  $('btnStart').disabled = true; $('btnStop').disabled = false;
+  $('dlAll').disabled = $('dlOk').disabled = $('dlFail').disabled = true;
+  $('resultWrap').style.display = 'none';
+  $('logBox').innerHTML = '';
+  $('statusTxt').textContent = 'Processing…';
+
+  // Resolve working column names (use detected, else defaults).
+  const c = {
+    street: ref.street, city: ref.city, state: ref.state, country: ref.country, zip: ref.zipcode,
+    bStreet: ref.billing_street, bCity: ref.billing_city, bState: ref.billing_state,
+    bCountry: ref.billing_country, bZip: ref.billing_zipcode,
+    lat: ref.latitude || LAT, lng: ref.longitude || LNG,
+    bLat: ref.billing_latitude || BLAT, bLng: ref.billing_longitude || BLNG,
+  };
+  // Final export column order = original columns + any appended ones not already present.
+  outCols = columns.slice();
+  [c.lat, c.lng, c.bLat, c.bLng, GS, GR, BGS, BGR].forEach(k => { if (!outCols.includes(k)) outCols.push(k); });
+
+  const total = rows.length;
+  for (let i = 0; i < total; i++){
+    if (stopReq){ addLog('skip', i, '(stopped)', '', '', 'Stopped by user'); break; }
+    const src = rows[i];
+    const out = Object.assign({}, src);
+
+    const street = val(src, c.street), city = val(src, c.city), state = val(src, c.state);
+    const country = val(src, c.country), zip = normZip(val(src, c.zip));
+
+    let sLat = '', sLng = '', sStatus = 'failed', sMsg = '';
+    if (!street){
+      sMsg = 'Street is missing.';
+    } else if (!city && !zip){
+      sMsg = 'Need City or Zipcode along with Street.';
+    } else {
+      try{
+        const g = await geocode(street, city, state, zip, country);
+        if (g.ok){ sLat = g.lat; sLng = g.lng; sStatus = 'success'; }
+        else { sStatus = 'failed'; sMsg = g.msg; }
+      }catch(e){ sStatus = 'failed'; sMsg = e.message; }
+    }
+    out[c.lat] = sLat; out[c.lng] = sLng;
+    out[GS] = sStatus; out[GR] = sMsg;
+
+    // ── Billing ──────────────────────────────────────────────────────────
+    const bStreet = val(src, c.bStreet), bCity = val(src, c.bCity), bState = val(src, c.bState);
+    const bCountry = val(src, c.bCountry), bZip = normZip(val(src, c.bZip));
+    const hasBilling = !!(bStreet || bCity || bState || bZip || bCountry);
+    const sameAsService =
+      bStreet.toLowerCase() === street.toLowerCase() &&
+      bCity.toLowerCase()   === city.toLowerCase()   &&
+      bState.toLowerCase()  === state.toLowerCase()  &&
+      bZip.toLowerCase()    === zip.toLowerCase();
+
+    let bLatV = '', bLngV = '', bStatus = '', bMsg = '';
+    if (sStatus === 'success' && (!hasBilling || sameAsService)){
+      bLatV = sLat; bLngV = sLng; bStatus = 'copied_service';
+      bMsg = hasBilling ? 'Billing address matches service address.' : 'Billing not provided. Copied service coordinates.';
+    } else if (hasBilling){
+      if (!bStreet){ bStatus = 'failed'; bMsg = 'Billing Street is missing.'; }
+      else if (!bCity && !bZip){ bStatus = 'failed'; bMsg = 'Billing needs City or Zipcode along with Billing Street.'; }
+      else {
+        try{
+          const g = await geocode(bStreet, bCity, bState, bZip, bCountry || country);
+          if (g.ok){ bLatV = g.lat; bLngV = g.lng; bStatus = 'success'; }
+          else { bStatus = 'failed'; bMsg = g.msg; }
+        }catch(e){ bStatus = 'failed'; bMsg = 'Billing geocode error: ' + e.message; }
+      }
+    } else {
+      // No billing and service failed → nothing to copy.
+      bStatus = 'skipped'; bMsg = 'Billing not provided and service address not geocoded.';
+    }
+    out[c.bLat] = bLatV; out[c.bLng] = bLngV;
+    out[BGS] = bStatus; out[BGR] = bMsg;
+
+    results.push(out);
+
+    // Counters keyed on the service geocode outcome.
+    if (sStatus === 'success'){ cOk++; addLog('ok', i, buildLine(street, city, state, zip, ''), sLat, sLng, ''); }
+    else if (!street || (!city && !zip)){ cSkip++; addLog('skip', i, buildLine(street, city, state, zip, '') || '(no address)', '', '', sMsg); }
+    else { cFail++; addLog('fail', i, buildLine(street, city, state, zip, ''), '', '', sMsg); }
+    updateStats();
+    updateProgress(i + 1, total);
+
+    if (i < total - 1) await delay(80);
+  }
+
+  running = false;
+  $('btnStart').disabled = false; $('btnStop').disabled = true;
+  $('statusTxt').textContent = stopReq ? '■ Stopped' : '✓ Complete';
+  if (results.length){
+    $('dlAll').disabled = false;
+    $('dlOk').disabled = false;
+    $('dlFail').disabled = false;
+    buildResultsTable();
+  }
+}
+
+function delay(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+// ── STATS / LOG ──────────────────────────────────────────────────────────────
+function resetCounters(){ cOk = cFail = cSkip = 0; updateStats(); updateProgress(0, rows.length || 0); }
+function updateStats(){ $('sOk').textContent = cOk; $('sFail').textContent = cFail; $('sSkip').textContent = cSkip; $('sDone').textContent = cOk + cFail + cSkip; }
+function updateProgress(done, total){
+  const pct = total ? Math.round(done / total * 100) : 0;
+  $('progFill').style.width = pct + '%';
+  $('progLabel').textContent = done + ' / ' + total + ' rows';
+  $('progPct').textContent = pct + '%';
+}
+function addLog(status, idx, addr, lat, lng, msg){
+  const box = $('logBox');
+  const ts = new Date().toLocaleTimeString('en-US', { hour12:false });
+  const cls = status === 'ok' ? 'log-ok' : status === 'skip' ? 'log-skip' : 'log-err';
+  const detail = status === 'ok' ? ('→ [' + lat + ', ' + lng + ']') : (msg || status);
+  const div = document.createElement('div');
+  div.className = 'log-line ' + cls;
+  div.textContent = ts + '  #' + (idx + 1) + '  ' + String(addr).slice(0, 70) + '  ' + detail;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+// ── RESULTS TABLE ─────────────────────────────────────────────────────────────
+function buildResultsTable(){
+  const wrap = $('resultWrap');
+  if (!results.length){ wrap.style.display = 'none'; return; }
+  const nameCols = columns.filter(c => /name|company|customer|street|city|state|zip/i.test(c)).slice(0, 5);
+  const coordCols = outCols.filter(c => [ref.latitude||LAT, ref.longitude||LNG, ref.billing_latitude||BLAT, ref.billing_longitude||BLNG].includes(c));
+  const show = [...new Set([...nameCols, ...coordCols, GS, GR])];
+  let html = '<table><thead><tr>' + show.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr></thead><tbody>';
+  results.slice(0, 50).forEach(row => {
+    html += '<tr>' + show.map(h => {
+      const v = String(row[h] == null ? '' : row[h]);
+      const cls = coordCols.includes(h) ? ' class="c-coord"' : '';
+      return '<td' + cls + ' title="' + esc(v) + '">' + esc(v.slice(0, 40)) + '</td>';
+    }).join('') + '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html + (results.length > 50 ? '<div style="padding:8px 10px;font-size:11.5px;color:var(--muted)">Showing first 50 of ' + results.length + ' rows — download for the full set.</div>' : '');
+  wrap.style.display = 'block';
+}
+
+// ── DOWNLOADS ─────────────────────────────────────────────────────────────────
+function exportRows(data, suffix){
+  if (!data.length){ alert('Nothing to export for "' + suffix + '".'); return; }
+  const ws = XLSX.utils.json_to_sheet(data, { header: outCols });
+  ws['!cols'] = outCols.map(c => ({ wch: Math.min(Math.max(String(c).length + 4, 12), 40) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, 'Geocoded', ws);
+  const stamp = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, 'latlong_' + suffix + '_' + stamp + '.xlsx');
+}
+
+// ── UTIL ──────────────────────────────────────────────────────────────────────
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+// ── WIRING ──────────────────────────────────────────────────────────────────
+$('eyeBtn').addEventListener('click', () => {
+  const inp = $('apiKey');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+});
+const dz = $('dropzone'), fi = $('fileInput');
+dz.addEventListener('click', () => fi.click());
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  if (e.dataTransfer.files.length) readFile(e.dataTransfer.files[0]);
+});
+fi.addEventListener('change', () => { if (fi.files.length) readFile(fi.files[0]); });
+$('btnStart').addEventListener('click', run);
+$('btnStop').addEventListener('click', () => { stopReq = true; $('statusTxt').textContent = 'Stopping…'; });
+$('dlAll').addEventListener('click', () => exportRows(results, 'full'));
+$('dlOk').addEventListener('click', () => exportRows(results.filter(r => r[GS] === 'success'), 'geocoded'));
+$('dlFail').addEventListener('click', () => exportRows(results.filter(r => r[GS] !== 'success'), 'failed'));
+</script>
+</body>
+</html>
