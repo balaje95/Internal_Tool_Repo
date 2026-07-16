@@ -5352,13 +5352,9 @@ async function doUndelete(){
   let ok=0;const recoveredUids=[];
   for(const rec of _undoBuffer){
     try{
-      const payload=typeof MIGRATE_MODULES[mod]?.buildPayload==='function'
-        ?MIGRATE_MODULES[mod].buildPayload(rec)
-        :cleanRecord(rec,cfg.uid[0]);
-      const epDef=MIGRATE_MODULES[mod]?.createEndpoint;
-      const ep=(typeof epDef==='function'?epDef(rec):epDef)||mod||'';
-      const res=await fetch(baseUrl()+ep,{method:'POST',headers:hdrs(),body:JSON.stringify(payload)});
-      if(res.ok){ok++;recoveredUids.push(_recUid(rec,cfg));}
+      // Re-create via the same engine Migrate uses, targeting the current account.
+      const res=await _recoverIntoCurrentAccount(mod,rec);
+      if(res&&res.ok){ok++;recoveredUids.push(_recUid(rec,cfg));}
     }catch(e){}
   }
   const total=_undoBuffer.length;
@@ -5417,8 +5413,81 @@ function _histName(rec){
   if(c.customer_first_name||c.customer_last_name) return ((c.customer_first_name||'')+' '+(c.customer_last_name||'')).trim();
   return '(unnamed)';
 }
-// Which modules have a known re-create path (others are best-effort).
-function _histRecoverable(mod){return (typeof UNDO_MODULES!=='undefined'&&UNDO_MODULES.has(mod))||!!(typeof MIGRATE_MODULES!=='undefined'&&MIGRATE_MODULES[mod]);}
+// Which modules have a REAL re-create path in the Zuper API.
+// Recovery re-uses the Migrate engine, so a module is recoverable only when it is
+// a supported migrate module — EXCEPT workflows, which can only be restored from an
+// exported workflow file (not from the JSON snapshot in the recycle bin).
+function _histRecoverable(mod){
+  const m=typeof MIGRATE_MODULES!=='undefined'?MIGRATE_MODULES[mod]:null;
+  return !!(m&&m.supported)&&mod!=='workflow';
+}
+// Human-readable reason a module cannot be recovered (for the disabled button tooltip).
+function _recoverReason(mod){
+  const m=typeof MIGRATE_MODULES!=='undefined'?MIGRATE_MODULES[mod]:null;
+  if(mod==='workflow') return 'Workflows can only be restored by importing an exported workflow file, not from a JSON snapshot.';
+  if(m&&m.reason) return m.reason;
+  return 'The Zuper API has no create/restore endpoint for this module, so it cannot be recovered automatically. Use 👁 to view the snapshot and re-enter it manually.';
+}
+
+// ── RECOVERY BRIDGE ───────────────────────────────────────────────────────────
+// The Migrate engine (migrateOneRecord / migrateNative) always writes to the
+// "destination" account (_destBaseUrl + destHdrs() + dest caches). Recovery needs
+// to write back into the CURRENTLY-CONNECTED account instead. So we temporarily
+// point the destination at the current account, run the real create logic, then
+// restore the migrate state exactly as it was. This means recovery uses the same
+// battle-tested create path as Migrate — not a naive single POST.
+async function _recoverIntoCurrentAccount(mod,rec){
+  const cfg=(typeof MIGRATE_MODULES!=='undefined'&&MIGRATE_MODULES[mod])||null;
+  if(!cfg||!cfg.supported) return {ok:false,error:'No create path for this module.'};
+  if(cfg.native) return {ok:false,error:'Workflows can only be restored from an exported workflow file.'};
+  const migInp=$('mig-apikey');
+  // Snapshot all migrate/destination state we are about to borrow.
+  const saved={
+    destBase:_destBaseUrl, destWf:_destWorkflowBaseUrl, destJobCats:_destJobCategories,
+    destCats:destCategories, prodFallback:_migProductFallbackCatUid, prodIdxP:_destProductIndexP,
+    statusMap:_statusCatMapping, notifCat:notifCatMapping, notifStat:notifStatusMapping, notifRec:notifPerRecMapping,
+    migKey:migInp?migInp.value:null, uidFld:(typeof uidField!=='undefined'?uidField:null),
+  };
+  try{
+    // Point the "destination" at the account we're connected to right now.
+    if(migInp) migInp.value=apiKey();
+    _destBaseUrl=baseUrl();
+    _destWorkflowBaseUrl=_workflowBaseUrl||'';
+    // Reset caches so all lookups resolve against the current account.
+    _destProductIndexP=null; _migProductFallbackCatUid=''; destCategories=[]; _destJobCategories=[];
+    // Same-account recovery → the record's original related UIDs still exist, so use
+    // identity mappings for the modules that would otherwise need cross-account mapping.
+    if(mod==='job_status'){ _statusCatMapping={}; if(rec._category_uid) _statusCatMapping[rec._category_uid]=rec._category_uid; }
+    if(mod==='customer_notification'){
+      uidField='customer_notification_uid';
+      notifPerRecMapping={};
+      notifPerRecMapping[String(rec.customer_notification_uid||rec.uid||'')]={destCatUid:rec.job_category||rec.job_category_uid||'',destStatUid:rec.job_status_uid||''};
+    }
+    if(mod==='product'){ try{ await fetchDestCategories(); }catch(e){} }
+    let result;
+    if(typeof cfg.migrateNative==='function') result=await cfg.migrateNative(rec,false);
+    else result=await migrateOneRecord(rec,cfg,false);
+    return result||{ok:false,error:'No result from create.'};
+  }catch(e){
+    return {ok:false,error:e.message||String(e)};
+  }finally{
+    // Restore migrate state so the cross-account Migrate feature is untouched.
+    _destBaseUrl=saved.destBase; _destWorkflowBaseUrl=saved.destWf; _destJobCategories=saved.destJobCats;
+    destCategories=saved.destCats; _migProductFallbackCatUid=saved.prodFallback; _destProductIndexP=saved.prodIdxP;
+    _statusCatMapping=saved.statusMap; notifCatMapping=saved.notifCat; notifStatusMapping=saved.notifStat; notifPerRecMapping=saved.notifRec;
+    if(migInp&&saved.migKey!=null) migInp.value=saved.migKey;
+    if(saved.uidFld!=null) uidField=saved.uidFld;
+  }
+}
+// True when the connected account is the one this record was deleted from.
+function _sameAccountAsDeleted(entry){
+  const curBase=(typeof baseUrl==='function'&&baseUrl())||'';
+  if(entry.base&&curBase) return entry.base===curBase;
+  // Fall back to account-name match when a base wasn't recorded.
+  const curAcct=(($('s-account')&&$('s-account').textContent)||'').trim();
+  if(entry.account&&curAcct) return entry.account.trim()===curAcct;
+  return true; // nothing to compare against → allow
+}
 
 // Called from runEngine after a LIVE delete succeeds (any module).
 function recordDeleteHistory(deletedRecs,cfg){
@@ -5476,22 +5545,32 @@ function renderDeleteHistory(){
   const fm=($('delhist-fmod')||{}).value||'', fa=($('delhist-facct')||{}).value||'';
   const list=all.filter(e=>(!fm||(e.moduleLabel||e.module)===fm)&&(!fa||e.account===fa)).sort((a,b)=>b.deletedAt-a.deletedAt);
   const body=$('delhist-body');if(!body)return;
-  const sum=$('delhist-summary');if(sum)sum.textContent=all.length+' recoverable record(s)';
+  const recCount=all.filter(e=>_histRecoverable(e.module)).length;
+  const sum=$('delhist-summary');if(sum)sum.textContent=all.length+' record(s) · '+recCount+' recoverable';
   if(!list.length){body.innerHTML='<div style="padding:34px;text-align:center;color:var(--text-sub)">Nothing here. Deleted records appear for '+RETENTION_DAYS+' days, then are permanently purged.</div>';return;}
-  let html='',lastDay='';
+  // Honest note: recovery re-creates records (Zuper has no true un-delete).
+  let html='<div style="padding:9px 20px;background:var(--bg);border-bottom:1px solid var(--border);font-size:.72rem;color:var(--text-sub);line-height:1.5">↩ Recover re-creates the record <b>in the account you are connected to now</b>, as a <b>new record with a new ID</b> (Zuper has no true un-delete). Connect to the <b>same account/region</b> it was deleted from. Records that can\'t be re-created via the API are greyed out — use 👁 to view &amp; re-enter them manually.</div>';
+  let lastDay='';
   for(const e of list){
     const d=new Date(e.deletedAt);
     const day=d.toLocaleDateString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric'});
     if(day!==lastDay){lastDay=day;html+='<div style="padding:8px 20px;background:var(--bg);font-size:.72rem;font-weight:700;color:var(--text-sub);text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0;z-index:1">'+esc(day)+'</div>';}
     const dl=daysLeft(e);
     const recoverable=_histRecoverable(e.module);
+    const wrongAcct=recoverable&&!_sameAccountAsDeleted(e);
     const uidShort=(e.uid||'').slice(0,10);
-    html+='<div style="display:flex;align-items:center;gap:10px;padding:9px 20px;border-bottom:1px solid var(--border)">'
-      +'<input type="checkbox" class="delhist-cb" data-id="'+esc(e.id)+'">'
+    let recBtn;
+    if(!recoverable){
+      recBtn='<button class="btn btn-o" style="font-size:.75rem;padding:4px 10px;opacity:.45;cursor:not-allowed" disabled title="'+esc(_recoverReason(e.module))+'">✕ Can\'t recover</button>';
+    }else{
+      recBtn='<button class="btn '+(wrongAcct?'btn-o':'btn-p')+'" style="font-size:.75rem;padding:4px 10px" onclick="recoverHistoryEntry(this.closest(\'div\').querySelector(\'.delhist-cb\').dataset.id,this)" title="'+(wrongAcct?'You are connected to a different account than where this was deleted — connect to '+esc(e.account||'the original account')+' first':'Re-create this record in the connected account')+'">↩ Recover'+(wrongAcct?' ⚠':'')+'</button>';
+    }
+    html+='<div style="display:flex;align-items:center;gap:10px;padding:9px 20px;border-bottom:1px solid var(--border)'+(recoverable?'':';opacity:.7')+'">'
+      +'<input type="checkbox" class="delhist-cb" data-id="'+esc(e.id)+'"'+(recoverable?'':' disabled')+'>'
       +'<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.name)+'</div>'
       +'<div style="font-size:.72rem;color:var(--text-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.moduleLabel||e.module)+' · '+esc(e.account||'—')+' · '+d.toLocaleTimeString()+(uidShort?(' · uid '+esc(uidShort)+'…'):'')+'</div></div>'
       +'<div style="font-size:.72rem;color:'+(dl<=2?'var(--danger,#e11d48)':'var(--text-sub)')+';white-space:nowrap;font-weight:600">'+dl+'d left</div>'
-      +'<button class="btn '+(recoverable?'btn-p':'btn-o')+'" style="font-size:.75rem;padding:4px 10px" onclick="recoverHistoryEntry(this.closest(\'div\').querySelector(\'.delhist-cb\').dataset.id,this)"'+(recoverable?'':' title="No confirmed create endpoint for this module — best-effort recovery"')+'>↩ Recover</button>'
+      +recBtn
       +'<button class="btn btn-o" style="font-size:.75rem;padding:4px 8px" onclick="viewHistoryRecord(this.closest(\'div\').querySelector(\'.delhist-cb\').dataset.id)" title="View stored JSON">👁</button>'
       +'</div>';
   }
@@ -5508,27 +5587,27 @@ async function recoverHistoryEntry(id,btn,silent){
   const entry=list.find(e=>e.id===id);
   if(!entry){if(!silent)alert('That entry is no longer available.');return false;}
   if(typeof apiKey!=='function'||!apiKey()){if(!silent)alert('Connect to the Zuper account this record belongs to first, then recover.');return false;}
-  const curBase=(typeof baseUrl==='function'&&baseUrl())||'';
-  if(!silent && entry.base && curBase && entry.base!==curBase){
-    if(!confirm('You are connected to a different account than where this was deleted:\n\nDeleted from: '+entry.account+'\nConnected to: '+(($('s-account')&&$('s-account').textContent)||'—')+'\n\nRe-create this record in the CURRENTLY connected account anyway?'))return false;
+  // Modules with no real create path can't be recovered — don't pretend.
+  if(!_histRecoverable(entry.module)){
+    if(!silent)alert('Cannot recover "'+entry.name+'".\n\n'+_recoverReason(entry.module)+'\n\nThe snapshot is still in your history — use 👁 to view it.');
+    return false;
+  }
+  // Account guard: recovery re-creates into the CURRENTLY-connected account. If that
+  // isn't the account the record was deleted from, the record would land in the wrong
+  // place — the exact "it didn't come back to the customer's account" problem. Block it.
+  if(!_sameAccountAsDeleted(entry)){
+    const curAcct=(($('s-account')&&$('s-account').textContent)||'—');
+    if(silent){ _histLog('skipped (account mismatch) for '+entry.name); return false; }
+    if(!confirm('⚠ WRONG ACCOUNT\n\nThis record was deleted from:\n   '+(entry.account||'—')+' ('+(entry.region||'?')+')\n\nYou are connected to:\n   '+curAcct+'\n\nRecovering now would re-create it in the WRONG account. Connect to the original account/region to recover it correctly.\n\nRe-create in the currently-connected account anyway?')) return false;
   }
   if(btn){btn.disabled=true;btn.textContent='Restoring…';}
-  const cfg=(typeof MODULES!=='undefined'&&MODULES[entry.module])||{};
-  let ok=false,msg='';
-  try{
-    const payload=(typeof MIGRATE_MODULES!=='undefined'&&typeof MIGRATE_MODULES[entry.module]?.buildPayload==='function')
-      ?MIGRATE_MODULES[entry.module].buildPayload(entry.record)
-      :cleanRecord(entry.record,(cfg.uid&&cfg.uid[0])||'');
-    const epDef=typeof MIGRATE_MODULES!=='undefined'&&MIGRATE_MODULES[entry.module]?.createEndpoint;
-    const ep=(typeof epDef==='function'?epDef(entry.record):epDef)||entry.module||'';
-    const doFetchFn=(window.ZuperShared&&ZuperShared.fetchWithRetry)?ZuperShared.fetchWithRetry:fetch;
-    const res=await doFetchFn(curBase+ep,{method:'POST',headers:hdrs(),body:JSON.stringify(payload)});
-    ok=res.ok; if(!ok){let t='';try{t=await res.text();}catch(e){} msg='HTTP '+res.status+' '+String(t).slice(0,150);}
-  }catch(e){msg=e.message||String(e);}
+  const res=await _recoverIntoCurrentAccount(entry.module,entry.record);
+  const ok=!!res.ok;
+  const msg=ok?'':(res.error||('HTTP '+(res.status||'?')));
   if(ok){
     const i=list.findIndex(e=>e.id===id); if(i>=0){list.splice(i,1);_delHistSave(list);}
     updateHistBadge();
-    if(!silent){renderDeleteHistory(); if(typeof showMsg==='function')showMsg('fetch-msg','↩ Recovered "'+entry.name+'" into '+(entry.moduleLabel||entry.module)+'. Re-fetch to see it.','ok');}
+    if(!silent){renderDeleteHistory(); if(typeof showMsg==='function')showMsg('fetch-msg','↩ Recovered "'+entry.name+'" into '+(entry.moduleLabel||entry.module)+' as a NEW record (new ID). Re-fetch to see it. Related records that referenced the old ID may need manual re-linking.','ok');}
     return true;
   }else{
     if(btn){btn.disabled=false;btn.textContent='↩ Recover';}

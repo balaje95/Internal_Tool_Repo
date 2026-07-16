@@ -791,6 +791,7 @@ async function loadAll(){
     invoices:'invoice',
     estimates:'estimate',
     parts:'product',
+    locations:'products/location',
     purchase_orders:'purchase_orders',
     material_requests:'material_requests',
     assets:'assets',
@@ -1544,6 +1545,26 @@ const WIDGET_DEFS=[
   {id:'parts-type',title:'Parts by Type',module:'Inventory',icon:'📊',defaultWide:false,
    supportedTypes:['doughnut','pie','bar','hbar','table'],defaultType:'doughnut',
    getData(){const parts=fd('parts'),c=gc();const sC=countBy(parts,p=>p.product_type||'Unknown');const k=Object.keys(sC);return{labels:k,values:k.map(x=>sC[x]),colors:c.slice(0,k.length),fmt:'n',heads:['Type','Items']};}
+  },
+  {id:'parts-qty-by-location',title:'Parts & Service Qty by Location',module:'Inventory',icon:'📦',defaultWide:true,
+   supportedTypes:['hbar','bar','doughnut','pie','table'],defaultType:'hbar',
+   getData(){
+     const parts=fd('parts'),c=gc();
+     // Map location_uid → display name from the products/location list
+     const locMap={};(cache.locations||[]).forEach(l=>{const id=l.location_uid||l.uid;if(id)locMap[id]=l.location_name||l.name||'Unnamed location';});
+     // Sum on-hand quantity per location from each product's location_availability[]
+     const byLoc={};
+     parts.forEach(p=>{
+       const la=Array.isArray(p.location_availability)?p.location_availability:[];
+       if(la.length){
+         la.forEach(a=>{const nm=locMap[a.location]||a.location_name||'Unknown location';byLoc[nm]=(byLoc[nm]||0)+(parseFloat(a.quantity)||0);});
+       }else if(p.track_quantity){
+         byLoc['Unassigned']=(byLoc['Unassigned']||0)+(parseFloat(p.quantity)||0);
+       }
+     });
+     const k=Object.keys(byLoc).sort((a,b)=>byLoc[b]-byLoc[a]).slice(0,12);
+     return{labels:k,values:k.map(x=>Math.round(byLoc[x])),colors:k.map((_,i)=>c[i%c.length]),fmt:'n',heads:['Location','Qty on Hand'],xLabel:'Products × Locations'};
+   }
   },
   {id:'po-status',title:'PO by Status',module:'Inventory',icon:'📊',defaultWide:false,
    supportedTypes:['doughnut','pie','bar','hbar','table'],defaultType:'doughnut',
