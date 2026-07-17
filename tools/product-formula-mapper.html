@@ -123,6 +123,7 @@
       <label class="pill" style="cursor:pointer;padding:7px 14px"><input type="radio" name="mapmode" value="formula" checked onchange="setMode('formula')" style="vertical-align:-2px"> 🧮 Map Formulas</label>
       <label class="pill" style="cursor:pointer;padding:7px 14px"><input type="radio" name="mapmode" value="vendor" onchange="setMode('vendor')" style="vertical-align:-2px"> 🏷️ Map Vendors</label>
       <label class="pill" style="cursor:pointer;padding:7px 14px"><input type="radio" name="mapmode" value="color" onchange="setMode('color')" style="vertical-align:-2px"> 🎨 Map Colors</label>
+      <label class="pill" style="cursor:pointer;padding:7px 14px"><input type="radio" name="mapmode" value="productid" onchange="setMode('productid')" style="vertical-align:-2px"> 🆔 Update Product IDs</label>
     </div>
     <div class="flex">
       <button class="btn" id="fetchBtn" onclick="fetchAll()"><span id="fetchBtnLabel">⬇ Fetch products &amp; formulas</span></button>
@@ -181,6 +182,28 @@
       <div><label>Show</label><select class="inp" id="cfilter" onchange="renderRows()"><option value="all">All products</option><option value="unmapped">No colors staged</option><option value="changed">Only staged changes</option></select></div>
       <div style="flex:1;min-width:200px"><label>Bulk-add a color to selected rows</label><select class="inp" id="bulkColor"><option value="">— choose a color —</option></select></div>
       <div><label>&nbsp;</label><button class="btn sec" onclick="bulkAddColor()">Add to selected</button></div>
+    </div>
+
+    <!-- product-id toolbar (mode: productid) -->
+    <div class="toolbar hidden" id="pidToolbar">
+      <div style="flex:1;min-width:200px"><label>Search products</label><input class="inp" id="pidsearch" placeholder="name, id, category…" oninput="renderRows()"></div>
+      <div><label>Category</label><select class="inp" id="pidcatFilter" onchange="renderRows()"><option value="">All categories</option></select></div>
+      <div><label>Show</label><select class="inp" id="pidfilter" onchange="renderRows()"><option value="all">All products</option><option value="changed">Only queued changes</option></select></div>
+    </div>
+
+    <!-- product-id extras (mode: productid) -->
+    <div class="flex hidden" style="margin-bottom:12px" id="pidExtras">
+      <button class="btn sec small" onclick="resetChanges()">↺ Reset all changes</button>
+      <label class="pill" style="cursor:pointer"><input type="checkbox" onchange="document.getElementById('pidImportBox').classList.toggle('hidden',!this.checked)" style="vertical-align:-2px"> Import from CSV / Excel</label>
+      <span class="muted small">Edit new Product IDs (and any custom-field columns) inline, or import a sheet.</span>
+    </div>
+
+    <div id="pidImportBox" class="hidden" style="padding:14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+      <p class="small muted" style="margin-top:0">Upload a file with a <b>Product UID</b> column and a <b>Product ID</b> column (matches your script's format). To bulk-edit custom fields, add a column per custom field whose header is the field's <b>exact name</b>. Blank cells are ignored — only non-empty values that differ from the current value are queued.</p>
+      <div class="flex">
+        <input type="file" id="pmapFile" class="inp" style="max-width:340px" accept=".csv,.xlsx,.xls" onchange="importPidMapping()">
+        <span id="pimport-status" class="muted small"></span>
+      </div>
     </div>
 
     <div class="flex" style="margin-bottom:12px" id="formulaExtras">
@@ -296,6 +319,10 @@ let vendors=[], vendorByUid={};
 let vChanges={};                    // product_uid -> [ {vendor_uid, vendor_sku, vendor_cost} ]
 let cChanges={};                    // product_uid -> [ colorName, ... ]  (colors staged to add)
 let colorMaster=[];                 // master list of color names (persisted)
+/* product-id + custom-fields mode */
+let pidChanges={};                  // product_uid -> { product_id?:newVal, cf:{ field_uid:newVal } }
+let customFields=[];                // [{uid,name,type}] product custom-field definitions (endpoint + discovered)
+let cfByUid={};                     // field_uid -> {uid,name,type}
 
 /* ---------- helpers ---------- */
 function showMsg(id,txt,type){const e=$(id);e.className='msg msg-'+type;e.textContent=txt;e.style.display='block';}
@@ -355,7 +382,7 @@ function disconnect(){
   // Clear the session + all loaded data and return to the connect step.
   _base='';_account='';
   products=[];formulas=[];formulaByUid={};vendors=[];vendorByUid={};
-  changes={};vChanges={};selected.clear();_results=[];_cancel=false;
+  changes={};vChanges={};cChanges={};pidChanges={};customFields=[];cfByUid={};selected.clear();_results=[];_cancel=false;
   $('apikey').value='';
   const sv=$('saved');if(sv)sv.value='';
   $('badge').style.display='none';$('badge').textContent='';
@@ -417,6 +444,15 @@ async function fetchAll(){
       $('mapCard').classList.remove('hidden');$('applyCard').classList.remove('hidden');
       renderRows();updateStats();
       showMsg('fetch-msg','✓ Loaded '+products.length+' products. Add colors to the master, then map them.','ok');
+    }else if(mode==='productid'){
+      $('fetch-status').textContent='Loading custom fields…';
+      customFields=await fetchProductCustomFields();
+      cfByUid={};customFields.forEach(f=>cfByUid[f.uid]=f);
+      pidChanges={};
+      buildCategoryFilter();
+      $('mapCard').classList.remove('hidden');$('applyCard').classList.remove('hidden');
+      renderRows();updateStats();
+      showMsg('fetch-msg','✓ Loaded '+products.length+' products and '+customFields.length+' product custom field(s).','ok');
     }else{
       $('fetch-status').textContent='Loading formulas…';
       formulas=await fetchFormulas();
@@ -503,9 +539,13 @@ function targetFor(p){
 /* ---------- render ---------- */
 function catName(p){return p.product_category?.category_name||(typeof p.product_category==='string'?p.product_category:'')||'—';}
 function matchesFilter(p){
-  const f=$(mode==='vendor'?'vfilter':mode==='color'?'cfilter':'filter').value;
-  const cat=$(mode==='vendor'?'vcatFilter':mode==='color'?'ccatFilter':'catFilter').value;
+  const f=$(mode==='vendor'?'vfilter':mode==='color'?'cfilter':mode==='productid'?'pidfilter':'filter').value;
+  const cat=$(mode==='vendor'?'vcatFilter':mode==='color'?'ccatFilter':mode==='productid'?'pidcatFilter':'catFilter').value;
   if(cat&&catName(p)!==cat)return false;
+  if(mode==='productid'){
+    if(f==='changed')return pidChanged(p);
+    return true;
+  }
   if(mode==='vendor'){
     const staged=(vChanges[p.product_uid]||[]).length>0;
     if(f==='unmapped')return !staged;
@@ -528,10 +568,10 @@ function matchesFilter(p){
 function buildCategoryFilter(){
   const cats=[...new Set(products.map(catName).filter(c=>c&&c!=='—'))].sort((a,b)=>a.localeCompare(b));
   const opts='<option value="">All categories</option>'+cats.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
-  ['catFilter','vcatFilter','ccatFilter'].forEach(id=>{const sel=$(id);if(!sel)return;const prev=sel.value;sel.innerHTML=opts;if([...sel.options].some(o=>o.value===prev))sel.value=prev;});
+  ['catFilter','vcatFilter','ccatFilter','pidcatFilter'].forEach(id=>{const sel=$(id);if(!sel)return;const prev=sel.value;sel.innerHTML=opts;if([...sel.options].some(o=>o.value===prev))sel.value=prev;});
 }
 function matchesSearch(p){
-  const q=$(mode==='vendor'?'vsearch':mode==='color'?'csearch':'search').value.trim().toLowerCase();
+  const q=$(mode==='vendor'?'vsearch':mode==='color'?'csearch':mode==='productid'?'pidsearch':'search').value.trim().toLowerCase();
   if(!q)return true;
   return (p.product_name||'').toLowerCase().includes(q)
     ||(p.product_id||'').toLowerCase().includes(q)
@@ -541,6 +581,7 @@ function matchesSearch(p){
 function renderRows(){
   if(mode==='vendor')return renderVendorRows();
   if(mode==='color')return renderColorRows();
+  if(mode==='productid')return renderPidRows();
   const tb=$('tbody');tb.innerHTML='';
   const rows=products.filter(p=>matchesSearch(p)&&matchesFilter(p));
   for(const p of rows){
@@ -617,7 +658,7 @@ function autoMatch(){
   renderRows();updateStats();
   showMsg('fetch-msg','✨ Auto-matched '+n+' product(s) by exact name.', n?'ok':'warn');
 }
-function resetChanges(){if(mode==='vendor')vChanges={};else if(mode==='color')cChanges={};else changes={};renderRows();updateStats();}
+function resetChanges(){if(mode==='vendor')vChanges={};else if(mode==='color')cChanges={};else if(mode==='productid')pidChanges={};else changes={};renderRows();updateStats();}
 
 /* ---------- import CSV / Excel ---------- */
 function importMapping(){
@@ -689,6 +730,15 @@ function updateStats(){
     $('apply-count').textContent=staged?staged+' product(s) with staged colors':'no changes queued';
     return;
   }
+  if(mode==='productid'){
+    $('s-total').textContent=products.length;
+    $('s-formulas').textContent=customFields.length;
+    $('s-mapped').textContent=products.filter(p=>p.product_id).length;
+    const staged=products.filter(pidChanged).length;
+    $('s-changed').textContent=staged;
+    $('apply-count').textContent=staged?staged+' product(s) with queued edits':'no changes queued';
+    return;
+  }
   $('s-total').textContent=products.length;
   $('s-formulas').textContent=formulas.length;
   $('s-mapped').textContent=products.filter(p=>curFormulaUid(p)).length;
@@ -728,10 +778,10 @@ async function updateProductFormula(product,formulaUid,dry){
 }
 
 async function apply(dry){
-  const isV=mode==='vendor',isC=mode==='color';
-  const list=isV?vendorQueuedList():isC?colorQueuedList():queuedList();
+  const isV=mode==='vendor',isC=mode==='color',isP=mode==='productid';
+  const list=isV?vendorQueuedList():isC?colorQueuedList():isP?pidQueuedList():queuedList();
   if(!list.length){alert('No changes queued.');return;}
-  if(!dry&&!confirm('Apply '+list.length+' '+(isV?'product vendor update(s)':isC?'product color update(s)':'formula change(s)')+' to live products in "'+_account+'"?\n\nRun a dry-run first if you haven\'t.'))return;
+  if(!dry&&!confirm('Apply '+list.length+' '+(isV?'product vendor update(s)':isC?'product color update(s)':isP?'product ID / custom-field update(s)':'formula change(s)')+' to live products in "'+_account+'"?\n\nRun a dry-run first if you haven\'t.'))return;
   _cancel=false;_results=[];
   $('log').innerHTML='';$('log').classList.remove('hidden');
   $('prog').classList.remove('hidden');$('resultActions').classList.add('hidden');
@@ -748,10 +798,11 @@ async function apply(dry){
       try{
         if(isV){label=item.entries.length+' vendor(s)';res=await updateProductVendors(p,item.entries,dry);}
         else if(isC){label=item.colors.length+' color(s)';res=await updateProductColors(p,item.colors,dry);}
+        else if(isP){const c=item.change;const n=('product_id' in c?1:0)+Object.keys(c.cf||{}).length;label=n+' field(s)';res=await updateProductId(p,c,dry);}
         else{label=item.formulaUid?(formulaByUid[item.formulaUid]?.formula_name||item.formulaUid):'(none)';res=await updateProductFormula(p,item.formulaUid,dry);}
       }catch(e){res={ok:false,msg:e.message};label=label||'';}
       done++; res.ok?ok++:fail++;
-      if(isV||isC)_results.push({product_uid:p.product_uid,product_name:p.product_name,detail:label,status:res.ok?(res.msg||'Success'):'Failed: '+res.msg});
+      if(isV||isC||isP)_results.push({product_uid:p.product_uid,product_name:p.product_name,detail:(isP?(res.ok?res.msg:label):label),status:res.ok?(res.msg||'Success'):'Failed: '+res.msg});
       else _results.push({product_uid:p.product_uid,product_name:p.product_name,formula_uid:item.formulaUid,formula_name:label,status:res.ok?'Success':'Failed: '+res.msg});
       log('['+done+'/'+list.length+'] '+(p.product_name||p.product_uid)+' → '+label+'  '+(res.ok?'✓ '+res.msg:'✗ '+res.msg),res.ok?'ok':'err');
       $('progbar').style.width=(done/list.length*100)+'%';
@@ -764,6 +815,8 @@ async function apply(dry){
       _results.filter(r=>r.status&&!/^Failed/.test(r.status)).forEach(r=>{delete vChanges[r.product_uid];});
     }else if(isC){
       _results.filter(r=>r.status&&!/^Failed/.test(r.status)).forEach(r=>{delete cChanges[r.product_uid];});
+    }else if(isP){
+      _results.filter(r=>r.status&&!/^Failed/.test(r.status)).forEach(r=>{delete pidChanges[r.product_uid];});
     }else{
       _results.filter(r=>r.status==='Success').forEach(r=>{
         const p=products.find(x=>x.product_uid===r.product_uid);
@@ -787,6 +840,10 @@ function exportResults(){
     head=['Product UID','Product Name','Colors','Status'];
     rows=_results.map(r=>[r.product_uid,r.product_name,r.detail||'',r.status]);
     fname='color_mapping_results.csv';
+  }else if(mode==='productid'){
+    head=['Product UID','Product Name','Changes','Status'];
+    rows=_results.map(r=>[r.product_uid,r.product_name,r.detail||'',r.status]);
+    fname='product_id_update_results.csv';
   }else{
     head=['Product UID','Product Name','Formula UID','Formula Name','Status'];
     rows=_results.map(r=>[r.product_uid,r.product_name,r.formula_uid,r.formula_name,r.status]);
@@ -799,30 +856,37 @@ function exportResults(){
 
 /* ================= VENDOR MODE ================= */
 function setMode(m){
-  mode=m; const isV=(m==='vendor'), isC=(m==='color'), isF=(m==='formula');
+  mode=m; const isV=(m==='vendor'), isC=(m==='color'), isF=(m==='formula'), isP=(m==='productid');
   $('formulaToolbar').classList.toggle('hidden',!isF);
   $('vendorToolbar').classList.toggle('hidden',!isV);
   $('colorToolbar').classList.toggle('hidden',!isC);
+  $('pidToolbar').classList.toggle('hidden',!isP);
   $('formulaExtras').classList.toggle('hidden',!isF);
   $('vendorExtras').classList.toggle('hidden',!isV);
   $('colorExtras').classList.toggle('hidden',!isC);
+  $('pidExtras').classList.toggle('hidden',!isP);
   $('importBox').classList.add('hidden');
   $('vendorImportBox').classList.add('hidden');
   $('colorImportBox').classList.add('hidden');
-  $('mapTitle').textContent=isV?'Map vendors to parts & services':isC?'Map color options to parts & services':'Map formulas to line items';
-  $('mapDesc').textContent=isV?'Add one or more vendors to each part (with SKU & cost), or use the bulk tools. Vendors already linked to a part are skipped on apply.':isC?'Build a color master, then add one or more colors to each part — by dropdown, bulk, or comma-separated import. On apply, colors merge into the product\'s option values (customer selection defaults to non-mandatory).':'Pick a formula per product, or use the bulk tools. Only rows where you change the formula are applied.';
-  $('sl-2').textContent=isV?'Vendors':isC?'Colors in master':'Formulas';
-  $('sl-3').textContent=(isV||isC)?'Staged':'Have formula';
-  if($('fetchBtnLabel'))$('fetchBtnLabel').innerHTML=isV?'⬇ Fetch products &amp; vendors':isC?'⬇ Fetch products':'⬇ Fetch products &amp; formulas';
+  $('pidImportBox').classList.add('hidden');
+  $('mapTitle').textContent=isV?'Map vendors to parts & services':isC?'Map color options to parts & services':isP?'Update product IDs & custom fields':'Map formulas to line items';
+  $('mapDesc').textContent=isV?'Add one or more vendors to each part (with SKU & cost), or use the bulk tools. Vendors already linked to a part are skipped on apply.':isC?'Build a color master, then add one or more colors to each part — by dropdown, bulk, or comma-separated import. On apply, colors merge into the product\'s option values (customer selection defaults to non-mandatory).':isP?'Edit each product\'s Product ID and any product custom fields inline (or import a sheet). Only rows you actually change are applied — each is read fresh, so nothing else is overwritten.':'Pick a formula per product, or use the bulk tools. Only rows where you change the formula are applied.';
+  $('sl-2').textContent=isV?'Vendors':isC?'Colors in master':isP?'Custom fields':'Formulas';
+  $('sl-3').textContent=isP?'Have an ID':(isV||isC)?'Staged':'Have formula';
+  if($('fetchBtnLabel'))$('fetchBtnLabel').innerHTML=isV?'⬇ Fetch products &amp; vendors':isC?'⬇ Fetch products':isP?'⬇ Fetch products &amp; custom fields':'⬇ Fetch products &amp; formulas';
   $('applyDesc').innerHTML=isV
     ? 'Sends <code>PUT product/&lt;uid&gt;</code> with <code>{ product:{}, vendor:[…] }</code> — the same call as your migration script (vendors already linked are skipped). Run a dry-run first.'
     : isC
     ? 'Reads each product, then sends <code>PUT product/&lt;uid&gt;</code> with the colors merged into <code>option.option_values</code> (existing colors kept unless you pick Replace; everything else preserved). Run a dry-run first.'
+    : isP
+    ? 'Reads each product fresh, changes only Product ID / edited custom fields, then sends <code>PUT product/&lt;uid&gt;</code> with the full flattened payload — exactly like your update_product_ids.py script. Run a dry-run first.'
     : 'Sends <code>PUT product/&lt;uid&gt;</code> with <code>{ product, vendor:[] }</code> — the same call as your script. Run a dry-run first.';
   $('thead').innerHTML=isV
     ? '<tr><th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th><th>Product</th><th>ID</th><th>Category</th><th>Vendors staged</th><th>Add vendor →</th><th>SKU</th><th>Cost</th><th>Status</th></tr>'
     : isC
     ? '<tr><th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th><th>Product</th><th>ID</th><th>Category</th><th>Colors staged</th><th>Add color →</th><th>Status</th></tr>'
+    : isP
+    ? '<tr><th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th><th>Product</th><th>Category</th><th>Current ID</th><th>New Product ID →</th>'+customFields.map(f=>'<th title="custom field">'+esc(f.name)+'</th>').join('')+'<th>Status</th></tr>'
     : '<tr><th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th><th>Product</th><th>ID</th><th>Category</th><th>Current formula</th><th>Map to →</th><th>Status</th></tr>';
   if(isV && products.length && !vendors.length) $('fetch-status').textContent='Switched to vendor mode — click Fetch to load vendors.';
   if(products.length){renderRows();updateStats();}
@@ -1152,6 +1216,186 @@ async function updateProductColors(product,colors,dry){
     return {ok:true,msg:(replace?'Set ':'Merged to ')+outVals.length+' color(s)'};
   }
   return {ok:false,msg:(jd&&jd.message)||('HTTP '+put.status)};
+}
+
+/* ================= PRODUCT ID + CUSTOM FIELDS MODE ================= */
+// Fetch product custom-field definitions, then merge in any fields actually
+// present on the loaded products (covers accounts whose module_name differs).
+async function fetchProductCustomFields(){
+  const byUid={};
+  const add=(uid,name,type)=>{if(!uid)return;if(!byUid[uid])byUid[uid]={uid:String(uid),name:name||String(uid),type:type||''};else if(name&&(!byUid[uid].name||byUid[uid].name===byUid[uid].uid))byUid[uid].name=name;};
+  for(const mod of ['PRODUCT','product']){
+    try{
+      const r=await fetch(_base+'settings/custom_fields?module_name='+encodeURIComponent(mod)+'&sort=ASC&sort_by=display_order',{headers:getHdrs()});
+      if(!r.ok)continue;
+      const d=await r.json().catch(()=>({}));
+      const recs=Array.isArray(d)?d:(d.data||d.custom_fields||[]);
+      recs.forEach(f=>add(f.custom_field_uid||f.field_uid||f.uid,f.field_name||f.label||f.name,f.field_type||f.type));
+      if(recs.length)break; // first module_name that returns anything wins
+    }catch(e){}
+  }
+  // Discover from the actual product data so columns match what exists.
+  products.forEach(p=>{const key=cfContainerKey(p);(Array.isArray(p[key])?p[key]:[]).forEach(e=>add(cfEntryUid(e),e.label||e.field_name||e.name,e.field_type||''));});
+  return Object.values(byUid);
+}
+// Which key holds the custom-field array on a product (preserve the account's shape).
+function cfContainerKey(p){
+  if(p&&Array.isArray(p.custom_field_values))return 'custom_field_values';
+  if(p&&Array.isArray(p.custom_fields))return 'custom_fields';
+  return 'custom_field_values';
+}
+function cfEntryUid(e){return e?String(e.field_uid||e.custom_field_uid||e.uid||''):'';}
+function cfCurrent(p,fieldUid){
+  const key=cfContainerKey(p);
+  const ent=(Array.isArray(p[key])?p[key]:[]).find(e=>cfEntryUid(e)===fieldUid);
+  if(!ent)return '';
+  const v=ent.value??ent.field_value??ent.field_value_text??'';
+  return v==null?'':String(v);
+}
+// The value a row is currently targeting for a given custom field (pending edit or current).
+function pidCfTarget(p,fieldUid){
+  const ch=pidChanges[p.product_uid];
+  if(ch&&ch.cf&&(fieldUid in ch.cf))return ch.cf[fieldUid];
+  return cfCurrent(p,fieldUid);
+}
+function pidIdTarget(p){
+  const ch=pidChanges[p.product_uid];
+  if(ch&&'product_id' in ch)return ch.product_id;
+  return p.product_id||'';
+}
+function pidChanged(p){
+  const ch=pidChanges[p.product_uid];
+  if(!ch)return false;
+  if('product_id' in ch)return true;
+  return !!(ch.cf&&Object.keys(ch.cf).length);
+}
+function renderPidRows(){
+  const tb=$('tbody');tb.innerHTML='';
+  const rows=products.filter(p=>matchesSearch(p)&&matchesFilter(p));
+  for(const p of rows){
+    const uid=p.product_uid;
+    const changed=pidChanged(p);
+    const tr=document.createElement('tr');
+    let cells=
+      '<td class="checkcol"><input type="checkbox" data-uid="'+esc(uid)+'" '+(selected.has(uid)?'checked':'')+' onchange="toggleRow(this)"></td>'+
+      '<td>'+esc(p.product_name||'—')+'<div class="muted small">'+esc(p.product_type||'')+'</div></td>'+
+      '<td>'+esc(catName(p))+'</td>'+
+      '<td class="muted small">'+esc(p.product_id||'—')+'</td>'+
+      '<td><input class="inp" style="min-width:130px" data-uid="'+esc(uid)+'" value="'+esc(pidIdTarget(p))+'" oninput="onPidIdEdit(this)"></td>';
+    for(const f of customFields){
+      cells+='<td><input class="inp" style="min-width:120px" data-uid="'+esc(uid)+'" data-fuid="'+esc(f.uid)+'" value="'+esc(pidCfTarget(p,f.uid))+'" oninput="onPidCfEdit(this)"></td>';
+    }
+    cells+='<td class="status '+(changed?'pend':'')+'">'+(changed?'queued':'')+'</td>';
+    tr.innerHTML=cells;
+    tb.appendChild(tr);
+  }
+  $('rowcount').textContent=rows.length+' of '+products.length+' products shown';
+  const allVis=rows.length&&rows.every(p=>selected.has(p.product_uid));
+  $('selAll').checked=!!allVis;
+}
+function pidEnsure(uid){if(!pidChanges[uid])pidChanges[uid]={cf:{}};if(!pidChanges[uid].cf)pidChanges[uid].cf={};return pidChanges[uid];}
+function pidPrune(uid){const ch=pidChanges[uid];if(!ch)return;if(ch.cf&&!Object.keys(ch.cf).length)delete ch.cf;if(!('product_id' in ch)&&(!ch.cf||!Object.keys(ch.cf).length))delete pidChanges[uid];}
+function onPidIdEdit(el){
+  const uid=el.dataset.uid;const p=products.find(x=>x.product_uid===uid);if(!p)return;
+  const val=el.value;const cur=p.product_id||'';
+  const ch=pidEnsure(uid);
+  if(val===cur)delete ch.product_id; else ch.product_id=val;
+  pidPrune(uid);
+  const st=el.closest('tr').querySelector('.status');const on=pidChanged(p);
+  st.className='status '+(on?'pend':'');st.textContent=on?'queued':'';
+  updateStats();
+}
+function onPidCfEdit(el){
+  const uid=el.dataset.uid,fuid=el.dataset.fuid;const p=products.find(x=>x.product_uid===uid);if(!p)return;
+  const val=el.value;const cur=cfCurrent(p,fuid);
+  const ch=pidEnsure(uid);
+  if(val===cur)delete ch.cf[fuid]; else ch.cf[fuid]=val;
+  pidPrune(uid);
+  const st=el.closest('tr').querySelector('.status');const on=pidChanged(p);
+  st.className='status '+(on?'pend':'');st.textContent=on?'queued':'';
+  updateStats();
+}
+function pidQueuedList(){
+  return Object.keys(pidChanges).map(uid=>{
+    const p=products.find(x=>x.product_uid===uid);if(!p||!pidChanged(p))return null;
+    const ch=pidChanges[uid];
+    const change={cf:{...(ch.cf||{})}};
+    if('product_id' in ch)change.product_id=ch.product_id;
+    return {product:p,change};
+  }).filter(Boolean);
+}
+async function updateProductId(product,change,dry){
+  const uid=product.product_uid;
+  // Read a fresh, complete product (mirrors update_product_ids.py). Fall back to the cached record.
+  let full=null;
+  try{const r=await fetch(_base+'product/'+uid,{headers:getHdrs()});if(r.ok){const d=await r.json().catch(()=>({}));full=(d&&(d.data||d.product))||d;}}catch(e){}
+  if(!full||typeof full!=='object')full=product;
+  const p=JSON.parse(JSON.stringify(full));
+  // Flatten nested fields Zuper rejects on PUT (product_category, formula, location_availability).
+  if(p.product_category&&typeof p.product_category==='object')p.product_category=p.product_category.category_uid||p.product_category.product_category||p.product_category._id||'';
+  if(p.formula&&typeof p.formula==='object')p.formula=p.formula.formula_uid||p.formula._id||null;
+  if(Array.isArray(p.location_availability))p.location_availability=p.location_availability.map(loc=>({
+    location:(loc.location&&typeof loc.location==='object')?(loc.location.location_uid||loc.location._id||''):(loc.location||''),
+    min_quantity:loc.min_quantity??'',quantity:loc.quantity??'',serial_nos:loc.serial_nos||[]
+  }));
+  const changed=[];
+  if('product_id' in change){p.product_id=change.product_id;changed.push('ID→"'+change.product_id+'"');}
+  const cfKeys=Object.keys(change.cf||{});
+  if(cfKeys.length){
+    const key=cfContainerKey(p);
+    const arr=Array.isArray(p[key])?p[key].map(e=>({...e})):[];
+    cfKeys.forEach(fuid=>{
+      const val=change.cf[fuid];
+      const ent=arr.find(e=>cfEntryUid(e)===fuid);
+      if(ent){ if(('field_value' in ent)&&!('value' in ent))ent.field_value=val; else ent.value=val; }
+      else arr.push({field_uid:fuid,value:val});
+      changed.push((cfByUid[fuid]?cfByUid[fuid].name:fuid)+'→"'+val+'"');
+    });
+    p[key]=arr;
+  }
+  if(dry)return {ok:true,msg:'Dry run — would set '+(changed.join(', ')||'nothing')};
+  const put=await fetch(_base+'product/'+uid,{method:'PUT',headers:hdrs(),body:JSON.stringify({product:p})});
+  const jd=await put.json().catch(()=>({}));
+  if(jd&&jd.type==='success'){
+    if('product_id' in change)product.product_id=change.product_id; // reflect locally
+    return {ok:true,msg:'Updated '+changed.length+' field(s)'};
+  }
+  return {ok:false,msg:(jd&&jd.message)||('HTTP '+put.status)};
+}
+function importPidMapping(){
+  const file=$('pmapFile').files[0];if(!file)return;
+  const ext=file.name.toLowerCase().split('.').pop();
+  const done=rows=>applyImportedPidRows(rows);
+  if(ext==='csv'){const rd=new FileReader();rd.onload=e=>done(parseCSV(e.target.result));rd.readAsText(file);}
+  else{
+    if(!window.XLSX){$('pimport-status').textContent='Excel support needs internet (SheetJS). Save as CSV and retry.';return;}
+    const rd=new FileReader();rd.onload=e=>{const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});done(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''}));};rd.readAsArrayBuffer(file);
+  }
+}
+function applyImportedPidRows(rows){
+  if(!rows.length){$('pimport-status').textContent='No rows found.';return;}
+  const keys=Object.keys(rows[0]);
+  const nk=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+  const uidCol=keys.find(k=>nk(k)==='productuid')||keys.find(k=>nk(k).includes('productuid'))||keys.find(k=>nk(k)==='uid');
+  const idCol=keys.find(k=>nk(k)==='productid')||keys.find(k=>nk(k)==='newproductid');
+  if(!uidCol){$('pimport-status').textContent='Could not find a "Product UID" column. Found: '+keys.join(', ');return;}
+  // Map any header that matches a custom-field name → field uid.
+  const cfCols={};keys.forEach(k=>{const f=customFields.find(f=>nk(f.name)===nk(k));if(f&&k!==uidCol&&k!==idCol)cfCols[k]=f.uid;});
+  const known=new Set(products.map(p=>p.product_uid));
+  const bad=['nan','none','#n/a','#ref!','#value!','#name?','#div/0!','#null!',''];
+  let ok=0,miss=0,skip=0;
+  rows.forEach(r=>{
+    const pu=String(r[uidCol]??'').trim();
+    if(!pu||bad.includes(pu.toLowerCase())||pu.startsWith('#')){skip++;return;}
+    if(!known.has(pu)){miss++;return;}
+    const p=products.find(x=>x.product_uid===pu);let touched=false;
+    if(idCol){const nid=String(r[idCol]??'').trim();if(nid&&nid!==(p.product_id||'')){pidEnsure(pu).product_id=nid;touched=true;}}
+    Object.keys(cfCols).forEach(col=>{const v=String(r[col]??'').trim();if(v!==''&&v!==cfCurrent(p,cfCols[col])){pidEnsure(pu).cf[cfCols[col]]=v;touched=true;}});
+    if(touched)ok++; else pidPrune(pu);
+  });
+  renderRows();updateStats();
+  const cfNote=Object.keys(cfCols).length?(' Custom-field columns matched: '+Object.keys(cfCols).join(', ')+'.'):' No custom-field columns matched.';
+  $('pimport-status').textContent='Queued changes for '+ok+' product(s).'+cfNote+(miss?(' '+miss+' UID(s) not found.'):'')+(skip?(' '+skip+' row(s) skipped.'):'');
 }
 
 /* ---------- theme ---------- */

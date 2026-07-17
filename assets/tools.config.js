@@ -19,11 +19,11 @@ const TOOLS = [
   },
   {
     "name": "Product Mapper",
-    "description": "Bulk-map CPQ formulas or vendors to Parts & Services",
+    "description": "Bulk-map formulas, vendors, colors, or update product IDs & custom fields",
     "file": "tools/product-formula-mapper.html",
     "icon": "🧮",
-    "updated": "2026-07-15",
-    "help": "Connect with a Zuper API key (region auto-detected), then pick a mode. Formula mode: fetch Parts & Services + CPQ Formulas and assign a formula per product. Vendor mode: fetch Parts & Services + Vendors and add one or more vendors per product with SKU & cost — bulk-assign a vendor, add ALL vendors, or import a Product UID / Vendor UID sheet (CSV/Excel); vendors already linked to a part are skipped. Both modes send PUT product/{uid} (formula, or a vendor array like the migration scripts). Run a Dry Run, then Apply, then export a results CSV."
+    "updated": "2026-07-17",
+    "help": "Connect with a Zuper API key (region auto-detected), then pick a mode. Formula: assign a CPQ formula per product. Vendor: add one or more vendors per product with SKU & cost. Color: merge color options into products. Product ID: fetch products (and their custom fields) and bulk-update the Product ID and any custom-field values — edit inline in the grid or import a Product UID / Product ID sheet with a column per custom field. Every mode reads each product fresh and sends PUT product/{uid} with the full flattened payload (like the update_product_ids.py script). Run a Dry Run, then Apply, then export a results CSV."
   },
   {
     "name": "Zuper CPQ Importer",
