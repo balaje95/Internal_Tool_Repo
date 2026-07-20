@@ -1744,7 +1744,21 @@ async function doFetch(){
       showMsg('fetch-msg','⚠ Could not detect UID field. Record keys: ['+keys+']. Add the correct uid key to the module config.','warn');
       return;
     }
-    showMsg('fetch-msg','✓ Loaded '+allRecs.length+' record(s). UID field: "'+uidField+'".','ok');
+    // Dedupe by UID. Some endpoints (e.g. team) ignore the ?page param and return the
+    // same records for every page, so the concurrent batch fetch pulls the same rows
+    // multiple times (e.g. 8 pages × 6 teams = 48 duplicate rows). Duplicate rows broke
+    // bulk-select/delete: many "different" rows shared one UID, collapsing the selection.
+    let _dupCount=0;
+    {
+      const seenUid=new Set();
+      allRecs=allRecs.filter(r=>{
+        const k=String(r[uidField]||'');
+        if(!k) return true;               // keep records with no usable UID (don't drop data)
+        if(seenUid.has(k)){_dupCount++;return false;}
+        seenUid.add(k); return true;
+      });
+    }
+    showMsg('fetch-msg','✓ Loaded '+allRecs.length+' record(s). UID field: "'+uidField+'".'+(_dupCount?' ('+_dupCount+' duplicate row(s) from repeated API pages removed.)':''),'ok');
     $('s-total').textContent=allRecs.length;$('s-module').textContent=cfg.label;
     filtRecs=[...allRecs];renderTable();
     // Parts & Services: fill the "Vendors" column from vendor_catalogs (non-blocking).
