@@ -26,6 +26,14 @@ const TOOLS = [
     "help": "Connect with a Zuper API key (region auto-detected), then pick a mode. Formula: assign a CPQ formula per product. Vendor: add one or more vendors per product with SKU & cost. Color: merge color options into products. Product ID: fetch products (and their custom fields) and bulk-update the Product ID and any custom-field values — edit inline in the grid or import a Product UID / Product ID sheet with a column per custom field. Every mode reads each product fresh and sends PUT product/{uid} with the full flattened payload (like the update_product_ids.py script). Run a Dry Run, then Apply, then export a results CSV."
   },
   {
+    "name": "Customer ↔ Property Mapper",
+    "description": "Bulk-map customers to a property in a Zuper account",
+    "file": "tools/customer-property-mapper.html",
+    "icon": "🏠",
+    "updated": "2026-07-20",
+    "help": "Connect with a Zuper API key (region auto-detected), then fetch every property and customer in the account. Each row is a property showing its already-linked customers. Add one or more customers to a property inline, bulk-add one customer to many selected properties, auto-match by address, or import a sheet with Property UID + Customer UID(s) columns (put several comma-separated customer UIDs in one cell to add them all to that property). On apply, each property is read fresh and the staged customers are merged into its customer list (existing customers preserved) via PUT property/{uid}. Run a Dry Run first and validate on a test account."
+  },
+  {
     "name": "Zuper CPQ Importer",
     "description": "Push Acculynx CPQ templates/products into Zuper via API",
     "file": "tools/cpq-importer.html",

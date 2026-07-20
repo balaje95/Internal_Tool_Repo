@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zuper Customer ↔ Property Mapper</title>
+<script>try{if(localStorage.getItem('zuper_tools_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+<style>
+  /* Light is the default theme; dark is opt-in via [data-theme="dark"]. */
+  :root{
+    --bg:#eef1f7; --panel:#ffffff; --panel2:#f3f6fc; --line:#dbe2ee; --line2:#c4cede;
+    --txt:#1b2436; --muted:#5f6b84; --accent:#2f6fe6; --accent2:#2257c2;
+    --ok:#1f9d57; --okbg:#e4f7ec; --err:#d13b3b; --errbg:#fdebeb; --warn:#a9781a; --warnbg:#fbf1dc;
+    --chip:#e7eefb; --code:#f6f8fc; --headbg:linear-gradient(180deg,#ffffff,#f4f7fd); --rowhover:#eaf0fb;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1420; --panel:#171e2e; --panel2:#1e2740; --line:#2a3450; --line2:#374363;
+    --txt:#e6ebf5; --muted:#8f9bb5; --accent:#4f8cff; --accent2:#3a6fe0;
+    --ok:#37c978; --okbg:#123324; --err:#ff6b6b; --errbg:#3a1a1e; --warn:#f0b32a; --warnbg:#3a2f12;
+    --chip:#233052; --code:#0b0f18; --headbg:linear-gradient(180deg,#141b2b,#0f1420); --rowhover:#1b2338;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
+  a{color:var(--accent)}
+  header{padding:18px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;background:var(--headbg)}
+  .theme-btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:.8rem;font-weight:600;cursor:pointer}
+  .theme-btn:hover{border-color:var(--accent)}
+  header h1{font-size:1.15rem;margin:0;font-weight:600;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:.8rem}
+  #badge{font-size:.8rem;color:var(--ok);background:var(--okbg);padding:6px 12px;border-radius:20px;display:none}
+  .head-spacer{flex:1}
+  .wrap{max-width:1240px;margin:0 auto;padding:22px 26px 80px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-bottom:18px}
+  .card h2{font-size:.95rem;margin:0 0 4px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .card .desc{color:var(--muted);font-size:.82rem;margin:0 0 16px}
+  .step{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:.75rem;font-weight:700}
+  label{display:block;font-size:.78rem;color:var(--muted);margin:0 0 5px;font-weight:500}
+  .inp{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 12px;font-size:.9rem;outline:none}
+  .inp:focus{border-color:var(--accent)}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:end}
+  .row>div{flex:1;min-width:180px}
+  button{cursor:pointer;font-family:inherit;font-size:.87rem;font-weight:600;border:none;border-radius:8px;padding:9px 18px;transition:.15s}
+  .btn{background:var(--accent);color:#fff}
+  .btn:hover{background:var(--accent2)}
+  .btn.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+  .btn.sec:hover{border-color:var(--accent)}
+  .btn.warn{background:var(--warn);color:#111}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .msg{display:none;margin-top:12px;padding:9px 13px;border-radius:8px;font-size:.83rem}
+  .msg-ok{background:var(--okbg);color:var(--ok)}
+  .msg-err{background:var(--errbg);color:var(--err)}
+  .msg-info{background:var(--chip);color:var(--accent2)}
+  .msg-warn{background:var(--warnbg);color:var(--warn)}
+  .hidden{display:none!important}
+  .stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 15px;min-width:96px}
+  .stat b{display:block;font-size:1.25rem}
+  .stat span{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.4px}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px;padding:14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px}
+  .toolbar>div{display:flex;flex-direction:column}
+  .tablewrap{border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:60vh}
+  table{border-collapse:collapse;width:100%;font-size:.84rem}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{position:sticky;top:0;background:var(--panel2);z-index:2;font-weight:600;color:var(--muted);font-size:.74rem;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+  tr:hover td{background:var(--rowhover)}
+  td select{width:100%;min-width:230px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:6px 8px;font-size:.82rem}
+  .chip{display:inline-block;background:var(--chip);border-radius:12px;padding:2px 9px;font-size:.74rem;color:var(--accent2);margin:1px 3px 1px 0}
+  .chip.exist{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+  .chip.none{background:var(--warnbg);color:var(--warn)}
+  .cur{font-size:.8rem}
+  .cur .none{color:var(--muted)}
+  .muted{color:var(--muted)}
+  .status{font-size:.78rem;font-weight:600}
+  .status.ok{color:var(--ok)} .status.err{color:var(--err)} .status.skip{color:var(--muted)} .status.pend{color:var(--warn)}
+  .progress{height:9px;background:var(--panel2);border-radius:6px;overflow:hidden;margin:12px 0}
+  .progress>div{height:100%;background:var(--accent);width:0;transition:width .2s}
+  .log{background:var(--code);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:.78rem;max-height:220px;overflow:auto;white-space:pre-wrap;margin-top:12px}
+  .log .l-ok{color:var(--ok)} .log .l-err{color:var(--err)} .log .l-info{color:var(--accent2)} .log .l-warn{color:var(--warn)}
+  .flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .checkcol{width:34px;text-align:center}
+  input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+  .small{font-size:.78rem}
+  .pill{font-size:.7rem;padding:2px 8px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:.82rem}
+  .rm{text-decoration:none;color:var(--err);font-weight:700}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏠 Zuper Customer ↔ Property Mapper</h1>
+  <span class="sub">Fetch properties &amp; customers, then bulk-<b>map customers to each property</b></span>
+  <span class="head-spacer"></span>
+  <span id="badge"></span>
+  <button class="theme-btn hidden" id="disconnectBtn" onclick="disconnect()" title="Disconnect this account and start over">⏻ Disconnect</button>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light / dark">🌙 Dark</button>
+</header>
+
+<div class="wrap">
+
+  <!-- 1. CONNECT -->
+  <div class="card">
+    <h2><span class="step">1</span> Connect to a Zuper account</h2>
+    <p class="desc">Enter the account's API key. The data-center region is detected automatically (same as the other tools).</p>
+    <div class="row">
+      <div style="flex:2"><label>API Key</label><input class="inp" id="apikey" placeholder="x-api-key" autocomplete="off"></div>
+      <div style="flex:0 0 auto"><button class="btn" id="connectBtn" onclick="connect()">Connect</button></div>
+    </div>
+    <div class="msg" id="conn-msg"></div>
+    <div style="margin-top:10px">
+      <label style="display:inline">Saved connections</label>
+      <select class="inp" id="saved" style="max-width:340px;display:inline-block;width:auto" onchange="loadSaved()"><option value="">— pick a saved account —</option></select>
+      <button class="btn sec small" onclick="saveConn()">💾 Save current</button>
+      <button class="btn sec small" onclick="delSaved()">🗑 Delete</button>
+    </div>
+  </div>
+
+  <!-- 2. FETCH -->
+  <div class="card hidden" id="fetchCard">
+    <h2><span class="step">2</span> Fetch properties &amp; customers</h2>
+    <p class="desc">Pulls every property and customer in the account, and reads which customers are already linked to each property.</p>
+    <div class="flex">
+      <button class="btn" id="fetchBtn" onclick="fetchAll()"><span id="fetchBtnLabel">⬇ Fetch properties &amp; customers</span></button>
+      <span id="fetch-status" class="muted small"></span>
+    </div>
+    <div class="msg" id="fetch-msg"></div>
+  </div>
+
+  <!-- 3. MAP -->
+  <div class="card hidden" id="mapCard">
+    <h2><span class="step">3</span> Map customers to properties</h2>
+    <p class="desc">Each row is a property. Add one or more customers to a property — by dropdown, bulk tools, or a comma-separated import. On apply, the staged customers are merged into the property's customer list (existing customers are preserved).</p>
+
+    <div class="stats">
+      <div class="stat"><b id="s-total">0</b><span>Properties</span></div>
+      <div class="stat"><b id="s-customers">0</b><span>Customers</span></div>
+      <div class="stat"><b id="s-mapped">0</b><span>Have customers</span></div>
+      <div class="stat"><b id="s-changed">0</b><span>Changes queued</span></div>
+    </div>
+
+    <div class="toolbar">
+      <div style="flex:1;min-width:200px"><label>Search properties</label><input class="inp" id="search" placeholder="name, address, id…" oninput="renderRows()"></div>
+      <div><label>Show</label>
+        <select class="inp" id="filter" onchange="renderRows()">
+          <option value="all">All properties</option>
+          <option value="unmapped">Only without customers</option>
+          <option value="mapped">Only with customers</option>
+          <option value="changed">Only staged changes</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:240px"><label>Bulk-add a customer to selected rows</label>
+        <select class="inp" id="bulkCustomer"></select>
+      </div>
+      <div><label>&nbsp;</label><button class="btn sec" onclick="bulkAddCustomer()">Add to selected</button></div>
+    </div>
+
+    <div class="flex" style="margin-bottom:12px">
+      <button class="btn sec small" onclick="autoMatchByAddress()">✨ Auto-match by address</button>
+      <button class="btn sec small" onclick="resetChanges()">↺ Reset all changes</button>
+      <label class="pill" style="cursor:pointer"><input type="checkbox" id="importChk" onchange="document.getElementById('importBox').classList.toggle('hidden',!this.checked)" style="vertical-align:-2px"> Import mapping from CSV / Excel</label>
+    </div>
+
+    <div id="importBox" class="hidden" style="padding:14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+      <p class="small muted" style="margin-top:0">Upload a file with a <b>Property UID</b> column and a <b>Customer UID(s)</b> column. Put multiple customer UIDs in the same cell separated by commas to add several customers to that property (e.g. <code>cust-1, cust-2, cust-3</code>). Multiple rows for the same property are combined. Matched to loaded properties &amp; customers by UID and staged as changes.</p>
+      <div class="flex">
+        <input type="file" id="mapFile" class="inp" style="max-width:340px" accept=".csv,.xlsx,.xls" onchange="importMapping()">
+        <span id="import-status" class="muted small"></span>
+      </div>
+    </div>
+
+    <div class="tablewrap">
+      <table id="tbl">
+        <thead id="thead"><tr>
+          <th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th>
+          <th>Property</th><th>Address</th><th>Customers</th><th>Add customer →</th><th>Status</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <p class="small muted" id="rowcount" style="margin-bottom:0"></p>
+  </div>
+
+  <!-- 4. APPLY -->
+  <div class="card hidden" id="applyCard">
+    <h2><span class="step">4</span> Apply changes</h2>
+    <p class="desc" id="applyDesc">Reads each property fresh, merges the staged customer(s) into its customer list, then sends <code>PUT property/&lt;uid&gt;</code>. Always run a Dry Run first and verify on a test account — the customer-link field can be finicky.</p>
+    <div class="flex">
+      <button class="btn sec" id="dryBtn" onclick="apply(true)">🧪 Dry run</button>
+      <button class="btn" id="applyBtn" onclick="apply(false)">🚀 Apply changes</button>
+      <button class="btn warn hidden" id="cancelBtn" onclick="_cancel=true">⏹ Cancel</button>
+      <span id="apply-count" class="muted small"></span>
+    </div>
+    <div class="progress hidden" id="prog"><div id="progbar"></div></div>
+    <div class="log hidden" id="log"></div>
+    <div class="flex hidden" id="resultActions" style="margin-top:12px">
+      <button class="btn sec small" onclick="exportResults()">⬇ Export results CSV</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Injects a "← Back to Dashboard" link only when served from the dashboard's /tools folder -->
+<script src="../assets/back-link.js"></script>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const ZUPER_CLIENT_HDRS={'x-zuper-client':'WEB_APP','x-zuper-client-version':'3.0'};
+const apiKey=()=>$('apikey').value.trim();
+const hdrs=()=>({...ZUPER_CLIENT_HDRS,'x-api-key':apiKey(),'Content-Type':'application/json'});
+const getHdrs=()=>({...ZUPER_CLIENT_HDRS,'x-api-key':apiKey()});
+let _base='', _account='';
+let customers=[], properties=[], propByUid={}, custByUid={};
+let staged={};        // property_uid -> [customer_uid, ...]  (customers staged to ADD)
+let selected=new Set(); // selected property_uids
+let _cancel=false, _results=[];
+
+/* ---------- helpers ---------- */
+function showMsg(id,txt,type){const e=$(id);e.className='msg msg-'+type;e.textContent=txt;e.style.display='block';}
+function hideMsg(id){$(id).style.display='none';}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function norm(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');}
+function log(msg,cls){const l=$('log');l.classList.remove('hidden');const s=document.createElement('div');if(cls)s.className='l-'+cls;s.textContent=msg;l.appendChild(s);l.scrollTop=l.scrollHeight;}
+
+/* ---------- DC resolution (matches Zuper Data Manager) ---------- */
+const ZUPER_DCS=[
+  'us-east-1','us-east-1a','us-east-1b','us-east-1c',
+  'us-west-1','us-west-1a','us-west-1b','us-west-1c','us-west-2',
+  'eu-west-1','eu-west-2','eu-central-1','ap-south-1','ap-south-2',
+  'ap-southeast-1','ap-southeast-2','ca-central-1','sa-east-1'
+].map(r=>`https://${r}.zuperpro.com`);
+
+async function resolveByApiKey(key){
+  let resolved=null;
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),12000);
+  const eps=['user/company','company','users/me','user/me'];
+  try{
+    await Promise.any(ZUPER_DCS.map(dc=>(async()=>{
+      for(const ep of eps){
+        if(controller.signal.aborted) throw new Error('aborted');
+        const res=await fetch(dc+'/api/'+ep,{headers:{...ZUPER_CLIENT_HDRS,'x-api-key':key},signal:controller.signal}).catch(()=>null);
+        if(res&&res.ok){
+          const data=await res.json().catch(()=>({}));
+          const name=data?.company_name||data?.data?.company_name||data?.name||data?.data?.name||data?.company?.company_name||'';
+          if(!resolved) resolved={dcUrl:dc,baseUrl:dc+'/api/',accountName:name};
+          controller.abort(); return resolved;
+        }
+      }
+      throw new Error('no match');
+    })())).catch(()=>{});
+  }finally{clearTimeout(timer);}
+  if(!resolved) throw new Error('API key not recognised on any known Zuper server. Check the key and try again.');
+  return resolved;
+}
+
+async function connect(){
+  hideMsg('conn-msg');
+  if(!apiKey()){showMsg('conn-msg','✗ Please enter an API key.','err');return;}
+  const btn=$('connectBtn');btn.disabled=true;btn.textContent='Connecting…';
+  try{
+    const {baseUrl,accountName,dcUrl}=await resolveByApiKey(apiKey());
+    _base=baseUrl; _account=accountName||'Account';
+    const region=dcUrl.replace('https://','').replace('.zuperpro.com','');
+    showMsg('conn-msg','✓ Connected to "'+_account+'" on '+region,'ok');
+    $('badge').textContent='✓ '+_account+' ('+region+')';$('badge').style.display='inline-block';
+    $('disconnectBtn').classList.remove('hidden');
+    $('fetchCard').classList.remove('hidden');
+  }catch(e){showMsg('conn-msg','✗ '+e.message,'err');}
+  finally{btn.disabled=false;btn.textContent='Connect';}
+}
+function disconnect(){
+  _base='';_account='';
+  customers=[];properties=[];propByUid={};custByUid={};staged={};selected.clear();_results=[];_cancel=false;
+  $('apikey').value='';
+  const sv=$('saved');if(sv)sv.value='';
+  $('badge').style.display='none';$('badge').textContent='';
+  $('disconnectBtn').classList.add('hidden');
+  $('fetchCard').classList.add('hidden');
+  $('mapCard').classList.add('hidden');
+  $('applyCard').classList.add('hidden');
+  hideMsg('fetch-msg');
+  showMsg('conn-msg','Disconnected. Enter an API key to connect again.','info');
+}
+
+/* ---------- saved connections ---------- */
+const SKEY='zcpm_saved';
+function loadSavedList(){
+  const arr=JSON.parse(localStorage.getItem(SKEY)||'[]');
+  const sel=$('saved');sel.innerHTML='<option value="">— pick a saved account —</option>';
+  arr.forEach((c,i)=>{const o=document.createElement('option');o.value=i;o.textContent=c.name;sel.appendChild(o);});
+}
+function saveConn(){
+  if(!apiKey())return;
+  const arr=JSON.parse(localStorage.getItem(SKEY)||'[]');
+  const name=prompt('Label for this connection:',_account||'Zuper account');
+  if(!name)return;
+  const ex=arr.findIndex(c=>c.key===apiKey());
+  if(ex>=0)arr[ex]={name,key:apiKey()}; else arr.push({name,key:apiKey()});
+  localStorage.setItem(SKEY,JSON.stringify(arr));loadSavedList();
+}
+function loadSaved(){
+  const i=$('saved').value;if(i==='')return;
+  const arr=JSON.parse(localStorage.getItem(SKEY)||'[]');
+  if(arr[i]){$('apikey').value=arr[i].key;connect();}
+}
+function delSaved(){
+  const i=$('saved').value;if(i==='')return;
+  const arr=JSON.parse(localStorage.getItem(SKEY)||'[]');arr.splice(i,1);
+  localStorage.setItem(SKEY,JSON.stringify(arr));loadSavedList();
+}
+
+/* ---------- fetch ---------- */
+async function fetchAll(){
+  hideMsg('fetch-msg');
+  const btn=$('fetchBtn');btn.disabled=true;if($('fetchBtnLabel'))$('fetchBtnLabel').textContent='Fetching…';
+  try{
+    $('fetch-status').textContent='Loading properties…';
+    properties=await fetchPaged('property',['properties','property']);
+    $('fetch-status').textContent='Loading customers…';
+    customers=await fetchPaged('customers',['customers']);
+    propByUid={};properties.forEach(p=>{const u=propUid(p);if(u)propByUid[u]=p;});
+    custByUid={};customers.forEach(c=>{const u=custUid(c);if(u)custByUid[u]=c;});
+    staged={};selected.clear();
+    buildCustomerSelect();
+    $('mapCard').classList.remove('hidden');$('applyCard').classList.remove('hidden');
+    renderRows();updateStats();
+    showMsg('fetch-msg','✓ Loaded '+properties.length+' property(ies) and '+customers.length+' customer(s).','ok');
+    $('fetch-status').textContent='';
+  }catch(e){showMsg('fetch-msg','✗ '+e.message,'err');$('fetch-status').textContent='';}
+  finally{btn.disabled=false;if($('fetchBtnLabel'))$('fetchBtnLabel').innerHTML='⬇ Fetch properties &amp; customers';}
+}
+
+// Generic paginated GET (mirrors the Data Manager standard fetch).
+async function fetchPaged(endpoint,recordKeys){
+  const out=[];let page=1;const count=100;
+  while(true){
+    const r=await fetch(_base+endpoint+'?page='+page+'&count='+count,{headers:getHdrs()});
+    if(!r.ok)throw new Error(endpoint+' fetch failed (HTTP '+r.status+')');
+    const d=await r.json().catch(()=>({}));
+    let recs=Array.isArray(d)?d:null;
+    if(!recs){for(const k of recordKeys){if(Array.isArray(d[k])){recs=d[k];break;}}}
+    if(!recs)recs=d.data||[];
+    if(!recs.length)break;
+    out.push(...recs);
+    if(recs.length<count)break;
+    page++; if(page>500)break;
+  }
+  return out;
+}
+
+/* ---------- identity helpers ---------- */
+function custUid(c){return c&&(c.customer_uid||c.uid||c._id)||'';}
+function propUid(p){return p&&(p.property_uid||p.uid||p._id)||'';}
+function custName(c){
+  const n=[c.customer_first_name,c.customer_last_name].filter(Boolean).join(' ').trim();
+  return n||c.customer_company_name||c.customer_email||custUid(c)||'—';
+}
+function custType(c){
+  if(c.customer_type)return c.customer_type;
+  if(c.customer_category&&typeof c.customer_category==='object')return c.customer_category.category_name||'';
+  if(typeof c.customer_category==='string')return c.customer_category;
+  return '';
+}
+function custLabel(c){const t=custType(c);const e=c.customer_email;return custName(c)+(e?' — '+e:'')+(t?' ['+t+']':'');}
+function nameOfCust(cu){return custByUid[cu]?custName(custByUid[cu]):cu;}
+function addrStr(a){
+  if(!a||typeof a!=='object')return '';
+  return [a.street,a.city,a.state,a.zip_code].filter(Boolean).join(', ');
+}
+function custAddr(c){return addrStr(c.customer_address||c.customer_billing_address);}
+function propName(p){return p.property_name||p.property_uid||'—';}
+function propAddr(p){return addrStr(p.property_address);}
+
+// The customers currently linked to a property (read shape: property_customers[].customer.customer_uid).
+function propCustomerUids(p){
+  const arr=Array.isArray(p.property_customers)?p.property_customers
+           :Array.isArray(p.property_customer)?p.property_customer:[];
+  const out=[];
+  arr.forEach(e=>{
+    const cu=e&&e.customer&&typeof e.customer==='object'?(e.customer.customer_uid||e.customer.uid)
+            :(typeof e?.customer==='string'?e.customer:(e&&(e.customer_uid||e.uid)));
+    if(cu)out.push(cu);
+  });
+  return out;
+}
+
+/* ---------- customer <select> building ---------- */
+function customerOptionsHtml(){
+  let h='<option value="">— add a customer… —</option>';
+  [...customers].sort((a,b)=>custName(a).localeCompare(custName(b))).forEach(c=>{
+    h+='<option value="'+esc(custUid(c))+'">'+esc(custLabel(c))+'</option>';
+  });
+  return h;
+}
+function buildCustomerSelect(){
+  $('bulkCustomer').innerHTML='<option value="">— choose a customer —</option>'+customerOptionsHtml().replace('<option value="">— add a customer… —</option>','');
+}
+
+/* ---------- render ---------- */
+function matchesFilter(p){
+  const f=$('filter').value;
+  const cur=propCustomerUids(p).length>0;
+  const st=(staged[propUid(p)]||[]).length>0;
+  if(f==='unmapped')return !cur;
+  if(f==='mapped')return cur;
+  if(f==='changed')return st;
+  return true;
+}
+function matchesSearch(p){
+  const q=$('search').value.trim().toLowerCase();
+  if(!q)return true;
+  return propName(p).toLowerCase().includes(q)
+    ||propAddr(p).toLowerCase().includes(q)
+    ||String(propUid(p)).toLowerCase().includes(q);
+}
+function renderRows(){
+  const tb=$('tbody');tb.innerHTML='';
+  const rows=properties.filter(p=>matchesSearch(p)&&matchesFilter(p));
+  if(!rows.length){tb.innerHTML='<tr><td colspan="6" class="muted small" style="padding:16px">No properties match this filter.</td></tr>';}
+  for(const p of rows){
+    const uid=propUid(p);
+    const existing=propCustomerUids(p);
+    const st=staged[uid]||[];
+    const existChips=existing.map(cu=>'<span class="chip exist" title="already linked">'+esc(nameOfCust(cu))+'</span>').join('');
+    const stagedChips=st.map(cu=>'<span class="chip">'+esc(nameOfCust(cu))+' <a href="#" title="remove" class="rm" onclick="removeStaged(\''+esc(uid)+'\',\''+esc(cu)+'\');return false">×</a></span>').join('');
+    const custCell=(existChips||stagedChips)?(existChips+stagedChips):'<span class="cur none">none</span>';
+    const tr=document.createElement('tr');
+    tr.innerHTML=
+      '<td class="checkcol"><input type="checkbox" data-uid="'+esc(uid)+'" '+(selected.has(uid)?'checked':'')+' onchange="toggleRow(this)"></td>'+
+      '<td>'+esc(propName(p))+'</td>'+
+      '<td class="muted small">'+esc(propAddr(p)||'—')+'</td>'+
+      '<td>'+custCell+'</td>'+
+      '<td><select data-uid="'+esc(uid)+'" onchange="onCustomerAdd(this)">'+customerOptionsHtml()+'</select></td>'+
+      '<td class="status '+(st.length?'pend':'')+'">'+(st.length?st.length+' staged':'')+'</td>';
+    tb.appendChild(tr);
+  }
+  $('rowcount').textContent=rows.length+' of '+properties.length+' properties shown';
+  const allVis=rows.length&&rows.every(p=>selected.has(propUid(p)));
+  $('selAll').checked=!!allVis;
+}
+function toggleRow(el){el.checked?selected.add(el.dataset.uid):selected.delete(el.dataset.uid);}
+function toggleAll(on){
+  const rows=properties.filter(p=>matchesSearch(p)&&matchesFilter(p));
+  rows.forEach(p=>on?selected.add(propUid(p)):selected.delete(propUid(p)));
+  renderRows();
+}
+
+/* ---------- staging ---------- */
+// Stage a customer onto a property. Skips if already linked or already staged.
+function addStaged(pUid,cUid){
+  if(!pUid||!cUid)return false;
+  const p=propByUid[pUid];
+  if(p&&propCustomerUids(p).includes(cUid))return false; // already linked on the property
+  if(!staged[pUid])staged[pUid]=[];
+  if(staged[pUid].includes(cUid))return false;           // already staged
+  staged[pUid].push(cUid);
+  return true;
+}
+function removeStaged(pUid,cUid){
+  if(!staged[pUid])return;
+  staged[pUid]=staged[pUid].filter(x=>x!==cUid);
+  if(!staged[pUid].length)delete staged[pUid];
+  renderRows();updateStats();
+}
+function onCustomerAdd(sel){
+  const pUid=sel.dataset.uid,cUid=sel.value;if(!cUid)return;
+  addStaged(pUid,cUid);
+  renderRows();updateStats();
+}
+
+/* ---------- bulk tools ---------- */
+function bulkAddCustomer(){
+  const cUid=$('bulkCustomer').value;
+  if(!cUid){alert('Pick a customer in the bulk dropdown first.');return;}
+  if(!selected.size){alert('Select some property rows first (checkboxes).');return;}
+  let n=0;
+  selected.forEach(pUid=>{if(addStaged(pUid,cUid))n++;});
+  renderRows();updateStats();
+  showMsg('fetch-msg','Staged "'+nameOfCust(cUid)+'" on '+n+' property(ies).', n?'ok':'warn');
+}
+// Match customers to a property that shares the same street + city (or zip).
+function autoMatchByAddress(){
+  const idx={}; // address key -> [customer_uid,...]
+  customers.forEach(c=>{
+    const a=c.customer_address||c.customer_billing_address||{};
+    if(!a.street)return;
+    [norm(a.street)+'|'+norm(a.city),norm(a.street)+'|'+norm(a.zip_code)].forEach(k=>{(idx[k]=idx[k]||[]).push(custUid(c));});
+  });
+  let n=0;
+  properties.forEach(p=>{
+    const a=p.property_address||{};if(!a.street)return;
+    const hits=[...new Set([...(idx[norm(a.street)+'|'+norm(a.city)]||[]),...(idx[norm(a.street)+'|'+norm(a.zip_code)]||[])])];
+    hits.forEach(cu=>{if(addStaged(propUid(p),cu))n++;});
+  });
+  renderRows();updateStats();
+  showMsg('fetch-msg','✨ Auto-matched '+n+' customer→property link(s) by address.', n?'ok':'warn');
+}
+function resetChanges(){staged={};renderRows();updateStats();}
+
+/* ---------- import CSV / Excel ---------- */
+function importMapping(){
+  const file=$('mapFile').files[0];if(!file)return;
+  const ext=file.name.toLowerCase().split('.').pop();
+  if(ext==='csv'){
+    const rd=new FileReader();
+    rd.onload=e=>applyImportedRows(parseCSV(e.target.result));
+    rd.readAsText(file);
+  }else{
+    if(!window.XLSX){$('import-status').textContent='Excel support needs internet (SheetJS). Save the file as CSV and retry.';return;}
+    const rd=new FileReader();
+    rd.onload=e=>{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      applyImportedRows(XLSX.utils.sheet_to_json(ws,{defval:''}));
+    };
+    rd.readAsArrayBuffer(file);
+  }
+}
+function parseCSV(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length)return [];
+  const split=l=>{const o=[];let c='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];if(ch==='"'){if(q&&l[i+1]==='"'){c+='"';i++;}else q=!q;}else if(ch===','&&!q){o.push(c);c='';}else c+=ch;}o.push(c);return o.map(s=>s.trim());};
+  const head=split(lines[0]);
+  return lines.slice(1).map(l=>{const cells=split(l);const o={};head.forEach((h,i)=>o[h]=cells[i]??'');return o;});
+}
+function applyImportedRows(rows){
+  if(!rows.length){$('import-status').textContent='No rows found.';return;}
+  const keys=Object.keys(rows[0]);
+  const findCol=(preds)=>keys.find(k=>preds(k.toLowerCase().trim()));
+  const propCol=findCol(l=>l==='property uid'||l==='property_uid')||findCol(l=>l.includes('property')&&l.includes('uid'))||findCol(l=>l==='property');
+  const custCol=findCol(l=>l==='customer uid'||l==='customer_uid'||l==='customer uids'||l==='customer uid(s)')||findCol(l=>l.includes('customer')&&l.includes('uid'))||findCol(l=>l==='customer'||l==='customers');
+  if(!propCol||!custCol){$('import-status').textContent='Could not find "Property UID" and "Customer UID(s)" columns. Found: '+keys.join(', ');return;}
+  const knownC=new Set(customers.map(custUid));
+  const knownP=new Set(properties.map(propUid));
+  const bad=['nan','none','#n/a','#ref!','#value!','#name?','#div/0!','#null!',''];
+  const isBad=v=>!v||bad.includes(v.toLowerCase())||v.startsWith('#');
+  let ok=0,missC=0,missP=0,skip=0;
+  rows.forEach(r=>{
+    const pu=String(r[propCol]??'').trim();
+    if(isBad(pu)){skip++;return;}
+    if(!knownP.has(pu)){missP++;return;}
+    // A single Customer UID cell may hold several comma/semicolon-separated UIDs.
+    const custUids=String(r[custCol]??'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+    if(!custUids.length){skip++;return;}
+    custUids.forEach(cu=>{
+      if(isBad(cu)){skip++;return;}
+      if(!knownC.has(cu)){missC++;return;}
+      if(addStaged(pu,cu))ok++;
+    });
+  });
+  renderRows();updateStats();
+  $('import-status').textContent='Staged '+ok+' customer link(s). '+(missP?missP+' property UID(s) not found. ':'')+(missC?missC+' customer UID(s) not found. ':'')+(skip?skip+' invalid row(s) skipped.':'');
+}
+
+/* ---------- stats ---------- */
+function updateStats(){
+  $('s-total').textContent=properties.length;
+  $('s-customers').textContent=customers.length;
+  $('s-mapped').textContent=properties.filter(p=>propCustomerUids(p).length).length;
+  const chg=Object.keys(staged).filter(pu=>(staged[pu]||[]).length).length;
+  $('s-changed').textContent=chg;
+  $('apply-count').textContent=chg?chg+' property(ies) with staged customers':'no changes queued';
+}
+
+/* ---------- apply ---------- */
+function queuedList(){
+  return Object.keys(staged).map(pu=>{
+    const p=propByUid[pu];const cUids=staged[pu]||[];
+    if(!p||!cUids.length)return null;
+    const addCustomers=cUids.map(cu=>custByUid[cu]||{customer_uid:cu}).filter(Boolean);
+    return {property:p,property_uid:pu,customers:addCustomers};
+  }).filter(Boolean);
+}
+
+// GET the property fresh, merge in the new customer UIDs, PUT the full flattened object.
+async function updatePropertyCustomers(propUidVal,addCustomers,dry){
+  // Read fresh so nothing else on the property is overwritten.
+  let full=null;
+  try{
+    const r=await fetch(_base+'property/'+propUidVal,{headers:getHdrs()});
+    if(r.ok){const d=await r.json().catch(()=>({}));full=(d&&(d.data||d.property))||d;}
+  }catch(e){}
+  if(!full||typeof full!=='object')full=propByUid[propUidVal]||{property_uid:propUidVal};
+  const p=JSON.parse(JSON.stringify(full));
+
+  // Merge existing + new customer uids (dedup, order-preserving).
+  const existing=propCustomerUids(p);
+  const merged=[...existing];
+  addCustomers.forEach(c=>{const cu=custUid(c);if(cu&&!merged.includes(cu))merged.push(cu);});
+  const newN=merged.length-existing.length;
+
+  // Strip server-managed / nested read-only aggregates that a PUT rejects or shouldn't echo.
+  ['created_by','updated_by','no_of_jobs','child_properties','parent_property','property_customers'].forEach(k=>{delete p[k];});
+  if(p.property_organization&&typeof p.property_organization==='object')p.property_organization=p.property_organization.organization_uid||p.property_organization._id||null;
+
+  // Write-shape customer link (per Zuper create-property docs: property_customer: [{customer:<uid>}]).
+  p.property_customer=merged.map(cu=>({customer:cu}));
+
+  if(dry)return {ok:true,msg:'Dry run — would link '+newN+' new customer(s) ('+merged.length+' total) on "'+propName(p)+'"'};
+  if(!newN)return {ok:true,msg:'All customer(s) already linked to "'+propName(p)+'" — skipped'};
+
+  const put=await fetch(_base+'property/'+propUidVal,{method:'PUT',headers:hdrs(),body:JSON.stringify({property:p})});
+  const jd=await put.json().catch(()=>({}));
+  if(jd&&(jd.type==='success'||jd.success===true)){
+    // reflect locally so re-mapping sees the new state
+    p.property_customers=merged.map(cu=>({customer:{customer_uid:cu}}));
+    propByUid[propUidVal]=p;
+    return {ok:true,msg:'Linked '+newN+' customer(s) → "'+propName(p)+'"'};
+  }
+  return {ok:false,msg:(jd&&jd.message)||('HTTP '+put.status)};
+}
+
+async function apply(dry){
+  const list=queuedList();
+  const totalCust=list.reduce((n,g)=>n+g.customers.length,0);
+  if(!list.length){alert('No changes queued. Stage one or more customers on a property first.');return;}
+  if(!dry&&!confirm('Apply '+totalCust+' customer link(s) across '+list.length+' property(ies) in "'+_account+'"?\n\nEach target property is read fresh and its customer list is merged (existing customers kept). Run a Dry Run first if you haven\'t.'))return;
+  _cancel=false;_results=[];
+  $('log').innerHTML='';$('log').classList.remove('hidden');
+  $('prog').classList.remove('hidden');$('resultActions').classList.add('hidden');
+  $('dryBtn').disabled=true;$('applyBtn').disabled=true;$('cancelBtn').classList.remove('hidden');
+  log((dry?'— DRY RUN — ':'— APPLYING — ')+totalCust+' customer(s) across '+list.length+' property(ies) on "'+_account+'"','info');
+  let done=0,ok=0,fail=0;
+  const CONC=3;
+  const queue=[...list];
+  async function worker(){
+    while(queue.length&&!_cancel){
+      const g=queue.shift();
+      let res;
+      try{res=await updatePropertyCustomers(g.property_uid,g.customers,dry);}
+      catch(e){res={ok:false,msg:e.message};}
+      done++; res.ok?ok++:fail++;
+      const label=propName(g.property);
+      _results.push({property_uid:g.property_uid,property_name:label,customers:g.customers.map(custName).join('; '),count:g.customers.length,status:res.ok?(res.msg||'Success'):'Failed: '+res.msg});
+      log('['+done+'/'+list.length+'] '+label+' ← '+g.customers.length+' customer(s)  '+(res.ok?'✓ '+res.msg:'✗ '+res.msg),res.ok?'ok':'err');
+      $('progbar').style.width=(done/list.length*100)+'%';
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(CONC,list.length)},worker));
+  log('— DONE — '+ok+' property write(s) succeeded, '+fail+' failed'+(_cancel?' (cancelled)':''),fail?'warn':'ok');
+  if(!dry&&ok){
+    _results.filter(r=>r.status&&!/^Failed/.test(r.status)).forEach(r=>{delete staged[r.property_uid];});
+    properties=Object.values(propByUid);
+    renderRows();updateStats();
+  }
+  $('dryBtn').disabled=false;$('applyBtn').disabled=false;$('cancelBtn').classList.add('hidden');
+  $('resultActions').classList.remove('hidden');
+}
+
+function exportResults(){
+  if(!_results.length)return;
+  const head=['Property UID','Property Name','Customers','Count','Status'];
+  const rows=_results.map(r=>[r.property_uid,r.property_name,r.customers,r.count,r.status]);
+  const csv=[head,...rows].map(row=>row.map(c=>'"'+String(c??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='customer_property_mapping_results.csv';a.click();
+}
+
+/* ---------- theme ---------- */
+function applyThemeLabel(){
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  $('themeBtn').textContent=dark?'☀️ Light':'🌙 Dark';
+}
+function toggleTheme(){
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  if(dark){document.documentElement.removeAttribute('data-theme');try{localStorage.setItem('zuper_tools_theme','light');}catch{}}
+  else{document.documentElement.setAttribute('data-theme','dark');try{localStorage.setItem('zuper_tools_theme','dark');}catch{}}
+  applyThemeLabel();
+}
+
+/* ---------- optional SheetJS for Excel import ---------- */
+(function(){const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';s.onerror=()=>{};document.head.appendChild(s);})();
+applyThemeLabel();
+loadSavedList();
+</script>
+</body>
+</html>
