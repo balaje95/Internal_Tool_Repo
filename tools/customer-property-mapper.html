@@ -590,11 +590,13 @@ async function updatePropertyCustomers(propUidVal,addCustomers,dry){
   const newN=merged.length-existing.length;
 
   // Strip server-managed / nested read-only aggregates that a PUT rejects or shouldn't echo.
-  ['created_by','updated_by','no_of_jobs','child_properties','parent_property','property_customers'].forEach(k=>{delete p[k];});
+  ['created_by','updated_by','no_of_jobs','child_properties','parent_property'].forEach(k=>{delete p[k];});
   if(p.property_organization&&typeof p.property_organization==='object')p.property_organization=p.property_organization.organization_uid||p.property_organization._id||null;
 
-  // Write-shape customer link (per Zuper create-property docs: property_customer: [{customer:<uid>}]).
-  p.property_customer=merged.map(cu=>({customer:cu}));
+  // Write-shape customer link (confirmed against the live API): property_customers is REPLACED
+  // by an array of { customer: "<customer_uid>" } — the plural key, customer as a UID string.
+  // (The singular "property_customer" is silently ignored on update.)
+  p.property_customers=merged.map(cu=>({customer:cu}));
 
   if(dry)return {ok:true,msg:'Dry run — would link '+newN+' new customer(s) ('+merged.length+' total) on "'+propName(p)+'"'};
   if(!newN)return {ok:true,msg:'All customer(s) already linked to "'+propName(p)+'" — skipped'};
