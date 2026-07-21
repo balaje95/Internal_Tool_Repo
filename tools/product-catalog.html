@@ -348,23 +348,35 @@ async function openDrawer(i){
 }
 function closeDrawer(){$('ov').style.display='none';$('drawer').classList.remove('on');}
 
-/* ---------- CSV export (paginates the current query, capped) ---------- */
+/* ---------- CSV export (paginates the FULL current result set) ---------- */
+/* PostgREST caps each request at 1000 rows, so we page through all `total`
+   rows in concurrent waves (no artificial cap) — e.g. all 76,812 QXO rows. */
 async function exportCsv(){
   const cfg=SOURCES[src], btn=$('csvBtn');
-  btn.disabled=true;const orig=btn.textContent;btn.textContent='Exporting…';
+  if(!total)return;
+  btn.disabled=true;const orig=btn.textContent;
+  $('msg').style.display='none';
   try{
-    const cap=5000;const out=[];const p=new URLSearchParams(lastQuery);
-    for(let from=0; from<Math.min(total,cap); from+=1000){
-      const res=await fetch(BASE+'/'+cfg.table+'?'+p.toString(),{headers:{...HDRS,'Range-Unit':'items','Range':from+'-'+(from+999)}});
-      if(!res.ok)break;const batch=await res.json();out.push(...batch);if(batch.length<1000)break;
+    const STEP=1000, CONC=6, p=new URLSearchParams(lastQuery);
+    const starts=[];for(let from=0; from<total; from+=STEP) starts.push(from);
+    const out=[];
+    for(let w=0; w<starts.length; w+=CONC){
+      const wave=starts.slice(w,w+CONC);
+      const parts=await Promise.all(wave.map(async from=>{
+        const res=await fetch(BASE+'/'+cfg.table+'?'+p.toString(),{headers:{...HDRS,'Range-Unit':'items','Range':from+'-'+(from+STEP-1)}});
+        if(!res.ok) throw new Error('HTTP '+res.status+' at row '+from);
+        return {from, rows:await res.json()};
+      }));
+      parts.sort((a,b)=>a.from-b.from).forEach(pt=>out.push(...pt.rows)); // keep source order
+      btn.textContent='Exporting '+fmtNum(out.length)+' / '+fmtNum(total)+'…';
     }
     const heads=['id','name','category','brand','product_line','family_tier','accessory_tier','is_universal','suggested_price'];
     const keys=[cfg.id,cfg.name,cfg.category,cfg.brand,cfg.line,cfg.tier,cfg.acctier,cfg.universal,cfg.price];
     const csv=[heads.join(',')].concat(out.map(r=>keys.map(k=>{const v=r[k];const s=String(v==null?'':v).replace(/"/g,'""');return /[",\n]/.test(s)?'"'+s+'"':s;}).join(','))).join('\r\n');
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
-    a.download=cfg.label.toLowerCase()+'_catalog_'+(out.length)+'rows.csv';a.click();
-    if(total>cap){$('msg').className='msg msg-info';$('msg').textContent='Exported first '+cap+' of '+fmtNum(total)+' rows (cap). Narrow the search to export the rest.';$('msg').style.display='block';}
-  }catch(e){$('msg').className='msg msg-err';$('msg').textContent='✗ Export failed: '+e.message;$('msg').style.display='block';}
+    a.download=cfg.label.toLowerCase()+'_catalog_'+out.length+'rows.csv';a.click();
+    $('msg').className='msg msg-info';$('msg').textContent='✓ Exported all '+fmtNum(out.length)+' '+cfg.label+' row(s).';$('msg').style.display='block';
+  }catch(e){$('msg').className='msg msg-err';$('msg').textContent='✗ Export failed: '+e.message+' — try narrowing the search and exporting again.';$('msg').style.display='block';}
   finally{btn.disabled=false;btn.textContent=orig;}
 }
 
