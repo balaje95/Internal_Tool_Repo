@@ -78,8 +78,8 @@ const TOOLS = [
     "description": "Bulk data operations and cleanup for Zuper FSM",
     "file": "tools/data-manager.html",
     "icon": "🗂️",
-    "updated": "2026-07-02",
-    "help": "Bulk fetch, delete, dedupe, migrate, and import Zuper records across many modules — jobs, products, CPQ, workflows and more. Dry Run is on by default for destructive actions."
+    "updated": "2026-07-17",
+    "help": "Bulk fetch, delete, dedupe, migrate, and import Zuper records across many modules — jobs, products, CPQ, workflows and more. Dry Run is on by default for destructive actions. CPQ → 🏠 Roofing CPQ Import: upload one workbook (Measurement Tokens, Formulas, Packages, Bundles sheets) to bulk-create CPQ measurement categories/tokens, formulas (with a confirm-before-apply variable→token mapping grid), service packages, and product bundles — dry-run, dedupe, and rate-limited."
   },
   {
     "name": "Zuper Process Doc Generator",

@@ -484,6 +484,7 @@ input[type=checkbox]{accent-color:var(--primary)}
       <button id="cpq-sub-btn-proposal_template" class="btn btn-p" onclick="switchCpqSub('proposal_template')" style="font-size:.82rem;padding:6px 16px">📋 Proposal Templates</button>
       <button id="cpq-sub-btn-formula" class="btn btn-g" onclick="switchCpqSub('formula')" style="font-size:.82rem;padding:6px 16px">ƒ Formula Library</button>
       <button id="cpq-sub-btn-package" class="btn btn-g" onclick="switchCpqSub('package')" style="font-size:.82rem;padding:6px 16px">📦 Service Packages</button>
+      <button id="cpq-roof-import-btn" class="btn btn-g" onclick="showRoofImportCard()" style="font-size:.82rem;padding:6px 16px">🏠 Roofing CPQ Import</button>
     </div>
   </div>
   <!-- Workflow sub-module selector -->
@@ -1082,6 +1083,58 @@ input[type=checkbox]{accent-color:var(--primary)}
     <button class="btn btn-o" style="font-size:.75rem" onclick="clearImportHistory()">🗑 Clear All</button>
   </div>
   <div id="import-history-body"></div>
+</div>
+
+<!-- ROOFING CPQ IMPORT -->
+<div class="card" id="roof-import-card" style="display:none">
+  <div class="sec-title">🏠 Roofing CPQ Import</div>
+  <div class="msg msg-info" style="margin-bottom:14px;font-size:.8rem">
+    Upload <strong>one workbook</strong> with a sheet per stage — <strong>Measurement Tokens</strong>, <strong>Formulas</strong>, <strong>Packages</strong>, <strong>Bundles</strong> (any subset; sheet names are matched loosely). Run stages in order; each has its own <strong>Dry Run</strong> then <strong>Apply</strong>. Everything is created in the connected account only. Existing records are detected and skipped (no duplicates).
+    <div style="margin-top:8px">
+      <strong>Sheets &amp; columns:</strong>
+      <div style="margin-top:4px;line-height:1.6">
+        • <strong>Measurement Tokens</strong>: <em>Category, Token, Unit (UOM), Sort?</em><br>
+        • <strong>Formulas</strong>: <em>Formula name, Formula key, Category (e.g. AREA_MEASUREMENT), Formula expression (use $1,$2…), Description?, Rounding?, Expression Map? (JSON)</em><br>
+        • <strong>Packages</strong>: <em>Package name, Section?, Line Item, Product UID, Unit Price, Markup Type?, Markup Value?, UOM?, Quantity?, Formula UID?</em><br>
+        • <strong>Bundles</strong>: <em>Bundle Name, Bundle Number, Product UID (comma-separated UIDs), Category? (UID)</em>
+      </div>
+    </div>
+  </div>
+
+  <div id="roof-upload">
+    <div id="roof-dropzone" onclick="document.getElementById('roof-file').click()" style="border:2px dashed var(--border-inp);border-radius:14px;padding:32px;background:var(--inp-bg);text-align:center;cursor:pointer;margin-bottom:14px">
+      <div style="font-size:2rem;margin-bottom:8px">📂</div>
+      <p style="font-size:.85rem;color:var(--text-sub)"><strong style="color:var(--text)">Click to upload</strong> or drag &amp; drop the roofing workbook (.xlsx)</p>
+      <input type="file" id="roof-file" accept=".xlsx,.xls" style="display:none" onchange="onRoofFile(this)">
+    </div>
+    <div id="roof-upload-msg" class="msg" style="display:none;margin-bottom:10px"></div>
+  </div>
+
+  <div id="roof-workspace" style="display:none">
+    <div id="roof-file-info" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--th-bg);border-radius:8px;font-size:.82rem"></div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:12px 14px;background:var(--th-bg);border-radius:8px;border:1px solid var(--border);margin-bottom:14px">
+      <label style="display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:600;cursor:pointer">
+        <input type="checkbox" id="roof-dry" checked onchange="updateRoofPill()">
+        Dry Run <span id="roof-mode-pill" class="mode-safe">● Safe</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:7px;font-size:.8rem;color:var(--text-sub)">Delay between calls (ms)
+        <input type="number" id="roof-delay" value="120" min="0" step="20" style="width:70px;padding:4px 6px;border:1px solid var(--border-inp);border-radius:6px;background:var(--inp-bg);color:var(--text)">
+      </label>
+    </div>
+    <div id="roof-stages"></div>
+    <div id="roof-prog-wrap" style="display:none;margin-top:14px">
+      <div style="height:8px;background:var(--th-bg);border-radius:6px;overflow:hidden"><div id="roof-prog-bar" style="height:100%;width:0%;background:var(--accent,#f60);transition:width .2s"></div></div>
+      <div id="roof-prog-lbl" style="font-size:.76rem;color:var(--text-sub);margin-top:5px"></div>
+    </div>
+    <div id="roof-log" style="display:none;margin-top:12px;max-height:300px;overflow:auto;background:var(--log-bg,#111);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;line-height:1.5"></div>
+    <div id="roof-results-actions" style="display:none;margin-top:10px">
+      <button class="btn btn-o" onclick="roofExportResults()">⬇ Export results (CSV)</button>
+    </div>
+  </div>
+
+  <div class="btn-row" style="margin-top:14px">
+    <button class="btn btn-g" onclick="hideRoofImportCard()">← Back</button>
+  </div>
 </div>
 
 <!-- PACKAGE IMPORT -->
@@ -6929,8 +6982,299 @@ function switchCpqSub(key){
     const btn=$('cpq-sub-btn-'+k);
     if(btn) btn.className='btn '+(k===key?'btn-p':'btn-g');
   });
+  hideRoofImportCard();
   onModuleChange();
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ROOFING CPQ IMPORT — sheet-driven creation of measurement tokens, CPQ
+//  formulas (with confirmed variable→token mapping), service packages, and
+//  product bundles. Single connected account only; dry-run by default;
+//  dedupes vs existing records; rate-limited. Hardened port of the Roofing
+//  Migration Python toolkit (no hardcoded keys/UIDs/paths; adds pagination,
+//  429 backoff, dedupe, and explicit mapping instead of fuzzy auto-matching).
+// ══════════════════════════════════════════════════════════════════════════
+let _roof={sheets:{},tokens:[],formulas:[],packages:[],bundles:[],measByName:{},formulaMapping:{},results:[],prodCats:[]};
+
+function showRoofImportCard(){
+  if(!_baseUrl){alert('Connect to a Zuper account first.');return;}
+  const c=$('roof-import-card');c.style.display='block';c.scrollIntoView({behavior:'smooth',block:'start'});
+  const fi=$('roof-file');if(fi)fi.value='';
+}
+function hideRoofImportCard(){const c=$('roof-import-card');if(c)c.style.display='none';}
+function updateRoofPill(){const el=$('roof-dry');if(!el)return;const d=el.checked,p=$('roof-mode-pill');if(p){p.className=d?'mode-safe':'mode-live';p.textContent=d?'● Safe':'● Live';}}
+
+function roofSleep(ms){return new Promise(r=>setTimeout(r,ms));}
+function roofDelay(){return Math.max(0,parseInt($('roof-delay').value)||0);}
+function roofNorm(s){return String(s==null?'':s).trim().toLowerCase();}
+function roofGet(row,names){
+  for(const n of names)for(const k of Object.keys(row))if(roofNorm(k)===roofNorm(n))return String(row[k]==null?'':row[k]).trim();
+  for(const n of names){const nn=roofNorm(n).replace(/[^a-z0-9]/g,'');for(const k of Object.keys(row))if(roofNorm(k).replace(/[^a-z0-9]/g,'')===nn)return String(row[k]==null?'':row[k]).trim();}
+  return '';
+}
+function roofLog(msg,level){const el=$('roof-log');if(!el)return;el.style.display='block';const c=level==='ok'?'#38c172':level==='warn'?'#e6a700':level==='err'?'#e3342f':'var(--text-sub)';const d=document.createElement('div');d.style.color=c;d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
+function roofProg(pct,lbl){$('roof-prog-wrap').style.display='block';$('roof-prog-bar').style.width=pct+'%';$('roof-prog-lbl').textContent=lbl||'';}
+function roofBegin(dry,label){_roof.results=[];$('roof-results-actions').style.display='none';roofLog('— '+(dry?'DRY RUN':'APPLYING')+' — '+label+' —','info');}
+function roofEnd(dry,st){roofProg(100,'Done');roofLog('— Done — '+(st.ok||0)+(dry?' to create':' created')+', '+(st.skip||0)+' skipped, '+(st.fail||0)+' failed —',(st.fail?'warn':'ok'));$('roof-results-actions').style.display='block';}
+// Rate-limit-aware fetch: one retry with backoff on 429/5xx.
+async function roofFetch(url,opts){
+  for(let a=0;a<2;a++){const r=await fetch(url,opts);if(r.status===429||r.status>=500){await roofSleep(1200*(a+1));continue;}return r;}
+  return fetch(url,opts);
+}
+
+function onRoofFile(input){
+  const f=input.files&&input.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'binary'});
+      _roof.sheets={};
+      wb.SheetNames.forEach(nm=>{_roof.sheets[nm]=XLSX.utils.sheet_to_json(wb.Sheets[nm],{defval:''});});
+      roofParseSheets(f.name);
+    }catch(err){const m=$('roof-upload-msg');m.style.display='block';m.className='msg msg-err';m.textContent='Could not read workbook: '+err.message;}
+  };
+  rd.readAsBinaryString(f);
+}
+function roofFindSheet(rx){const nm=Object.keys(_roof.sheets).find(n=>rx.test(n.toLowerCase()));return nm?_roof.sheets[nm]:[];}
+function roofParseSheets(fname){
+  _roof.tokens=roofFindSheet(/token|measurement/).map(r=>({category:roofGet(r,['Category','Measurement Category','Category Name']),token:roofGet(r,['Token','Measurement Token','Token Name','Name']),uom:roofGet(r,['Unit','UOM','Unit of Measure']),sort:roofGet(r,['Sort','Order'])})).filter(t=>t.category&&t.token);
+  _roof.formulas=roofFindSheet(/formula/).map(r=>({name:roofGet(r,['Formula name','Name']),key:roofGet(r,['Formula key','Key']),category:roofGet(r,['Category','Formula category'])||'AREA_MEASUREMENT',expression:roofGet(r,['Formula expression','Expression','Formula']),description:roofGet(r,['Description']),rounding:roofGet(r,['Rounding mechanism','Rounding'])||'NEXT_WHOLE_NUMBER',exprMap:roofGet(r,['Expression Map','expression_map'])})).filter(f=>f.name&&f.key&&f.expression);
+  _roof.packages=roofFindSheet(/package/).map(r=>({pkg:roofGet(r,['Package name','Service Package Name','Package']),section:roofGet(r,['Section','Section Header Name','Section Header']),item:roofGet(r,['Line Item','Item Name','Item']),product_uid:roofGet(r,['Product UID','Product Uid']),price:roofGet(r,['Unit Price','Selling Price','Price']),purchase:roofGet(r,['Purchase Price','Cost Price','Cost']),markup_type:roofGet(r,['Markup Type']),markup_value:roofGet(r,['Markup Value']),uom:roofGet(r,['UOM','Unit']),quantity:roofGet(r,['Quantity','Qty']),formula_uid:roofGet(r,['Formula UID','Formula Uid']),description:roofGet(r,['Description'])})).filter(p=>p.pkg&&(p.item||p.product_uid));
+  _roof.bundles=roofFindSheet(/bundle/).map(r=>({name:roofGet(r,['Bundle Name','Name']),number:roofGet(r,['Bundle Number','Bundle ID','Bundle Id']),product_uids:roofGet(r,['Product UID','Product UIDs','Associated Products']),category:roofGet(r,['Category','Bundle Category','Product Category'])})).filter(b=>(b.name||b.number)&&b.product_uids);
+  $('roof-file-info').innerHTML='📄 <strong>'+esc(fname)+'</strong> — sheets: '+esc(Object.keys(_roof.sheets).join(', ')||'(none)');
+  $('roof-workspace').style.display='block';
+  const um=$('roof-upload-msg');if(um)um.style.display='none';
+  _roof.formulaMapping={};
+  updateRoofPill();roofRenderStages();
+}
+
+function roofPreview(rows,cols){
+  if(!rows.length)return '<div style="font-size:.78rem;color:var(--text-sub);padding:8px">No rows detected for this stage.</div>';
+  let h='<table style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr>'+cols.map(c=>'<th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);background:var(--th-bg)">'+esc(c)+'</th>').join('')+'</tr></thead><tbody>';
+  rows.forEach(r=>{h+='<tr>'+cols.map(c=>'<td style="padding:4px 8px;border-bottom:0.5px solid var(--border);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(String(r[c]==null?'':r[c]).slice(0,60))+'</td>').join('')+'</tr>';});
+  return h+'</tbody></table>';
+}
+function roofStagePanel(id,title,count,previewHtml,extraBtns){
+  return '<div class="card" style="padding:14px;margin-bottom:12px;border:1px solid var(--border)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'
+    +'<div style="font-weight:700;font-size:.9rem">'+title+' <span style="background:var(--th-bg);padding:1px 8px;border-radius:10px;font-size:.72rem">'+count+'</span></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'+(extraBtns||'')
+    +'<button class="btn btn-o" style="font-size:.78rem;padding:5px 12px" onclick="roofRun(\''+id+'\',true)"'+(count?'':' disabled')+'>🧪 Dry run</button>'
+    +'<button class="btn btn-p" style="font-size:.78rem;padding:5px 12px" onclick="roofRun(\''+id+'\',false)"'+(count?'':' disabled')+'>🚀 Apply</button>'
+    +'</div></div><div style="margin-top:10px;overflow-x:auto">'+previewHtml+'</div></div>';
+}
+function roofRenderStages(){
+  const t=_roof.tokens.length,f=_roof.formulas.length,p=new Set(_roof.packages.map(x=>x.pkg)).size,b=_roof.bundles.length;
+  let h='';
+  h+=roofStagePanel('tokens','① Measurement Tokens',t,roofPreview(_roof.tokens.slice(0,5),['category','token','uom','sort']),'');
+  h+=roofStagePanel('formulas','② Formulas',f,roofPreview(_roof.formulas.slice(0,5),['name','key','category','expression']),'<button class="btn btn-o" style="font-size:.78rem;padding:5px 12px" onclick="roofBuildFormulaMapping()">🔗 Map variables</button>');
+  h+='<div id="roof-formula-map" style="display:none;margin:-4px 0 14px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--th-bg)"></div>';
+  h+=roofStagePanel('packages','③ Service Packages',p,roofPreview(_roof.packages.slice(0,5),['pkg','section','item','product_uid','price']),'');
+  h+=roofStagePanel('bundles','④ Bundles',b,roofPreview(_roof.bundles.slice(0,5),['name','number','product_uids','category']),'');
+  $('roof-stages').innerHTML=h;
+}
+
+async function roofRun(stage,dry){
+  if(!apiKey()||!_baseUrl){alert('Connect to a Zuper account first.');return;}
+  if(!dry&&!confirm('Create '+stage+' in "'+($('s-account').textContent||'this account')+'"?\n\nThis creates live records and cannot be undone. Run a Dry run first.'))return;
+  try{
+    if(stage==='tokens')await roofApplyTokens(dry);
+    else if(stage==='formulas')await roofApplyFormulas(dry);
+    else if(stage==='packages')await roofApplyPackages(dry);
+    else if(stage==='bundles')await roofApplyBundles(dry);
+  }catch(e){roofLog('Fatal error: '+e.message,'err');}
+}
+
+// ── shared fetch helpers ─────────────────────────────────────────────────────
+async function roofFetchMeas(){
+  const catByName={},tokByCat={};_roof.measByName={};
+  try{
+    const r=await roofFetch(baseUrl()+'measurements/categories?sort=ASC&sort_by=created_at',{headers:getHdrs()});
+    const d=await r.json().catch(()=>({}));
+    const cats=(extractRecords(d,'measurement_category')||d.data||[]);
+    (Array.isArray(cats)?cats:[]).forEach(c=>{
+      const cu=c.measurement_category_uid||c.uid||'';const cn=c.measurement_category_name||c.category_name||'';
+      if(cn)catByName[roofNorm(cn)]=cu;tokByCat[cu]=new Set();
+      (c.measurement_tokens||[]).forEach(t=>{const tn=t.measurement_token_name||t.token_name||'';const tu=t.measurement_token_uid||t.uid||'';if(tn){tokByCat[cu].add(roofNorm(tn));_roof.measByName[roofNorm(tn)]={token_uid:tu,category_uid:cu,name:tn};}});
+    });
+  }catch(e){roofLog('Could not fetch measurement categories: '+e.message,'warn');}
+  return {catByName,tokByCat};
+}
+async function roofFetchProdCats(){
+  const out=[];try{const r=await roofFetch(baseUrl()+'products/category?count=200&page=1',{headers:getHdrs()});const d=await r.json().catch(()=>({}));const recs=(extractRecords(d,'product_category')||d.data||[]);recs.forEach(c=>out.push({uid:c.product_category_uid||c.category_uid||c.uid||'',name:c.product_category_name||c.category_name||''}));}catch(e){roofLog('Could not fetch product categories: '+e.message,'warn');}_roof.prodCats=out;return out;}
+async function roofFetchProductIds(){
+  const set=new Set();try{let pg=1;while(pg<=50){const r=await roofFetch(baseUrl()+'product?page='+pg+'&count=150',{headers:getHdrs()});const d=await r.json().catch(()=>({}));const recs=(extractRecords(d,'product')||d.data||[]);if(!recs.length)break;recs.forEach(p=>{const id=(p.product_id||'').trim();if(id)set.add(roofNorm(id));});if(recs.length<150)break;pg++;}}catch(e){roofLog('Could not fetch products: '+e.message,'warn');}return set;}
+
+// ── STAGE 1: measurement categories + tokens ─────────────────────────────────
+async function roofApplyTokens(dry){
+  if(!_roof.tokens.length){alert('No Measurement Tokens rows detected.');return;}
+  roofBegin(dry,'Measurement Tokens');
+  const {catByName,tokByCat}=await roofFetchMeas();
+  const byCat={},order=[];_roof.tokens.forEach(t=>{if(!byCat[t.category]){byCat[t.category]=[];order.push(t.category);}byCat[t.category].push(t);});
+  let done=0,ok=0,skip=0,fail=0;const total=_roof.tokens.length;
+  for(const cat of order){
+    let catUid=catByName[roofNorm(cat)];
+    if(!catUid){
+      if(dry){roofLog('[DRY] would create category "'+cat+'"','warn');}
+      else{
+        try{const r=await roofFetch(baseUrl()+'measurements/categories',{method:'POST',headers:hdrs(),body:JSON.stringify({measurement_category:{measurement_category_name:cat}})});const d=await r.json().catch(()=>({}));catUid=d?.data?.measurement_category_uid||d?.data?.uid||'';if(r.ok&&catUid){catByName[roofNorm(cat)]=catUid;tokByCat[catUid]=new Set();roofLog('Category created: '+cat,'ok');}else{roofLog('Category create failed: '+cat+' — '+(d?.message||('HTTP '+r.status)),'err');}}catch(e){roofLog('Category error '+cat+': '+e.message,'err');}
+        await roofSleep(roofDelay());
+      }
+    }
+    const existing=(catUid&&tokByCat[catUid])?tokByCat[catUid]:new Set();
+    for(const t of byCat[cat]){
+      done++;roofProg((done/total*100).toFixed(0),done+'/'+total+' tokens');
+      if(existing.has(roofNorm(t.token))){skip++;_roof.results.push({stage:'token',name:t.token,status:'skipped (exists)'});continue;}
+      if(dry){ok++;_roof.results.push({stage:'token',name:t.token,status:'would create'});roofLog('[DRY] would create token "'+t.token+'" ('+(t.uom||'EA')+') in '+cat,'warn');continue;}
+      if(!catUid){fail++;_roof.results.push({stage:'token',name:t.token,status:'failed: no category'});continue;}
+      try{
+        const body={measurement_token:{measurement_token_name:t.token,uom:(t.uom||'EA').toUpperCase()}};
+        if(t.sort)body.measurement_token.sort=parseInt(t.sort)||0;
+        const r=await roofFetch(baseUrl()+'measurements/categories/'+catUid+'/tokens',{method:'POST',headers:hdrs(),body:JSON.stringify(body)});
+        const d=await r.json().catch(()=>({}));
+        if(r.ok&&(d.type==='success'||d?.data)){ok++;existing.add(roofNorm(t.token));_roof.results.push({stage:'token',name:t.token,status:'created'});roofLog('Token created: '+t.token,'ok');}
+        else{fail++;_roof.results.push({stage:'token',name:t.token,status:'failed: '+(d?.message||('HTTP '+r.status))});roofLog('Token failed: '+t.token+' — '+(d?.message||('HTTP '+r.status)),'err');}
+      }catch(e){fail++;roofLog('Token error '+t.token+': '+e.message,'err');}
+      await roofSleep(roofDelay());
+    }
+  }
+  roofEnd(dry,{ok,skip,fail});
+}
+
+// ── STAGE 2: formulas (with confirmed variable→token mapping) ────────────────
+function roofSlots(expr){
+  const ph=[...String(expr).matchAll(/\$(\d+)/g)].map(m=>'$'+m[1]);
+  if(ph.length){const uniq=[...new Set(ph)].sort((a,b)=>parseInt(a.slice(1))-parseInt(b.slice(1)));return {order:uniq,expr:String(expr),named:false};}
+  const vars=[...new Set((String(expr).match(/[A-Za-z_][A-Za-z0-9_]*/g)||[]).filter(v=>!/^(and|or|min|max|abs|round|floor|ceil|if|then|else)$/i.test(v)))];
+  let conv=String(expr);vars.forEach((v,i)=>{conv=conv.replace(new RegExp('\\b'+v.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','g'),'$'+(i+1));});
+  return {order:vars,expr:conv,named:true};
+}
+function roofSuggestToken(name){const n=roofNorm(name).replace(/_/g,' ');if(_roof.measByName[n])return _roof.measByName[n];const k=Object.keys(_roof.measByName).find(k=>k.includes(n)||n.includes(k));return k?_roof.measByName[k]:null;}
+async function roofBuildFormulaMapping(){
+  if(!_roof.formulas.length){alert('No Formulas rows detected.');return;}
+  roofLog('Fetching account measurement tokens for mapping…','info');
+  await roofFetchMeas();
+  _roof.formulaMapping={};
+  _roof.formulas.forEach(f=>{
+    const slots=roofSlots(f.expression);
+    let pre={};if(f.exprMap){try{const arr=JSON.parse(f.exprMap);if(Array.isArray(arr))arr.forEach(e=>{if(e&&e.key)pre[e.key]=e;});}catch(e){}}
+    const map={_order:slots.order,_expr:slots.expr,named:slots.named,slots:{}};
+    slots.order.forEach((slot,i)=>{
+      const key='$'+(i+1);
+      if(pre[key]){map.slots[slot]={type:pre[key].type||'MEASUREMENT',token_uid:pre[key].measurement_token_uid||'',category_uid:pre[key].measurement_category_uid||'',value:pre[key].value!=null?pre[key].value:1};}
+      else{const hit=slots.named?roofSuggestToken(slot):null;map.slots[slot]=hit?{type:'MEASUREMENT',token_uid:hit.token_uid,category_uid:hit.category_uid,value:1}:{type:'CONSTANT',token_uid:'',category_uid:'',value:1};}
+    });
+    _roof.formulaMapping[f.key]=map;
+  });
+  roofRenderMappingGrid();
+}
+function roofTokenOptions(sel){let h='<option value="">— pick token —</option>';Object.values(_roof.measByName).sort((a,b)=>a.name.localeCompare(b.name)).forEach(t=>{h+='<option value="'+esc(t.token_uid)+'|'+esc(t.category_uid)+'"'+(t.token_uid===sel?' selected':'')+'>'+esc(t.name)+'</option>';});return h;}
+function roofRenderMappingGrid(){
+  const el=$('roof-formula-map');if(!el)return;
+  if(!Object.keys(_roof.measByName).length)roofLog('No measurement tokens found in this account — map placeholders to constants, or create the tokens (stage 1) first.','warn');
+  let h='<div style="font-size:.8rem;font-weight:700;margin-bottom:6px">Variable → measurement-token mapping</div><div style="font-size:.76rem;color:var(--text-sub);margin-bottom:8px">Confirm each placeholder. Auto-suggestions and any Expression Map column are pre-filled; unmapped placeholders default to CONSTANT 1. Then click <strong>Apply</strong> on the Formulas stage.</div>';
+  h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem"><thead><tr>'+['Formula','Placeholder','Type','Token / value'].map(x=>'<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)">'+x+'</th>').join('')+'</tr></thead><tbody>';
+  _roof.formulas.forEach(f=>{const map=_roof.formulaMapping[f.key];if(!map)return;map._order.forEach((slot,i)=>{const s=map.slots[slot];const ph='$'+(i+1);
+    h+='<tr data-fk="'+esc(f.key)+'" data-slot="'+esc(slot)+'">'
+      +'<td style="padding:5px 8px;border-bottom:0.5px solid var(--border)">'+esc(f.name)+'</td>'
+      +'<td style="padding:5px 8px;border-bottom:0.5px solid var(--border)">'+esc(ph)+(map.named?(' <span style="color:var(--text-sub)">('+esc(slot)+')</span>'):'')+'</td>'
+      +'<td style="padding:5px 8px;border-bottom:0.5px solid var(--border)"><select onchange="roofMapType(this)" style="font-size:.76rem;padding:3px"><option value="MEASUREMENT"'+(s.type==='MEASUREMENT'?' selected':'')+'>Measurement</option><option value="CONSTANT"'+(s.type==='CONSTANT'?' selected':'')+'>Constant</option></select></td>'
+      +'<td style="padding:5px 8px;border-bottom:0.5px solid var(--border)"><select class="roof-tok" onchange="roofMapTok(this)" style="font-size:.76rem;padding:3px;max-width:240px;'+(s.type==='MEASUREMENT'?'':'display:none')+'">'+roofTokenOptions(s.token_uid)+'</select><input class="roof-const" onchange="roofMapConst(this)" value="'+esc(s.value)+'" style="font-size:.76rem;padding:3px;width:90px;'+(s.type==='CONSTANT'?'':'display:none')+'"></td>'
+      +'</tr>';
+  });});
+  el.innerHTML=h+'</tbody></table></div>';el.style.display='block';
+}
+function roofRowRef(el){const tr=el.closest('tr');return _roof.formulaMapping[tr.dataset.fk].slots[tr.dataset.slot];}
+function roofMapType(el){const s=roofRowRef(el);s.type=el.value;const tr=el.closest('tr');tr.querySelector('.roof-tok').style.display=s.type==='MEASUREMENT'?'':'none';tr.querySelector('.roof-const').style.display=s.type==='CONSTANT'?'':'none';}
+function roofMapTok(el){const s=roofRowRef(el);const parts=(el.value||'|').split('|');s.token_uid=parts[0]||'';s.category_uid=parts[1]||'';}
+function roofMapConst(el){const s=roofRowRef(el);const v=parseFloat(el.value);s.value=isNaN(v)?el.value:v;}
+async function roofApplyFormulas(dry){
+  if(!_roof.formulas.length){alert('No Formulas rows detected.');return;}
+  if(!Object.keys(_roof.formulaMapping).length){await roofBuildFormulaMapping();roofLog('Built the variable mapping — review the grid above, then click Dry run / Apply again.','warn');return;}
+  roofBegin(dry,'Formulas');
+  const existing=new Set();
+  try{let page=1;while(page<=20){const r=await roofFetch(baseUrl()+'invoice_estimate/cpq/formulas?count=200&page='+page,{headers:getHdrs()});const d=await r.json().catch(()=>({}));const recs=(extractRecords(d,'formula')||d.data||[]);if(!recs.length)break;recs.forEach(f=>{if(f.formula_key)existing.add(roofNorm(f.formula_key));});if(recs.length<200)break;page++;}}catch(e){roofLog('Could not fetch existing formulas: '+e.message,'warn');}
+  let done=0,ok=0,skip=0,fail=0;const total=_roof.formulas.length;
+  for(const f of _roof.formulas){
+    done++;roofProg((done/total*100).toFixed(0),done+'/'+total+' formulas');
+    if(existing.has(roofNorm(f.key))){skip++;_roof.results.push({stage:'formula',name:f.key,status:'skipped (exists)'});continue;}
+    const map=_roof.formulaMapping[f.key]||{_order:[],_expr:f.expression,slots:{}};
+    const emap=map._order.map((slot,i)=>{const s=map.slots[slot];const key='$'+(i+1);return s.type==='MEASUREMENT'?{key,type:'MEASUREMENT',measurement_token_uid:s.token_uid,measurement_category_uid:s.category_uid}:{key,type:'CONSTANT',value:s.value==null?1:s.value};});
+    const unmapped=emap.filter(e=>e.type==='MEASUREMENT'&&!e.measurement_token_uid).length;
+    if(unmapped){roofLog('⚠ '+f.name+': '+unmapped+' placeholder(s) set to Measurement but no token chosen','warn');}
+    const payload={formula:{formula_name:f.name,formula_key:f.key,formula_category:f.category,formula_description:f.description||'',formula:{expression:map._expr||f.expression,expression_map:emap,rounding_mechanism:f.rounding||'NEXT_WHOLE_NUMBER'}}};
+    if(dry){ok++;_roof.results.push({stage:'formula',name:f.key,status:'would create ('+emap.length+' vars)'});roofLog('[DRY] would create formula '+f.name+' ('+f.key+') — '+emap.length+' placeholders','warn');continue;}
+    try{const r=await roofFetch(baseUrl()+'invoice_estimate/cpq/formulas',{method:'POST',headers:hdrs(),body:JSON.stringify(payload)});const d=await r.json().catch(()=>({}));if(r.ok&&(d.type==='success'||d?.data?.formula_uid)){ok++;existing.add(roofNorm(f.key));_roof.results.push({stage:'formula',name:f.key,status:'created'});roofLog('Formula created: '+f.name,'ok');}else{fail++;_roof.results.push({stage:'formula',name:f.key,status:'failed: '+(d?.message||('HTTP '+r.status))});roofLog('Formula failed: '+f.name+' — '+(d?.message||('HTTP '+r.status)),'err');}}catch(e){fail++;roofLog('Formula error '+f.name+': '+e.message,'err');}
+    await roofSleep(roofDelay());
+  }
+  roofEnd(dry,{ok,skip,fail});
+}
+
+// ── STAGE 3: service packages ────────────────────────────────────────────────
+function roofHeaderItem(section){return {line_item_type:'HEADER',name:section,section_total:0,section_type:'EXPANDED',show_section_total:false,show_child_prices:true,quantity:0,unit_price:0,discount:0,serial_nos:[],discount_type:'FIXED',total:0,product_type:'PARTS',associated_products:[]};}
+function roofLineItem(r){
+  const price=parseFloat(r.price)||0,qty=parseFloat(r.quantity)||1;
+  const li={line_item_type:'ITEM',product_uid:r.product_uid||'',name:r.item||'',quantity:qty,unit_price:price,purchase_price:parseFloat(r.purchase)||0,total:parseFloat((price*qty).toFixed(2)),discount:0,discount_type:'FIXED',serial_nos:[],section_type:'EXPANDED',show_section_total:false,show_child_prices:true,description:r.description||'',product_description:r.description||'',uom:r.uom||'',is_billable:true,associated_products:[]};
+  if(r.markup_type||r.markup_value)li.markup={markup_type:r.markup_type||'PERCENTAGE',markup_value:parseFloat(r.markup_value)||0};
+  if(r.formula_uid){li.formula_uid=r.formula_uid;li.cpq_formula_uid=r.formula_uid;}
+  return li;
+}
+async function roofApplyPackages(dry){
+  if(!_roof.packages.length){alert('No Packages rows detected.');return;}
+  roofBegin(dry,'Service Packages');
+  const groups={},order=[];_roof.packages.forEach(r=>{if(!groups[r.pkg]){groups[r.pkg]=[];order.push(r.pkg);}groups[r.pkg].push(r);});
+  const existing=new Set();
+  try{const r=await roofFetch(baseUrl()+'invoice_estimate/package?count=500&page=1',{headers:getHdrs()});const d=await r.json().catch(()=>({}));const recs=(extractRecords(d,'package')||d.data||[]);recs.forEach(p=>{const n=p.package_name||'';if(n)existing.add(roofNorm(n));});}catch(e){roofLog('Could not fetch existing packages: '+e.message,'warn');}
+  let done=0,ok=0,skip=0,fail=0;const total=order.length;
+  for(const name of order){
+    done++;roofProg((done/total*100).toFixed(0),done+'/'+total+' packages');
+    if(existing.has(roofNorm(name))){skip++;_roof.results.push({stage:'package',name,status:'skipped (exists)'});continue;}
+    const rows=groups[name];const lineItems=[];let curSection=null;
+    rows.forEach(r=>{if(r.section&&r.section!==curSection){curSection=r.section;lineItems.push(roofHeaderItem(r.section));}lineItems.push(roofLineItem(r));});
+    const totalPrice=parseFloat(rows.reduce((s,r)=>s+(parseFloat(r.price)||0)*(parseFloat(r.quantity)||1),0).toFixed(2));
+    const payload={invoice_estimate_package:{package_name:name,package_price:totalPrice,package_description:'',is_active:true,line_items:lineItems}};
+    if(dry){ok++;_roof.results.push({stage:'package',name,status:'would create ('+lineItems.length+' lines)'});roofLog('[DRY] would create package "'+name+'" — '+lineItems.length+' line items','warn');continue;}
+    try{const r=await roofFetch(baseUrl()+'invoice_estimate/package',{method:'POST',headers:hdrs(),body:JSON.stringify(payload)});const d=await r.json().catch(()=>({}));if(r.ok&&(d.type==='success'||d?.data?.package_uid)){ok++;_roof.results.push({stage:'package',name,status:'created'});roofLog('Package created: '+name,'ok');}else{fail++;_roof.results.push({stage:'package',name,status:'failed: '+(d?.message||('HTTP '+r.status))});roofLog('Package failed: '+name+' — '+(d?.message||('HTTP '+r.status)),'err');}}catch(e){fail++;roofLog('Package error '+name+': '+e.message,'err');}
+    await roofSleep(roofDelay());
+  }
+  roofEnd(dry,{ok,skip,fail});
+}
+
+// ── STAGE 4: product bundles ─────────────────────────────────────────────────
+async function roofApplyBundles(dry){
+  if(!_roof.bundles.length){alert('No Bundles rows detected.');return;}
+  roofBegin(dry,'Bundles');
+  const cats=await roofFetchProdCats();const existingIds=await roofFetchProductIds();
+  const defCat=cats.length?cats[0].uid:'';
+  let done=0,ok=0,skip=0,fail=0;const total=_roof.bundles.length;
+  for(const b of _roof.bundles){
+    done++;roofProg((done/total*100).toFixed(0),done+'/'+total+' bundles');
+    const pid=b.number||b.name;
+    if(existingIds.has(roofNorm(pid))){skip++;_roof.results.push({stage:'bundle',name:pid,status:'skipped (exists)'});continue;}
+    const seen=new Set(),assoc=[];b.product_uids.split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean).forEach(u=>{if(!seen.has(u)){seen.add(u);assoc.push({product_uid:u,quantity:1});}});
+    if(!assoc.length){fail++;_roof.results.push({stage:'bundle',name:pid,status:'failed: no product UIDs'});roofLog('Bundle '+pid+': no product UIDs','err');continue;}
+    let catUid=b.category;if(catUid){const m=cats.find(c=>c.uid===b.category||roofNorm(c.name)===roofNorm(b.category));catUid=m?m.uid:b.category;}
+    if(!catUid){catUid=defCat;if(defCat)roofLog('Bundle '+pid+': no category given, using "'+(cats[0].name||defCat)+'"','warn');}
+    const product={product_name:b.name||pid,product_id:pid,product_type:'BUNDLE',pricing_level:'ROLLUP',product_category:catUid,track_quantity:true,quantity:0,min_quantity:0,is_available:true,is_billable:true,consider_profitability:true,associated_products:assoc};
+    if(dry){ok++;_roof.results.push({stage:'bundle',name:pid,status:'would create ('+assoc.length+' products)'});roofLog('[DRY] would create bundle "'+pid+'" — '+assoc.length+' products, category '+(catUid||'(none)'),'warn');continue;}
+    if(!catUid){fail++;_roof.results.push({stage:'bundle',name:pid,status:'failed: no product category'});roofLog('Bundle '+pid+': no product category available in account','err');continue;}
+    try{const r=await roofFetch(baseUrl()+'product',{method:'POST',headers:hdrs(),body:JSON.stringify({product,vendor:[]})});const d=await r.json().catch(()=>({}));if(r.ok&&(d.type==='success'||d?.data?.product_uid)){ok++;existingIds.add(roofNorm(pid));_roof.results.push({stage:'bundle',name:pid,status:'created'});roofLog('Bundle created: '+pid,'ok');}else{fail++;_roof.results.push({stage:'bundle',name:pid,status:'failed: '+(d?.message||('HTTP '+r.status))});roofLog('Bundle failed: '+pid+' — '+(d?.message||('HTTP '+r.status)),'err');}}catch(e){fail++;roofLog('Bundle error '+pid+': '+e.message,'err');}
+    await roofSleep(roofDelay());
+  }
+  roofEnd(dry,{ok,skip,fail});
+}
+
+function roofExportResults(){
+  if(!_roof.results.length){alert('No results yet — run a stage first.');return;}
+  const rows=[['Stage','Name','Status'],..._roof.results.map(r=>[r.stage,r.name,r.status])];
+  const csv=rows.map(row=>row.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='roofing_cpq_import_results.csv';a.click();
+}
+(function(){const dz=$('roof-dropzone');if(!dz)return;
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.style.borderColor='var(--accent,#f60)';});
+  dz.addEventListener('dragleave',()=>{dz.style.borderColor='';});
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.style.borderColor='';const f=e.dataTransfer.files&&e.dataTransfer.files[0];if(!f)return;const inp=$('roof-file');try{const dt=new DataTransfer();dt.items.add(f);inp.files=dt.files;}catch(_){}onRoofFile({files:[f]});});
+})();
 
 // ── WORKFLOWS: sub-module switching ──────────────────────────────────────────
 function switchWfSub(key){
@@ -8102,6 +8446,7 @@ function onModuleChange(){
   if(modKey()!=='package'&&typeof hidePkgImportCard==='function') hidePkgImportCard();
   if(modKey()!=='proposal_template'&&typeof hideTplImportCard==='function') hideTplImportCard();
   if(modKey()!=='workflow'&&typeof hideWfImportCard==='function') hideWfImportCard();
+  if($('module').value!=='cpq_group'&&typeof hideRoofImportCard==='function') hideRoofImportCard();
 }
 
 onModuleChange();
