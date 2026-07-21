@@ -34,6 +34,14 @@ const TOOLS = [
     "help": "Connect with a Zuper API key (region auto-detected), then fetch every property and customer in the account. Each row is a property showing its already-linked customers. Add one or more customers to a property inline, bulk-add one customer to many selected properties, auto-match by address, or import a sheet with Property UID + Customer UID(s) columns (put several comma-separated customer UIDs in one cell to add them all to that property). On apply, each property is read fresh and the staged customers are merged into its customer list (existing customers preserved) via PUT property/{uid}. Run a Dry Run first and validate on a test account."
   },
   {
+    "name": "Product Catalog",
+    "description": "Search the live SRS, ABC & QXO roofing catalogs",
+    "file": "tools/product-catalog.html",
+    "icon": "📚",
+    "updated": "2026-07-21",
+    "help": "Browse and search the shared roofing product catalog across all three sources — SRS (19.8k products), ABC Supply (34.9k), and QXO/Beacon (76.8k). Pick a source, then search by name/brand/category or filter by category, brand, tier (Good/Better/Best/Add-on), universal, priced, or has-image. Results show image, id, category, brand, tier and suggested price; click a row to see full details plus its colors/sizes (variants). Export the current result set to CSV. Runs entirely client-side against the catalog's read-only (RLS SELECT-only) Supabase API — no Zuper account or login needed."
+  },
+  {
     "name": "Zuper CPQ Importer",
     "description": "Push Acculynx CPQ templates/products into Zuper via API",
     "file": "tools/cpq-importer.html",

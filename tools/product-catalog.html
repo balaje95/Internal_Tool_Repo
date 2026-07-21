@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roofing Product Catalog — SRS · ABC · QXO</title>
+<script>try{if(localStorage.getItem('zuper_tools_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+<style>
+  :root{
+    --bg:#eef1f7; --panel:#ffffff; --panel2:#f3f6fc; --line:#dbe2ee; --line2:#c4cede;
+    --txt:#1b2436; --muted:#5f6b84; --accent:#2f6fe6; --accent2:#2257c2;
+    --ok:#1f9d57; --okbg:#e4f7ec; --err:#d13b3b; --errbg:#fdebeb; --warn:#a9781a; --warnbg:#fbf1dc;
+    --chip:#e7eefb; --code:#f6f8fc; --headbg:linear-gradient(180deg,#ffffff,#f4f7fd); --rowhover:#eaf0fb;
+    --srs:#2f6fe6; --abc:#d1531f; --qxo:#1f9d57;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1420; --panel:#171e2e; --panel2:#1e2740; --line:#2a3450; --line2:#374363;
+    --txt:#e6ebf5; --muted:#8f9bb5; --accent:#4f8cff; --accent2:#3a6fe0;
+    --ok:#37c978; --okbg:#123324; --err:#ff6b6b; --errbg:#3a1a1e; --warn:#f0b32a; --warnbg:#3a2f12;
+    --chip:#233052; --code:#0b0f18; --headbg:linear-gradient(180deg,#141b2b,#0f1420); --rowhover:#1b2338;
+    --srs:#4f8cff; --abc:#f0803a; --qxo:#37c978;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
+  a{color:var(--accent)}
+  header{padding:18px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;background:var(--headbg)}
+  header h1{font-size:1.15rem;margin:0;font-weight:600;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:.8rem}
+  .head-spacer{flex:1}
+  .theme-btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:.8rem;font-weight:600;cursor:pointer}
+  .theme-btn:hover{border-color:var(--accent)}
+  .wrap{max-width:1280px;margin:0 auto;padding:22px 26px 80px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-bottom:18px}
+  .inp{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 12px;font-size:.9rem;outline:none}
+  .inp:focus{border-color:var(--accent)}
+  label{display:block;font-size:.74rem;color:var(--muted);margin:0 0 5px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+  button{cursor:pointer;font-family:inherit;font-size:.87rem;font-weight:600;border:none;border-radius:8px;padding:9px 18px;transition:.15s}
+  .btn{background:var(--accent);color:#fff}
+  .btn:hover{background:var(--accent2)}
+  .btn.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+  .btn.sec:hover{border-color:var(--accent)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .searchrow{display:flex;gap:10px;align-items:stretch}
+  .searchrow .inp{font-size:1.05rem;padding:13px 16px}
+  .srcbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .src{flex:1;min-width:180px;border:1.5px solid var(--line);border-radius:11px;padding:13px 16px;cursor:pointer;background:var(--panel2);transition:.15s;position:relative}
+  .src:hover{border-color:var(--line2)}
+  .src.on{border-color:var(--sc);box-shadow:0 0 0 1px var(--sc)}
+  .src b{display:block;font-size:1.35rem;color:var(--sc)}
+  .src .nm{font-weight:700;font-size:.9rem}
+  .src .dsc{color:var(--muted);font-size:.73rem}
+  .src .dot{position:absolute;top:14px;right:14px;width:11px;height:11px;border-radius:50%;background:var(--sc);opacity:.25}
+  .src.on .dot{opacity:1}
+  .filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-top:14px}
+  .filters>div{display:flex;flex-direction:column;min-width:130px}
+  .flags{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:12px;font-size:.82rem;color:var(--muted)}
+  .flags label{display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:.82rem;font-weight:500;color:var(--txt);margin:0;cursor:pointer}
+  input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+  .examples{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .ex{font-size:.78rem;padding:4px 12px;border-radius:14px;background:var(--chip);color:var(--accent2);border:none;cursor:pointer}
+  .ex:hover{background:var(--accent);color:#fff}
+  .statbar{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .stat{flex:1;min-width:150px;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:14px 18px;text-align:center}
+  .stat b{display:block;font-size:1.5rem}
+  .stat span{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.5px}
+  .tablewrap{border:1px solid var(--line);border-radius:11px;overflow:auto;max-height:64vh;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;font-size:.84rem}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{position:sticky;top:0;background:var(--panel2);z-index:2;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+  tr.prow{cursor:pointer}
+  tr.prow:hover td{background:var(--rowhover)}
+  .thumb{width:42px;height:42px;object-fit:contain;border-radius:6px;background:#fff;border:1px solid var(--line)}
+  .thumb.none{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.65rem;background:var(--panel2)}
+  .tier{font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:capitalize}
+  .tier.good{background:#e4f7ec;color:#1f9d57} .tier.better{background:#e7eefb;color:#2257c2}
+  .tier.best{background:#fbf1dc;color:#a9781a} .tier.addon{background:var(--panel2);color:var(--muted)}
+  :root[data-theme="dark"] .tier.good{background:#123324;color:#37c978} :root[data-theme="dark"] .tier.better{background:#233052;color:#8fb4ff}
+  :root[data-theme="dark"] .tier.best{background:#3a2f12;color:#f0b32a}
+  .badge{font-size:.66rem;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--chip);color:var(--accent2);margin-left:5px}
+  .muted{color:var(--muted)} .small{font-size:.78rem}
+  .price{font-variant-numeric:tabular-nums;font-weight:600}
+  .pager{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}
+  .msg{display:none;margin-top:12px;padding:9px 13px;border-radius:8px;font-size:.83rem}
+  .msg-err{background:var(--errbg);color:var(--err)} .msg-info{background:var(--chip);color:var(--accent2)}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  /* drawer */
+  #ov{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:50}
+  #drawer{position:fixed;top:0;right:0;height:100%;width:min(560px,94vw);background:var(--panel);border-left:1px solid var(--line);box-shadow:-8px 0 30px rgba(0,0,0,.2);transform:translateX(100%);transition:transform .2s;z-index:51;display:flex;flex-direction:column}
+  #drawer.on{transform:translateX(0)}
+  #drawer .dh{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+  #drawer .db{padding:18px 20px;overflow:auto}
+  .kv{display:grid;grid-template-columns:130px 1fr;gap:6px 12px;font-size:.84rem;margin-bottom:16px}
+  .kv .k{color:var(--muted);font-weight:600}
+  .cchip{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:2px 10px;font-size:.76rem;margin:2px 4px 2px 0}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:.82rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>📚 Roofing Product Catalog</h1>
+  <span class="sub">Search the live <b>SRS</b>, <b>ABC</b> &amp; <b>QXO</b> catalogs — read-only</span>
+  <span class="head-spacer"></span>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light / dark">🌙 Dark</button>
+</header>
+
+<div class="wrap">
+
+  <!-- STATS -->
+  <div class="statbar" id="statbar">
+    <div class="stat" style="--sc:var(--srs)"><b style="color:var(--srs)" id="st-srs">19,807</b><span>SRS products</span></div>
+    <div class="stat" style="--sc:var(--abc)"><b style="color:var(--abc)" id="st-abc">34,868</b><span>ABC products</span></div>
+    <div class="stat" style="--sc:var(--qxo)"><b style="color:var(--qxo)" id="st-qxo">76,812</b><span>QXO products</span></div>
+    <div class="stat"><b id="st-shown">0</b><span>Matching current search</span></div>
+  </div>
+
+  <!-- SEARCH + FILTERS -->
+  <div class="card">
+    <div class="srcbar" id="srcbar">
+      <div class="src on" data-src="srs" style="--sc:var(--srs)" onclick="setSource('srs')"><span class="dot"></span><b>SRS</b><span class="nm">SRS Distribution</span><span class="dsc">Primary catalog · ids numeric · color+size</span></div>
+      <div class="src" data-src="abc" style="--sc:var(--abc)" onclick="setSource('abc')"><span class="dot"></span><b>ABC</b><span class="nm">ABC Supply</span><span class="dsc">PFam_* ids · color+size</span></div>
+      <div class="src" data-src="qxo" style="--sc:var(--qxo)" onclick="setSource('qxo')"><span class="dot"></span><b>QXO</b><span class="nm">QXO (Beacon)</span><span class="dsc">product_key ids · color only</span></div>
+    </div>
+
+    <div class="searchrow">
+      <input class="inp" id="q" placeholder="Search products by name, brand, or category…  (e.g. GAF Timberline HDZ)" onkeydown="if(event.key==='Enter')runSearch(true)">
+      <button class="btn" onclick="runSearch(true)" style="padding:0 24px">Search</button>
+    </div>
+
+    <div class="filters">
+      <div style="flex:1"><label>Category contains</label><input class="inp" id="f-cat" placeholder="e.g. shingles" onkeydown="if(event.key==='Enter')runSearch(true)"></div>
+      <div style="flex:1"><label>Brand contains</label><input class="inp" id="f-brand" placeholder="e.g. gaf" onkeydown="if(event.key==='Enter')runSearch(true)"></div>
+      <div><label>Tier</label>
+        <select class="inp" id="f-tier">
+          <option value="">Any tier</option>
+          <option value="good">Good</option>
+          <option value="better">Better</option>
+          <option value="best">Best</option>
+          <option value="addon">Add-on</option>
+        </select>
+      </div>
+      <div><label>Sort by</label>
+        <select class="inp" id="f-sort">
+          <option value="name">Name (A–Z)</option>
+          <option value="price_desc">Price (high→low)</option>
+          <option value="price_asc">Price (low→high)</option>
+        </select>
+      </div>
+      <div><label>&nbsp;</label><button class="btn sec" onclick="resetFilters()">↺ Reset</button></div>
+    </div>
+
+    <div class="flags">
+      <label><input type="checkbox" id="f-universal"> Universal only</label>
+      <label><input type="checkbox" id="f-priced"> Has suggested price</label>
+      <label><input type="checkbox" id="f-image"> Has image</label>
+      <span class="head-spacer" style="flex:1"></span>
+      <span class="small">Read-only catalog · no account needed</span>
+    </div>
+
+    <div class="examples" id="examples"></div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="card">
+    <div class="pager" style="margin-top:0;margin-bottom:12px">
+      <span id="count" class="muted small">Search to load products.</span>
+      <span class="head-spacer" style="flex:1"></span>
+      <button class="btn sec small" id="csvBtn" onclick="exportCsv()" disabled>⬇ Export CSV</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead id="thead"></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <button class="btn sec small" id="prevBtn" onclick="gotoPage(page-1)" disabled>← Prev</button>
+      <span id="pageInfo" class="muted small"></span>
+      <button class="btn sec small" id="nextBtn" onclick="gotoPage(page+1)" disabled>Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- detail drawer -->
+<div id="ov" onclick="closeDrawer()"></div>
+<div id="drawer">
+  <div class="dh"><b id="dr-title" style="flex:1;font-size:1rem"></b><button class="theme-btn" onclick="closeDrawer()">✕ Close</button></div>
+  <div class="db" id="dr-body"></div>
+</div>
+
+<script src="../assets/back-link.js"></script>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtNum=n=>Number(n).toLocaleString('en-US');
+
+/* Read-only, RLS SELECT-only anon key (safe to embed — same key the dilith skill ships). */
+const BASE='https://kbdczzldmyayliwajwma.supabase.co/rest/v1';
+const KEY='sb_publishable_vhSVUW21dmGzYHrlUYmN7A_igogdbH_';
+const HDRS={apikey:KEY};
+
+/* Per-source column mapping — normalises SRS / ABC / QXO into one shape. */
+const SOURCES={
+  srs:{label:'SRS',table:'srs_products',total:19807,
+    id:'product_id',name:'product_name',category:'product_category',brand:'manufacturer_norm',
+    line:'product_line',tier:'family_tier',acctier:'accessory_tier',price:'suggested_price',
+    uom:'product_uom',image:'product_image_url',desc:'product_description',universal:'is_universal',
+    variants:{table:'srs_variants',fk:'product_id',cols:'variant_code,color_name,size_name',extra:'is_restricted=eq.false'}},
+  abc:{label:'ABC',table:'abc_products',total:34868,
+    id:'product_id',name:'product_name',category:'product_category',brand:'manufacturer_norm',
+    line:'product_line',tier:'family_tier',acctier:'accessory_tier',price:'suggested_price',
+    uom:'product_uom',image:'product_image_url',desc:'product_description',universal:'is_universal',
+    variants:null},
+  qxo:{label:'QXO',table:'qxo_products',total:76812,
+    id:'product_key',name:'product_name',category:'category_norm',brand:'brand_norm',
+    line:'product_line',tier:'family_tier',acctier:'accessory_tier',price:'suggested_price',
+    uom:null,image:'brand_image_url',desc:'description_short',universal:'is_universal',
+    variants:{table:'qxo_variants',fk:'product_key',cols:'variant_sku,color,color_family',extra:''}}
+};
+const EXAMPLES={
+  srs:['GAF Timberline HDZ','ridge vent','drip edge','synthetic underlayment','CertainTeed Landmark','pipe boot'],
+  abc:['GAF shingles','ice and water','starter strip','ABC synthetic','hip and ridge'],
+  qxo:['standing seam','TPO membrane','snow guard','sealant','Malarkey']
+};
+
+let src='srs';
+let page=0, pageSize=50, total=0, rows=[], lastQuery=null;
+
+/* ---------- source + examples ---------- */
+function setSource(s){
+  src=s;
+  document.querySelectorAll('#srcbar .src').forEach(e=>e.classList.toggle('on',e.dataset.src===s));
+  renderExamples();
+  runSearch(true);
+}
+function renderExamples(){
+  $('examples').innerHTML='<span class="small muted" style="align-self:center">Try:</span> '+
+    EXAMPLES[src].map(x=>'<button class="ex" onclick="fillEx(this)">'+esc(x)+'</button>').join('');
+}
+function fillEx(b){$('q').value=b.textContent;runSearch(true);}
+function resetFilters(){['q','f-cat','f-brand'].forEach(id=>$(id).value='');$('f-tier').value='';$('f-sort').value='name';['f-universal','f-priced','f-image'].forEach(id=>$(id).checked=false);runSearch(true);}
+
+/* ---------- query building ---------- */
+function sanitize(v){return String(v||'').replace(/[(),*]/g,' ').trim();} // chars that break PostgREST or()/ilike
+function buildParams(cfg){
+  const p=new URLSearchParams();
+  const cols=[cfg.id,cfg.name,cfg.category,cfg.brand,cfg.line,cfg.tier,cfg.acctier,cfg.price,cfg.image,cfg.universal].filter(Boolean);
+  p.set('select',[...new Set(cols)].join(','));
+  const q=sanitize($('q').value);
+  if(q){const or=[cfg.name,cfg.brand,cfg.category].map(c=>c+'.ilike.*'+q+'*').join(',');p.set('or','('+or+')');}
+  const cat=sanitize($('f-cat').value); if(cat) p.set(cfg.category,'ilike.*'+cat+'*');
+  const brand=sanitize($('f-brand').value); if(brand) p.set(cfg.brand,'ilike.*'+brand+'*');
+  const tier=$('f-tier').value; if(tier) p.set(cfg.tier,'eq.'+tier);
+  if($('f-universal').checked) p.set(cfg.universal,'is.true');
+  if($('f-priced').checked) p.set(cfg.price,'not.is.null');
+  if($('f-image').checked && cfg.image) p.set(cfg.image,'not.is.null');
+  const sort=$('f-sort').value;
+  if(sort==='price_desc') p.set('order',cfg.price+'.desc.nullslast');
+  else if(sort==='price_asc') p.set('order',cfg.price+'.asc.nullsfirst');
+  else p.set('order',cfg.name+'.asc');
+  return p;
+}
+
+/* ---------- search ---------- */
+async function runSearch(reset){
+  if(reset) page=0;
+  const cfg=SOURCES[src];
+  const p=buildParams(cfg);
+  lastQuery=p.toString();
+  const from=page*pageSize, to=from+pageSize-1;
+  $('msg').style.display='none';
+  $('count').innerHTML='<span class="spin"></span> Searching '+cfg.label+'…';
+  $('tbody').innerHTML='';
+  try{
+    const res=await fetch(BASE+'/'+cfg.table+'?'+p.toString(),{headers:{...HDRS,'Prefer':'count=exact','Range-Unit':'items','Range':from+'-'+to}});
+    if(!res.ok){throw new Error('HTTP '+res.status+' — '+(await res.text().catch(()=>'')).slice(0,120));}
+    rows=await res.json();
+    const cr=res.headers.get('content-range')||''; // e.g. 0-49/195
+    total=parseInt((cr.split('/')[1]||'0'),10)||0;
+    renderRows(cfg);
+    $('st-shown').textContent=fmtNum(total);
+    $('count').innerHTML='<b>'+fmtNum(total)+'</b> '+cfg.label+' product'+(total===1?'':'s')+' match';
+    $('csvBtn').disabled=total===0;
+    updatePager();
+  }catch(e){
+    $('count').textContent='';
+    $('msg').className='msg msg-err';$('msg').textContent='✗ '+e.message;$('msg').style.display='block';
+    $('csvBtn').disabled=true;
+  }
+}
+function tierBadge(t){t=String(t||'').toLowerCase();if(!t)return '';const cls=['good','better','best','addon'].includes(t)?t:'addon';return '<span class="tier '+cls+'">'+esc(t)+'</span>';}
+function priceCell(v){return v==null||v===''?'<span class="muted">—</span>':'<span class="price">$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+'</span>';}
+function imgCell(url){return url?'<img class="thumb" src="'+esc(url)+'" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement(\'div\'),{className:\'thumb none\',textContent:\'—\'}))">':'<div class="thumb none">—</div>';}
+function renderRows(cfg){
+  $('thead').innerHTML='<tr><th style="width:54px">Image</th><th>Product</th><th>Category</th><th>Brand</th><th>Tier</th><th style="text-align:right">Sugg. price</th></tr>';
+  if(!rows.length){$('tbody').innerHTML='<tr><td colspan="6" class="muted" style="padding:26px;text-align:center">No products match. Try a broader search or switch source.</td></tr>';return;}
+  $('tbody').innerHTML=rows.map((r,i)=>{
+    const uni=r[cfg.universal]===true?'<span class="badge">UNIVERSAL</span>':'';
+    return '<tr class="prow" onclick="openDrawer('+i+')">'+
+      '<td>'+imgCell(r[cfg.image])+'</td>'+
+      '<td><div style="font-weight:600">'+esc(r[cfg.name]||'—')+uni+'</div>'+
+        '<div class="muted small">'+esc(r[cfg.line]||'')+' · id '+esc(r[cfg.id])+'</div></td>'+
+      '<td class="small">'+esc(r[cfg.category]||'—')+'</td>'+
+      '<td class="small">'+esc(r[cfg.brand]||'—')+'</td>'+
+      '<td>'+tierBadge(r[cfg.tier])+'</td>'+
+      '<td style="text-align:right">'+priceCell(r[cfg.price])+'</td></tr>';
+  }).join('');
+}
+function updatePager(){
+  const pages=Math.max(1,Math.ceil(total/pageSize));
+  $('pageInfo').textContent=total?('Page '+(page+1)+' of '+fmtNum(pages)+'  ·  showing '+(page*pageSize+1)+'–'+Math.min((page+1)*pageSize,total)):'';
+  $('prevBtn').disabled=page<=0;
+  $('nextBtn').disabled=(page+1)>=pages;
+}
+function gotoPage(p){const pages=Math.ceil(total/pageSize);if(p<0||p>=pages)return;page=p;runSearch(false);document.querySelector('.tablewrap').scrollTop=0;}
+
+/* ---------- detail drawer ---------- */
+async function openDrawer(i){
+  const cfg=SOURCES[src], r=rows[i];
+  $('dr-title').textContent=r[cfg.name]||'Product';
+  const img=r[cfg.image]?'<img src="'+esc(r[cfg.image])+'" style="max-width:160px;max-height:120px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px;margin-bottom:14px" onerror="this.style.display=\'none\'">':'';
+  const kv=[
+    ['Source',cfg.label],['ID / key',r[cfg.id]],['Category',r[cfg.category]],['Brand',r[cfg.brand]],
+    ['Product line',r[cfg.line]],['Family tier',r[cfg.tier]],['Accessory tier',r[cfg.acctier]],
+    ['Universal',r[cfg.universal]===true?'Yes':'No'],
+    ['Suggested price',r[cfg.price]!=null?'$'+Number(r[cfg.price]).toFixed(2):'—']
+  ];
+  $('dr-body').innerHTML=img+
+    '<div class="kv">'+kv.map(([k,v])=>'<div class="k">'+esc(k)+'</div><div>'+esc(v==null||v===''?'—':v)+'</div>').join('')+'</div>'+
+    '<div id="dr-var" class="small muted">'+(cfg.variants?'<span class="spin"></span> Loading colors / variants…':'No variant table for this source.')+'</div>';
+  $('ov').style.display='block';$('drawer').classList.add('on');
+  if(cfg.variants){
+    try{
+      const vurl=BASE+'/'+cfg.variants.table+'?'+cfg.variants.fk+'=eq.'+encodeURIComponent(r[cfg.id])+'&select='+cfg.variants.cols+(cfg.variants.extra?'&'+cfg.variants.extra:'')+'&limit=300';
+      const vr=await fetch(vurl,{headers:HDRS});
+      const vs=vr.ok?await vr.json():[];
+      const colors=[...new Set(vs.map(v=>v.color_name||v.color).filter(Boolean))];
+      const sizes=[...new Set(vs.map(v=>v.size_name).filter(Boolean))];
+      let h='<div style="font-weight:700;margin-bottom:6px">'+vs.length+' variant(s)</div>';
+      if(colors.length) h+='<div style="margin-bottom:8px"><span class="muted">Colors ('+colors.length+'):</span><br>'+colors.slice(0,60).map(c=>'<span class="cchip">'+esc(c)+'</span>').join('')+'</div>';
+      if(sizes.length) h+='<div><span class="muted">Sizes ('+sizes.length+'):</span><br>'+sizes.slice(0,40).map(c=>'<span class="cchip">'+esc(c)+'</span>').join('')+'</div>';
+      if(!vs.length) h='<span class="muted">No variants found.</span>';
+      $('dr-var').innerHTML=h;
+    }catch(e){$('dr-var').innerHTML='<span class="muted">Could not load variants ('+esc(e.message)+').</span>';}
+  }
+}
+function closeDrawer(){$('ov').style.display='none';$('drawer').classList.remove('on');}
+
+/* ---------- CSV export (paginates the current query, capped) ---------- */
+async function exportCsv(){
+  const cfg=SOURCES[src], btn=$('csvBtn');
+  btn.disabled=true;const orig=btn.textContent;btn.textContent='Exporting…';
+  try{
+    const cap=5000;const out=[];const p=new URLSearchParams(lastQuery);
+    for(let from=0; from<Math.min(total,cap); from+=1000){
+      const res=await fetch(BASE+'/'+cfg.table+'?'+p.toString(),{headers:{...HDRS,'Range-Unit':'items','Range':from+'-'+(from+999)}});
+      if(!res.ok)break;const batch=await res.json();out.push(...batch);if(batch.length<1000)break;
+    }
+    const heads=['id','name','category','brand','product_line','family_tier','accessory_tier','is_universal','suggested_price'];
+    const keys=[cfg.id,cfg.name,cfg.category,cfg.brand,cfg.line,cfg.tier,cfg.acctier,cfg.universal,cfg.price];
+    const csv=[heads.join(',')].concat(out.map(r=>keys.map(k=>{const v=r[k];const s=String(v==null?'':v).replace(/"/g,'""');return /[",\n]/.test(s)?'"'+s+'"':s;}).join(','))).join('\r\n');
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+    a.download=cfg.label.toLowerCase()+'_catalog_'+(out.length)+'rows.csv';a.click();
+    if(total>cap){$('msg').className='msg msg-info';$('msg').textContent='Exported first '+cap+' of '+fmtNum(total)+' rows (cap). Narrow the search to export the rest.';$('msg').style.display='block';}
+  }catch(e){$('msg').className='msg msg-err';$('msg').textContent='✗ Export failed: '+e.message;$('msg').style.display='block';}
+  finally{btn.disabled=false;btn.textContent=orig;}
+}
+
+/* ---------- theme ---------- */
+function toggleTheme(){
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  if(dark){document.documentElement.removeAttribute('data-theme');try{localStorage.setItem('zuper_tools_theme','light');}catch{}}
+  else{document.documentElement.setAttribute('data-theme','dark');try{localStorage.setItem('zuper_tools_theme','dark');}catch{}}
+  $('themeBtn').textContent=dark?'🌙 Dark':'☀️ Light';
+}
+(function(){const dark=document.documentElement.getAttribute('data-theme')==='dark';$('themeBtn').textContent=dark?'☀️ Light':'🌙 Dark';})();
+
+/* ---------- init ---------- */
+renderExamples();
+runSearch(true); // show SRS first page on load
+</script>
+</body>
+</html>
