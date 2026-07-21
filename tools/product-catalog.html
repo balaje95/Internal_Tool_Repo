@@ -94,6 +94,10 @@
   .kv .k{color:var(--muted);font-weight:600}
   .cchip{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:2px 10px;font-size:.76rem;margin:2px 4px 2px 0}
   code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:.82rem}
+  .hidden{display:none!important}
+  .log{background:var(--code);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:.78rem;max-height:260px;overflow:auto;white-space:pre-wrap;margin-top:12px}
+  .log .l-ok{color:var(--ok)} .log .l-err{color:var(--err)} .log .l-info{color:var(--accent2)} .log .l-warn{color:var(--warn)}
+  .selchk{width:16px;height:16px}
 </style>
 </head>
 <body>
@@ -165,7 +169,11 @@
   <div class="card">
     <div class="pager" style="margin-top:0;margin-bottom:12px">
       <span id="count" class="muted small">Search to load products.</span>
+      <span id="selInfo" class="small" style="color:var(--accent2);font-weight:600"></span>
+      <button class="btn sec small" id="selAllBtn" onclick="selectAllMatching()" style="display:none">Select all matching</button>
+      <button class="btn sec small" id="selClrBtn" onclick="clearSel()" style="display:none">Clear</button>
       <span class="head-spacer" style="flex:1"></span>
+      <button class="btn small" id="impOpen" onclick="openImport()" disabled>🚚 Import selected →</button>
       <button class="btn sec small" id="csvBtn" onclick="exportCsv()" disabled>⬇ Export CSV</button>
     </div>
     <div class="tablewrap">
@@ -178,6 +186,43 @@
       <button class="btn sec small" id="prevBtn" onclick="gotoPage(page-1)" disabled>← Prev</button>
       <span id="pageInfo" class="muted small"></span>
       <button class="btn sec small" id="nextBtn" onclick="gotoPage(page+1)" disabled>Next →</button>
+    </div>
+  </div>
+
+  <!-- IMPORT TO ZUPER -->
+  <div class="card" id="importCard" style="display:none">
+    <h2 style="font-size:.98rem;margin:0 0 4px;font-weight:600">🚚 Import selected parts to a Zuper account</h2>
+    <p class="muted small" style="margin:0 0 14px">Creates the selected catalog items as <b id="imp-src-lbl">SRS</b> <b>parts</b> in a Zuper account (<code>POST product</code>). Categories are matched by name and auto-created if missing. Part Number = the catalog id/SKU. <b>Always run a Dry Run first.</b></p>
+
+    <div class="filters" style="margin-top:0">
+      <div style="flex:2;min-width:240px"><label>Zuper API key</label><input class="inp" id="zk" placeholder="x-api-key (account to import into)" autocomplete="off"></div>
+      <div><label>&nbsp;</label><button class="btn" id="zconnBtn" onclick="zConnect()">Connect</button></div>
+      <div style="flex:1;align-self:flex-end;padding-bottom:9px"><span id="zconn" class="small muted"></span></div>
+    </div>
+
+    <div id="impOpts" class="hidden" style="margin-top:14px">
+      <div class="filters" style="margin-top:0">
+        <div><label>Product type</label><select class="inp" id="i-type"><option value="PARTS">Parts</option><option value="SERVICE">Service</option></select></div>
+        <div><label>UOM (default)</label><input class="inp" id="i-uom" value="EA" style="max-width:100px"></div>
+        <div><label>Price if blank</label><select class="inp" id="i-price"><option value="0">Set 0.00</option><option value="skip">Leave empty</option></select></div>
+        <div style="flex:1"><label>Warehouse location UID (optional)</label><input class="inp" id="i-loc" placeholder="paste a warehouse UID — optional"></div>
+      </div>
+      <div class="flags" style="margin-top:12px">
+        <label><input type="checkbox" id="i-billable" checked> Is Billable</label>
+        <label><input type="checkbox" id="i-profit" checked> Consider for Profitability</label>
+        <label><input type="checkbox" id="i-commission" checked> Is Commissionable</label>
+        <label><input type="checkbox" id="i-available" checked> Is Available (active)</label>
+        <label><input type="checkbox" id="i-dedupe" checked> Skip if Part Number already exists</label>
+        <label><input type="checkbox" id="i-mkcat" checked> Auto-create missing categories</label>
+      </div>
+      <div class="flags" style="margin-top:14px">
+        <button class="btn sec" onclick="runImport(true)">🧪 Dry Run</button>
+        <button class="btn" id="impBtn" onclick="runImport(false)">🚚 Import <span id="impN"></span> to Zuper</button>
+        <button class="btn sec small" id="impCancel" onclick="_impCancel=true" style="display:none">⏹ Cancel</button>
+        <span id="impStatus" class="small muted"></span>
+      </div>
+      <div id="impLog" class="log hidden"></div>
+      <div id="impActions" class="hidden" style="margin-top:10px"><button class="btn sec small" onclick="exportImportResults()">⬇ Export results CSV</button></div>
     </div>
   </div>
 </div>
@@ -227,11 +272,17 @@ const EXAMPLES={
 
 let src='srs';
 let page=0, pageSize=50, total=0, rows=[], lastQuery=null;
+/* selection + Zuper import state */
+let selRows=new Map();            // catalog id -> {id,name,category,price,brand}
+const ZUPER_CLIENT_HDRS={'x-zuper-client':'WEB_APP','x-zuper-client-version':'3.0'};
+let _zbase='', _zaccount='', _zcats=new Map(), _existingIds=new Set(), _impResults=[], _impCancel=false;
 
 /* ---------- source + examples ---------- */
 function setSource(s){
   src=s;
   document.querySelectorAll('#srcbar .src').forEach(e=>e.classList.toggle('on',e.dataset.src===s));
+  clearSel();                       // selection is per-source (ids differ)
+  $('importCard').style.display='none';
   renderExamples();
   runSearch(true);
 }
@@ -294,19 +345,52 @@ function tierBadge(t){t=String(t||'').toLowerCase();if(!t)return '';const cls=['
 function priceCell(v){return v==null||v===''?'<span class="muted">—</span>':'<span class="price">$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+'</span>';}
 function imgCell(url){return url?'<img class="thumb" src="'+esc(url)+'" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement(\'div\'),{className:\'thumb none\',textContent:\'—\'}))">':'<div class="thumb none">—</div>';}
 function renderRows(cfg){
-  $('thead').innerHTML='<tr><th style="width:54px">Image</th><th>Product</th><th>Category</th><th>Brand</th><th>Tier</th><th style="text-align:right">Sugg. price</th></tr>';
-  if(!rows.length){$('tbody').innerHTML='<tr><td colspan="6" class="muted" style="padding:26px;text-align:center">No products match. Try a broader search or switch source.</td></tr>';return;}
+  $('thead').innerHTML='<tr><th style="width:34px"><input type="checkbox" class="selchk" id="selPage" onchange="togglePage(this.checked)" title="Select all on this page"></th><th style="width:54px">Image</th><th>Product</th><th>Category</th><th>Brand</th><th>Tier</th><th style="text-align:right">Sugg. price</th></tr>';
+  if(!rows.length){$('tbody').innerHTML='<tr><td colspan="7" class="muted" style="padding:26px;text-align:center">No products match. Try a broader search or switch source.</td></tr>';updateSelBar();return;}
   $('tbody').innerHTML=rows.map((r,i)=>{
     const uni=r[cfg.universal]===true?'<span class="badge">UNIVERSAL</span>':'';
+    const id=String(r[cfg.id]); const on=selRows.has(id);
     return '<tr class="prow" onclick="openDrawer('+i+')">'+
+      '<td onclick="event.stopPropagation()"><input type="checkbox" class="selchk" '+(on?'checked':'')+' onchange="toggleSel('+i+',this.checked)"></td>'+
       '<td>'+imgCell(r[cfg.image])+'</td>'+
       '<td><div style="font-weight:600">'+esc(r[cfg.name]||'—')+uni+'</div>'+
-        '<div class="muted small">'+esc(r[cfg.line]||'')+' · id '+esc(r[cfg.id])+'</div></td>'+
+        '<div class="muted small">'+esc(r[cfg.line]||'')+' · id '+esc(id)+'</div></td>'+
       '<td class="small">'+esc(r[cfg.category]||'—')+'</td>'+
       '<td class="small">'+esc(r[cfg.brand]||'—')+'</td>'+
       '<td>'+tierBadge(r[cfg.tier])+'</td>'+
       '<td style="text-align:right">'+priceCell(r[cfg.price])+'</td></tr>';
   }).join('');
+  const sp=$('selPage'); if(sp) sp.checked=rows.length>0 && rows.every(r=>selRows.has(String(r[cfg.id])));
+  updateSelBar();
+}
+/* ---------- selection ---------- */
+function selRowObj(r,cfg){return {id:String(r[cfg.id]),name:r[cfg.name],category:r[cfg.category],price:r[cfg.price],brand:r[cfg.brand]};}
+function toggleSel(i,on){const cfg=SOURCES[src],r=rows[i],id=String(r[cfg.id]);if(on)selRows.set(id,selRowObj(r,cfg));else selRows.delete(id);updateSelBar();
+  const sp=$('selPage');if(sp)sp.checked=rows.every(x=>selRows.has(String(x[cfg.id])));}
+function togglePage(on){const cfg=SOURCES[src];rows.forEach(r=>{const id=String(r[cfg.id]);if(on)selRows.set(id,selRowObj(r,cfg));else selRows.delete(id);});renderRows(cfg);}
+function clearSel(){selRows.clear();const sp=$('selPage');if(sp)sp.checked=false;updateSelBar();if(rows.length)renderRows(SOURCES[src]);}
+function updateSelBar(){
+  const n=selRows.size;
+  $('selInfo').textContent=n?('  ·  '+fmtNum(n)+' selected'):'';
+  $('selAllBtn').style.display=(total>rows.length)?'inline-flex':'none';
+  $('selAllBtn').textContent='Select all '+fmtNum(total)+' matching';
+  $('selClrBtn').style.display=n?'inline-flex':'none';
+  $('impOpen').disabled=n===0;
+  $('impOpen').textContent='🚚 Import '+(n?fmtNum(n)+' ':'')+'selected →';
+}
+async function selectAllMatching(){
+  const cfg=SOURCES[src];
+  if(total>10000 && !confirm('Select all '+fmtNum(total)+' matching products? That is a very large import — consider filtering first. Continue?'))return;
+  const btn=$('selAllBtn');btn.disabled=true;const o=btn.textContent;
+  try{
+    const p=new URLSearchParams(lastQuery);
+    for(let from=0;from<total;from+=1000){
+      const res=await fetch(BASE+'/'+cfg.table+'?'+p.toString(),{headers:{...HDRS,'Range-Unit':'items','Range':from+'-'+(from+999)}});
+      if(!res.ok)break;const batch=await res.json();batch.forEach(r=>selRows.set(String(r[cfg.id]),selRowObj(r,cfg)));
+      btn.textContent='Selecting '+fmtNum(selRows.size)+' / '+fmtNum(total)+'…';
+      if(batch.length<1000)break;
+    }
+  }finally{btn.disabled=false;btn.textContent=o;renderRows(cfg);}
 }
 function updatePager(){
   const pages=Math.max(1,Math.ceil(total/pageSize));
@@ -378,6 +462,146 @@ async function exportCsv(){
     $('msg').className='msg msg-info';$('msg').textContent='✓ Exported all '+fmtNum(out.length)+' '+cfg.label+' row(s).';$('msg').style.display='block';
   }catch(e){$('msg').className='msg msg-err';$('msg').textContent='✗ Export failed: '+e.message+' — try narrowing the search and exporting again.';$('msg').style.display='block';}
   finally{btn.disabled=false;btn.textContent=orig;}
+}
+
+/* ================= IMPORT TO ZUPER ================= */
+function openImport(){
+  if(!selRows.size){alert('Select some products first (row checkboxes, or "Select all matching").');return;}
+  $('imp-src-lbl').textContent=SOURCES[src].label;
+  $('impN').textContent=fmtNum(selRows.size);
+  $('importCard').style.display='block';
+  $('importCard').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function ilog(msg,cls){const l=$('impLog');l.classList.remove('hidden');const d=document.createElement('div');if(cls)d.className='l-'+cls;d.textContent=msg;l.appendChild(d);l.scrollTop=l.scrollHeight;}
+const zk=()=>$('zk').value.trim();
+const zHdrs=()=>({...ZUPER_CLIENT_HDRS,'x-api-key':zk()});
+const zJsonHdrs=()=>({...ZUPER_CLIENT_HDRS,'x-api-key':zk(),'Content-Type':'application/json'});
+
+/* DC region resolver (same approach as the other dashboard tools). */
+const ZUPER_DCS=['us-east-1','us-east-1a','us-east-1b','us-east-1c','us-west-1','us-west-1a','us-west-1b','us-west-1c','us-west-2','eu-west-1','eu-west-2','eu-central-1','ap-south-1','ap-south-2','ap-southeast-1','ap-southeast-2','ca-central-1','sa-east-1'].map(r=>'https://'+r+'.zuperpro.com');
+async function zResolve(key){
+  let resolved=null;const c=new AbortController();const t=setTimeout(()=>c.abort(),12000);
+  try{
+    await Promise.any(ZUPER_DCS.map(dc=>(async()=>{
+      for(const ep of ['user/company','company']){
+        if(c.signal.aborted)throw new Error('x');
+        const res=await fetch(dc+'/api/'+ep,{headers:{...ZUPER_CLIENT_HDRS,'x-api-key':key},signal:c.signal}).catch(()=>null);
+        if(res&&res.ok){const d=await res.json().catch(()=>({}));const nm=d?.company_name||d?.data?.company_name||d?.data?.name||'';if(!resolved)resolved={base:dc+'/api/',name:nm,region:dc.replace('https://','').replace('.zuperpro.com','')};c.abort();return resolved;}
+      }
+      throw new Error('no');
+    })())).catch(()=>{});
+  }finally{clearTimeout(t);}
+  if(!resolved)throw new Error('API key not recognised on any Zuper server.');
+  return resolved;
+}
+async function zConnect(){
+  if(!zk()){$('zconn').textContent='✗ Enter an API key.';return;}
+  const btn=$('zconnBtn');btn.disabled=true;btn.textContent='Connecting…';$('zconn').textContent='';
+  try{
+    const {base,name,region}=await zResolve(zk());
+    _zbase=base;_zaccount=name||'Account';
+    $('zconn').innerHTML='<span style="color:var(--ok)">✓ '+esc(_zaccount)+' ('+region+')</span> — loading categories &amp; existing parts…';
+    // categories → name(lower) -> uid
+    _zcats=new Map();
+    for(let pg=1;pg<=20;pg++){
+      const r=await fetch(_zbase+'products/category?count=200&page='+pg,{headers:zHdrs()});
+      if(!r.ok)break;const d=await r.json().catch(()=>({}));const recs=Array.isArray(d)?d:(d.data||[]);
+      recs.forEach(c=>{const nm=(c.category_name||'').trim().toLowerCase();const uid=c.category_uid||c.product_category_uid;if(nm&&uid)_zcats.set(nm,uid);});
+      if(recs.length<200)break;
+    }
+    // existing product_ids for dedupe
+    _existingIds=new Set();
+    for(let pg=1;pg<=40;pg++){
+      const r=await fetch(_zbase+'product?count=500&page='+pg,{headers:zHdrs()});
+      if(!r.ok)break;const d=await r.json().catch(()=>({}));const recs=Array.isArray(d)?d:(d.data||[]);
+      recs.forEach(p=>{if(p.product_id!=null&&p.product_id!=='')_existingIds.add(String(p.product_id).trim());});
+      if(recs.length<500)break;
+    }
+    $('zconn').innerHTML='<span style="color:var(--ok)">✓ '+esc(_zaccount)+' ('+region+')</span> — '+_zcats.size+' categories, '+fmtNum(_existingIds.size)+' existing parts loaded.';
+    $('impOpts').classList.remove('hidden');
+  }catch(e){$('zconn').innerHTML='<span style="color:var(--err)">✗ '+esc(e.message)+'</span>';}
+  finally{btn.disabled=false;btn.textContent='Connect';}
+}
+/* Zuper rejects "/" in category names, and blanks aren't allowed — normalise. */
+function catNorm(name){let s=String(name||'').trim();if(!s)return 'Imported';return s.replace(/\s*\/\s*/g,' & ').replace(/\s+/g,' ').trim();}
+async function ensureCat(name){
+  const norm=catNorm(name),key=norm.toLowerCase();
+  if(_zcats.has(key))return _zcats.get(key);
+  // Body confirmed live: wrapped {product_category:{category_name}} (flat product_category_name is rejected).
+  const r=await fetch(_zbase+'products/category',{method:'POST',headers:zJsonHdrs(),body:JSON.stringify({product_category:{category_name:norm}})});
+  const d=await r.json().catch(()=>({}));
+  const uid=d?.data?.category_uid||d?.data?.product_category_uid||d?.category_uid;
+  if(!uid)throw new Error('category "'+norm+'" create failed: '+((d&&d.message)||('HTTP '+r.status)));
+  _zcats.set(key,uid);return uid;
+}
+function buildPart(row,catUid){
+  const p={
+    product_name:row.name||('Part '+row.id),
+    product_id:String(row.id),
+    product_type:$('i-type').value,
+    product_category:catUid,
+    uom:$('i-uom').value.trim()||'EA',
+    is_available:$('i-available').checked,
+    is_billable:$('i-billable').checked,
+    consider_profitability:$('i-profit').checked,
+    is_commissionable:$('i-commission').checked,
+    quantity:1,min_quantity:1
+  };
+  const priceBlank=(row.price==null||row.price==='');
+  if(!priceBlank) p.price=Number(row.price);
+  else if($('i-price').value==='0') p.price=0;
+  const loc=$('i-loc').value.trim();
+  if(loc) p.location_availability=[{location:loc,quantity:0,min_quantity:0}];
+  return p;
+}
+async function runImport(dry){
+  const list=[...selRows.values()];
+  if(!_zbase){alert('Connect a Zuper account first.');return;}
+  if(!list.length){alert('No products selected.');return;}
+  const dedupe=$('i-dedupe').checked, mkcat=$('i-mkcat').checked;
+  if(!dry && !confirm('Create '+fmtNum(list.length)+' '+$('i-type').value+' in "'+_zaccount+'"?\n\nRun a Dry Run first if you haven\'t.'))return;
+  _impCancel=false;_impResults=[];
+  $('impLog').innerHTML='';$('impLog').classList.remove('hidden');$('impActions').classList.add('hidden');
+  $('impCancel').style.display=dry?'none':'inline-flex';
+  ilog((dry?'— DRY RUN — ':'— IMPORTING — ')+list.length+' '+$('i-type').value+' into "'+_zaccount+'"','info');
+  // resolve distinct categories first
+  const wantCats=[...new Set(list.map(r=>catNorm(r.category)))];
+  const missing=wantCats.filter(c=>!_zcats.has(c.toLowerCase()));
+  if(dry){
+    ilog('Categories: '+(wantCats.length-missing.length)+' existing, '+missing.length+' would be '+(mkcat?'created':'MISSING (create disabled → those parts skipped)')+(missing.length?': '+missing.join(', '):''),missing.length&&!mkcat?'warn':'');
+  }
+  let ok=0,skip=0,fail=0,done=0;
+  const catUidFor=async(name)=>{const key=catNorm(name).toLowerCase();if(_zcats.has(key))return _zcats.get(key);if(!mkcat)return null;return await ensureCat(name);};
+  const queue=[...list];
+  async function worker(){
+    while(queue.length&&!_impCancel){
+      const row=queue.shift();done++;
+      const exists=dedupe&&_existingIds.has(String(row.id).trim());
+      if(exists){skip++;_impResults.push({id:row.id,name:row.name,status:'Skipped (Part Number exists)'});ilog('['+done+'/'+list.length+'] skip "'+row.name+'" ('+row.id+') — already exists','warn');continue;}
+      let catUid;
+      try{catUid=await catUidFor(row.category);}catch(e){fail++;_impResults.push({id:row.id,name:row.name,status:'Failed: '+e.message});ilog('['+done+'/'+list.length+'] ✗ '+row.name+' — '+e.message,'err');continue;}
+      if(!catUid){fail++;_impResults.push({id:row.id,name:row.name,status:'Failed: category "'+catNorm(row.category)+'" missing (create disabled)'});ilog('['+done+'/'+list.length+'] ✗ '+row.name+' — category missing','err');continue;}
+      const payload={product:buildPart(row,catUid),vendor:[]};
+      if(dry){ok++;_impResults.push({id:row.id,name:row.name,status:'Would create ['+catNorm(row.category)+']'});ilog('['+done+'/'+list.length+'] would create "'+row.name+'" ('+row.id+') → ['+catNorm(row.category)+']','ok');continue;}
+      try{
+        const r=await fetch(_zbase+'product',{method:'POST',headers:zJsonHdrs(),body:JSON.stringify(payload)});
+        const d=await r.json().catch(()=>({}));const uid=(Array.isArray(d.data)?d.data[0]:d.data)?.product_uid;
+        if((d.type==='success'||r.ok)&&uid){ok++;_existingIds.add(String(row.id).trim());_impResults.push({id:row.id,name:row.name,status:'Created '+uid});ilog('['+done+'/'+list.length+'] ✓ created "'+row.name+'" → '+uid,'ok');}
+        else{fail++;_impResults.push({id:row.id,name:row.name,status:'Failed: '+((d&&d.message)||('HTTP '+r.status))});ilog('['+done+'/'+list.length+'] ✗ '+row.name+' — '+((d&&d.message)||('HTTP '+r.status)),'err');}
+      }catch(e){fail++;_impResults.push({id:row.id,name:row.name,status:'Failed: '+e.message});ilog('['+done+'/'+list.length+'] ✗ '+row.name+' — '+e.message,'err');}
+      await new Promise(r=>setTimeout(r,60)); // gentle rate limit
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(3,list.length)},worker));
+  ilog('— DONE — '+ok+(dry?' to create':' created')+', '+skip+' skipped, '+fail+' failed'+(_impCancel?' (cancelled)':''),fail?'warn':'ok');
+  $('impCancel').style.display='none';$('impActions').classList.remove('hidden');
+}
+function exportImportResults(){
+  if(!_impResults.length)return;
+  const csv=[['Part Number','Name','Status']].concat(_impResults.map(r=>[r.id,r.name,r.status]))
+    .map(row=>row.map(c=>'"'+String(c??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download=SOURCES[src].label.toLowerCase()+'_import_results.csv';a.click();
 }
 
 /* ---------- theme ---------- */
