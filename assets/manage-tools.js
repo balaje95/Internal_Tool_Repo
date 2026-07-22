@@ -1,7 +1,6 @@
-// Renders the "+ Add Tool" and "Update Tool" tiles and drives both modals.
+// Renders the "+ Add Tool" tile and drives its modal.
 // Add submits to /api/add-tool (new file + new tools.config.js entry).
-// Update submits to /api/update-tool (overwrites an existing tool's file only).
-// Both are Vercel serverless functions that commit straight to GitHub — they have
+// It is a Vercel serverless function that commits straight to GitHub — it has
 // nothing to talk to when this page is opened as a plain static file or local server.
 (function () {
   // Vercel serverless functions cap request bodies at ~4.5MB, and base64 encoding
@@ -110,92 +109,6 @@
         const fileContent = await readFileAsBase64(file);
         await postJson("/api/add-tool", { name, description, help, icon, password, filename: file.name, fileContent });
         statusEl.textContent = "Added! Vercel is redeploying now — this page will refresh in a moment.";
-        setTimeout(() => window.location.reload(), 45000);
-      } catch (err) {
-        statusEl.hidden = true;
-        errorEl.textContent = err.message || "Something went wrong.";
-        errorEl.hidden = false;
-        submitBtn.disabled = false;
-      }
-    });
-  })();
-
-  // ---- Update Tool ----
-  (function setupUpdateTool() {
-    const overlay = document.getElementById("update-tool-overlay");
-    const form = document.getElementById("update-tool-form");
-    const select = document.getElementById("ut-tool");
-    const errorEl = document.getElementById("ut-error");
-    const statusEl = document.getElementById("ut-status");
-    const submitBtn = document.getElementById("ut-submit");
-    const cancelBtn = document.getElementById("ut-cancel");
-
-    function openModal() {
-      errorEl.hidden = true;
-      statusEl.hidden = true;
-      form.reset();
-      submitBtn.disabled = false;
-      const currentTools = typeof TOOLS !== "undefined" ? TOOLS : [];
-      select.innerHTML = currentTools
-        .map((t) => `<option value="${t.file}">${t.name}</option>`)
-        .join("");
-      overlay.hidden = false;
-    }
-    function closeModal() {
-      overlay.hidden = true;
-    }
-
-    window.renderUpdateToolTile = function (grid) {
-      const tile = document.createElement("button");
-      tile.type = "button";
-      tile.className = "tile tile-add";
-      tile.innerHTML = `
-        <div class="tile-icon">🔄</div>
-        <h2>Update Tool</h2>
-        <p>Replace an existing tool's file with a newer version</p>
-      `;
-      tile.addEventListener("click", openModal);
-      grid.appendChild(tile);
-    };
-
-    cancelBtn.addEventListener("click", closeModal);
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) closeModal();
-    });
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      errorEl.hidden = true;
-      statusEl.hidden = true;
-
-      const toolFile = select.value;
-      const password = document.getElementById("ut-password").value;
-      const file = document.getElementById("ut-file").files[0];
-
-      if (!toolFile) {
-        errorEl.textContent = "Please choose a tool to update.";
-        errorEl.hidden = false;
-        return;
-      }
-      if (!file) {
-        errorEl.textContent = "Please choose the replacement .html file.";
-        errorEl.hidden = false;
-        return;
-      }
-      if (file.size > MAX_FILE_BYTES) {
-        errorEl.textContent = `That file is ${formatBytes(file.size)}, which is over the ${formatBytes(MAX_FILE_BYTES)} limit for this upload form. Update it via git instead.`;
-        errorEl.hidden = false;
-        return;
-      }
-
-      submitBtn.disabled = true;
-      statusEl.textContent = "Uploading and committing to GitHub…";
-      statusEl.hidden = false;
-
-      try {
-        const fileContent = await readFileAsBase64(file);
-        await postJson("/api/update-tool", { toolFile, password, fileContent });
-        statusEl.textContent = "Updated! Vercel is redeploying now — this page will refresh in a moment.";
         setTimeout(() => window.location.reload(), 45000);
       } catch (err) {
         statusEl.hidden = true;

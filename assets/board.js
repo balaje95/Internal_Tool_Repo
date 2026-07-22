@@ -1,7 +1,7 @@
 // Dashboard board: renders tool tiles with search, New/Updated badges, a help
 // popover, and a "Manage" mode (admin-password gated) that enables delete and
 // drag-to-reorder. Delete/reorder call serverless endpoints that commit to GitHub
-// (same pattern as Add/Update Tool), so they only take effect on the deployed site.
+// (same pattern as Add Tool), so they only take effect on the deployed site.
 (function () {
   var grid = document.getElementById("dashboard-grid");
   var emptyMsg = document.getElementById("board-empty");
@@ -194,10 +194,9 @@
       var exists = existsCache[tool.file];
       grid.appendChild(buildTile(tool, exists !== false));
     });
-    // Add/Update tiles only when not filtering and not in manage mode.
+    // Add tile only when not filtering and not in manage mode.
     if (!searchTerm && !managePassword) {
       if (window.renderAddToolTile) window.renderAddToolTile(grid);
-      if (window.renderUpdateToolTile) window.renderUpdateToolTile(grid);
     }
     if (emptyMsg) emptyMsg.hidden = !(searchTerm && shown === 0);
   }
