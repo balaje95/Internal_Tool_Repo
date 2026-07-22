@@ -205,6 +205,7 @@
         <div><label>Product type</label><select class="inp" id="i-type"><option value="PARTS">Parts</option><option value="SERVICE">Service</option></select></div>
         <div><label>UOM (default)</label><input class="inp" id="i-uom" value="EA" style="max-width:100px"></div>
         <div><label>Price if blank</label><select class="inp" id="i-price"><option value="0">Set 0.00</option><option value="skip">Leave empty</option></select></div>
+        <div><label>Import options</label><select class="inp" id="i-options"><option value="color">Colors</option><option value="size">Sizes</option><option value="none">None</option></select></div>
         <div style="flex:1"><label>Warehouse location UID (optional)</label><input class="inp" id="i-loc" placeholder="paste a warehouse UID — optional"></div>
       </div>
       <div class="flags" style="margin-top:12px">
@@ -221,6 +222,7 @@
         <button class="btn sec small" id="impCancel" onclick="_impCancel=true" style="display:none">⏹ Cancel</button>
         <span id="impStatus" class="small muted"></span>
       </div>
+      <div id="impProgWrap" class="hidden" style="height:8px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-top:12px"><div id="impProgBar" style="height:100%;width:0;background:var(--accent);transition:width .2s"></div></div>
       <div id="impLog" class="log hidden"></div>
       <div id="impActions" class="hidden" style="margin-top:10px"><button class="btn sec small" onclick="exportImportResults()">⬇ Export results CSV</button></div>
     </div>
@@ -523,7 +525,9 @@ async function zConnect(){
       recs.forEach(p=>{if(p.product_id!=null&&p.product_id!=='')_existingIds.add(String(p.product_id).trim());});
       if(recs.length<500)break;
     }
-    $('zconn').innerHTML='<span style="color:var(--ok)">✓ '+esc(_zaccount)+' ('+region+')</span> — '+_zcats.size+' categories, '+fmtNum(_existingIds.size)+' existing parts loaded.';
+    const selN=selRows.size, selExist=selN?[...selRows.keys()].filter(id=>_existingIds.has(String(id).trim())).length:0;
+    $('zconn').innerHTML='<span style="color:var(--ok)">✓ '+esc(_zaccount)+' ('+region+')</span> — '+_zcats.size+' categories, '+fmtNum(_existingIds.size)+' existing parts.'+
+      (selN?(' <b>'+fmtNum(selExist)+'</b> of your '+fmtNum(selN)+' selected already exist'+(selExist?' (skipped if dedupe on)':' — all new')):'');
     $('impOpts').classList.remove('hidden');
   }catch(e){$('zconn').innerHTML='<span style="color:var(--err)">✗ '+esc(e.message)+'</span>';}
   finally{btn.disabled=false;btn.textContent='Connect';}
@@ -560,14 +564,31 @@ function buildPart(row,catUid){
   if(loc) p.location_availability=[{location:loc,quantity:0,min_quantity:0}];
   return p;
 }
+/* Pull distinct colors/sizes for a catalog product from its variant table (read-only). */
+async function optionValuesFor(row,axis){
+  const cfg=SOURCES[src];
+  if(axis==='none'||!cfg.variants) return null;      // ABC has no variant table
+  let col;
+  if(src==='qxo'){ if(axis!=='color') return null; col='color'; }   // QXO is color-only
+  else { col = axis==='size' ? 'size_name' : 'color_name'; }
+  try{
+    const url=BASE+'/'+cfg.variants.table+'?'+cfg.variants.fk+'=eq.'+encodeURIComponent(row.id)+'&select='+col+(cfg.variants.extra?'&'+cfg.variants.extra:'')+'&limit=1000';
+    const r=await fetch(url,{headers:HDRS}); if(!r.ok) return null;
+    const vs=await r.json(); const seen=new Set(),vals=[];
+    vs.forEach(v=>{const c=String(v[col]==null?'':v[col]).trim();const k=c.toLowerCase();if(c&&!seen.has(k)){seen.add(k);vals.push(c);}});
+    return vals.length?{label:axis==='size'?'Size':'Color',values:vals}:null;
+  }catch(e){ return null; }
+}
+function updateImpProg(d,tot){const w=$('impProgWrap');if(w){w.classList.remove('hidden');$('impProgBar').style.width=(tot?Math.round(d/tot*100):0)+'%';}}
 async function runImport(dry){
   const list=[...selRows.values()];
   if(!_zbase){alert('Connect a Zuper account first.');return;}
   if(!list.length){alert('No products selected.');return;}
-  const dedupe=$('i-dedupe').checked, mkcat=$('i-mkcat').checked;
+  const dedupe=$('i-dedupe').checked, mkcat=$('i-mkcat').checked, optAxis=$('i-options').value;
   if(!dry && !confirm('Create '+fmtNum(list.length)+' '+$('i-type').value+' in "'+_zaccount+'"?\n\nRun a Dry Run first if you haven\'t.'))return;
   _impCancel=false;_impResults=[];
   $('impLog').innerHTML='';$('impLog').classList.remove('hidden');$('impActions').classList.add('hidden');
+  $('impProgBar').style.width='0';$('impProgWrap').classList.toggle('hidden',dry);
   $('impCancel').style.display=dry?'none':'inline-flex';
   ilog((dry?'— DRY RUN — ':'— IMPORTING — ')+list.length+' '+$('i-type').value+' into "'+_zaccount+'"','info');
   // resolve distinct categories first
@@ -586,21 +607,28 @@ async function runImport(dry){
   const queue=[...list];
   async function worker(){
     while(queue.length&&!_impCancel){
-      const row=queue.shift();done++;
+      const row=queue.shift();done++;updateImpProg(done,list.length);
       const exists=dedupe&&_existingIds.has(String(row.id).trim());
       if(exists){skip++;_impResults.push({id:row.id,name:row.name,status:'Skipped (Part Number exists)'});ilog('['+done+'/'+list.length+'] skip "'+row.name+'" ('+row.id+') — already exists','warn');continue;}
       const catUid=catUidFor(row.category);
       if(dry){
-        if(catUid||mkcat){ok++;_impResults.push({id:row.id,name:row.name,status:'Would create ['+catNorm(row.category)+']'+(catUid?'':' (+new category)')});ilog('['+done+'/'+list.length+'] would create "'+row.name+'" ('+row.id+') → ['+catNorm(row.category)+']'+(catUid?'':' (+new category)'),'ok');}
+        if(catUid||mkcat){ok++;_impResults.push({id:row.id,name:row.name,status:'Would create ['+catNorm(row.category)+']'+(catUid?'':' (+new category)')+(optAxis!=='none'?' +'+optAxis+' options':'')});ilog('['+done+'/'+list.length+'] would create "'+row.name+'" ('+row.id+') → ['+catNorm(row.category)+']'+(catUid?'':' (+new category)')+(optAxis!=='none'?' (+'+optAxis+' options)':''),'ok');}
         else{fail++;_impResults.push({id:row.id,name:row.name,status:'Would fail: category "'+catNorm(row.category)+'" missing (create disabled)'});ilog('['+done+'/'+list.length+'] ✗ "'+row.name+'" — category missing (create disabled)','err');}
         continue;
       }
       if(!catUid){fail++;_impResults.push({id:row.id,name:row.name,status:'Failed: category "'+catNorm(row.category)+'" unavailable'});ilog('['+done+'/'+list.length+'] ✗ '+row.name+' — category unavailable','err');continue;}
-      const payload={product:buildPart(row,catUid),vendor:[]};
+      const product=buildPart(row,catUid);
+      let optNote='';
+      if(optAxis!=='none'){
+        const opt=await optionValuesFor(row,optAxis);
+        if(opt){let vals=opt.values;if(vals.length>50){optNote=' +'+opt.label+' ×50 (of '+vals.length+', capped)';vals=vals.slice(0,50);}else{optNote=' +'+vals.length+' '+opt.label.toLowerCase()+'(s)';}
+          product.option={option_label:opt.label,customer_selection:true,mandate_customer_selection:false,option_values:vals.map(x=>({option_value:x,is_available:true}))};}
+      }
+      const payload={product,vendor:[]};
       try{
         const r=await fetch(_zbase+'product',{method:'POST',headers:zJsonHdrs(),body:JSON.stringify(payload)});
         const d=await r.json().catch(()=>({}));const uid=(Array.isArray(d.data)?d.data[0]:d.data)?.product_uid;
-        if((d.type==='success'||r.ok)&&uid){ok++;_existingIds.add(String(row.id).trim());_impResults.push({id:row.id,name:row.name,status:'Created '+uid});ilog('['+done+'/'+list.length+'] ✓ created "'+row.name+'" → '+uid,'ok');}
+        if((d.type==='success'||r.ok)&&uid){ok++;_existingIds.add(String(row.id).trim());_impResults.push({id:row.id,name:row.name,status:'Created '+uid+optNote});ilog('['+done+'/'+list.length+'] ✓ created "'+row.name+'"'+optNote+' → '+uid,'ok');}
         else{fail++;_impResults.push({id:row.id,name:row.name,status:'Failed: '+((d&&d.message)||('HTTP '+r.status))});ilog('['+done+'/'+list.length+'] ✗ '+row.name+' — '+((d&&d.message)||('HTTP '+r.status)),'err');}
       }catch(e){fail++;_impResults.push({id:row.id,name:row.name,status:'Failed: '+e.message});ilog('['+done+'/'+list.length+'] ✗ '+row.name+' — '+e.message,'err');}
       await new Promise(r=>setTimeout(r,60)); // gentle rate limit
