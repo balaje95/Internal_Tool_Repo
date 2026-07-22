@@ -300,7 +300,13 @@ function buildParams(cfg){
   const cols=[cfg.id,cfg.name,cfg.category,cfg.brand,cfg.line,cfg.tier,cfg.acctier,cfg.price,cfg.image,cfg.universal].filter(Boolean);
   p.set('select',[...new Set(cols)].join(','));
   const q=sanitize($('q').value);
-  if(q){const or=[cfg.name,cfg.brand,cfg.category].map(c=>c+'.ilike.*'+q+'*').join(',');p.set('or','('+or+')');}
+  if(q){
+    const parts=[cfg.name,cfg.brand,cfg.category].map(c=>c+'.ilike.*'+q+'*');
+    // also match by ID / SKU: ABC & QXO ids are text (ilike); SRS product_id is an integer (eq on a numeric term)
+    if(src!=='srs') parts.push(cfg.id+'.ilike.*'+q+'*');
+    else if(/^\d{1,9}$/.test(q)) parts.push(cfg.id+'.eq.'+q);
+    p.set('or','('+parts.join(',')+')');
+  }
   const cat=sanitize($('f-cat').value); if(cat) p.set(cfg.category,'ilike.*'+cat+'*');
   const brand=sanitize($('f-brand').value); if(brand) p.set(cfg.brand,'ilike.*'+brand+'*');
   const tier=$('f-tier').value; if(tier) p.set(cfg.tier,'eq.'+tier);
@@ -568,21 +574,29 @@ async function runImport(dry){
   const wantCats=[...new Set(list.map(r=>catNorm(r.category)))];
   const missing=wantCats.filter(c=>!_zcats.has(c.toLowerCase()));
   if(dry){
-    ilog('Categories: '+(wantCats.length-missing.length)+' existing, '+missing.length+' would be '+(mkcat?'created':'MISSING (create disabled → those parts skipped)')+(missing.length?': '+missing.join(', '):''),missing.length&&!mkcat?'warn':'');
+    ilog('Categories: '+(wantCats.length-missing.length)+' existing, '+missing.length+(mkcat?' would be created':' MISSING (create disabled → those parts fail)')+(missing.length?': '+missing.join(', '):''),(missing.length&&!mkcat)?'warn':'');
+  } else if(mkcat && missing.length){
+    // Pre-create new categories SEQUENTIALLY before spawning concurrent product workers —
+    // otherwise multiple workers sharing a new category race and create duplicates.
+    ilog('Creating '+missing.length+' new category(ies): '+missing.join(', '),'info');
+    for(const cn of missing){ if(_impCancel)break; try{ await ensureCat(cn); }catch(e){ ilog('  ✗ category "'+cn+'" create failed — '+e.message,'err'); } }
   }
   let ok=0,skip=0,fail=0,done=0;
-  const catUidFor=async(name)=>{const key=catNorm(name).toLowerCase();if(_zcats.has(key))return _zcats.get(key);if(!mkcat)return null;return await ensureCat(name);};
+  const catUidFor=(name)=>_zcats.get(catNorm(name).toLowerCase())||null; // pre-created above; workers only look up
   const queue=[...list];
   async function worker(){
     while(queue.length&&!_impCancel){
       const row=queue.shift();done++;
       const exists=dedupe&&_existingIds.has(String(row.id).trim());
       if(exists){skip++;_impResults.push({id:row.id,name:row.name,status:'Skipped (Part Number exists)'});ilog('['+done+'/'+list.length+'] skip "'+row.name+'" ('+row.id+') — already exists','warn');continue;}
-      let catUid;
-      try{catUid=await catUidFor(row.category);}catch(e){fail++;_impResults.push({id:row.id,name:row.name,status:'Failed: '+e.message});ilog('['+done+'/'+list.length+'] ✗ '+row.name+' — '+e.message,'err');continue;}
-      if(!catUid){fail++;_impResults.push({id:row.id,name:row.name,status:'Failed: category "'+catNorm(row.category)+'" missing (create disabled)'});ilog('['+done+'/'+list.length+'] ✗ '+row.name+' — category missing','err');continue;}
+      const catUid=catUidFor(row.category);
+      if(dry){
+        if(catUid||mkcat){ok++;_impResults.push({id:row.id,name:row.name,status:'Would create ['+catNorm(row.category)+']'+(catUid?'':' (+new category)')});ilog('['+done+'/'+list.length+'] would create "'+row.name+'" ('+row.id+') → ['+catNorm(row.category)+']'+(catUid?'':' (+new category)'),'ok');}
+        else{fail++;_impResults.push({id:row.id,name:row.name,status:'Would fail: category "'+catNorm(row.category)+'" missing (create disabled)'});ilog('['+done+'/'+list.length+'] ✗ "'+row.name+'" — category missing (create disabled)','err');}
+        continue;
+      }
+      if(!catUid){fail++;_impResults.push({id:row.id,name:row.name,status:'Failed: category "'+catNorm(row.category)+'" unavailable'});ilog('['+done+'/'+list.length+'] ✗ '+row.name+' — category unavailable','err');continue;}
       const payload={product:buildPart(row,catUid),vendor:[]};
-      if(dry){ok++;_impResults.push({id:row.id,name:row.name,status:'Would create ['+catNorm(row.category)+']'});ilog('['+done+'/'+list.length+'] would create "'+row.name+'" ('+row.id+') → ['+catNorm(row.category)+']','ok');continue;}
       try{
         const r=await fetch(_zbase+'product',{method:'POST',headers:zJsonHdrs(),body:JSON.stringify(payload)});
         const d=await r.json().catch(()=>({}));const uid=(Array.isArray(d.data)?d.data[0]:d.data)?.product_uid;
