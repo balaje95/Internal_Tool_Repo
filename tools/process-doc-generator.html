@@ -202,6 +202,7 @@ const CHECKLIST_CONCURRENCY = 3;
 const state = {
   apiKey:null, region:null, company:null,
   categories:[], checklists:{}, generatedOn:null,
+  formulas:[], formulasByUid:{}, templates:[], cpqError:null,
 };
 
 /* ============================================================================
@@ -292,8 +293,59 @@ async function fetchConfiguration(){
   });
   $("fetchProgress").classList.remove("show");
 
+  // CPQ layer (proposal templates + formula library) — additive & non-fatal:
+  // an account without CPQ, or a key lacking Estimate permissions, still
+  // produces the full job-config document.
+  showStatus("Fetching CPQ proposal templates &amp; formulas…","info");
+  try{ await fetchCpq(base); }catch(err){ state.cpqError=err&&err.status||true; }
+  hideStatus();
+
   state.generatedOn=new Date();
   renderDocument();
+}
+
+/* ============================================================================
+   SECTION 4b — FETCH CPQ (proposal templates + formula library) — read-only
+   ========================================================================== */
+// Paginated GET that tolerates either {data:[...]} or a bare array response.
+async function fetchAllPages(base, path){
+  const out=[]; let page=1;
+  while(page<=50){
+    const sep=path.indexOf("?")>=0?"&":"?";
+    const json=await apiGet(base, path+sep+"count=100&page="+page);
+    const rows=Array.isArray(json&&json.data)?json.data:(Array.isArray(json)?json:[]);
+    out.push(...rows);
+    if(rows.length<100) break;
+    page++;
+  }
+  return out;
+}
+
+async function fetchCpq(base){
+  // 1. Formula library.
+  try{
+    state.formulas=await fetchAllPages(base,"/invoice_estimate/cpq/formulas");
+  }catch(err){ state.formulas=[]; state.cpqError=err&&err.status||true; }
+  state.formulasByUid={};
+  for(const f of state.formulas){ if(f&&f.formula_uid) state.formulasByUid[f.formula_uid]=f; }
+
+  // 2. Proposal templates — list, then dump each (options + line items + trigger).
+  let list=[];
+  try{
+    list=await fetchAllPages(base,"/invoice_estimate/proposal_template");
+  }catch(err){ list=[]; state.cpqError=err&&err.status||true; }
+
+  const templates=new Array(list.length);
+  await runThrottled(list.map((t,idx)=>({t,idx})), 3, async ({t,idx})=>{
+    const uid=t.template_uid||t.uid||t.proposal_template_uid;
+    if(!uid){ templates[idx]=t; return; }
+    try{
+      const full=await apiGet(base,"/invoice_estimate/proposal_template/"+encodeURIComponent(uid)+"?items_type=LINE_ITEMS");
+      const d=(full&&full.data)?full.data:full;
+      templates[idx]=Object.assign({}, t, (d&&typeof d==="object"&&!Array.isArray(d))?d:{});
+    }catch(err){ templates[idx]=t; }
+  });
+  state.templates=templates.filter(Boolean);
 }
 
 function updateProgress(done,total){
@@ -415,6 +467,187 @@ function typePillStyle(type){
 const prettyStatusType=(t)=>String(t||"CUSTOM").replace(/_/g," ");
 
 /* ============================================================================
+   SECTION 5b — CPQ PARSING + RENDER (defensive, mirrors Section 5's philosophy)
+   ========================================================================== */
+// Look up job category/status names from the config we already fetched.
+function buildJobLookups(){
+  const catByUid={}, statusByUid={};
+  for(const c of state.categories){
+    if(c.category_uid) catByUid[c.category_uid]=c.category_name||"—";
+    for(const s of (c.job_statuses||[])){
+      if(s.status_uid) statusByUid[s.status_uid]={name:s.status_name||"—", cat:c.category_name||"—", catUid:c.category_uid};
+    }
+  }
+  return { catByUid, statusByUid };
+}
+function getCpqConfig(t){
+  let cfg=t.cpq_config||t.cpqConfig||null;
+  if(typeof cfg==="string"){ try{ cfg=JSON.parse(cfg); }catch(e){ cfg=null; } }
+  return cfg||{};
+}
+function normalizeTriggers(t){
+  const cfg=getCpqConfig(t);
+  let trig=cfg.trigger||cfg.triggers||[];
+  if(!Array.isArray(trig)) trig=trig?[trig]:[];
+  const out=[];
+  for(const tr of trig){
+    if(!tr||typeof tr!=="object") continue;
+    const catUid=tr.job_category_uid||tr.category_uid||tr.job_category||null;
+    let sUids=tr.job_status_uid||tr.job_status_uids||tr.status_uid||tr.job_status||null;
+    if(Array.isArray(sUids)) sUids.forEach(s=>out.push({catUid, statusUid:s}));
+    else out.push({catUid, statusUid:sUids});
+  }
+  return out;
+}
+function templateOptions(t){
+  let opts=t.options||t.proposal_options||t.template_options||t.tiers||[];
+  return Array.isArray(opts)?opts:[];
+}
+function optionLineItems(o){
+  let li=o.line_items||o.lineItems||o.items||o.line_item||[];
+  return Array.isArray(li)?li:[];
+}
+// Turn a formula's $1/$2 expression back into a readable one using its map.
+function readableFormula(f){
+  if(!f) return "";
+  const fo=(f.formula&&typeof f.formula==="object")?f.formula:f;
+  let expr=fo.expression||f.expression||"";
+  let map=fo.expression_map||f.expression_map||[];
+  if(!Array.isArray(map)) map=[];
+  if(expr&&map.length){
+    const pairs=map.map((m,idx)=>{
+      const key=(m&&m.key)||("$"+(idx+1));
+      const label=(m&&m.type==="CONSTANT")?String(m.value)
+        :((m&&(m.field_name||m.measurement_token_name||m.name))||key);
+      return [String(key), String(label)];
+    }).sort((a,b)=>b[0].length-a[0].length); // $10 before $1
+    for(const [key,label] of pairs){ expr=expr.split(key).join(label); }
+  }
+  return expr||"";
+}
+function prettyRounding(r){
+  if(!r) return "—";
+  const map={NO_ROUNDING:"No rounding", NEXT_WHOLE_NUMBER:"Round up to whole",
+    ROUND_UP:"Round up", ROUND_DOWN:"Round down", NEAREST_WHOLE_NUMBER:"Round to nearest"};
+  return map[String(r).toUpperCase()]||String(r).replace(/_/g," ");
+}
+function cpqEmptyReason(){
+  if(state.cpqError===401||state.cpqError===403) return " — the API key may not have CPQ / Estimate permissions.";
+  if(state.cpqError===404) return " — CPQ may not be enabled on this account.";
+  return ".";
+}
+
+function renderProposalTemplates(){
+  const templates=state.templates||[];
+  let h='<h1 class="h">Proposal Templates (CPQ)</h1>';
+  if(!templates.length){
+    h+='<p class="cl-empty">No CPQ proposal templates were found on this account'+cpqEmptyReason()+'</p>';
+    return h;
+  }
+  const { statusByUid, catByUid }=buildJobLookups();
+  h+='<p>This account has '+templates.length+' proposal template'+(templates.length===1?"":"s")+'. For each one below: how it is set up, the job status that triggers it, and the line items in each option — including the quantity formula mapped to each line.</p>';
+  templates.forEach((t)=>{ h+=renderOneTemplate(t, statusByUid, catByUid); });
+  return h;
+}
+
+function renderOneTemplate(t, statusByUid, catByUid){
+  const name=t.template_name||t.name||"Untitled Template";
+  const isDraft=t.is_draft===true;
+  const type=t.template_type||"—";
+  const opts=templateOptions(t);
+  let h='<h2 class="h">'+esc(name)+'</h2>';
+  if(t.template_description) h+='<p>'+esc(t.template_description)+'</p>';
+
+  // Trigger → readable "fires when a <Category> job reaches <Status>".
+  const trig=normalizeTriggers(t);
+  let trigText;
+  if(trig.length){
+    const parts=trig.map(x=>{
+      const s=x.statusUid&&statusByUid[x.statusUid];
+      const cName=(x.catUid&&catByUid[x.catUid])||(s&&s.cat)||null;
+      const sName=s?s.name:(x.statusUid?("an unmatched status"):null);
+      if(cName&&sName&&s) return "a <b>"+esc(cName)+"</b> job reaches <b>"+esc(sName)+"</b>";
+      if(sName) return "a job reaches <b>"+esc(sName)+"</b>";
+      return null;
+    }).filter(Boolean);
+    trigText=parts.length?("Automatically offered when "+parts.join("; or when ")+"."):
+      "A trigger is configured, but its status could not be matched to this account’s job config.";
+  }else{
+    trigText="No automatic trigger — this template is picked manually when building a quote.";
+  }
+
+  // Setup summary.
+  h+='<table><tbody>';
+  h+='<tr><th style="width:26%;">Type</th><td>'+esc(type)+'</td></tr>';
+  h+='<tr><th>Status</th><td>'+(isDraft?"Draft (not live)":"Published — live")+'</td></tr>';
+  h+='<tr><th>Options / tiers</th><td>'+(opts.length?opts.map(o=>esc(o.option_name||o.name||"—")).join(", "):"—")+'</td></tr>';
+  h+='<tr><th>Trigger</th><td>'+trigText+'</td></tr>';
+  h+='</tbody></table>';
+
+  // Line items per option, with mapped formula.
+  opts.forEach(o=>{
+    const oName=o.option_name||o.name||"Option";
+    const items=optionLineItems(o);
+    h+='<div class="checklist-wrap"><div class="cl-title">'+esc(oName)+' — line items</div>';
+    if(!items.length){ h+='<p class="cl-empty" style="margin-left:0">No line items in this option.</p></div>'; return; }
+    h+='<table><thead><tr><th style="width:20%;">Section</th><th>Line item</th><th style="width:14%;">Quantity</th><th style="width:34%;">Formula</th></tr></thead><tbody>';
+    let section="";
+    for(const li of items){
+      const liType=String(li.type||li.line_item_type||"ITEM").toUpperCase();
+      if(liType==="HEADER"){ section=li.product_name||li.section_name||li.label||section; continue; }
+      const prod=li.product_name||"—";
+      const qType=String(li.quantity_type||"").toUpperCase();
+      const fUid=li.formula||li.formula_uid||null;
+      let qtyText, formulaCell;
+      if(qType==="FORMULA"&&fUid){
+        const f=state.formulasByUid[fUid];
+        qtyText="By formula";
+        if(f){
+          const rf=readableFormula(f);
+          formulaCell='<b>'+esc(f.formula_name||f.formula_key||"—")+'</b>'+
+            (rf?'<br><span class="muted-line" style="margin:0">'+esc(rf)+'</span>':"");
+        }else{
+          formulaCell='<span class="req-none">formula '+esc(String(fUid).slice(0,8))+'… (not in library)</span>';
+        }
+      }else{
+        qtyText=(li.quantity!=null)?("Fixed: "+esc(li.quantity)):"Fixed";
+        formulaCell='<span class="req-none">—</span>';
+      }
+      h+='<tr><td>'+esc(section||"—")+'</td><td>'+esc(prod)+'</td><td>'+esc(qtyText)+'</td><td>'+formulaCell+'</td></tr>';
+    }
+    h+='</tbody></table></div>';
+  });
+  return h;
+}
+
+function renderFormulaLibrary(){
+  const fs=state.formulas||[];
+  let h='<h1 class="h">Formula Library</h1>';
+  if(!fs.length){
+    h+='<p class="cl-empty">No CPQ quantity formulas were found on this account'+cpqEmptyReason()+'</p>';
+    return h;
+  }
+  // Mark which formulas are actually mapped to a template line item.
+  const used=new Set();
+  for(const t of (state.templates||[])){
+    for(const o of templateOptions(t)){
+      for(const li of optionLineItems(o)){ const u=li.formula||li.formula_uid; if(u) used.add(u); }
+    }
+  }
+  h+='<p>The quantity formulas defined on the account. Each converts measurements (roof area, lengths, counts) into a line-item quantity. “In use” marks formulas mapped to a proposal-template line item above.</p>';
+  h+='<table><thead><tr><th>Formula</th><th style="width:40%;">Calculation</th><th style="width:14%;">Rounding</th><th style="width:10%;">In use</th></tr></thead><tbody>';
+  for(const f of fs){
+    const name=f.formula_name||f.formula_key||"—";
+    const rf=readableFormula(f);
+    const rounding=prettyRounding((f.formula&&f.formula.rounding_mechanism)||f.rounding_mechanism);
+    const inUse=f.formula_uid&&used.has(f.formula_uid);
+    h+='<tr><td>'+esc(name)+'</td><td>'+(rf?esc(rf):'<span class="req-none">—</span>')+'</td><td>'+esc(rounding)+'</td><td>'+(inUse?"Yes":'<span class="req-none">No</span>')+'</td></tr>';
+  }
+  h+='</tbody></table>';
+  return h;
+}
+
+/* ============================================================================
    SECTION 6 — RENDER THE DOCUMENT (Roof & Nail style, dynamic content)
    ========================================================================== */
 function renderDocument(){
@@ -450,7 +683,10 @@ function renderDocument(){
   /* ---- Overview ---- */
   h+='<h1 class="h">How This Document Works</h1>';
   h+='<p>This document is generated directly from the '+esc(state.company.name)+' Zuper account. It lays out every job category, the workflow statuses a job moves through within each one, the key requirements enforced at each status, and any checklists attached — so the configuration is readable at a glance without opening Settings.</p>';
-  h+='<div class="summary">'+stat(cats.length,"Job Categories")+stat(totalStatuses,"Workflow Statuses")+stat(totalItems,"Checklist Items")+'</div>';
+  let summaryHtml='<div class="summary">'+stat(cats.length,"Job Categories")+stat(totalStatuses,"Workflow Statuses")+stat(totalItems,"Checklist Items");
+  if(state.templates&&state.templates.length) summaryHtml+=stat(state.templates.length,"Proposal Templates");
+  if(state.formulas&&state.formulas.length) summaryHtml+=stat(state.formulas.length,"CPQ Formulas");
+  h+=summaryHtml+'</div>';
 
   /* ---- Per category ---- */
   if(!cats.length){ h+='<p class="cl-empty">No active job categories were found on this account.</p>'; }
@@ -466,6 +702,10 @@ function renderDocument(){
   }else{
     h+='<p class="note">No checklist items on this account are currently marked required — every checklist relies on the team remembering to complete it rather than a required field enforcing it. Worth a look if consistent enforcement is a goal.</p>';
   }
+
+  /* ---- CPQ: proposal templates + formula library ---- */
+  h+=renderProposalTemplates();
+  h+=renderFormulaLibrary();
 
   h+='<p class="muted-line">Generated with the Zuper Process Doc Generator · '+esc(dateStr)+' · '+esc(state.company.name)+'</p>';
 
@@ -580,7 +820,8 @@ $("btnHtml").addEventListener("click",()=>{ download(new Blob([standaloneHtml()]
 $("btnJson").addEventListener("click",()=>{
   const payload={ company:state.company?state.company.name:null, region:state.region?state.region.key:null,
     generated_on:state.generatedOn?state.generatedOn.toISOString():null,
-    categories:state.categories, checklists:state.checklists };
+    categories:state.categories, checklists:state.checklists,
+    formulas:state.formulas, proposal_templates:state.templates };
   download(new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),safeName()+"-zuper-config.json");
 });
 
