@@ -1415,7 +1415,7 @@ const MODULES={
   purchase_orders:{label:'Purchase Orders',uid:['purchase_order_uid','uid','_id'],del:'purchase_orders',cols:[{h:'Order #',f:'_po_no'},{h:'Type',f:'purchase_order_type'},{h:'Status',f:'purchase_order_status'},{h:'Items',f:'number_of_line_items'},{h:'Total',f:'_total'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_po_no:r.reference_number||r.purchase_order_number||'—',_total:r.total_price||r.purchase_order_total||'—'}))},
   material_requests:{label:'Material Orders',uid:['material_request_uid','uid','_id'],del:'material_requests',cols:[{h:'MO #',f:'material_request_number'},{h:'Title',f:'material_request_title'},{h:'Status',f:'material_request_status'},{h:'Created',f:'created_at'}]},
   customers:{label:'Customers',uid:['customer_uid','uid','_id'],del:'customers',cols:[{h:'Name',f:['customer_first_name','customer_last_name']},{h:'Email',f:'customer_email'},{h:'Phone',f:'customer_phone'},{h:'Type',f:'customer_type'},{h:'Created',f:'created_at'}]},
-  property:{label:'Properties',uid:['property_uid','uid','_id'],del:'property',cols:[{h:'Name',f:'property_name'},{h:'Address',f:'property_address'},{h:'City',f:'city'},{h:'Status',f:'property_status'},{h:'Created',f:'created_at'}]},
+  property:{label:'Properties',uid:['property_uid','uid','_id'],del:'property',preDelete:deactivatePropertyBeforeDelete,cols:[{h:'Name',f:'property_name'},{h:'Address',f:'property_address'},{h:'City',f:'city'},{h:'Status',f:'property_status'},{h:'Created',f:'created_at'}]},
   organization:{label:'Organizations',uid:['organization_uid','uid','_id'],del:'organization',cols:[{h:'Name',f:'organization_name'},{h:'Email',f:'organization_email'},{h:'Active',f:'is_active'},{h:'Created',f:'created_at'}]},
   assets:{label:'Assets',uid:['asset_uid','uid','_id'],del:'assets',cols:[{h:'Name',f:'asset_name'},{h:'Serial #',f:'serial_number'},{h:'Type',f:'asset_type'},{h:'Status',f:'asset_status'},{h:'Created',f:'created_at'}]},
   product:{label:'Parts & Services',uid:['product_uid','uid','_id'],del:'product',dryRunSkipGet:true,fetchMethod:'POST',endpoint:'product/filter',fetchBody:(page,count)=>({page,count}),cols:[{h:'Name',f:'product_name'},{h:'Type',f:'product_type'},{h:'Category',f:'_cat_name'},{h:'Price',f:'price'},{h:'Formula',f:'_formula_name'},{h:'Trade Types',f:'_bu_names'},{h:'Vendors',f:'_vendors'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_cat_name:(r.product_category?.category_name||r.product_category||'—'),_formula_name:(r.formula?.formula_name||'—'),_bu_names:(r.business_unit||[]).map(b=>b.bu_name||b.name||'').filter(Boolean).join(', ')||'—',_vendors:'…'}))},
@@ -2123,6 +2123,44 @@ function hideDelete(){$('del-card').style.display='none';}
 
 function logLine(uid,level,msg){const el=$('log');const d=document.createElement('div');d.className='log-'+level;d.textContent=(level==='ok'?'✓':level==='err'?'✗':'⚠')+' '+uid+' — '+msg;el.appendChild(d);el.scrollTop=el.scrollHeight;logRows.push({uid,status:level==='ok'?'success':level==='warn'?'warning':'failed',message:msg});}
 
+// Zuper refuses DELETE on an Active property (400 "The given property is Active").
+// So before deleting a property we deactivate it: read it fresh, set is_active:false,
+// and PUT the full (write-shaped) object. Confirmed contract — see the Customer↔Property
+// Mapper: property_customers must be written as [{customer:"<uid>"}] (nested objects and
+// bare strings are rejected), and server-managed aggregates must be stripped.
+async function deactivatePropertyBeforeDelete(uid, base){
+  let full=null;
+  try{
+    const r=await fetch(base+'property/'+encodeURIComponent(uid),{headers:getHdrs()});
+    if(!r.ok) return {ok:false,msg:'Deactivate skipped — could not read property (HTTP '+r.status+')'};
+    const d=await r.json().catch(()=>({}));
+    full=(d&&(d.data||d.property))||d;
+  }catch(e){ return {ok:false,msg:'Deactivate skipped — network reading property: '+e.message}; }
+  if(!full||typeof full!=='object') return {ok:false,msg:'Deactivate skipped — empty property read'};
+  if(full.is_active===false) return {ok:true,msg:'already inactive'}; // nothing to flip; proceed to delete
+
+  const p=JSON.parse(JSON.stringify(full));
+  // Strip server-managed / read-only aggregates a PUT rejects or shouldn't echo back.
+  ['created_by','updated_by','no_of_jobs','child_properties','parent_property'].forEach(k=>{delete p[k];});
+  if(p.property_organization&&typeof p.property_organization==='object')
+    p.property_organization=p.property_organization.organization_uid||p.property_organization._id||null;
+  // Customer links → write shape [{customer:"<uid>"}]; drop anything without a resolvable uid.
+  if(Array.isArray(p.property_customers))
+    p.property_customers=p.property_customers.map(pc=>{
+      const c=pc&&pc.customer;
+      const cu=(c&&typeof c==='object')?(c.customer_uid||c.uid||c._id):(typeof c==='string'?c:(pc&&pc.customer_uid)||null);
+      return cu;
+    }).filter(Boolean).map(cu=>({customer:cu}));
+  p.is_active=false;
+
+  try{
+    const put=await fetch(base+'property/'+encodeURIComponent(uid),{method:'PUT',headers:hdrs(),body:JSON.stringify({property:p})});
+    const jd=await put.json().catch(()=>({}));
+    if(jd&&(jd.type==='success'||jd.success===true)) return {ok:true,msg:'deactivated'};
+    return {ok:false,msg:'Deactivate failed — '+((jd&&jd.message)||('HTTP '+put.status))};
+  }catch(e){ return {ok:false,msg:'Deactivate failed — network: '+e.message}; }
+}
+
 async function hitOne(uid,dry){
   const cfg=modCfg(),delEndpoint=cfg.del||modKey();
   const useBase=cfg.customBaseUrl?(_workflowBaseUrl||baseUrl()):baseUrl();
@@ -2135,6 +2173,12 @@ async function hitOne(uid,dry){
     return{ok:true,msg:'200 would delete (simulated)'};
   }
   try{
+    // Pre-delete step for modules that need one (e.g. properties must be deactivated first).
+    // Real deletes only — a dry run must never write.
+    if(!dry&&typeof cfg.preDelete==='function'){
+      const pre=await cfg.preDelete(uid,useBase);
+      if(pre&&pre.ok===false) return pre;
+    }
     const res=await fetch(url,{method:dry?'GET':'DELETE',headers:dry?getHdrs():hdrs()});
     if(res.ok)return{ok:true,msg:res.status+' '+(dry?'found':'deleted')};
     let d='';try{const b=await res.json();d=b.message||b.error||JSON.stringify(b).slice(0,80);}catch{d=await res.text().then(t=>t.slice(0,80)).catch(()=>'');}
