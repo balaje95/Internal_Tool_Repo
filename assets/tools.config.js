@@ -10,6 +10,14 @@
 // "New/Updated" badge), help (optional longer text shown in the info popover).
 const TOOLS = [
   {
+    "name": "Background Studio",
+    "description": "Overlay an auto-adapting Zuper logo on images and download",
+    "file": "tools/background-studio.html",
+    "icon": "🖼️",
+    "updated": "2026-07-24",
+    "help": "Runs entirely in your browser. Drop one or more images (PNG/JPG) and it overlays the Zuper logo, automatically choosing the most legible treatment for each scene — Auto (reads the area under the logo), White, Dark, Zuper orange, or Tint-to-scene. Pick the logo position from a 9-point grid or drag it on the preview to fine-tune, then download the current image or all of them as a .zip. No upload, no API key."
+  },
+  {
     "name": "Lat & Long Capture",
     "description": "Bulk-geocode an address spreadsheet to latitude/longitude",
     "file": "tools/latlong-capture.html",
