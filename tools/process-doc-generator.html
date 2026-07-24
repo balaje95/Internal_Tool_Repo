@@ -507,6 +507,22 @@ function optionLineItems(o){
   let li=o.line_items||o.lineItems||o.items||o.line_item||[];
   return Array.isArray(li)?li:[];
 }
+// A line item's formula reference can come back as a bare uid string OR as an
+// embedded object ({formula_uid, formula_name, formula:{expression…}}). Pull the uid out.
+function lineItemFormulaUid(li){
+  const f=li&&li.formula;
+  if(f&&typeof f==="object") return f.formula_uid||f.uid||f._id||null;
+  if(typeof f==="string") return f;
+  return (li&&li.formula_uid)||null;
+}
+// Resolve to a formula record: prefer the account's library entry (fullest data),
+// then fall back to the object embedded on the line item itself.
+function resolveLineFormula(li){
+  const f=li&&li.formula;
+  const uid=lineItemFormulaUid(li);
+  const rec=(uid&&state.formulasByUid[uid])||((f&&typeof f==="object")?f:null);
+  return { uid, rec };
+}
 // Turn a formula's $1/$2 expression back into a readable one using its map.
 function readableFormula(f){
   if(!f) return "";
@@ -597,17 +613,18 @@ function renderOneTemplate(t, statusByUid, catByUid){
       if(liType==="HEADER"){ section=li.product_name||li.section_name||li.label||section; continue; }
       const prod=li.product_name||"—";
       const qType=String(li.quantity_type||"").toUpperCase();
-      const fUid=li.formula||li.formula_uid||null;
+      const hasFormula=!!(li.formula||li.formula_uid);
       let qtyText, formulaCell;
-      if(qType==="FORMULA"&&fUid){
-        const f=state.formulasByUid[fUid];
+      if(qType==="FORMULA"&&hasFormula){
+        const { uid, rec }=resolveLineFormula(li);
         qtyText="By formula";
-        if(f){
-          const rf=readableFormula(f);
-          formulaCell='<b>'+esc(f.formula_name||f.formula_key||"—")+'</b>'+
+        if(rec){
+          const rf=readableFormula(rec);
+          const nm=rec.formula_name||rec.formula_key||(uid?("formula "+String(uid).slice(0,8)+"…"):"formula");
+          formulaCell='<b>'+esc(nm)+'</b>'+
             (rf?'<br><span class="muted-line" style="margin:0">'+esc(rf)+'</span>':"");
         }else{
-          formulaCell='<span class="req-none">formula '+esc(String(fUid).slice(0,8))+'… (not in library)</span>';
+          formulaCell='<span class="req-none">'+(uid?("formula "+esc(String(uid).slice(0,8))+"… (not in library)"):"formula (unresolved)")+'</span>';
         }
       }else{
         qtyText=(li.quantity!=null)?("Fixed: "+esc(li.quantity)):"Fixed";
@@ -631,7 +648,7 @@ function renderFormulaLibrary(){
   const used=new Set();
   for(const t of (state.templates||[])){
     for(const o of templateOptions(t)){
-      for(const li of optionLineItems(o)){ const u=li.formula||li.formula_uid; if(u) used.add(u); }
+      for(const li of optionLineItems(o)){ const u=lineItemFormulaUid(li); if(u) used.add(u); }
     }
   }
   h+='<p>The quantity formulas defined on the account. Each converts measurements (roof area, lengths, counts) into a line-item quantity. “In use” marks formulas mapped to a proposal-template line item above.</p>';
