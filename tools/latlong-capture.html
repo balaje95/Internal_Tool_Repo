@@ -164,6 +164,8 @@ let running = false, stopReq = false;
 let cOk = 0, cFail = 0, cSkip = 0;
 
 const GEO_HOST = 'https://maps.googleapis.com/maps/api/geocode/json';
+const GEO_MAX_TRIES = 4;
+const GEO_RETRY_STATUSES = new Set(['OVER_QUERY_LIMIT','UNKNOWN_ERROR']);
 // Columns the tool appends to the sheet.
 const LAT='Latitude', LNG='Longitude', BLAT='Billing Latitude', BLNG='Billing Longitude';
 const GS='Geocode_Status', GR='Geocode_Reason', BGS='Billing_Geocode_Status', BGR='Billing_Geocode_Reason';
@@ -171,37 +173,43 @@ const GS='Geocode_Status', GR='Geocode_Reason', BGS='Billing_Geocode_Status', BG
 const $ = id => document.getElementById(id);
 
 // ── COLUMN DETECTION (mirrors _get_column_reference / _first_match) ─────────
-function firstMatch(cols, candidates){
+// The lookup maps are built once per detect and passed in; firstMatch used to
+// rebuild them on each of its ~14 calls.
+function buildColMaps(cols){
   const lower = {}, norm = {};
   cols.forEach(c => {
     const s = String(c).trim();
     lower[s.toLowerCase()] = s;
     norm[s.toLowerCase().replace(/[^a-z0-9]/g,'')] = s;
   });
+  return { lower, norm };
+}
+function firstMatch(maps, candidates){
   for (const name of candidates){
-    const hit = lower[name.toLowerCase()];
+    const hit = maps.lower[name.toLowerCase()];
     if (hit) return hit;
     const n = name.toLowerCase().replace(/[^a-z0-9]/g,'');
-    if (norm[n]) return norm[n];
+    if (maps.norm[n]) return maps.norm[n];
   }
   return '';
 }
 function detectRef(cols){
+  const m = buildColMaps(cols);
   return {
-    street:  firstMatch(cols, ['Street','Street (*)','Address','Service Street','Street Address']),
-    city:    firstMatch(cols, ['City','City (*)','Town']),
-    state:   firstMatch(cols, ['State','Province','Region']),
-    country: firstMatch(cols, ['Country','Nation']),
-    zipcode: firstMatch(cols, ['Zipcode','ZIP','Postal Code','Zip Code','Pin Code']),
-    latitude:  firstMatch(cols, ['Latitude','Lat']),
-    longitude: firstMatch(cols, ['Longitude','Long','Lng']),
-    billing_street:  firstMatch(cols, ['Billing Street','Billing Address','Bill Street']),
-    billing_city:    firstMatch(cols, ['Billing City','Bill City']),
-    billing_state:   firstMatch(cols, ['Billing State','Bill State','Billing Province']),
-    billing_country: firstMatch(cols, ['Billing Country','Bill Country']),
-    billing_zipcode: firstMatch(cols, ['Billing Zipcode','Billing ZIP','Bill Zip','Billing Postal Code']),
-    billing_latitude:  firstMatch(cols, ['Billing Latitude','Bill Latitude','Billing Lat']),
-    billing_longitude: firstMatch(cols, ['Billing Longitude','Bill Longitude','Billing Lng','Billing Long']),
+    street:  firstMatch(m, ['Street','Street (*)','Address','Service Street','Street Address']),
+    city:    firstMatch(m, ['City','City (*)','Town']),
+    state:   firstMatch(m, ['State','Province','Region']),
+    country: firstMatch(m, ['Country','Nation']),
+    zipcode: firstMatch(m, ['Zipcode','ZIP','Postal Code','Zip Code','Pin Code']),
+    latitude:  firstMatch(m, ['Latitude','Lat']),
+    longitude: firstMatch(m, ['Longitude','Long','Lng']),
+    billing_street:  firstMatch(m, ['Billing Street','Billing Address','Bill Street']),
+    billing_city:    firstMatch(m, ['Billing City','Bill City']),
+    billing_state:   firstMatch(m, ['Billing State','Bill State','Billing Province']),
+    billing_country: firstMatch(m, ['Billing Country','Bill Country']),
+    billing_zipcode: firstMatch(m, ['Billing Zipcode','Billing ZIP','Bill Zip','Billing Postal Code']),
+    billing_latitude:  firstMatch(m, ['Billing Latitude','Bill Latitude','Billing Lat']),
+    billing_longitude: firstMatch(m, ['Billing Longitude','Bill Longitude','Billing Lng','Billing Long']),
   };
 }
 
@@ -227,13 +235,26 @@ async function geocode(street, city, state, zip, country){
   const params = new URLSearchParams({ address: buildLine(street, city, state, z, ctry), key });
   if (!country || /^(us|usa|united states)$/i.test(ctry)) params.set('region','us');
   const url = GEO_HOST + '?' + params.toString();
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const d = await r.json();
-  if (d.status !== 'OK' || !(d.results && d.results.length))
-    return { lat:'', lng:'', ok:false, msg:'Google: ' + d.status + (d.error_message ? ' – ' + d.error_message : '') };
-  const loc = d.results[0].geometry.location;
-  return { lat: loc.lat.toFixed(6), lng: loc.lng.toFixed(6), ok:true, msg:'' };
+
+  // OVER_QUERY_LIMIT / UNKNOWN_ERROR (and HTTP 429) are transient throttling
+  // responses. They used to be recorded as permanent failures, so once Google
+  // started throttling, a block of perfectly valid rows was marked failed and
+  // exported as such. Retry those with backoff; everything else fails as before.
+  let lastMsg = '';
+  for (let attempt = 0; attempt < GEO_MAX_TRIES; attempt++){
+    if (attempt) await delay(500 * Math.pow(2, attempt - 1));   // 500ms, 1s, 2s
+    const r = await fetch(url);
+    if (r.status === 429){ lastMsg = 'HTTP 429 — rate limited by Google'; continue; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (d.status === 'OK' && d.results && d.results.length){
+      const loc = d.results[0].geometry.location;
+      return { lat: loc.lat.toFixed(6), lng: loc.lng.toFixed(6), ok:true, msg:'' };
+    }
+    lastMsg = 'Google: ' + d.status + (d.error_message ? ' – ' + d.error_message : '');
+    if (!GEO_RETRY_STATUSES.has(d.status)) return { lat:'', lng:'', ok:false, msg: lastMsg };
+  }
+  return { lat:'', lng:'', ok:false, msg: lastMsg + ' (gave up after ' + GEO_MAX_TRIES + ' attempts)' };
 }
 
 // ── FILE PARSING ─────────────────────────────────────────────────────────────
@@ -256,6 +277,15 @@ function readFile(file){
 }
 
 function afterParse(name){
+  // Clear the previous run. Without this, uploading a new file left `results`
+  // and `outCols` from the old one with the download buttons still enabled, so
+  // "Download full result" silently exported the PREVIOUS file's rows.
+  results = []; outCols = [];
+  $('dlAll').disabled = $('dlOk').disabled = $('dlFail').disabled = true;
+  $('resultWrap').style.display = 'none';
+  $('resultWrap').innerHTML = '';
+  $('logBox').innerHTML = '';
+
   $('fileInfo').innerHTML = '📄 <b>' + esc(name) + '</b> — ' + rows.length + ' rows, ' + columns.length + ' columns';
   renderRef();
   $('refBox').style.display = 'block';
@@ -326,10 +356,13 @@ async function run(){
     const country = val(src, c.country), zip = normZip(val(src, c.zip));
 
     let sLat = '', sLng = '', sStatus = 'failed', sMsg = '';
+    // 'skipped' (not 'failed') for rows we never sent to Google — the summary bar
+    // already counts these under "Skipped", so leaving the exported
+    // Geocode_Status as 'failed' contradicted the on-screen number.
     if (!street){
-      sMsg = 'Street is missing.';
+      sStatus = 'skipped'; sMsg = 'Street is missing.';
     } else if (!city && !zip){
-      sMsg = 'Need City or Zipcode along with Street.';
+      sStatus = 'skipped'; sMsg = 'Need City or Zipcode along with Street.';
     } else {
       try{
         const g = await geocode(street, city, state, zip, country);
@@ -343,7 +376,11 @@ async function run(){
     // ── Billing ──────────────────────────────────────────────────────────
     const bStreet = val(src, c.bStreet), bCity = val(src, c.bCity), bState = val(src, c.bState);
     const bCountry = val(src, c.bCountry), bZip = normZip(val(src, c.bZip));
-    const hasBilling = !!(bStreet || bCity || bState || bZip || bCountry);
+    // Only count billing as "present" when a geocodable field is filled. Basing
+    // this on state/country too meant a row whose billing block held nothing but
+    // a stray "CA" skipped the copy-from-service path and was reported as
+    // "Billing Street is missing" instead of inheriting the service coordinates.
+    const hasBilling = !!(bStreet || bCity || bZip);
     const sameAsService =
       bStreet.toLowerCase() === street.toLowerCase() &&
       bCity.toLowerCase()   === city.toLowerCase()   &&
@@ -375,7 +412,7 @@ async function run(){
 
     // Counters keyed on the service geocode outcome.
     if (sStatus === 'success'){ cOk++; addLog('ok', i, buildLine(street, city, state, zip, ''), sLat, sLng, ''); }
-    else if (!street || (!city && !zip)){ cSkip++; addLog('skip', i, buildLine(street, city, state, zip, '') || '(no address)', '', '', sMsg); }
+    else if (sStatus === 'skipped'){ cSkip++; addLog('skip', i, buildLine(street, city, state, zip, '') || '(no address)', '', '', sMsg); }
     else { cFail++; addLog('fail', i, buildLine(street, city, state, zip, ''), '', '', sMsg); }
     updateStats();
     updateProgress(i + 1, total);
@@ -469,7 +506,10 @@ $('btnStart').addEventListener('click', run);
 $('btnStop').addEventListener('click', () => { stopReq = true; $('statusTxt').textContent = 'Stopping…'; });
 $('dlAll').addEventListener('click', () => exportRows(results, 'full'));
 $('dlOk').addEventListener('click', () => exportRows(results.filter(r => r[GS] === 'success'), 'geocoded'));
-$('dlFail').addEventListener('click', () => exportRows(results.filter(r => r[GS] !== 'success'), 'failed'));
+// "Needs attention" = the service address didn't geocode (failed or skipped) OR the
+// billing address failed. Filtering on the service status alone hid every
+// billing-only failure from the one export meant to surface problem rows.
+$('dlFail').addEventListener('click', () => exportRows(results.filter(r => r[GS] !== 'success' || r[BGS] === 'failed'), 'failed'));
 </script>
 </body>
 </html>
