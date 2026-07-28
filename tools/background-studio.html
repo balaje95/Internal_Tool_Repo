@@ -110,6 +110,7 @@
       <small>PNG / JPG · add as many as you like</small>
     </div>
     <input type="file" id="file" accept="image/*" multiple hidden>
+    <div id="loadNote" style="display:none;margin:8px 0 0;font-size:12px;line-height:1.45;color:#e0894a"></div>
     <div class="queue" id="queue"></div>
   </div>
 
@@ -223,16 +224,33 @@ drop.onclick = () => fileInput.click();
 drop.addEventListener('drop',ev=>addFiles(ev.dataTransfer.files));
 fileInput.onchange=()=>addFiles(fileInput.files);
 
+function showLoadNote(failed,skipped){
+  const el=$('loadNote'); if(!el) return;
+  const parts=[];
+  if(failed.length) parts.push("Couldn't read "+failed.length+' image'+(failed.length>1?'s':'')+': '+failed.join(', ')+'. HEIC and corrupt files cannot be decoded by the browser — convert to PNG/JPG first.');
+  if(skipped) parts.push(skipped+' non-image file'+(skipped>1?'s':'')+' ignored.');
+  el.textContent=parts.join(' ');
+  el.style.display=parts.length?'block':'none';
+}
+
 function addFiles(list){
-  const files=[...list].filter(f=>f.type.startsWith('image/'));
-  let pending=files.length;
+  const all=[...list];
+  const files=all.filter(f=>f.type.startsWith('image/'));
+  const skipped=all.length-files.length;
+  if(!files.length){ showLoadNote([],skipped); return; }
+  // Every load must settle the counter — an image that never fires `onload`
+  // (HEIC passes the image/* filter; so do truncated files) would otherwise
+  // leave `pending` above 0 forever and the queue/preview would never render.
+  let pending=files.length; const failed=[];
+  const settle=()=>{ if(--pending===0){ showLoadNote(failed,skipped); renderQueue(); render(); } };
   files.forEach(f=>{
     const img=new Image();
     img.onload=()=>{
       images.push({name:f.name,img,w:img.naturalWidth,h:img.naturalHeight});
       if(cur<0) cur=0;
-      if(--pending===0){ renderQueue(); render(); }
+      settle();
     };
+    img.onerror=()=>{ URL.revokeObjectURL(img.src); failed.push(f.name); settle(); };
     img.src=URL.createObjectURL(f);
   });
 }
@@ -249,7 +267,14 @@ function renderQueue(){
   });
   $('dl').disabled=$('dlAll').disabled=images.length===0;
 }
-function remove(i){ images.splice(i,1); if(cur>=images.length)cur=images.length-1; renderQueue(); render(); }
+function remove(i){
+  const [gone]=images.splice(i,1);
+  if(gone&&gone.img&&gone.img.src.startsWith('blob:')) URL.revokeObjectURL(gone.img.src);  // thumb URL is dead once the row is gone
+  // `cur` is an index, so removing an earlier item shifts the active image.
+  if(i<cur) cur--;
+  if(cur>=images.length) cur=images.length-1;
+  renderQueue(); render();
+}
 
 /* ---------- color helpers ---------- */
 function lum(r,g,b){ return (0.2126*r+0.7152*g+0.0722*b)/255; }
@@ -258,17 +283,23 @@ function lum(r,g,b){ return (0.2126*r+0.7152*g+0.0722*b)/255; }
 function computeOutputSize(im){
   if(!S.fitTeams) return {sx:0,sy:0,sw:im.w,sh:im.h,ow:im.w,oh:im.h,cropped:false};
   let sx=0,sy=0,sw=im.w,sh=im.h,cropped=false;
-  const R=TEAMS.maxRatio;
+  const MAX=Math.min(S.maxEdge,TEAMS.max), MIN=TEAMS.min;
+  // Cap the crop ratio at MAX/MIN as well as the Teams limit. Both output edges get
+  // clamped into [MIN,MAX] independently below, so any source ratio above MAX/MIN
+  // would have its short edge floored to MIN while the long edge stayed at MAX —
+  // stretching the image. Cropping to fit is correct; distorting is not. At the
+  // default maxEdge (2048) MAX/MIN is 5.69, so this leaves normal output untouched
+  // and only bites when the user lowers "Max dimension".
+  const R=Math.min(TEAMS.maxRatio, MAX/MIN);
   if(sw/sh>R){ const nw=Math.round(sh*R); sx=Math.round((sw-nw)/2); sw=nw; cropped=true; }        // too wide
   else if(sh/sw>R){ const nh=Math.round(sw*R); sy=Math.round((sh-nh)/2); sh=nh; cropped=true; }   // too tall
-  const MAX=Math.min(S.maxEdge,TEAMS.max), MIN=TEAMS.min;
   const long=Math.max(sw,sh), short=Math.min(sw,sh);
   let scale=1;
   if(long>MAX) scale=MAX/long;            // shrink oversized
   else if(short<MIN) scale=MIN/short;     // grow undersized
   const ow=Math.max(MIN, Math.min(MAX, Math.ceil(sw*scale)));
   const oh=Math.max(MIN, Math.min(MAX, Math.ceil(sh*scale)));
-  return {sx,sy,sw,sh,ow,oh,cropped};
+  return {sx,sy,sw,sh,ow,oh,cropped,cropRatio:R};
 }
 
 function fmtSize(bytes){
@@ -294,6 +325,12 @@ function resolveColor(stats){
   return {fill: base==='white'?white:dark, base};
 }
 
+/* The logo is a data URI so it decodes almost immediately, but a drop on first
+   paint can beat it. Without this, naturalHeight/naturalWidth is 0/0 -> ratio NaN
+   -> getImageData(x,y,NaN,NaN) throws and aborts the render. logoImg.onload
+   re-renders, so returning early here just defers by a frame. */
+function logoReady(){ return logoImg.complete && logoImg.naturalWidth>0; }
+
 /* build a recolored logo onto an offscreen canvas */
 function tintedLogo(w,h,fill){
   const c=document.createElement('canvas'); c.width=w; c.height=h;
@@ -305,7 +342,7 @@ function tintedLogo(w,h,fill){
 }
 
 /* ---------- core render: returns full-res canvas ---------- */
-let lastReadout={};
+let lastReadout={}, renderToken=0;
 function buildCanvas(im){
   const o=computeOutputSize(im);
   const c=document.createElement('canvas'); c.width=o.ow; c.height=o.oh;
@@ -335,7 +372,7 @@ function buildCanvas(im){
   for(let p=0;p<px.length;p+=4){ L+=lum(px[p],px[p+1],px[p+2]); R+=px[p]; G+=px[p+1]; B+=px[p+2]; }
   const stats={L:L/n, r:R/n, g:G/n, b:B/n};
   const {fill,base}=resolveColor(stats);
-  lastReadout={L:stats.L, base, ow:o.ow, oh:o.oh, cropped:o.cropped};
+  lastReadout={L:stats.L, base, ow:o.ow, oh:o.oh, cropped:o.cropped, cropRatio:o.cropRatio};
 
   cx.globalAlpha=S.op/100;
   const glyph=tintedLogo(lw,lh,fill);
@@ -358,7 +395,7 @@ function render(){
   $('hint').style.display=has?'none':'block';
   preview.hidden=!has;
   $('readout').innerHTML='';
-  if(!has) return;
+  if(!has || !logoReady()) return;
   const im=images[cur];
   const full=buildCanvas(im);
   const ow=full.width, oh=full.height;
@@ -375,10 +412,14 @@ function render(){
     `<span class="pill">${scenes}</span>`+
     `<span class="pill">Logo: ${lastReadout.base}</span>`+
     `<span class="pill">${ow}×${oh}${resized?` (from ${im.w}×${im.h})`:''}</span>`+
-    (lastReadout.cropped?`<span class="pill" style="color:var(--orange-soft)">Cropped to 4:1</span>`:'')+
+    (lastReadout.cropped?`<span class="pill" style="color:var(--orange-soft)">Cropped to ${(lastReadout.cropRatio||TEAMS.maxRatio).toFixed(2)}:1</span>`:'')+
     `<span class="pill" id="sizePill">size…</span>`;
   const [mime]=outType(im.name);
-  full.toBlob(b=>{ const el=$('sizePill'); if(el&&b) el.textContent=fmtSize(b.size); }, mime, S.quality);
+  // toBlob is async: without a token, a slower earlier render can land its byte
+  // count in the pill belonging to a newer render (visible when dragging sliders).
+  const token=++renderToken;
+  full.toBlob(b=>{ if(token!==renderToken) return;
+    const el=$('sizePill'); if(el&&b) el.textContent=fmtSize(b.size); }, mime, S.quality);
 }
 
 /* ---------- drag logo on preview ---------- */
@@ -454,16 +495,23 @@ function outType(name){
 }
 function baseName(name){ return name.replace(/\.[^.]+$/,''); }
 
+// Revoking straight after click() can cancel the download before the browser has
+// read the blob; give it a beat first.
+function saveBlob(blob,filename){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
 $('dl').onclick=()=>{
+  if(!images.length || !logoReady()) return;
   const im=images[cur]; const c=buildCanvas(im);
   const [mime,ext]=outType(im.name);
-  c.toBlob(b=>{ const a=document.createElement('a');
-    a.href=URL.createObjectURL(b); a.download=baseName(im.name)+'-zuper.'+ext; a.click();
-    URL.revokeObjectURL(a.href);
-  }, mime, S.quality);
+  c.toBlob(b=>{ if(b) saveBlob(b, baseName(im.name)+'-zuper.'+ext); }, mime, S.quality);
 };
 
 $('dlAll').onclick=async()=>{
+  if(!images.length || !logoReady()) return;
   if(!window.JSZip){ $('dl').click(); return; }
   const zip=new JSZip();
   for(const im of images){
@@ -472,8 +520,7 @@ $('dlAll').onclick=async()=>{
     zip.file(baseName(im.name)+'-zuper.'+ext, blob);
   }
   const out=await zip.generateAsync({type:'blob'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(out);
-  a.download='zuper-backgrounds.zip'; a.click(); URL.revokeObjectURL(a.href);
+  saveBlob(out,'zuper-backgrounds.zip');
 };
 
 logoImg.onload=()=>{ if(images.length) render(); };
