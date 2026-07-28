@@ -769,17 +769,64 @@ async function zGet(path){
   throw lastErr;
 }
 
+const PAGE_SIZE=100, PAGE_CONC=5, PAGE_HARD_CAP=500;
+
+// Bounded-concurrency pool. Every zGetAll used to fire all of its remaining pages
+// at once, and 14 modules load in parallel — a 5,000-record module alone is ~50
+// simultaneous requests, which reliably drew 429s that zGet then retried 3x,
+// amplifying the load.
+async function pooled(tasks,limit){
+  const out=new Array(tasks.length);
+  let next=0,failures=0;
+  async function worker(){
+    while(next<tasks.length){
+      const i=next++;
+      try{ out[i]=await tasks[i](); }
+      catch(e){ out[i]=null; failures++; }
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(limit,tasks.length)},worker));
+  return {out,failures};
+}
+
+// Returns { data, total_records, partial }. `partial` is true when any page could
+// not be fetched, so callers can say so instead of showing a full-looking but
+// truncated dataset.
 async function zGetAll(path){
   const sep=path.includes('?')?'&':'?';
-  const first=await zGet(path+sep+'page=1&count=100');
+  const first=await zGet(path+sep+`page=1&count=${PAGE_SIZE}`);
   const firstData=Array.isArray(first)?first:(first.data||[]);
-  const total=first.total_records||firstData.length;
-  if(firstData.length>=total){return{data:firstData,total_records:total};}
-  const pages=Math.ceil(total/100);
-  const rest=await Promise.allSettled(Array.from({length:pages-1},(_,i)=>zGet(path+sep+`page=${i+2}&count=100`)));
+  const reported=(first&&!Array.isArray(first))?Number(first.total_records):NaN;
+  const hasTotal=Number.isFinite(reported)&&reported>0;
+
+  // No usable total_records — either a bare array or an object that omits it.
+  // `total` used to fall back to firstData.length, so a full first page satisfied
+  // `firstData.length >= total` (100 >= 100) and the function returned after one
+  // page: every KPI, chart, table and CSV was silently computed on 100 records.
+  // Page sequentially until a short page instead.
+  if(!hasTotal){
+    if(firstData.length<PAGE_SIZE)return{data:firstData,total_records:firstData.length,partial:false};
+    const all=[...firstData];
+    let page=2,partial=false;
+    for(;;){
+      let batch;
+      try{ batch=await zGet(path+sep+`page=${page}&count=${PAGE_SIZE}`); }
+      catch(e){ partial=true; break; }
+      const d=Array.isArray(batch)?batch:(batch.data||[]);
+      all.push(...d);
+      if(d.length<PAGE_SIZE)break;
+      if(++page>PAGE_HARD_CAP){ partial=true; break; }   // runaway guard
+    }
+    return{data:all,total_records:all.length,partial};
+  }
+
+  if(firstData.length>=reported)return{data:firstData,total_records:reported,partial:false};
+  const pages=Math.ceil(reported/PAGE_SIZE);
+  const tasks=Array.from({length:pages-1},(_,i)=>()=>zGet(path+sep+`page=${i+2}&count=${PAGE_SIZE}`));
+  const {out,failures}=await pooled(tasks,PAGE_CONC);
   const allData=[...firstData];
-  rest.forEach(r=>{if(r.status==='fulfilled'){const d=Array.isArray(r.value)?r.value:(r.value.data||[]);allData.push(...d);}});
-  return{data:allData,total_records:total};
+  out.forEach(v=>{ if(!v)return; const d=Array.isArray(v)?v:(v.data||[]); allData.push(...d); });
+  return{data:allData,total_records:reported,partial:failures>0};
 }
 
 async function loadAll(){
@@ -805,10 +852,15 @@ async function loadAll(){
   const results=await Promise.allSettled(keys.map(k=>
     zGetAll(endpts[k]).then(r=>{done++;setStatus('loading',`Loading… ${done}/${keys.length} modules`);return r;})
   ));
+  const incomplete=[];
   results.forEach((r,i)=>{
     const k=keys[i];
     cache[k]=r.status==='fulfilled'?(r.value.data||r.value||[]):[];
     if(r.status==='fulfilled'&&r.value.total_records!=null)cache[k+'_total']=r.value.total_records;
+    // Dropped pages used to be filtered out silently, leaving charts and counts
+    // undercounting with no indication anything was missing.
+    if(r.status==='rejected')incomplete.push(k+' (failed)');
+    else if(r.value&&r.value.partial)incomplete.push(k+' (partial)');
   });
   invalidateDynCols();
   loadCustomTbls();
@@ -816,7 +868,11 @@ async function loadAll(){
   applyModVis();
   initDateFilter();
   renderPage('overview');
-  setStatus('ok','Last updated '+new Date().toLocaleTimeString());
+  if(incomplete.length){
+    setStatus('ok','⚠ Incomplete data — '+incomplete.join(', ')+'. Reload to retry. Updated '+new Date().toLocaleTimeString());
+  }else{
+    setStatus('ok','Last updated '+new Date().toLocaleTimeString());
+  }
 }
 
 function tot(key){return cache[key+'_total']||(cache[key]||[]).length;}
@@ -2162,7 +2218,19 @@ function renderCanvas(){
 // ─── WIDGET ACTIONS ────────────────────────────────────────────
 function removeWidget(id){
   dashLayout=dashLayout.filter(x=>x!==id);
-  if(id.startsWith('ct-')){loadCustomTbls();delete customTbls[id];saveCustomTbls();}
+  if(id.startsWith('ct-')){
+    loadCustomTbls();
+    // customTbls is a single global store but layouts are per-page, so deleting the
+    // definition outright broke the same widget on every OTHER page that still
+    // referenced it (resolveWidget returned null and it blank-rendered). Only drop
+    // the definition once no page uses it any more.
+    saveDashState();
+    const stillUsed=(dashPages||[]).some(function(p){
+      const lay=(p&&p.id===activeDashPageId)?dashLayout:((p&&p.layout)||[]);
+      return lay.indexOf(id)!==-1;
+    });
+    if(!stillUsed){delete customTbls[id];saveCustomTbls();}
+  }
   saveDashState();renderCanvas();renderLibrary();
 }
 function toggleWSize(id){
@@ -2274,7 +2342,12 @@ function setPreset(name){
   renderPage(activePage);
 }
 function setCustomDate(from,to){
-  filterFrom=from?new Date(from):null;
+  // Parse BOTH bounds as local time. `new Date("2026-07-01")` is parsed as UTC
+  // midnight while `new Date("2026-07-01T23:59:59")` is parsed as local, so the two
+  // ends of a custom range used different timezone semantics — at a positive UTC
+  // offset (IST +5:30) the start boundary jumped and dropped records timestamped in
+  // the first few hours of the start day.
+  filterFrom=from?new Date(from+'T00:00:00'):null;
   filterTo=to?new Date(to+'T23:59:59'):null;
   activePreset='custom';
   renderFilterBar();
@@ -2284,9 +2357,12 @@ function filterByDate(items,field){
   if(!filterFrom&&!filterTo)return items;
   return items.filter(item=>{
     const raw=item[field]||item.created_at;
-    if(!raw)return true;
+    // Undated records are excluded while a range is active, matching
+    // filterPrevPeriod. Including them here but not there inflated the current
+    // period against the comparison period and biased every KPI delta.
+    if(!raw)return false;
     const d=new Date(raw);
-    if(isNaN(d.getTime()))return true;
+    if(isNaN(d.getTime()))return false;
     return(!filterFrom||d>=filterFrom)&&(!filterTo||d<=filterTo);
   });
 }
@@ -2343,8 +2419,13 @@ function promptSavePreset(){
 function renderFilterBar(){
   const bar=document.getElementById('filterBar');if(!bar)return;
   const PRESETS=[['today','Today'],['week','This week'],['month','This month'],['quarter','Quarter'],['year','Year'],['all','All time']];
-  const fStr=filterFrom?filterFrom.toISOString().slice(0,10):'';
-  const tStr=filterTo?filterTo.toISOString().slice(0,10):'';
+  // Format from LOCAL components. toISOString() converts to UTC first, so at a
+  // positive UTC offset (IST +5:30) local midnight July 1 rendered as 2026-06-30 —
+  // "This month" showed the last day of the previous month in the From box, and
+  // editing the To date then fed that shifted value back through setCustomDate.
+  const ymdLocal=d=>d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`:'';
+  const fStr=ymdLocal(filterFrom);
+  const tStr=ymdLocal(filterTo);
   const hasFilter=!!(filterFrom||filterTo);
   bar.innerHTML=
     `<span class="filter-label">Period</span>`+
@@ -2402,9 +2483,11 @@ function csvQuotes(){
 }
 function csvParts(){
   const parts=cache.parts||[];
+  // Mirror the on-screen table's fallbacks (p.uom / p.price). Without them the CSV
+  // showed blank/0 for products that carry those keys while the UI showed a value.
   csvDownload(['Name','Category','Type','UOM','Sell Price','Purchase Price'],
     parts.map(p=>[p.product_name||p.name||'',p.product_category?p.product_category.category_name||'':'',p.product_type||'',
-      p.unit_of_measure||'',p.selling_price||0,p.purchase_price||0]),'parts.csv');
+      p.unit_of_measure||p.uom||'',p.selling_price||p.price||0,p.purchase_price||0]),'parts.csv');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2413,7 +2496,11 @@ function csvParts(){
 const tblState={}; // { tbodyId: { page, size, search } }
 
 function _getTblState(tbodyId){
-  if(!tblState[tbodyId])tblState[tbodyId]={page:1,size:20,search:''};
+  // `exact` is set only by chart drill-down: the clicked label must equal a whole
+  // cell rather than appear anywhere in the row. Typed search stays a substring
+  // match. Without this, drilling into status "New" also kept rows containing
+  // "Renewal" or "Newton", so the drill-down count was wrong.
+  if(!tblState[tbodyId])tblState[tbodyId]={page:1,size:20,search:'',exact:false};
   return tblState[tbodyId];
 }
 
@@ -2422,7 +2509,9 @@ function applyTableState(tbodyId){
   const st=_getTblState(tbodyId);
   const rows=Array.from(tbody.querySelectorAll('tr'));
   const q=st.search.toLowerCase();
-  const filtered=q?rows.filter(r=>r.textContent.toLowerCase().includes(q)):rows;
+  const filtered=!q?rows:(st.exact
+    ? rows.filter(r=>Array.from(r.cells||[]).some(c=>c.textContent.trim().toLowerCase()===q))
+    : rows.filter(r=>r.textContent.toLowerCase().includes(q)));
   const total=filtered.length;
   const totalPages=Math.max(1,Math.ceil(total/st.size));
   if(st.page>totalPages)st.page=totalPages;
@@ -2480,7 +2569,7 @@ function addTableSearch(tbodyId,csvFn){
   card.querySelector('.tbl-toolbar')?.remove();
   card.querySelector('.tbl-pagination')?.remove();
   // Reset state (new data just rendered)
-  const st=_getTblState(tbodyId);st.page=1;st.search='';
+  const st=_getTblState(tbodyId);st.page=1;st.search='';st.exact=false;
   // Toolbar: search + CSV
   const toolbar=document.createElement('div');toolbar.className='tbl-toolbar';
   toolbar.innerHTML=`<input class="tbl-search" placeholder="Search…" oninput="filterTable(this,'${tbodyId}')" id="srch_${tbodyId}">`+
@@ -2495,7 +2584,7 @@ function addTableSearch(tbodyId,csvFn){
 
 function filterTable(inp,tbodyId){
   const st=_getTblState(tbodyId);
-  st.search=inp.value;st.page=1;
+  st.search=inp.value;st.page=1;st.exact=false;
   applyTableState(tbodyId);
 }
 
@@ -2510,9 +2599,9 @@ function drillDownTable(tbodyId,label){
   const srch=document.getElementById('srch_'+tbodyId);
   // Toggle: same label clears; different label sets
   if(st.search===label){
-    st.search='';if(srch)srch.value='';
+    st.search='';st.exact=false;if(srch)srch.value='';
   }else{
-    st.search=label;if(srch)srch.value=label;
+    st.search=label;st.exact=true;if(srch)srch.value=label;
   }
   st.page=1;
   applyTableState(tbodyId);
