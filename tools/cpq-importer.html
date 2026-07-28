@@ -353,8 +353,12 @@ function renderSelSummary(){
 // ---------- STEP 3: connection ----------
 
 // GET requests must NOT include Content-Type — some Zuper regions reject it.
+// The x-zuper-client headers match what the shared ZuperConnect helper sends on
+// every request; this file's local apiReq was omitting them, so the connection
+// test (which goes through ZuperConnect) could pass while the actual import
+// reads/writes went out without them.
 function headers(apiKey, includeContentType){
-  const h = { 'x-api-key': apiKey };
+  const h = { ...(window.ZuperConnect ? ZuperConnect.CLIENT_HDRS : {}), 'x-api-key': apiKey };
   if (includeContentType) h['Content-Type'] = 'application/json';
   return h;
 }
@@ -395,7 +399,13 @@ async function fetchAccountCategories(base, apiKey){
     for (const c of rows){
       const uid  = c.category_uid ?? c.product_category_uid;
       const name = c.category_name ?? c.product_category_name;
-      if (uid && name) map.set(String(name).toLowerCase(), uid);
+      if (!uid || !name) continue;
+      // Index under both the raw and the normalized name. ensureCategory looks up
+      // by the normalized name ("/" -> " & "), so an account category literally
+      // named "Gutters / Fascia" used to miss the map and get duplicated as
+      // "Gutters & Fascia".
+      map.set(String(name).toLowerCase(), uid);
+      map.set(normalizeCatName(name).toLowerCase(), uid);
     }
     if (rows.length < 100) break;
     page++;
@@ -408,12 +418,14 @@ async function ensureCategory(base, apiKey, rawName, existingMap){
   const normalized = normalizeCatName(rawName);
   const key = normalized.toLowerCase();
   if (existingMap.has(key)) return existingMap.get(key);
-  // Flat body, field name "product_category_name" — confirmed against a live account.
-  // A wrapped {product_category:{category_name:...}} body is rejected by this endpoint,
-  // which silently breaks every product whose section maps to this category.
+  // WRAPPED body — confirmed live 2026-07-21 by create -> verify -> delete on a
+  // real account. The flat {product_category_name:...} form this used to send is
+  // rejected with "Product Category Data is Mandatory", which made every
+  // ensureCategory call throw: in Auto mode no section resolved a category, so
+  // every product create was skipped and templates were built with no line items.
   const cr = await apiReq(base, apiKey, 'products/category', {
     method: 'POST',
-    body: JSON.stringify({ product_category_name: normalized }),
+    body: JSON.stringify({ product_category: { category_name: normalized } }),
   });
   const uid = cr.json?.data?.product_category_uid ?? cr.json?.data?.category_uid ?? cr.json?.product_category_uid;
   if (!uid) throw new Error(`Category "${normalized}" create failed (HTTP ${cr.status}): ${JSON.stringify(cr.json).slice(0,150)}`);
@@ -423,8 +435,18 @@ async function ensureCategory(base, apiKey, rawName, existingMap){
 
 // Populate the manual category dropdown; also reveals the importConfig panel
 async function loadCategories(base, apiKey){
-  const r = await apiReq(base, apiKey, 'products/category?count=200&page=1');
-  const cats = Array.isArray(r.json?.data) ? r.json.data : [];
+  // Paginate like fetchAccountCategories does. A single page of 200 meant that on
+  // accounts with more categories some existing ones were missing from the picker,
+  // so the user would choose "+ Create new" and duplicate one that already existed.
+  const cats = [];
+  for (let page = 1; ; page++){
+    const r = await apiReq(base, apiKey, `products/category?count=200&page=${page}`);
+    const rows = Array.isArray(r.json?.data) ? r.json.data : [];
+    cats.push(...rows);
+    if (rows.length < 200) break;
+  }
+  cats.sort((a, b) => String(a.category_name ?? a.product_category_name ?? '')
+    .localeCompare(String(b.category_name ?? b.product_category_name ?? '')));
   const select = el('categorySelect');
   select.innerHTML = '<option value="__new__">+ Create new category…</option>';
   for (const cat of cats){
@@ -436,9 +458,11 @@ async function loadCategories(base, apiKey){
     opt.textContent = name;
     select.appendChild(opt);
   }
-  select.addEventListener('change', () => {
+  // onchange, not addEventListener — loadCategories can run again on reconnect and
+  // would otherwise stack a duplicate handler each time.
+  select.onchange = () => {
     el('newCategoryRow').style.display = select.value === '__new__' ? '' : 'none';
-  });
+  };
   el('importConfig').style.display = '';
 }
 
@@ -661,6 +685,10 @@ async function runImport(dryRun){
   // LIVE IMPORT — writes start here
   // ─────────────────────────────────────────────
   log('\n─── Writing to account ───', 'info');
+  // Products are protected against double-create (existingProductsMap + productUidCache),
+  // but templates are always POSTed fresh — there is no lookup by name. So a re-run
+  // after a partial failure leaves a second template with the same name.
+  log(`⚠ Each run creates NEW proposal template(s). If a previous run partly completed, delete its template(s) in Zuper first or you will end up with duplicates.`, 'info');
 
   // ── Resolve categories for live run ──
   // accountCategoryMap already loaded above during validation
@@ -697,8 +725,16 @@ async function runImport(dryRun){
   }
 
   const productUidCache = new Map();
+  const droppedItems = [];   // line items that never made it into a template
 
   async function upsertProduct(item){
+    // NOTE: reuse is keyed on product name + type only — product_id/SKU is not part
+    // of the match. So an existing product with the same name but a different SKU or
+    // price is reused as-is (the sheet's SKU/price are not applied), and a sheet
+    // product whose SKU collides with a differently-named existing product is
+    // rejected by the create ("An Item already exists with same ID/Number") and
+    // dropped. Both cases are now counted in the summary. Changing the match key is
+    // a behaviour change, so it is deliberately left alone here.
     const cacheKey = item.productName.toLowerCase()+'|'+item.productType;
     if (productUidCache.has(cacheKey)) return productUidCache.get(cacheKey);
 
@@ -836,7 +872,9 @@ async function runImport(dryRun){
 
         // Product upsert
         const productUid = await upsertProduct(item);
-        if (!productUid) continue;
+        // Dropped items used to vanish with only a line in the log; the summary never
+        // said how many of the sheet's products were missing from the template.
+        if (!productUid){ droppedItems.push(`${tpl.templateName} › ${planOpt.name} › "${item.productName}"`); continue; }
 
         // Formula — match by name; only attach if account has it
         const formulaUid = item.formulaName
@@ -879,6 +917,12 @@ async function runImport(dryRun){
     }
   }
 
+  if (droppedItems.length){
+    log(`\n─── ⚠ ${droppedItems.length} line item(s) were NOT added to a template ───`, 'err');
+    log('Usually a category that failed to resolve, or a SKU that already exists on a differently-named product.', 'info');
+    for (const d of droppedItems) log(`  • ${d}`, 'err');
+  }
+
   if (rulesNeeded.length){
     log('\n─── Post-import manual steps (Conditional Rules) ───', 'info');
     log('The Zuper public API does not expose a CPQ rule creation endpoint.', 'info');
@@ -889,22 +933,33 @@ async function runImport(dryRun){
   log('\n─── Import complete ───', 'ok');
 }
 
+// Both handlers re-enable the button in `finally`. runImport awaits bare fetches,
+// so a network/CORS failure (which this tool warns is likely) rejected out of the
+// handler and left "Run"/"Confirm" permanently disabled — the user had to reload
+// and lose all session state.
 el('runImportBtn').addEventListener('click', async () => {
   logBox.textContent = '';
   el('confirmImportBtn').style.display = 'none';
   el('runImportBtn').disabled = true;
 
-  await runImport(true);
-  el('downloadReportBtn').style.display = importReport.length ? '' : 'none';
+  try {
+    await runImport(true);
+    el('downloadReportBtn').style.display = importReport.length ? '' : 'none';
 
-  const errorCount = logBox.querySelectorAll('.log-err').length;
-  if (errorCount === 0){
-    log('\nDry run passed with no errors — click "Confirm & import to account" to write to the live account.', 'ok');
-    el('confirmImportBtn').style.display = '';
-  } else {
-    log(`\nDry run found ${errorCount} error(s) — review above before importing.`, 'err');
+    const errorCount = logBox.querySelectorAll('.log-err').length;
+    if (errorCount === 0){
+      log('\nDry run passed with no errors — click "Confirm & import to account" to write to the live account.', 'ok');
+      el('confirmImportBtn').style.display = '';
+    } else {
+      log(`\nDry run found ${errorCount} error(s) — review above before importing.`, 'err');
+    }
+  } catch(e){
+    log(`\n✗ Dry run stopped: ${e && e.message ? e.message : e}`, 'err');
+    log('If this looks like a network/CORS error, the account may not be reachable from the browser.', 'info');
+    el('downloadReportBtn').style.display = importReport.length ? '' : 'none';
+  } finally {
+    el('runImportBtn').disabled = false;
   }
-  el('runImportBtn').disabled = false;
 });
 
 el('confirmImportBtn').addEventListener('click', async () => {
@@ -912,10 +967,16 @@ el('confirmImportBtn').addEventListener('click', async () => {
   el('confirmImportBtn').style.display = 'none';
   el('runImportBtn').disabled = true;
 
-  await runImport(false);
-  el('downloadReportBtn').style.display = importReport.length ? '' : 'none';
-
-  el('runImportBtn').disabled = false;
+  try {
+    await runImport(false);
+    el('downloadReportBtn').style.display = importReport.length ? '' : 'none';
+  } catch(e){
+    log(`\n✗ Import stopped: ${e && e.message ? e.message : e}`, 'err');
+    log('Some records may already have been created. Re-running creates a SECOND proposal template — check the account before retrying.', 'err');
+    el('downloadReportBtn').style.display = importReport.length ? '' : 'none';
+  } finally {
+    el('runImportBtn').disabled = false;
+  }
 });
 
 // ---------- Report CSV + session save/resume ----------
