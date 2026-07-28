@@ -188,7 +188,6 @@ main{flex:1;display:flex;overflow:hidden;height:calc(100vh - 54px)}
       </div>
       <div id="jl"></div>
       <div id="sb">
-        <label><input type="checkbox" id="sa" onchange="selAll(this.checked)"> Select visible</label>
         <button class="btn btn-orange" style="margin-left:auto" onclick="dlFiltered()">⬇ Export Visible</button>
       </div>
     </div>
@@ -206,7 +205,7 @@ main{flex:1;display:flex;overflow:hidden;height:calc(100vh - 54px)}
         <div id="dtags"></div>
         <div id="dbtns">
           <button class="btn btn-green" onclick="dlOne()">⬇ Download Zuper JSON</button>
-          <button class="btn btn-outline" onclick="cpJson()">📋 Copy JSON</button>
+          <button class="btn btn-outline" onclick="cpJson(event)">📋 Copy JSON</button>
         </div>
       </div>
       <div id="tabs">
@@ -261,6 +260,12 @@ const NOOP_ICON   = "https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/at
 const M = {
   trigger_job:       "721280c2-cf74-47fd-95f2-cdc4ad922c56",
   if_else:           "19dd8b19-5974-4a2c-9735-a9ca36ac5a4d",
+  // ⚠ UNVERIFIED: these four action types all share one master_node_uid, taken from
+  // a real sample. Distinct node types normally have distinct master UIDs, so if
+  // Zuper's importer resolves a node's type/schema from master_node_uid, a
+  // send_notification could bind as a zuper_get_record and silently corrupt the
+  // workflow. Confirming needs a genuine Workflow-Builder export of each type;
+  // left as-is because changing these UIDs affects every emitted node.
   zuper_get_record:  "7bd69fec-b465-4eb8-a94b-3158c252921c",
   zuper_update:      "7bd69fec-b465-4eb8-a94b-3158c252921c",
   zuper_create:      "7bd69fec-b465-4eb8-a94b-3158c252921c",
@@ -410,7 +415,6 @@ function convert(jn) {
   const activeConds  = conds.filter(c => c.field && c.field !== 'record_type');
   const customConds  = activeConds.filter(c => (c.field||'').startsWith('cf_'));
   const statusConds  = activeConds.filter(c => c.field === 'status');
-  const mappedConds  = activeConds.filter(c => JN_TO_ZUPER_FIELD[c.field]);
   const unknownConds = activeConds.filter(c => !JN_TO_ZUPER_FIELD[c.field] && !(c.field||'').startsWith('cf_'));
 
   if (customConds.length) {
@@ -467,6 +471,13 @@ function convert(jn) {
         operation = (c.comparison === '!=' ) ? 'NOT_CONTAINS' : 'CONTAINS';
       } else {
         operation = COMP[c.comparison] || 'EQUAL_TO';
+        // COMP only covers the symbolic operators (== != > < >= <=). JobNimbus also
+        // exports word forms (contains, does not contain, is empty, changed, …),
+        // and those silently collapsed to EQUAL_TO — inverting or breaking the
+        // condition with nothing to tell the user. Warn instead of failing quietly.
+        if (c.comparison && !(c.comparison in COMP)) {
+          warnings.push({ icon:'⚠️', t:'w', text:`Unsupported JobNimbus comparison "${c.comparison}" on field "${c.field}" — defaulted to EQUAL_TO. Verify this condition manually.` });
+        }
       }
 
       return {
@@ -526,7 +537,6 @@ function convert(jn) {
     conn(ifId, noopFId, false, 'two-b', 'a');
 
     // Checklist items per condition type
-    const uidNeededFields = activeConds.filter(c => JN_TO_ZUPER_FIELD[c.field]?.needsUid);
     if (statusConds.length) {
       checklist.push({ icon:'🗺️', t:'y', text:`Replace status condition value placeholders [MAP → Zuper status_uid for: "..."] with real Zuper status UIDs (Settings → Modules → Jobs → Job Category Hub).` });
     }
@@ -577,8 +587,12 @@ function convert(jn) {
         source_node:  { type:"FIXED", value:"CUSTOM" },
         source_type:  { type:"FIXED", value:"" },
         // FIX B3: flat fields, no task_fields array
-        task_name:        { type:"FIXED",      value: task.name },
-        task_description: { type:"FIXED",      value: task.description || "" },
+        // mapVars, same as the SMS message body gets. JN task text commonly holds
+        // merge fields like {{JobName}} / {{JobPrimaryContactFirstName}}; passing
+        // them through verbatim left literal JN syntax as dead text in the Zuper
+        // task, with no warning and no [MAP] token to catch it.
+        task_name:        { type:"FIXED",      value: mapVars(task.name || "") },
+        task_description: { type:"FIXED",      value: mapVars(task.description || "") },
         priority:         { type:"FIXED",      value: ({0:"NORMAL",1:"HIGH",2:"MEDIUM",3:"LOW"})[task.priority] || "NORMAL" },
         assigned_users:   { type:"FIXED",      value: `[MAP → Zuper user_uid / team_uid for: ${ownerStr}]` },
         due_date_offset:  { type:"FIXED",      value: `${task.end_increment||0}${task.end_unit||'m'}` },
@@ -766,11 +780,13 @@ function convert(jn) {
     : errCount === 1 || isTime ? 'MEDIUM'
     : 'LOW';
 
-  const status = isSkip ? 'SKIP_OUTDATED'
+  let status = isSkip ? 'SKIP_OUTDATED'
     : isZap && !jn.is_active ? 'SKIP_ZAPIER'
     : complexity === 'HIGH' ? 'NEEDS_MANUAL_REVIEW'
     : checklist.filter(c=>c.t!=='g'&&c.t!=='p').length > 2 ? 'READY_WITH_MAPPING'
     : 'READY';
+  // NOTE: `status` is re-gated on unresolved [MAP → ...] tokens once the workflow
+  // JSON has been assembled (see the end of this function).
 
   // ── FIX B1: Trigger node goes ONLY in meta_data.initial_nodes, not in nodes[]
   const triggerNodeObj = {
@@ -849,6 +865,16 @@ function convert(jn) {
   // The 'at least one node' error is because nodes[] had ONLY the trigger and zero action nodes
   zuperWorkflow.nodes = [triggerNodeObj, ...nodes];
 
+  // A workflow that still contains [MAP → ...] placeholders is not READY. The
+  // status above keys only off the warning count and a checklist tally that
+  // excludes 'g'/'p' items and needs more than 2 entries to reach
+  // READY_WITH_MAPPING — so a single-action automation (one SMS, one create-task,
+  // one email) came out ✅ READY while its emitted node still held a literal
+  // "[MAP → Zuper user_uid for: …]" string as the recipient/assignee. The Test Run
+  // tab already counted these tokens, so the sidebar badge and the test view
+  // contradicted each other.
+  if (status === 'READY' && JSON.stringify(zuperWorkflow).includes('[MAP →')) status = 'READY_WITH_MAPPING';
+
   return { jnid:jn.jnid, name:jn.name, is_active:!!jn.is_active, record_type:rt,
            complexity, status, warnings, checklist, zuperWorkflow };
 }
@@ -882,6 +908,14 @@ function initList() {
   document.getElementById('cnt').textContent=converted.length;
   renderList();
   if(converted.length>0) selectItem(0);
+  else {
+    // A file that parses to an empty array used to leave the detail pane showing
+    // the PREVIOUS file's workflow, with activeIdx still pointing at an item that
+    // no longer exists — later tab clicks read converted[activeIdx] and threw.
+    activeIdx=null;
+    const det=document.getElementById('det'); if(det) det.classList.remove('show');
+    const es=document.getElementById('es'); if(es) es.style.display='';
+  }
 }
 
 function setF(f) {
@@ -924,8 +958,6 @@ function renderList() {
     list.appendChild(div);
   });
 }
-
-function selAll(v) { /* for batch select */ }
 
 function selectItem(idx) {
   activeIdx=idx;
@@ -985,7 +1017,10 @@ function renderFlow(c) {
   const byId={};nodes.forEach(n=>byId[n.id]=n);
   let cards='',edges='';
   nodes.forEach(n=>{
-    const x=(n.position||{}).x||0-minX+pad,y=(n.position||{}).y||0-minY+pad;
+    // Parenthesised: `||` binds looser than `-`/`+`, so this used to parse as
+    // `pos.x || (0-minX+pad)` and the offset was skipped for every node with a
+    // truthy coordinate while the container was still sized with it.
+    const x=((n.position||{}).x||0)-minX+pad,y=((n.position||{}).y||0)-minY+pad;
     const s=ns(n.action_key);const isT=n.action_type==='TRIGGER';
     cards+=`<div class="fn" style="left:${x}px;top:${y}px;background:${s.bg};border-color:${s.bd};${isT?'border-style:dashed;':''}" title="${esc(n.action_name||'')}">
       <div class="fn-t" style="color:${s.dot}">${esc(s.l)}</div>
@@ -995,8 +1030,8 @@ function renderFlow(c) {
   });
   conns.forEach(c2=>{
     const src=byId[c2.source],tgt=byId[c2.target];if(!src||!tgt)return;
-    const sx=(src.position||{}).x||0-minX+pad+90,sy=(src.position||{}).y||0-minY+pad+18;
-    const tx=(tgt.position||{}).x||0-minX+pad,ty=(tgt.position||{}).y||0-minY+pad+18;
+    const sx=((src.position||{}).x||0)-minX+pad+90,sy=((src.position||{}).y||0)-minY+pad+18;
+    const tx=((tgt.position||{}).x||0)-minX+pad,ty=((tgt.position||{}).y||0)-minY+pad+18;
     const cx1=sx+(tx-sx)*.5,cx2=tx-(tx-sx)*.5;
     const col=c2.output_value===true?'#16A34A':c2.output_value===false?'#DC2626':'#94A3B8';
     const dash=c2.output_value===false?'stroke-dasharray="5,3"':'';
@@ -1460,7 +1495,9 @@ function exportSingleTestRunCSV(idx) {
 function dlOne() { const c=converted[activeIdx]; if(!c)return; dl([c.zuperWorkflow], san(c.name)+'_zuper.json'); }
 function dlAll() { dl(converted.map(c=>c.zuperWorkflow),'all_zuper_workflows.json'); }
 function dlFiltered() { const wfs=visible().map(c=>c.zuperWorkflow); if(!wfs.length)return alert('Nothing visible.'); dl(wfs,`zuper_workflows_${activeFilter}.json`); }
-function cpJson() { const c=converted[activeIdx]; if(!c)return; navigator.clipboard.writeText(JSON.stringify(c.zuperWorkflow,null,2)).then(()=>{ const b=event.target; b.textContent='✓ Copied!'; setTimeout(()=>b.textContent='📋 Copy JSON',2000); }); }
+// Takes the event explicitly — it used to read the implicit global `event`, which
+// only exists in Chromium and would throw elsewhere.
+function cpJson(ev) { const c=converted[activeIdx]; if(!c)return; const b=ev&&ev.target; navigator.clipboard.writeText(JSON.stringify(c.zuperWorkflow,null,2)).then(()=>{ if(!b)return; b.textContent='✓ Copied!'; setTimeout(()=>b.textContent='📋 Copy JSON',2000); }); }
 function dl(data,name) { const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),u=URL.createObjectURL(b),a=document.createElement('a'); a.href=u; a.download=name; a.click(); URL.revokeObjectURL(u); }
 function san(s) { return(s||'wf').replace(/[^a-zA-Z0-9_-]/g,'_').substring(0,50); }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
