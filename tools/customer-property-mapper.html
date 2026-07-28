@@ -481,15 +481,25 @@ function bulkAddCustomer(){
 // Match customers to a property that shares the same street + city (or zip).
 function autoMatchByAddress(){
   const idx={}; // address key -> [customer_uid,...]
+  // Only index/look up a key when its non-street half is actually present. With
+  // an empty city AND empty zip both keys collapsed to "<street>|", so every
+  // customer missing city/zip matched every property missing city/zip on the same
+  // street, regardless of who they were.
+  const addrKeys=a=>{
+    const s=norm(a.street),out=[];
+    if(norm(a.city))out.push(s+'|'+norm(a.city));
+    if(norm(a.zip_code))out.push(s+'|'+norm(a.zip_code));
+    return out;
+  };
   customers.forEach(c=>{
     const a=c.customer_address||c.customer_billing_address||{};
     if(!a.street)return;
-    [norm(a.street)+'|'+norm(a.city),norm(a.street)+'|'+norm(a.zip_code)].forEach(k=>{(idx[k]=idx[k]||[]).push(custUid(c));});
+    addrKeys(a).forEach(k=>{(idx[k]=idx[k]||[]).push(custUid(c));});
   });
   let n=0;
   properties.forEach(p=>{
     const a=p.property_address||{};if(!a.street)return;
-    const hits=[...new Set([...(idx[norm(a.street)+'|'+norm(a.city)]||[]),...(idx[norm(a.street)+'|'+norm(a.zip_code)]||[])])];
+    const hits=[...new Set(addrKeys(a).flatMap(k=>idx[k]||[]))];
     hits.forEach(cu=>{if(addStaged(propUid(p),cu))n++;});
   });
   renderRows();updateStats();
@@ -572,15 +582,44 @@ function queuedList(){
   }).filter(Boolean);
 }
 
+const delay=ms=>new Promise(r=>setTimeout(r,ms));
+// Retryable = rate limit or a server-side blip. Anything else is a real answer.
+const isRetryable=status=>status===429||status===408||status>=500;
+function backoffMs(res,attempt){
+  const ra=res?Number(res.headers.get('Retry-After')):0;
+  return (ra>0&&ra<=30)?ra*1000:500*Math.pow(2,attempt);
+}
+
 // GET the property fresh, merge in the new customer UIDs, PUT the full flattened object.
 async function updatePropertyCustomers(propUidVal,addCustomers,dry){
-  // Read fresh so nothing else on the property is overwritten.
-  let full=null;
-  try{
-    const r=await fetch(_base+'property/'+propUidVal,{headers:getHdrs()});
-    if(r.ok){const d=await r.json().catch(()=>({}));full=(d&&(d.data||d.property))||d;}
-  }catch(e){}
-  if(!full||typeof full!=='object')full=propByUid[propUidVal]||{property_uid:propUidVal};
+  // This read IS the safety mechanism behind the write below: property_customers
+  // is REPLACED, not appended to, so merging against a stale snapshot silently
+  // drops any link added since the initial fetch. It used to fall back to the
+  // cached list record whenever the GET returned non-OK (a 429 from the 3
+  // concurrent workers was the likely trigger) and write anyway, reporting
+  // "✓ Linked". A read that doesn't succeed is now a hard skip.
+  let full=null,readErr='';
+  for(let attempt=0;attempt<3;attempt++){
+    if(attempt)await delay(500*Math.pow(2,attempt-1));
+    let r=null;
+    try{
+      r=await fetch(_base+'property/'+propUidVal,{headers:getHdrs()});
+      if(!r.ok){
+        readErr='HTTP '+r.status;
+        if(isRetryable(r.status)){await delay(backoffMs(r,attempt));continue;}
+        break;
+      }
+      const d=await r.json().catch(()=>({}));
+      const cand=(d&&(d.data||d.property))||d;
+      // Arrays are objects too, so `typeof === 'object'` alone let a wrapped or
+      // list-shaped response through; propCustomerUids would then find no
+      // property_customers and the REPLACE would drop every existing link.
+      if(cand&&typeof cand==='object'&&!Array.isArray(cand)&&(cand.property_uid||cand.uid)){full=cand;break;}
+      readErr='unexpected response shape';
+      break;
+    }catch(e){readErr=(e&&e.message)||'network error';}
+  }
+  if(!full)return {ok:false,msg:'could not read property fresh ('+readErr+') — skipped rather than risk dropping existing customer links'};
   const p=JSON.parse(JSON.stringify(full));
 
   // Merge existing + new customer uids (dedup, order-preserving).
@@ -601,12 +640,31 @@ async function updatePropertyCustomers(propUidVal,addCustomers,dry){
   if(dry)return {ok:true,msg:'Dry run — would link '+newN+' new customer(s) ('+merged.length+' total) on "'+propName(p)+'"'};
   if(!newN)return {ok:true,msg:'All customer(s) already linked to "'+propName(p)+'" — skipped'};
 
-  const put=await fetch(_base+'property/'+propUidVal,{method:'PUT',headers:hdrs(),body:JSON.stringify({property:p})});
+  let put=null;
+  for(let attempt=0;attempt<3;attempt++){
+    if(attempt)await delay(500*Math.pow(2,attempt-1));
+    try{
+      put=await fetch(_base+'property/'+propUidVal,{method:'PUT',headers:hdrs(),body:JSON.stringify({property:p})});
+    }catch(e){
+      if(attempt===2)return {ok:false,msg:(e&&e.message)||'network error'};
+      continue;
+    }
+    if(isRetryable(put.status)&&attempt<2){await delay(backoffMs(put,attempt));continue;}
+    break;
+  }
+  if(!put)return {ok:false,msg:'network error'};
   const jd=await put.json().catch(()=>({}));
-  if(jd&&(jd.type==='success'||jd.success===true)){
-    // reflect locally so re-mapping sees the new state
-    p.property_customers=merged.map(cu=>({customer:{customer_uid:cu}}));
-    propByUid[propUidVal]=p;
+  const explicitFail=!!(jd&&(jd.type==='error'||jd.success===false));
+  // Accept a 2xx with an empty or differently-shaped body. Requiring an explicit
+  // type/success field reported a write that had actually gone through as failed
+  // and kept it staged.
+  if((jd&&(jd.type==='success'||jd.success===true))||(put.ok&&!explicitFail)){
+    // Cache the fresh, un-stripped record — `p` has had child_properties,
+    // parent_property, no_of_jobs and the organization object removed for the
+    // write, and storing that degraded the in-memory table after an apply.
+    const cached=JSON.parse(JSON.stringify(full));
+    cached.property_customers=merged.map(cu=>({customer:{customer_uid:cu}}));
+    propByUid[propUidVal]=cached;
     return {ok:true,msg:'Linked '+newN+' customer(s) → "'+propName(p)+'"'};
   }
   return {ok:false,msg:(jd&&jd.message)||('HTTP '+put.status)};
@@ -642,7 +700,10 @@ async function apply(dry){
   log('— DONE — '+ok+' property write(s) succeeded, '+fail+' failed'+(_cancel?' (cancelled)':''),fail?'warn':'ok');
   if(!dry&&ok){
     _results.filter(r=>r.status&&!/^Failed/.test(r.status)).forEach(r=>{delete staged[r.property_uid];});
-    properties=Object.values(propByUid);
+    // Map over the existing array instead of rebuilding from propByUid: that
+    // dropped every property with no resolvable UID (never indexed) and reordered
+    // the table.
+    properties=properties.map(p=>propByUid[propUid(p)]||p);
     renderRows();updateStats();
   }
   $('dryBtn').disabled=false;$('applyBtn').disabled=false;$('cancelBtn').classList.add('hidden');
