@@ -22,6 +22,9 @@
      ========================================================================== -->
 
 <script src="https://unpkg.com/html-docx-js@0.3.1/dist/html-docx.js"></script>
+<!-- PptxGenJS powers the Handover Document (.pptx) export. Loaded from CDN, same
+     pattern as html-docx-js above. If it fails to load the PPTX button explains why. -->
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 
 <style id="docStyle">
   /* ---- Palette (matches the Roof & Nail sample document) ---- */
@@ -128,6 +131,34 @@
   .req-list{margin:0;padding-left:16px;} .req-list li{margin:1px 0;font-size:10pt;}
   .req-none{color:var(--muted);}
 
+  /* ---- Mode chooser (shown after connect, before the document) ---- */
+  .chooser-wrap{max-width:760px;margin:40px auto;padding:0 16px;}
+  .chooser-head{text-align:center;margin-bottom:22px;}
+  .chooser-head h2{font-size:18px;margin:0 0 6px;}
+  .chooser-head p{color:var(--muted);font-size:13.5px;margin:0;}
+  .chooser-head .acct{color:var(--accent);font-weight:700;}
+  .chooser-grid{display:flex;gap:18px;flex-wrap:wrap;}
+  .choice{flex:1;min-width:280px;text-align:left;background:var(--paper);border:1px solid var(--line);
+       border-radius:14px;padding:24px 24px 22px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .1s;
+       box-shadow:0 1px 3px rgba(20,30,50,.08);}
+  .choice:hover{border-color:var(--accent);box-shadow:0 8px 26px rgba(20,30,50,.12);transform:translateY(-2px);}
+  .choice .ic{font-size:30px;line-height:1;margin-bottom:12px;}
+  .choice h3{font-size:16px;margin:0 0 6px;color:var(--ink);}
+  .choice p{font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5;}
+  .choice .go{display:inline-block;font-size:13px;font-weight:700;color:var(--accent);}
+
+  /* ---- Handover document (editable sections) ---- */
+  .ho-sec{margin:0 0 6px;}
+  .ho-num{color:var(--accent);font-weight:800;margin-right:4px;}
+  .ho-hint{color:var(--muted);font-size:10pt;font-style:italic;margin:0 0 8px;}
+  .ho-list{margin:4px 0 16px;padding-left:20px;}
+  .ho-list li{font-size:11pt;margin:3px 0;}
+  .ho-list.ho-check li{list-style:none;margin-left:-8px;}
+  .ho-mtg{margin:0 0 12px;}
+  .ho-mtg-h{font-weight:700;color:var(--head);font-size:11pt;margin:8px 0 3px;}
+  .ho-mtg .ho-list{margin-top:2px;}
+  .page[contenteditable="true"] .ho-hint{opacity:.85;}
+
   /* ---- Print ---- */
   @media print{
     body{background:#fff;}
@@ -147,12 +178,16 @@
 <div class="bar" id="bar">
   <span class="title" id="barTitle">Zuper Process Doc Generator</span>
   <button id="btnReconnect" style="display:none;">↺ New key</button>
+  <button id="btnAddMtg" style="display:none;">＋ Meeting</button>
+  <button id="btnImport" style="display:none;">⬆ Import JSON</button>
   <button id="btnEdit" disabled>✎ Edit</button>
   <button id="btnJson" disabled>⬇ JSON</button>
   <button id="btnHtml" disabled>⬇ HTML</button>
   <button id="btnPrint" disabled>🖨 Print / PDF</button>
   <button id="btnWord" class="primary" disabled>⬇ Word (.docx)</button>
+  <button id="btnPptx" class="primary" style="display:none;">⬇ PowerPoint (.pptx)</button>
 </div>
+<input type="file" id="importFile" accept=".json,application/json" style="display:none;" />
 <div class="edit-hint" id="editHint">Editing on — click any text to change it. Enter adds a new bullet/paragraph. Click <b>Done</b> when finished, then export.</div>
 
 <!-- ===== Connect card ===== -->
@@ -172,6 +207,28 @@
     <div class="progress" id="fetchProgress">
       <div class="track"><div class="fill" id="progressFill"></div></div>
       <div class="label" id="progressLabel"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Mode chooser (shown after a key connects) ===== -->
+<div class="chooser-wrap" id="chooserWrap" style="display:none;">
+  <div class="chooser-head">
+    <h2>Connected to <span class="acct" id="chooserAcct">the account</span></h2>
+    <p>What would you like to generate?</p>
+  </div>
+  <div class="chooser-grid">
+    <div class="choice" id="choiceProcess" role="button" tabindex="0">
+      <div class="ic">📝</div>
+      <h3>Process Doc</h3>
+      <p>The branded process &amp; configuration document built from this account's job categories, statuses, checklists and CPQ. Editable, then export to Word / PDF / HTML / JSON.</p>
+      <span class="go">Fetch config &amp; build →</span>
+    </div>
+    <div class="choice" id="choiceHandover" role="button" tabindex="0">
+      <div class="ic">🤝</div>
+      <h3>Handover Document</h3>
+      <p>A support-handover checklist (questionnaire) deck. Start from a blank template pre-filled with this account, edit each section inline or import a prepared JSON, then export a branded PowerPoint (.pptx).</p>
+      <span class="go">Build handover template →</span>
     </div>
   </div>
 </div>
@@ -200,7 +257,7 @@ const REGIONS = REGION_KEYS.map((k) => ({ key:k, label:k, base:"https://"+k+".zu
 const CHECKLIST_CONCURRENCY = 3;
 
 const state = {
-  apiKey:null, region:null, company:null,
+  apiKey:null, region:null, company:null, mode:null,
   categories:[], checklists:{}, generatedOn:null,
   formulas:[], formulasByUid:{}, templates:[], cpqError:null,
 };
@@ -248,7 +305,7 @@ async function connect(){
     try{
       const res=await fetch(region.base+"/user/company",{ headers:{ "x-api-key":key } });
       sawHttp=true;
-      if(res.ok){ const json=await res.json(); state.region=region; state.company=extractCompany(json); await fetchConfiguration(); return; }
+      if(res.ok){ const json=await res.json(); state.region=region; state.company=extractCompany(json); showModeChooser(); return; }
     }catch(err){ /* network/CORS for this base — try next */ }
   }
   state.apiKey=null; $("btnConnect").disabled=false;
@@ -730,9 +787,9 @@ function renderDocument(){
 
   /* ---- Reveal document, enable toolbar ---- */
   $("connectWrap").style.display="none";
+  $("chooserWrap").style.display="none";
   $("pageWrap").style.display="block";
-  ["btnEdit","btnJson","btnHtml","btnPrint","btnWord"].forEach(id=>$(id).disabled=false);
-  $("btnReconnect").style.display="inline-block";
+  setToolbar("process");
   $("barTitle").textContent=state.company.name+" — "+state.region.label+" · "+cats.length+" categories, "+totalStatuses+" statuses";
 }
 
@@ -799,6 +856,307 @@ function renderCategory(cat,idx){
 }
 
 /* ============================================================================
+   SECTION 6c — MODE CHOOSER  (after a key connects, pick what to build)
+   ========================================================================== */
+function showModeChooser(){
+  $("btnConnect").disabled=false;
+  $("connectWrap").style.display="none";
+  $("chooserAcct").textContent=(state.company&&state.company.name)||"the account";
+  $("chooserWrap").style.display="block";
+}
+function chooseMode(mode){
+  state.mode=mode;
+  $("chooserWrap").style.display="none";
+  if(mode==="process"){
+    // Re-show the connect card so its status + progress UI is visible while the
+    // (potentially slow) config fetch runs — same feedback as the original flow.
+    $("connectWrap").style.display="block";
+    $("btnConnect").disabled=true;
+    fetchConfiguration();                        // unchanged existing behaviour
+  }else{
+    startHandover();
+  }
+}
+
+/* ============================================================================
+   SECTION 6d — HANDOVER DOCUMENT  (blank template → edit / import → .pptx)
+   --------------------------------------------------------------------------
+   Mirrors the "Support Handover Checklist (Questionnaire)" deck format. Section
+   numbers follow that source template exactly — it intentionally jumps 9 → 12
+   (10 & 11 are reserved/omitted in the master), so we preserve that here.
+   ========================================================================== */
+const HANDOVER_TEMPLATE = [
+  { num:"1",  title:"Customer Overview",              type:"bullets",
+    hint:"Legal entity / DBA, region & live status, industry, customer POCs, Zuper POCs, current health status." },
+  { num:"2",  title:"Environment & Access",           type:"bullets",
+    hint:"Production / beta URLs, add-ons enabled, API docs shared, 10DLC / SMS status, monitoring & alerting." },
+  { num:"3",  title:"Integrations",                   type:"bullets",
+    hint:"Connected systems, known gaps, at-risk integrations, pending / partner-led integrations." },
+  { num:"4",  title:"Automations & Workflows",        type:"bullets",
+    hint:"Key automations, tracking rules, numbering & timesheet conventions, proposed automations." },
+  { num:"5",  title:"Configuration",                  type:"bullets",
+    hint:"Bulk imports, roles & permissions, known config gaps, asset library setup." },
+  { num:"6",  title:"Promises & Commitments",         type:"bullets",
+    hint:"Delivered, pending, in-flight releases, commercial / billing notes." },
+  { num:"7",  title:"Recurring Issues & Known Problems", type:"bullets",
+    hint:"Recurring bugs, compliance risks, sensitive areas." },
+  { num:"8",  title:"Incident & Support History",     type:"bullets",
+    hint:"Escalations, product pushback, support model & cadence, SLA notes." },
+  { num:"9",  title:"Documentation",                  type:"bullets",
+    hint:"Handoff doc, recorded meetings & summaries, API docs shared, KT sessions." },
+  { num:"12", title:"Risks & Dependencies",           type:"bullets",
+    hint:"Churn-sensitive topics, retention decisions, external dependencies, scaling considerations." },
+  { num:"13", title:"Support Readiness & Handover Acceptance", type:"checklist",
+    hint:"Confirm each item before the handover is accepted (☐ → ☑).",
+    items:[
+      "Support team briefed on key flows, configs, and known edge cases?",
+      "Required accesses to tools / environments confirmed?",
+      "Any validation in production permitted by customer, or prior approval required before changes?",
+      "Handover walkthrough completed and support comfortable to take ownership?",
+      "Customer aware of support contacts and handover effective date confirmed?",
+    ] },
+  { num:"F",  title:"Latest Meeting Findings (Fathom)", type:"meetings",
+    hint:"One block per meeting — date, title, and the key points raised. Populate from Fathom summaries or import a prepared JSON." },
+];
+
+// Seeded default data, auto-filling what we know from the connected account.
+function buildHandoverData(){
+  const customer=(state.company&&state.company.name)||"Customer";
+  const region=(state.region&&state.region.label)||"";
+  const prodUrl=state.region?state.region.base.replace(/\/api$/,""):"";
+  const sections={};
+  HANDOVER_TEMPLATE.forEach(t=>{
+    if(t.type==="checklist") sections[t.num]=t.items.map(q=>({q,checked:false}));
+    else if(t.type==="meetings") sections[t.num]=[{header:"", points:[""]}];
+    else if(t.num==="1") sections[t.num]=[customer+" — status: (Live / In onboarding)"];
+    else if(t.num==="2") sections[t.num]=["Production URL: "+prodUrl, "Region / data center: "+region];
+    else sections[t.num]=[""];
+  });
+  return { customer, region, sections };
+}
+
+function hoBulletLis(arr){
+  const items=(Array.isArray(arr)?arr:[]).filter(x=>x!=null);
+  if(!items.length) return "<li></li>";
+  return items.map(b=>"<li>"+esc(b)+"</li>").join("");
+}
+
+function renderHandover(data){
+  const hdoc=$("doc");
+  const dateStr=(state.generatedOn||new Date()).toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
+  let h='<div class="cover">';
+  h+='<p class="brand">'+esc(data.customer||"Customer")+'</p>';
+  h+='<p class="doc-title">Support Handover Checklist (Questionnaire)</p>';
+  h+='<p class="doc-sub">Onboarding → Support handover — account context, commitments, risks &amp; open items</p>';
+  h+='<p class="footer-line">'+esc(data.region||"")+(data.region?'&nbsp;&nbsp;|&nbsp;&nbsp;':'')+'Generated '+esc(dateStr)+'</p>';
+  h+='</div>';
+
+  HANDOVER_TEMPLATE.forEach(t=>{
+    const v=data.sections[t.num];
+    const heading=(t.num==="F"?esc(t.title):'<span class="ho-num">'+esc(t.num)+')</span> '+esc(t.title));
+    h+='<section class="ho-sec" data-num="'+esc(t.num)+'" data-type="'+esc(t.type)+'" data-title="'+esc(t.title)+'">';
+    h+='<h1 class="h">'+heading+'</h1>';
+    if(t.hint) h+='<p class="ho-hint" contenteditable="false">'+esc(t.hint)+'</p>';
+    if(t.type==="meetings"){
+      const arr=Array.isArray(v)?v:[];
+      arr.forEach((m,i)=>{
+        h+='<div class="ho-mtg" data-mtg="'+i+'">';
+        h+='<div class="ho-mtg-h">'+esc(m.header||"")+'</div>';
+        h+='<ul class="ho-list">'+hoBulletLis(m.points)+'</ul></div>';
+      });
+    }else if(t.type==="checklist"){
+      const arr=Array.isArray(v)?v:[];
+      h+='<ul class="ho-list ho-check">'+arr.map(it=>{
+        const q=(it&&typeof it==="object")?(it.q||""):String(it||"");
+        const box=(it&&it.checked)?"☑":"☐";
+        return "<li>"+box+"  "+esc(q)+"</li>";
+      }).join("")+'</ul>';
+    }else{
+      h+='<ul class="ho-list">'+hoBulletLis(v)+'</ul>';
+    }
+    h+='</section>';
+  });
+
+  hdoc.innerHTML=h;
+  $("connectWrap").style.display="none";
+  $("chooserWrap").style.display="none";
+  $("pageWrap").style.display="block";
+  setToolbar("handover");
+  $("barTitle").textContent=(data.customer||"Customer")+" — Support Handover"+(data.region?" · "+data.region:"");
+}
+
+// Scrape the (possibly edited) DOM back into the data model.
+function readHandover(){
+  const hdoc=$("doc");
+  const data={ customer:(state.company&&state.company.name)||"", region:(state.region&&state.region.label)||"", sections:{} };
+  hdoc.querySelectorAll(".ho-sec").forEach(sec=>{
+    const num=sec.getAttribute("data-num");
+    const type=sec.getAttribute("data-type");
+    if(type==="meetings"){
+      const arr=[];
+      sec.querySelectorAll(".ho-mtg").forEach(m=>{
+        const hEl=m.querySelector(".ho-mtg-h");
+        const header=(hEl?hEl.textContent:"").trim();
+        const points=Array.prototype.map.call(m.querySelectorAll("li"),li=>li.textContent.trim()).filter(Boolean);
+        if(header||points.length) arr.push({header, points});
+      });
+      data.sections[num]=arr;
+    }else if(type==="checklist"){
+      data.sections[num]=Array.prototype.map.call(sec.querySelectorAll("li"),li=>{
+        const t=li.textContent.trim();
+        return { q:t.replace(/^[☑☐]\s*/,""), checked:/^☑/.test(t) };
+      });
+    }else{
+      data.sections[num]=Array.prototype.map.call(sec.querySelectorAll("li"),li=>li.textContent.trim()).filter(Boolean);
+    }
+  });
+  return data;
+}
+
+function startHandover(){
+  state.generatedOn=new Date();
+  renderHandover(buildHandoverData());
+}
+
+// Merge an imported JSON payload over the seeded defaults, then re-render.
+function importHandover(obj){
+  const base=buildHandoverData();
+  const src=(obj&&obj.sections)||{};
+  if(obj&&obj.customer) base.customer=obj.customer;
+  if(obj&&obj.region)   base.region=obj.region;
+  HANDOVER_TEMPLATE.forEach(t=>{
+    if(!Object.prototype.hasOwnProperty.call(src,t.num)) return;
+    let v=src[t.num];
+    if(t.type==="meetings"){
+      if(!Array.isArray(v)) return;
+      base.sections[t.num]=v.map(m=>{
+        if(typeof m==="string") return { header:m, points:[] };
+        const header=m.header||[m.date,m.title].filter(Boolean).join(" — ");
+        const points=Array.isArray(m.points)?m.points:(Array.isArray(m.bullets)?m.bullets:[]);
+        return { header, points };
+      });
+    }else if(t.type==="checklist"){
+      if(!Array.isArray(v)) return;
+      base.sections[t.num]=v.map(it=> typeof it==="string"
+        ? { q:it, checked:false }
+        : { q:it.q||it.question||"", checked:!!it.checked });
+    }else{
+      if(Array.isArray(v)) base.sections[t.num]=v.map(x=>String(x));
+      else if(typeof v==="string") base.sections[t.num]=v.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    }
+  });
+  state.generatedOn=state.generatedOn||new Date();
+  renderHandover(base);
+}
+
+function handleImportFile(e){
+  const f=e.target.files&&e.target.files[0];
+  if(!f){ return; }
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ importHandover(JSON.parse(rd.result)); }
+    catch(err){ alert("That file isn't valid handover JSON: "+err.message); } };
+  rd.readAsText(f);
+  e.target.value="";
+}
+
+function exportHandoverJson(){
+  const data=readHandover();
+  const payload={ type:"zuper-handover", version:1, customer:data.customer, region:data.region,
+    generated_on:(state.generatedOn||new Date()).toISOString(), sections:data.sections };
+  download(new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}), safeName()+"-support-handover.json");
+}
+
+// Append a fresh meeting block and drop the caret into its header.
+function addMeeting(){
+  const sec=$("doc").querySelector('.ho-sec[data-type="meetings"]');
+  if(!sec) return;
+  const idx=sec.querySelectorAll(".ho-mtg").length;
+  const div=document.createElement("div");
+  div.className="ho-mtg"; div.setAttribute("data-mtg",idx);
+  div.innerHTML='<div class="ho-mtg-h">Mon DD — Meeting title</div><ul class="ho-list"><li>Key point</li></ul>';
+  sec.appendChild(div);
+  if(!editing) $("btnEdit").click();
+  const hEl=div.querySelector(".ho-mtg-h");
+  try{
+    const r=document.createRange(); r.selectNodeContents(hEl);
+    const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  }catch(e){}
+  hEl.scrollIntoView({block:"center"});
+}
+
+/* ---- PPTX export (Handover) ---- */
+function addSectionSlide(pptx,t,v,c){
+  const s=pptx.addSlide();
+  s.background={ color:"FFFFFF" };
+  s.addShape("rect",{ x:0, y:0, w:13.33, h:1.0, fill:{ color:c.BLUE } });
+  s.addShape("rect",{ x:0, y:1.0, w:13.33, h:0.06, fill:{ color:c.ORANGE } });
+  const heading=(t.num==="F"?t.title:t.num+")  "+t.title);
+  s.addText(heading,{ x:0.55, y:0.12, w:12.2, h:0.76, fontSize:24, bold:true, color:"FFFFFF", valign:"middle" });
+  const body={ x:0.6, y:1.35, w:12.1, h:5.85, valign:"top", color:c.DARK, lineSpacingMultiple:1.12, fit:"shrink" };
+
+  if(t.type==="meetings"){
+    const arr=Array.isArray(v)?v:[];
+    if(!arr.length){ s.addText("No meeting findings captured.",Object.assign({},body,{ italic:true, color:c.MUT, fontSize:14 })); return; }
+    const runs=[];
+    arr.forEach((m,i)=>{
+      runs.push({ text:m.header||"(untitled meeting)", options:{ bold:true, color:c.BLUE, fontSize:14, bullet:false, paraSpaceBefore:i?10:0, paraSpaceAfter:3 } });
+      (m.points||[]).forEach(p=>runs.push({ text:p, options:{ bullet:{ indent:18 }, fontSize:12.5, color:c.DARK } }));
+    });
+    s.addText(runs,Object.assign({},body,{ fontSize:12.5 }));
+    return;
+  }
+  let items;
+  if(t.type==="checklist"){
+    const arr=Array.isArray(v)?v:[];
+    items=arr.map(it=>({ text:(it.checked?"☑   ":"☐   ")+(it.q||""), options:{ bullet:false, paraSpaceAfter:9, fontSize:16 } }));
+  }else{
+    const arr=(Array.isArray(v)?v:[]).filter(Boolean);
+    items=arr.length?arr.map(b=>({ text:b, options:{ bullet:true } })):[{ text:"—", options:{ color:c.MUT, italic:true, bullet:false } }];
+  }
+  const n=items.length;
+  const fs=n>16?11:n>11?12.5:n>7?14:16;
+  s.addText(items,Object.assign({},body,{ fontSize:fs }));
+}
+
+function generateHandoverPptx(){
+  if(typeof PptxGenJS==="undefined"){ alert("PowerPoint library didn't load (offline or blocked). Use Print / PDF, or check your connection and reload."); return; }
+  const data=readHandover();
+  const c={ BLUE:"2E74B5", DARK:"1F2937", ORANGE:"F26722", MUT:"6B7280" };
+  const customer=data.customer||"Customer";
+  const dateStr=(state.generatedOn||new Date()).toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
+  const pptx=new PptxGenJS();
+  pptx.layout="LAYOUT_WIDE";           // 13.33 × 7.5 in (16:9)
+  pptx.author="Zuper"; pptx.company="Zuper";
+
+  const title=pptx.addSlide();
+  title.background={ color:c.BLUE };
+  title.addText(customer,{ x:0.7, y:2.35, w:11.9, h:1.1, fontSize:40, bold:true, color:"FFFFFF" });
+  title.addShape("rect",{ x:0.75, y:3.55, w:2.2, h:0.09, fill:{ color:c.ORANGE } });
+  title.addText("Support Handover Checklist (Questionnaire)",{ x:0.7, y:3.75, w:11.9, h:0.7, fontSize:22, color:"FFFFFF" });
+  title.addText((data.region?data.region+"     |     ":"")+"Generated "+dateStr,{ x:0.7, y:6.7, w:11.9, h:0.4, fontSize:12, color:"DCE6F5" });
+
+  HANDOVER_TEMPLATE.forEach(t=>addSectionSlide(pptx,t,data.sections[t.num],c));
+
+  pptx.writeFile({ fileName: safeName()+"-support-handover.pptx" })
+    .catch(e=>alert("Could not generate the .pptx: "+(e&&e.message||e)));
+}
+
+// Mode-aware toolbar: process shows Word/HTML; handover shows Import/Meeting/PPTX.
+function setToolbar(mode){
+  const disp=(id,on)=>{ $(id).style.display=on?"inline-block":"none"; };
+  $("btnReconnect").style.display="inline-block";
+  ["btnEdit","btnJson","btnPrint"].forEach(id=>$(id).disabled=false);
+  if(mode==="handover"){
+    disp("btnImport",true); disp("btnAddMtg",true); disp("btnPptx",true);
+    disp("btnWord",false); disp("btnHtml",false);
+  }else{
+    disp("btnImport",false); disp("btnAddMtg",false); disp("btnPptx",false);
+    disp("btnWord",true); disp("btnHtml",true);
+    $("btnWord").disabled=false; $("btnHtml").disabled=false;
+  }
+}
+
+/* ============================================================================
    SECTION 7 — EDIT + EXPORTS  (API key never included in any output)
    ========================================================================== */
 const doc=$("doc");
@@ -835,6 +1193,7 @@ function standaloneHtml(){
 $("btnHtml").addEventListener("click",()=>{ download(new Blob([standaloneHtml()],{type:"text/html"}),safeName()+"-process-document.html"); });
 
 $("btnJson").addEventListener("click",()=>{
+  if(state.mode==="handover"){ exportHandoverJson(); return; }
   const payload={ company:state.company?state.company.name:null, region:state.region?state.region.key:null,
     generated_on:state.generatedOn?state.generatedOn.toISOString():null,
     categories:state.categories, checklists:state.checklists,
@@ -876,14 +1235,28 @@ $("btnConnect").addEventListener("click",connect);
 $("apiKey").addEventListener("keydown",(e)=>{ if(e.key==="Enter") connect(); });
 $("toggleEye").addEventListener("click",()=>{ const i=$("apiKey"); i.type=i.type==="password"?"text":"password"; });
 $("btnReconnect").addEventListener("click",()=>{
-  state.apiKey=null; state.region=null; state.company=null; state.categories=[]; state.checklists={}; state.generatedOn=null;
+  state.apiKey=null; state.region=null; state.company=null; state.mode=null;
+  state.categories=[]; state.checklists={}; state.generatedOn=null;
+  state.formulas=[]; state.formulasByUid={}; state.templates=[]; state.cpqError=null;
   if(editing) $("btnEdit").click();
-  $("doc").innerHTML=""; $("pageWrap").style.display="none";
+  $("doc").innerHTML=""; $("pageWrap").style.display="none"; $("chooserWrap").style.display="none";
   $("connectWrap").style.display="block"; $("apiKey").value=""; hideStatus();
   ["btnEdit","btnJson","btnHtml","btnPrint","btnWord"].forEach(id=>$(id).disabled=true);
+  ["btnImport","btnAddMtg","btnPptx"].forEach(id=>$(id).style.display="none");
   $("btnReconnect").style.display="none"; $("btnConnect").disabled=false;
   $("barTitle").textContent="Zuper Process Doc Generator"; $("apiKey").focus();
 });
+
+/* ---- Mode chooser + Handover controls wiring ---- */
+$("choiceProcess").addEventListener("click",()=>chooseMode("process"));
+$("choiceHandover").addEventListener("click",()=>chooseMode("handover"));
+["choiceProcess","choiceHandover"].forEach(id=>$(id).addEventListener("keydown",(e)=>{
+  if(e.key==="Enter"||e.key===" "){ e.preventDefault(); $(id).click(); }
+}));
+$("btnImport").addEventListener("click",()=>$("importFile").click());
+$("importFile").addEventListener("change",handleImportFile);
+$("btnAddMtg").addEventListener("click",addMeeting);
+$("btnPptx").addEventListener("click",generateHandoverPptx);
 </script>
 
 <!-- Shared dashboard back-link (resolves when served from the repo's /tools/ folder) -->

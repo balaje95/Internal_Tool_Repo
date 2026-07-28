@@ -91,10 +91,10 @@ const TOOLS = [
   },
   {
     "name": "Zuper Process Doc Generator",
-    "description": "Generate an editable, branded process document from a Zuper account",
+    "description": "Generate a process doc, or a support-handover deck, from a Zuper account",
     "file": "tools/process-doc-generator.html",
     "icon": "📝",
-    "updated": "2026-07-07",
-    "help": "Connect with a Zuper API key (region auto-detected) and it builds a polished process document from the account's job categories, statuses, and checklists — with a generated lifecycle flow diagram and a required-items checkpoint table. Edit any text inline, then export to Word, PDF, HTML, or raw JSON. The API key is never written into any export."
+    "updated": "2026-07-27",
+    "help": "Connect with a Zuper API key (region auto-detected), then choose what to build. Process Doc: a polished, editable document built from the account's job categories, statuses, checklists and CPQ — with a lifecycle flow diagram and a required-items checkpoint table; export to Word, PDF, HTML or JSON. Handover Document: a Support Handover Checklist (Questionnaire) that starts as a blank template pre-filled with the account name/region, with sections for overview, environment, integrations, automations, config, promises, risks, an acceptance checklist and Fathom meeting findings — edit each section inline, add meeting blocks, or import a prepared JSON (round-trips with JSON export), then export a branded PowerPoint (.pptx). The API key is never written into any export."
   }
 ];
