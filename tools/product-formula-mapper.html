@@ -768,7 +768,13 @@ async function updateProductFormula(product,formulaUid,dry){
   if(!full)full=product;
   const p=JSON.parse(JSON.stringify(full));
   p.formula=formulaUid||null;
-  p.location_availability=[];
+  // Flatten location_availability, don't blank it. Sending an explicit [] here
+  // overwrote the field, so setting or clearing a formula wiped every
+  // per-location stock/quantity row on the product. Mirrors the Product-ID mode.
+  if(Array.isArray(p.location_availability))p.location_availability=p.location_availability.map(loc=>({
+    location:(loc.location&&typeof loc.location==='object')?(loc.location.location_uid||loc.location._id||''):(loc.location||''),
+    min_quantity:loc.min_quantity??'',quantity:loc.quantity??'',serial_nos:loc.serial_nos||[]
+  }));
   if(p.product_category&&typeof p.product_category==='object')p.product_category=p.product_category.category_uid;
   if(dry)return {ok:true,msg:'Dry run — would '+(formulaUid?'set formula':'clear formula')};
   const put=await fetch(_base+'product/'+uid,{method:'PUT',headers:hdrs(),body:JSON.stringify({product:p,vendor:[]})});
@@ -1029,6 +1035,13 @@ function vendorQueuedList(){
     return {product:p,entries};
   }).filter(Boolean);
 }
+// Tolerate imported cost cells like "$12.00" or "1,250" — strip anything that
+// isn't part of a number, then fall back to 0 rather than emitting null.
+function vendorCostNum(v){
+  if(v===''||v==null)return 0;
+  const n=Number(typeof v==='string'?v.replace(/[^0-9.eE+-]/g,''):v);
+  return Number.isFinite(n)?n:0;
+}
 async function updateProductVendors(product,entries,dry){
   const uid=product.product_uid;
   // Skip vendors already linked to this part (mirrors the migration scripts' dedup).
@@ -1046,7 +1059,9 @@ async function updateProductVendors(product,entries,dry){
   const payloadAll=toAdd.map(e=>({
     vendor_uid:e.vendor_uid,
     vendor_sku:String(e.vendor_sku??''),
-    vendor_cost:(e.vendor_cost===''||e.vendor_cost==null)?0:Number(e.vendor_cost),
+    // Number('$12.00') / Number('n/a') is NaN, which JSON.stringify writes as
+    // null — the vendor link was created with no cost and no warning.
+    vendor_cost:vendorCostNum(e.vendor_cost),
     remarks:'',
     product:uid,
     ...(options.length?{options}:{})
@@ -1203,8 +1218,12 @@ async function updateProductColors(product,colors,dry){
     product_type:full.product_type,
     price:full.price,
     purchase_price:full.purchase_price,
-    is_available:full.is_available!==false,
-    track_quantity:full.track_quantity!==false,
+    // Only send these when the fresh product actually carries them. `!==false`
+    // turned a missing key into `true`, so a color merge on a product where
+    // either flag is genuinely false re-enabled it. Omitting the key lets the
+    // PUT's field-by-field merge preserve the existing value.
+    ...('is_available' in full?{is_available:full.is_available}:{}),
+    ...('track_quantity' in full?{track_quantity:full.track_quantity}:{}),
     product_category:cat,
     option:option
   }};
@@ -1347,7 +1366,17 @@ async function updateProductId(product,change,dry){
     cfKeys.forEach(fuid=>{
       const val=change.cf[fuid];
       const ent=arr.find(e=>cfEntryUid(e)===fuid);
-      if(ent){ if(('field_value' in ent)&&!('value' in ent))ent.field_value=val; else ent.value=val; }
+      // Write back to the key the entry actually uses, following the same
+      // precedence cfCurrent reads. field_value_text was missing here, so on
+      // accounts that serialize custom fields that way the write landed in a new
+      // `value` key, the stale field_value_text survived, and the UI still
+      // reported success.
+      if(ent){
+        if('value' in ent)ent.value=val;
+        else if('field_value' in ent)ent.field_value=val;
+        else if('field_value_text' in ent)ent.field_value_text=val;
+        else ent.value=val;
+      }
       else arr.push({field_uid:fuid,value:val});
       changed.push((cfByUid[fuid]?cfByUid[fuid].name:fuid)+'→"'+val+'"');
     });
