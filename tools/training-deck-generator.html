@@ -451,6 +451,10 @@ var state = {
   logoData: null,
   integrations: new Set(),
   enabledChapters: new Set(),
+  // Chapters that have already been offered once. A chapter is default-enabled
+  // only the first time it becomes applicable, so re-running buildChapters (on
+  // every integration toggle) can't undo a box the user deliberately unchecked.
+  seenChapters: new Set(),
   screenshotOverrides: {},
   pendingSlot: null,
 };
@@ -478,6 +482,9 @@ function selectTeam(el) {
   document.querySelectorAll('.team-btn').forEach(function(b) { b.classList.remove('active'); });
   el.classList.add('active');
   state.team = el.dataset.team;
+  // Picking a team starts over, so the new team's chapters all default back on.
+  state.seenChapters.clear();
+  state.enabledChapters.clear();
   document.getElementById('integrationsSection').style.display = 'block';
   buildChapters();
   updatePreview();
@@ -510,7 +517,16 @@ function buildChapters() {
     return true;
   });
 
-  applicable.forEach(function(ch) { state.enabledChapters.add(ch.id); });
+  // First appearance -> on by default (unchanged behaviour for a fresh build).
+  // Already seen -> leave whatever the user chose. This unconditionally re-added
+  // every applicable chapter, so toggling any integration silently re-checked a
+  // chapter the user had removed and it reappeared in the deck.
+  applicable.forEach(function(ch) {
+    if (!state.seenChapters.has(ch.id)) {
+      state.seenChapters.add(ch.id);
+      state.enabledChapters.add(ch.id);
+    }
+  });
 
   list.innerHTML = '';
   applicable.forEach(function(ch) {
@@ -752,7 +768,11 @@ async function fetchFromAPI() {
         if (el) el.classList.add('active');
       }
     });
-    regionSel.value = usedRegion;
+    // Only assign if the resolved DC is actually one of the dropdown's options —
+    // assigning an unknown value is a silent no-op, which left the dropdown showing
+    // one region while the toast named another.
+    var hasRegionOpt = Array.prototype.some.call(regionSel.options, function(o) { return o.value === usedRegion; });
+    if (hasRegionOpt) regionSel.value = usedRegion;
     var loadedName = displayName || loginName || 'Account detected';
     statusEl.textContent = '✓ Loaded: ' + loadedName + (loginName ? ' (' + loginName + ')' : '');
     statusEl.className = 'api-status ok';
@@ -765,11 +785,31 @@ async function fetchFromAPI() {
 }
 
 // ── PPTX Generation ──
+// The overlay is opened and closed here so it comes down even when deck building
+// throws. Previously the "generating" overlay was only removed on the success
+// path: any addImage/addText/writeFile rejection (e.g. an undecodable uploaded
+// screenshot — accept="image/*" is only a hint) left the full-screen overlay up
+// permanently, locking the user out until a reload that lost all their state.
+// The button is disabled for the duration too; it could previously be clicked
+// repeatedly, stacking overlays and downloads.
 async function generateDeck() {
   var overlay = document.getElementById('generatingOverlay');
+  var btn = document.getElementById('generateBtn');
+  overlay.classList.add('open');
+  if (btn) btn.disabled = true;
+  try {
+    await buildDeck();
+  } catch (e) {
+    showToast('✗ Failed to generate: ' + (e && e.message ? e.message : e));
+  } finally {
+    overlay.classList.remove('open');
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function buildDeck() {
   var fill = document.getElementById('genFill');
   var statusText = document.getElementById('genStatusText');
-  overlay.classList.add('open');
 
   // Triumph template palette
   var ACCENT = 'F1633B', TEAL = '49C7FF', LIGHT = 'E5E0DF', BLACK = '000000', WHITE = 'FFFFFF', MGRAY = '9AA0AA';
@@ -889,7 +929,6 @@ async function generateDeck() {
 
   var fileName = 'Zuper_' + customerName.replace(/\s+/g, '_') + '_' + teamLabel.replace(/\s+/g, '_') + '_Training.pptx';
   await pres.writeFile({ fileName: fileName });
-  overlay.classList.remove('open');
   showToast('✓ ' + fileName + ' downloaded!');
 }
 
