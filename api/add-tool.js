@@ -141,20 +141,30 @@ module.exports = async (req, res) => {
     if (trimmedHelp) entry.help = trimmedHelp;
     tools.push(entry);
 
+    // Function replacement: a plain string replacement would expand `$&`, `$$`, "$`" and `$'`
+    // found in any tool's name/description/help/icon, corrupting the config.
     const newConfigText = configText.replace(
       fullMatch,
-      `const TOOLS = ${JSON.stringify(tools, null, 2)};\n`
+      () => `const TOOLS = ${JSON.stringify(tools, null, 2)};\n`
     );
 
-    await githubRequest(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${configPath}`, GITHUB_TOKEN, {
-      method: "PUT",
-      body: JSON.stringify({
-        message: `Register tool in dashboard: ${trimmedName}`,
-        content: Buffer.from(newConfigText, "utf-8").toString("base64"),
-        sha: configFile.sha,
-        branch
-      })
-    });
+    try {
+      await githubRequest(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${configPath}`, GITHUB_TOKEN, {
+        method: "PUT",
+        body: JSON.stringify({
+          message: `Register tool in dashboard: ${trimmedName}`,
+          content: Buffer.from(newConfigText, "utf-8").toString("base64"),
+          sha: configFile.sha,
+          branch
+        })
+      });
+    } catch (cfgErr) {
+      // The HTML file landed but registration failed — surface the orphan so it can
+      // be cleaned up (it also holds the slug, so a retry gets a "-2" suffix).
+      throw new Error(
+        `${cfgErr.message || "Could not update tools.config.js"} — NOTE: "${toolFilePath}" was already committed and is now an unregistered orphan; delete it or re-run to register.`
+      );
+    }
 
     res.status(200).json({ ok: true, file: toolFilePath });
   } catch (err) {

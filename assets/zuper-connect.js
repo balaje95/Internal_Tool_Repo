@@ -17,8 +17,9 @@
   // Returns { dcUrl, baseUrl, accountName } or throws.
   async function resolve(apiKey) {
     var resolved = null;
+    var timedOut = false;
     var controller = new AbortController();
-    var timer = setTimeout(function () { controller.abort(); }, 12000);
+    var timer = setTimeout(function () { timedOut = true; controller.abort(); }, 12000);
     var eps = ['user/company', 'company', 'users/me', 'user/me'];
     try {
       await Promise.any(dcs().map(function (dc) {
@@ -47,6 +48,9 @@
     } finally {
       clearTimeout(timer);
     }
+    // Distinguish "couldn't reach anything" from "key is wrong" — the old code
+    // reported a network timeout as an invalid key.
+    if (!resolved && timedOut) throw new Error('Could not reach any Zuper server (timed out after 12s). Check your network/VPN and try again.');
     if (!resolved) throw new Error('API key not recognised on any known Zuper server. Please check the key and try again.');
     return resolved;
   }

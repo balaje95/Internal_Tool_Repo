@@ -49,9 +49,11 @@
     inner.className = "tile-link";
     if (exists) inner.href = tool.file;
     inner.innerHTML =
-      '<div class="tile-icon">' + (tool.icon || "🔧") + '</div>' +
+      '<div class="tile-icon"></div>' +
       '<h2></h2><p></p>' +
       (exists ? "" : '<span class="tile-badge">Not yet available</span>');
+    // textContent, not innerHTML — icon is admin-supplied free text.
+    inner.querySelector(".tile-icon").textContent = tool.icon || "🔧";
     inner.querySelector("h2").textContent = tool.name || "";
     inner.querySelector("p").textContent = tool.description || "";
     tile.appendChild(inner);

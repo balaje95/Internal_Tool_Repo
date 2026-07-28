@@ -79,7 +79,8 @@ module.exports = async (req, res) => {
     }
 
     const remaining = tools.filter((t) => t.file !== toolFile);
-    const newConfigText = configText.replace(configMatch[0], `const TOOLS = ${JSON.stringify(remaining, null, 2)};\n`);
+    // Function replacement so `$`-sequences in tool text aren't expanded by .replace().
+    const newConfigText = configText.replace(configMatch[0], () => `const TOOLS = ${JSON.stringify(remaining, null, 2)};\n`);
     await githubRequest(`/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${configPath}`, GITHUB_TOKEN, {
       method: "PUT",
       body: JSON.stringify({

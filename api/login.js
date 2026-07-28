@@ -14,6 +14,18 @@ function sign(value, secret) {
   return crypto.createHmac('sha256', secret).update(value).digest('hex');
 }
 
+// Compare via SHA-256 digests so both buffers are always 32 bytes. Comparing
+// `padEnd(64).slice(0,64)` strings directly is unsafe: padEnd/slice count UTF-16
+// code units while Buffer.from() encodes UTF-8, so any multi-byte character
+// (accent, emoji) yields different byte lengths and timingSafeEqual throws —
+// turning every login into a 500. Digesting also removes the 64-char truncation,
+// which previously let a 64-char prefix authenticate.
+function secureEqual(a, b) {
+  const da = crypto.createHash('sha256').update(String(a), 'utf8').digest();
+  const db = crypto.createHash('sha256').update(String(b), 'utf8').digest();
+  return crypto.timingSafeEqual(da, db);
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
@@ -29,9 +41,9 @@ module.exports = async (req, res) => {
   const username = typeof body.username === 'string' ? body.username : '';
   const password = typeof body.password === 'string' ? body.password : '';
 
-  // Constant-time-ish comparison to avoid trivial timing leaks.
-  const uOk = crypto.timingSafeEqual(Buffer.from(username.padEnd(64).slice(0, 64)), Buffer.from(AUTH_USERNAME.padEnd(64).slice(0, 64)));
-  const pOk = crypto.timingSafeEqual(Buffer.from(password.padEnd(64).slice(0, 64)), Buffer.from(AUTH_PASSWORD.padEnd(64).slice(0, 64)));
+  // Constant-time comparison to avoid trivial timing leaks.
+  const uOk = secureEqual(username, AUTH_USERNAME);
+  const pOk = secureEqual(password, AUTH_PASSWORD);
   if (!uOk || !pOk) {
     res.status(401).json({ error: 'Incorrect username or password.' });
     return;
