@@ -324,8 +324,13 @@ async function fetchConfiguration(){
     const json=await apiGet(base,"/jobs/category?populate_statuses=true");
     cats=Array.isArray(json.data)?json.data:(Array.isArray(json)?json:[]);
   }catch(err){
-    showStatus("Failed to fetch job categories ("+esc(err.message)+"). The key connected but may lack job-config permissions.","err");
-    $("btnConnect").disabled=false; return;
+    showStatus("Failed to fetch job categories ("+esc(err.message)+"). The key connected but may lack job-config permissions. Pick <b>Handover</b> below — it doesn't need job config.","err");
+    $("btnConnect").disabled=false;
+    // Bring the mode chooser back. Without this the user was stranded on the connect
+    // card: the Handover option (which needs no job config) was unreachable without
+    // hitting "New key" and re-entering everything.
+    if($("chooserWrap")) $("chooserWrap").style.display="block";
+    return;
   }
   cats=cats.filter(isActive).sort(byDisplayOrder);
   state.categories=cats;
@@ -978,6 +983,10 @@ function renderHandover(data){
   });
 
   hdoc.innerHTML=h;
+  // Remember what was actually rendered. readHandover used to rebuild customer and
+  // region from `state` (the connected account), so an imported or inline-edited
+  // value was silently reverted on every export.
+  state.handoverMeta={ customer:data.customer||"", region:data.region||"" };
   $("connectWrap").style.display="none";
   $("chooserWrap").style.display="none";
   $("pageWrap").style.display="block";
@@ -988,7 +997,16 @@ function renderHandover(data){
 // Scrape the (possibly edited) DOM back into the data model.
 function readHandover(){
   const hdoc=$("doc");
-  const data={ customer:(state.company&&state.company.name)||"", region:(state.region&&state.region.label)||"", sections:{} };
+  const meta=state.handoverMeta||{};
+  // Customer comes from the live (editable) cover so inline edits survive; region
+  // from what was rendered. Both fall back to the connected account.
+  const coverEl=hdoc.querySelector(".cover .brand");
+  const coverName=coverEl?coverEl.textContent.trim():"";
+  const data={
+    customer: coverName || meta.customer || (state.company&&state.company.name) || "",
+    region:   meta.region || (state.region&&state.region.label) || "",
+    sections:{}
+  };
   hdoc.querySelectorAll(".ho-sec").forEach(sec=>{
     const num=sec.getAttribute("data-num");
     const type=sec.getAttribute("data-type");
@@ -1030,18 +1048,23 @@ function importHandover(obj){
     if(t.type==="meetings"){
       if(!Array.isArray(v)) return;
       base.sections[t.num]=v.map(m=>{
-        if(typeof m==="string") return { header:m, points:[] };
+        // typeof null === "object", so a stray null used to fall into the object
+        // branch and throw on .header — rejecting a 99%-valid import outright.
+        if(m==null) return { header:"", points:[] };
+        if(typeof m!=="object") return { header:String(m), points:[] };
         const header=m.header||[m.date,m.title].filter(Boolean).join(" — ");
         const points=Array.isArray(m.points)?m.points:(Array.isArray(m.bullets)?m.bullets:[]);
         return { header, points };
       });
     }else if(t.type==="checklist"){
       if(!Array.isArray(v)) return;
-      base.sections[t.num]=v.map(it=> typeof it==="string"
-        ? { q:it, checked:false }
-        : { q:it.q||it.question||"", checked:!!it.checked });
+      base.sections[t.num]=v.map(it=>{
+        if(it==null) return { q:"", checked:false };
+        if(typeof it!=="object") return { q:String(it), checked:false };
+        return { q:it.q||it.question||"", checked:!!it.checked };
+      });
     }else{
-      if(Array.isArray(v)) base.sections[t.num]=v.map(x=>String(x));
+      if(Array.isArray(v)) base.sections[t.num]=v.filter(x=>x!=null).map(x=>String(x));
       else if(typeof v==="string") base.sections[t.num]=v.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
     }
   });
