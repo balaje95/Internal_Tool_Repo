@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Zuper Data Manager</title>
+<link rel="icon" href="../assets/logos/zuper-favicon.svg">
+<link rel="stylesheet" href="../assets/zuper-brand.css">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <style>
 /* =========================================================
@@ -11,72 +13,75 @@
    Brand: dusty peach (primary), sage (success), rose (danger),
           butter (warning), periwinkle (info), lavender (accent)
    ========================================================= */
+/* Palette maps onto the Zuper DLS tokens in ../assets/zuper-brand.css.
+   The old pastel theme is retired: one orange (#FD5000), semantic status
+   colours, warm neutrals. */
 :root{
   /* Surfaces */
-  --bg:#f7f3ee;
-  --card:#ffffff;
-  --card-shadow:0 1px 2px rgba(58,52,65,.04), 0 4px 18px rgba(58,52,65,.05);
-  --card-radius:14px;
-  --text:#3a3340;
-  --text-sub:#857d8f;
-  --border:#ece4dc;
-  --border-inp:#dfd5cc;
-  --inp-bg:#fbf9f6;
-  --th-bg:#f6f1ec;
-  --tr-hover:#fbf2ed;
-  --row-sel:#f7e2d5;
-  --sec-border:#f3dccf;
-  --lbl:#6a6275;
-  --prog-bg:#ece4dc;
+  --bg:var(--zb-warm);
+  --card:var(--zb-white);
+  --card-shadow:var(--zb-shadow-card);
+  --card-radius:var(--zb-radius-card);
+  --text:var(--zb-ink);
+  --text-sub:var(--zb-text-2);
+  --border:var(--zb-border-card);
+  --border-inp:var(--zb-border-strong);
+  --inp-bg:var(--zb-white);
+  --th-bg:var(--zb-warm);
+  --tr-hover:var(--zb-hover);
+  --row-sel:var(--zb-banner);
+  --sec-border:var(--zb-border);
+  --lbl:var(--zb-text-2);
+  --prog-bg:var(--zb-gray-100);
 
-  /* Pastel brand */
-  --primary:#d97b65;
-  --primary-h:#c66951;
-  --primary-tint:rgba(217,123,101,.10);
-  --primary-soft:#fbeee5;
-  --primary-on:#ffffff;
+  /* Brand */
+  --primary:var(--zb-primary);
+  --primary-h:var(--zb-primary-hover);
+  --primary-tint:rgba(253,80,0,.10);
+  --primary-soft:var(--zb-hover);
+  --primary-on:var(--zb-on-dark);
 
-  /* Pastel status palette */
-  --green:#7fb89c;     --green-d:#4a7a60;
-  --red:#d98a8a;       --red-h:#c47272;   --red-d:#a4585e;
-  --amber:#dfb27a;     --amber-d:#8a6a2a;
-  --orange:#e8a87c;
-  --indigo:#9b95c9;
-  --lavender:#b8a5d4;
-  --neutral:#9c94a5;
+  /* Status palette (semantic, never the brand orange) */
+  --green:var(--zb-success);     --green-d:var(--zb-success);
+  --red:var(--zb-error);         --red-h:#A81C1C;   --red-d:var(--zb-error);
+  --amber:var(--zb-warning);     --amber-d:var(--zb-warning);
+  --orange:var(--zb-primary);
+  --indigo:var(--zb-accent-blue);
+  --lavender:var(--zb-accent-purple);
+  --neutral:var(--zb-gray-400);
 
   /* Header */
-  --hdr-bg:linear-gradient(135deg,#fbeee5 0%,#f3dccf 55%,#ecd0e0 100%);
-  --hdr-text:#5a3a2f;
-  --hdr-sub:#8a6a5f;
-  --hdr-shadow:0 1px 0 rgba(217,123,101,.10), 0 4px 14px rgba(217,123,101,.08);
-  --hdr-chip-bg:rgba(90,58,47,.06);
-  --hdr-chip-border:rgba(90,58,47,.14);
-  --hdr-chip-hover:rgba(90,58,47,.10);
+  --hdr-bg:linear-gradient(135deg,var(--zb-peach) 0%,var(--zb-banner) 100%);
+  --hdr-text:var(--zb-ink);
+  --hdr-sub:var(--zb-text-2);
+  --hdr-shadow:var(--zb-shadow-sm);
+  --hdr-chip-bg:rgba(25,25,25,.06);
+  --hdr-chip-border:rgba(25,25,25,.14);
+  --hdr-chip-hover:rgba(25,25,25,.10);
 
   /* Run-stat tiles */
-  --rs-g-bg:#eaf3ee;  --rs-g-border:#c5dccd;
-  --rs-r-bg:#faecec;  --rs-r-border:#f0c8c8;
+  --rs-g-bg:var(--zb-success-bg);  --rs-g-border:#BFE3CD;
+  --rs-r-bg:var(--zb-error-bg);    --rs-r-border:#F4C6C6;
 
   /* Auth (login) */
-  --auth-bg:linear-gradient(135deg,#fbeee5,#f3dccf 50%,#ecd0e0);
-  --auth-card:#fff;
-  --auth-sub:#857d8f;
-  --otp-border:#dfd5cc;
+  --auth-bg:var(--zb-gradient);
+  --auth-card:var(--zb-white);
+  --auth-sub:var(--zb-text-2);
+  --otp-border:var(--zb-border-strong);
 
   /* Messages */
-  --msg-ok-bg:#eaf3ee;  --msg-ok-b:#c5dccd;  --msg-ok-c:#4a7a60;
-  --msg-err-bg:#faecec; --msg-err-b:#f0c8c8; --msg-err-c:#a4585e;
-  --msg-info-bg:#eef1f8;--msg-info-b:#ccd4e6;--msg-info-c:#5a6a8f;
-  --msg-warn-bg:#faf3e3;--msg-warn-b:#ecddb0;--msg-warn-c:#8a6a2a;
+  --msg-ok-bg:var(--zb-success-bg);  --msg-ok-b:#BFE3CD;  --msg-ok-c:var(--zb-success);
+  --msg-err-bg:var(--zb-error-bg);   --msg-err-b:#F4C6C6; --msg-err-c:var(--zb-error);
+  --msg-info-bg:var(--zb-warm);      --msg-info-b:var(--zb-border); --msg-info-c:var(--zb-text-2);
+  --msg-warn-bg:var(--zb-warning-bg);--msg-warn-b:#EDD9A8;--msg-warn-c:var(--zb-warning);
 
   /* Mode pills */
-  --mode-safe-bg:#eaf3ee; --mode-safe-c:#4a7a60;
-  --mode-live-bg:#faecec; --mode-live-c:#a4585e;
+  --mode-safe-bg:var(--zb-success-bg); --mode-safe-c:var(--zb-success);
+  --mode-live-bg:var(--zb-error-bg);   --mode-live-c:var(--zb-error);
 
   /* Log terminal */
-  --log-bg:#2a2632;
-  --log-text:#ece7f0;
+  --log-bg:var(--zb-charcoal);
+  --log-text:#FAFAFA;
 }
 [data-theme=dark]{
   --bg:#17151e;
@@ -308,7 +313,8 @@ input[type=checkbox]{accent-color:var(--primary)}
 </div>
 
 <div class="hdr">
-  <h1>⚡ Zuper Data Manager</h1>
+  <span class="zb-brandbar"><img src="../assets/logos/zuper-horizontal.svg" alt="Zuper"></span>
+  <h1>Data Manager</h1>
   <!-- 9. Global search -->
   <div style="flex:1;max-width:360px;margin:0 16px">
     <div style="position:relative">
@@ -759,6 +765,11 @@ input[type=checkbox]{accent-color:var(--primary)}
         <option value="30">30 — faster</option>
         <option value="50">50 — max (may hit rate limits)</option>
       </select>
+    </label>
+    <label id="deactivate-only-wrap" style="display:none;align-items:center;gap:7px;font-size:.82rem;font-weight:600">
+      <input type="checkbox" id="deactivate-only" onchange="onDeactivateOnlyChange()">
+      Deactivate only (don't delete)
+      <span class="muted" style="font-weight:400">— sets the records inactive and stops</span>
     </label>
   </div>
   <div class="btn-row" style="margin-bottom:14px">
@@ -2118,10 +2129,37 @@ function doExport(f){
 }
 function dlFile(text,name,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();}
 
-function showDelete(){if(!selUids.size){alert('Select at least one record first.');return;}updSel();$('del-card').style.display='block';$('del-card').scrollIntoView({behavior:'smooth',block:'start'});}
+// The "Deactivate only" switch is meaningful only for modules with a deactivate
+// step (currently properties), so it is hidden everywhere else.
+function onDeactivateOnlyChange(){
+  const on=deactivateOnlyMode();
+  const b=$('run-btn'); if(b) b.textContent=on?'⏻ Start Deactivation':'🗑 Start Deletion';
+  const card=$('del-card'); if(!card) return;
+  const t=card.querySelector('.sec-title');
+  if(t) t.textContent=on?'⏻ Deactivate Selected Records':'🗑 Delete Selected Records';
+}
+function syncDeactivateOnlyVisibility(){
+  const w=$('deactivate-only-wrap'); if(!w) return;
+  const supported=typeof (modCfg()||{}).preDelete==='function';
+  w.style.display=supported?'flex':'none';
+  if(!supported&&$('deactivate-only')) $('deactivate-only').checked=false;
+  onDeactivateOnlyChange();
+}
+function showDelete(){if(!selUids.size){alert('Select at least one record first.');return;}updSel();syncDeactivateOnlyVisibility();$('del-card').style.display='block';$('del-card').scrollIntoView({behavior:'smooth',block:'start'});}
 function hideDelete(){$('del-card').style.display='none';}
 
 function logLine(uid,level,msg){const el=$('log');const d=document.createElement('div');d.className='log-'+level;d.textContent=(level==='ok'?'✓':level==='err'?'✗':'⚠')+' '+uid+' — '+msg;el.appendChild(d);el.scrollTop=el.scrollHeight;logRows.push({uid,status:level==='ok'?'success':level==='warn'?'warning':'failed',message:msg});}
+
+// ── Retry helpers (properties are written one-by-one under concurrency, so a
+// 429 from the delete workers used to fail the whole record on first contact).
+const _pDelay=ms=>new Promise(r=>setTimeout(r,ms));
+const _pRetryable=s=>s===408||s===429||s===500||s===502||s===503||s===504;
+function _pBackoff(res,attempt){
+  const ra=res&&res.headers&&res.headers.get&&res.headers.get('retry-after');
+  const n=ra?parseFloat(ra):NaN;
+  if(!isNaN(n)&&n>0) return Math.min(n*1000,10000);
+  return 500*Math.pow(2,attempt);
+}
 
 // Zuper refuses DELETE on an Active property (400 "The given property is Active").
 // So before deleting a property we deactivate it: read it fresh, set is_active:false,
@@ -2129,15 +2167,31 @@ function logLine(uid,level,msg){const el=$('log');const d=document.createElement
 // Mapper: property_customers must be written as [{customer:"<uid>"}] (nested objects and
 // bare strings are rejected), and server-managed aggregates must be stripped.
 async function deactivatePropertyBeforeDelete(uid, base){
-  let full=null;
-  try{
-    const r=await fetch(base+'property/'+encodeURIComponent(uid),{headers:getHdrs()});
-    if(!r.ok) return {ok:false,msg:'Deactivate skipped — could not read property (HTTP '+r.status+')'};
-    const d=await r.json().catch(()=>({}));
-    full=(d&&(d.data||d.property))||d;
-  }catch(e){ return {ok:false,msg:'Deactivate skipped — network reading property: '+e.message}; }
-  if(!full||typeof full!=='object') return {ok:false,msg:'Deactivate skipped — empty property read'};
-  if(full.is_active===false) return {ok:true,msg:'already inactive'}; // nothing to flip; proceed to delete
+  const url=base+'property/'+encodeURIComponent(uid);
+
+  // ── Read fresh, with retry. An array or wrapper slipping through `typeof
+  // === 'object'` used to produce a garbage write body, so require a record
+  // that actually carries a property uid.
+  let full=null,readErr='';
+  for(let attempt=0;attempt<3;attempt++){
+    if(attempt) await _pDelay(500*Math.pow(2,attempt-1));
+    let r=null;
+    try{
+      r=await fetch(url,{headers:getHdrs()});
+      if(!r.ok){
+        readErr='HTTP '+r.status;
+        if(_pRetryable(r.status)){ await _pDelay(_pBackoff(r,attempt)); continue; }
+        break;
+      }
+      const d=await r.json().catch(()=>({}));
+      const cand=(d&&(d.data||d.property))||d;
+      if(cand&&typeof cand==='object'&&!Array.isArray(cand)&&(cand.property_uid||cand.uid)){ full=cand; break; }
+      readErr='unexpected response shape';
+      break;
+    }catch(e){ readErr=(e&&e.message)||'network error'; }
+  }
+  if(!full) return {ok:false,msg:'Deactivate skipped — could not read property ('+readErr+')'};
+  if(full.is_active===false) return {ok:true,deactivated:true,msg:'already inactive'};
 
   const p=JSON.parse(JSON.stringify(full));
   // Strip server-managed / read-only aggregates a PUT rejects or shouldn't echo back.
@@ -2153,12 +2207,44 @@ async function deactivatePropertyBeforeDelete(uid, base){
     }).filter(Boolean).map(cu=>({customer:cu}));
   p.is_active=false;
 
+  // ── Write, with retry.
+  let put=null,netErr='';
+  for(let attempt=0;attempt<3;attempt++){
+    if(attempt) await _pDelay(500*Math.pow(2,attempt-1));
+    try{
+      put=await fetch(url,{method:'PUT',headers:hdrs(),body:JSON.stringify({property:p})});
+    }catch(e){ netErr=(e&&e.message)||'network error'; put=null; continue; }
+    if(_pRetryable(put.status)&&attempt<2){ await _pDelay(_pBackoff(put,attempt)); continue; }
+    break;
+  }
+  if(!put) return {ok:false,msg:'Deactivate failed — network: '+netErr};
+
+  const jd=await put.json().catch(()=>({}));
+  const explicitFail=!!(jd&&(jd.type==='error'||jd.success===false));
+  // Accept a 2xx with an empty or differently-shaped body. Demanding an explicit
+  // type/success field reported writes that HAD gone through as failures, which
+  // aborted the delete for every property. Same fix as the Customer↔Property Mapper.
+  if((jd&&(jd.type==='success'||jd.success===true))||(put.ok&&!explicitFail))
+    return {ok:true,deactivated:true,msg:'deactivated'};
+
+  // Ambiguous or failed: re-read once and believe the record, not the response body.
   try{
-    const put=await fetch(base+'property/'+encodeURIComponent(uid),{method:'PUT',headers:hdrs(),body:JSON.stringify({property:p})});
-    const jd=await put.json().catch(()=>({}));
-    if(jd&&(jd.type==='success'||jd.success===true)) return {ok:true,msg:'deactivated'};
-    return {ok:false,msg:'Deactivate failed — '+((jd&&jd.message)||('HTTP '+put.status))};
-  }catch(e){ return {ok:false,msg:'Deactivate failed — network: '+e.message}; }
+    const v=await fetch(url,{headers:getHdrs()});
+    if(v.ok){
+      const vd=await v.json().catch(()=>({}));
+      const vr=(vd&&(vd.data||vd.property))||vd;
+      if(vr&&typeof vr==='object'&&!Array.isArray(vr)&&vr.is_active===false)
+        return {ok:true,deactivated:true,msg:'deactivated (confirmed by re-read)'};
+    }
+  }catch(e){}
+  return {ok:false,msg:'Deactivate failed — '+((jd&&jd.message)||('HTTP '+put.status))};
+}
+
+// True when the user ticked "Deactivate only" and the current module actually
+// has a deactivate step to run.
+function deactivateOnlyMode(){
+  const cb=$('deactivate-only');
+  return !!(cb&&cb.checked&&typeof (modCfg()||{}).preDelete==='function');
 }
 
 async function hitOne(uid,dry){
@@ -2173,16 +2259,29 @@ async function hitOne(uid,dry){
     return{ok:true,msg:'200 would delete (simulated)'};
   }
   try{
+    // "Deactivate only" — flip the record inactive and stop. Used when a hard
+    // delete is blocked server-side and taking the records out of circulation
+    // is the useful outcome.
+    if(deactivateOnlyMode()){
+      if(dry) return {ok:true,msg:'would deactivate (no delete)'};
+      const pre=await cfg.preDelete(uid,useBase);
+      return (pre&&pre.ok)?{ok:true,msg:pre.msg||'deactivated',deactivated:true}:pre;
+    }
     // Pre-delete step for modules that need one (e.g. properties must be deactivated first).
     // Real deletes only — a dry run must never write.
+    let didDeactivate=false;
     if(!dry&&typeof cfg.preDelete==='function'){
       const pre=await cfg.preDelete(uid,useBase);
       if(pre&&pre.ok===false) return pre;
+      didDeactivate=!!(pre&&pre.deactivated);
     }
     const res=await fetch(url,{method:dry?'GET':'DELETE',headers:dry?getHdrs():hdrs()});
     if(res.ok)return{ok:true,msg:res.status+' '+(dry?'found':'deleted')};
     let d='';try{const b=await res.json();d=b.message||b.error||JSON.stringify(b).slice(0,80);}catch{d=await res.text().then(t=>t.slice(0,80)).catch(()=>'');}
-    return{ok:false,msg:res.status+' '+d+'\nURL: '+url};
+    // The deactivation already succeeded, so say so — otherwise a delete failure
+    // reads as "nothing happened" when the record is in fact now inactive.
+    const note=didDeactivate?' (record IS now inactive — deactivation succeeded, only the delete failed)':'';
+    return{ok:false,msg:res.status+' '+d+note+'\nURL: '+url};
   }catch(e){return{ok:false,msg:'Network: '+e.message+'\nURL: '+url};}
 }
 async function waitUnpause(){while(paused&&!cancelled)await new Promise(r=>setTimeout(r,200));}
@@ -2191,7 +2290,8 @@ async function runEngine(uids,dry){
   logRows=[];$('log').innerHTML='';$('log').style.display='block';$('log-actions').style.display='none';
   $('prog-wrap').style.display='block';$('prog-bar').style.width='0%';$('prog-lbl').textContent='Starting…';
   $('run-stats').style.display='flex';$('rs-total').textContent=uids.length;$('rs-ok').textContent='0';$('rs-fail').textContent='0';
-  $('rs-ok-lbl').textContent=dry?'Found':'Deleted';$('rs-fail-lbl').textContent=dry?'Not Found':'Failed';
+  const deactOnly=deactivateOnlyMode();
+  $('rs-ok-lbl').textContent=dry?'Found':(deactOnly?'Deactivated':'Deleted');$('rs-fail-lbl').textContent=dry?'Not Found':'Failed';
   $('run-btn').disabled=true;$('proceed-btn').style.display='none';$('retry-btn').style.display='none';
   $('pause-btn').style.display='inline-flex';$('pause-btn').textContent='⏸ Pause';$('cancel-btn').style.display='inline-flex';
   running=true;paused=false;cancelled=false;
@@ -2211,8 +2311,13 @@ async function runEngine(uids,dry){
   await Promise.all(Array.from({length:Math.min(conc,uids.length)},worker));
   running=false;$('run-btn').disabled=false;$('pause-btn').style.display='none';$('cancel-btn').style.display='none';$('log-actions').style.display='block';
   $('prog-lbl').textContent=cancelled?'⚠ Cancelled at '+done+'/'+uids.length+' — '+ok+' OK, '+fail+' failed':'✓ Complete — '+ok+' OK, '+fail+' failed';
-  if(dry&&okUids.length&&!cancelled){dryCtx={uids:okUids};$('proceed-btn').textContent='→ DELETE '+okUids.length+' found record(s) — REAL DELETE';$('proceed-btn').style.display='inline-flex';}
-  if(!dry){const deleted=new Set(okUids);const deletedRecs=allRecs.filter(r=>deleted.has(String(r[uidField]||'')));allRecs=allRecs.filter(r=>!deleted.has(String(r[uidField]||'')));filtRecs=[...allRecs];deleted.forEach(u=>selUids.delete(u));$('s-total').textContent=allRecs.length;updSel();renderTable();
+  if(dry&&okUids.length&&!cancelled){dryCtx={uids:okUids,mod:modKey()};$('proceed-btn').textContent=deactOnly?('→ DEACTIVATE '+okUids.length+' record(s)'):('→ DELETE '+okUids.length+' found record(s) — REAL DELETE');$('proceed-btn').style.display='inline-flex';}
+  // Deactivation leaves the records in place, so none of the delete bookkeeping
+  // (row removal, undo buffer, delete history) applies to it.
+  if(!dry&&deactOnly){
+    if(ok>0&&!cancelled){const d=document.createElement('div');d.style='margin-top:10px';d.innerHTML='<button class="btn btn-o" onclick="doFetch();hideDelete()">🔄 Re-fetch Records</button>';$('log').appendChild(d);}
+  }
+  if(!dry&&!deactOnly){const deleted=new Set(okUids);const deletedRecs=allRecs.filter(r=>deleted.has(String(r[uidField]||'')));allRecs=allRecs.filter(r=>!deleted.has(String(r[uidField]||'')));filtRecs=[...allRecs];deleted.forEach(u=>selUids.delete(u));$('s-total').textContent=allRecs.length;updSel();renderTable();
     // 8. Start undo buffer + persist to the 10-day Delete History (all modules,
     // even ones without a short-window undo, and even on cancel for what got deleted).
     if(ok>0&&!cancelled) startUndoBuffer(deletedRecs,cfg||{});
@@ -2220,7 +2325,7 @@ async function runEngine(uids,dry){
     if(ok>0&&!cancelled){const d=document.createElement('div');d.style='margin-top:10px';d.innerHTML='<button class="btn btn-o" onclick="doFetch();hideDelete()">🔄 Re-fetch Records</button>';$('log').appendChild(d);}
   }
   if(failUids_.length&&!cancelled){failUids=[...failUids_];$('retry-btn').textContent='↩ Retry '+failUids.length+' failed';$('retry-btn').style.display='inline-flex';}
-  slackAudit({mode:dry?'dry-run':'delete',total:uids.length,ok,fail,cancelled});
+  slackAudit({mode:dry?'dry-run':(deactOnly?'deactivate':'delete'),total:uids.length,ok,fail,cancelled});
 }
 
 async function startRun(){
@@ -2232,13 +2337,25 @@ async function startRun(){
     const warn=cfg.deleteWarning(selRecs);
     if(warn&&!confirm('⚠ Warning\n\n'+warn+'\n\nProceed with deletion?')) return;
   }
-  const action=dry?'DRY RUN CHECK':'⚠ PERMANENTLY DELETE';
-  const note=dry?'\n\nDry run — nothing will be deleted.':'\n\n⚠ THIS CANNOT BE UNDONE.';
+  const deactOnly=deactivateOnlyMode();
+  const action=dry?'DRY RUN CHECK':(deactOnly?'⏻ DEACTIVATE':'⚠ PERMANENTLY DELETE');
+  const note=dry?'\n\nDry run — nothing will be changed.'
+    :(deactOnly?'\n\nRecords stay in the account and can be re-activated later.'
+               :'\n\n⚠ THIS CANNOT BE UNDONE.');
   const preview=uids.slice(0,5).join('\n')+(uids.length>5?'\n…+'+( uids.length-5)+' more':'');
   if(!confirm(action+' '+uids.length+' '+cfg.label+' record(s) on '+$('s-account').textContent+'?\n\nFirst UIDs:\n'+preview+note))return;
   await runEngine(uids,dry);
 }
-async function proceedReal(){if(!dryCtx)return;const{uids}=dryCtx;dryCtx=null;const preview=uids.slice(0,5).join('\n')+(uids.length>5?'\n…+'+( uids.length-5)+' more':'');if(!confirm('⚠ PERMANENTLY DELETE '+uids.length+' record(s) on '+$('s-account').textContent+'?\n\n'+preview+'\n\nThis CANNOT be undone.'))return;await runEngine(uids,false);}
+async function proceedReal(){if(!dryCtx)return;
+  // Second line of defence behind onModuleChange's reset: never delete UIDs that were
+  // dry-run against a different module.
+  if(dryCtx.mod&&dryCtx.mod!==modKey()){dryCtx=null;hideDelete();alert('The module changed since that dry run — it has been cancelled. Re-run the dry run on the current module.');return;}
+  const{uids}=dryCtx;dryCtx=null;const preview=uids.slice(0,5).join('\n')+(uids.length>5?'\n…+'+( uids.length-5)+' more':'');
+  const dOnly=deactivateOnlyMode();
+  const q=dOnly
+    ?('⏻ DEACTIVATE '+uids.length+' record(s) on '+$('s-account').textContent+'?\n\n'+preview+'\n\nRecords stay in the account and can be re-activated later.')
+    :('⚠ PERMANENTLY DELETE '+uids.length+' record(s) on '+$('s-account').textContent+'?\n\n'+preview+'\n\nThis CANNOT be undone.');
+  if(!confirm(q))return;await runEngine(uids,false);}
 async function retryFailed(){if(!failUids.length)return;if(!confirm('Retry '+failUids.length+' failed record(s)?'))return;const uids=[...failUids];failUids=[];await runEngine(uids,$('dryrun').checked);}
 function togglePause(){if(!running)return;paused=!paused;$('pause-btn').textContent=paused?'▶ Resume':'⏸ Pause';}
 function cancelRun(){if(!running)return;if(confirm('Cancel? Progress so far will be in the log.')){cancelled=true;paused=false;}}
@@ -7186,6 +7303,16 @@ async function roofApplyTokens(dry){
 }
 
 // ── STAGE 2: formulas (with confirmed variable→token mapping) ────────────────
+// expression_map key for slot `slot` at position `i`.
+// In the named branch roofSlots REWRITES the expression to $1..$N in order, so the
+// positional key is correct. In the explicit-$N branch the expression text is left
+// untouched, so the key must be the placeholder itself: an expression like "$2 * $5"
+// gives order ['$2','$5'], and keying positionally produced $1/$2 — the tokens the
+// user mapped were wired to variables the expression never mentions, and $5 had no
+// entry at all. Silently wrong quantities in the destination account.
+function roofMapKey(slot,i,named){
+  return (named===false && /^\$\d+$/.test(slot)) ? slot : ('$'+(i+1));
+}
 function roofSlots(expr){
   const ph=[...String(expr).matchAll(/\$(\d+)/g)].map(m=>'$'+m[1]);
   if(ph.length){const uniq=[...new Set(ph)].sort((a,b)=>parseInt(a.slice(1))-parseInt(b.slice(1)));return {order:uniq,expr:String(expr),named:false};}
@@ -7204,7 +7331,7 @@ async function roofBuildFormulaMapping(){
     let pre={};if(f.exprMap){try{const arr=JSON.parse(f.exprMap);if(Array.isArray(arr))arr.forEach(e=>{if(e&&e.key)pre[e.key]=e;});}catch(e){}}
     const map={_order:slots.order,_expr:slots.expr,named:slots.named,slots:{}};
     slots.order.forEach((slot,i)=>{
-      const key='$'+(i+1);
+      const key=roofMapKey(slot,i,slots.named);
       if(pre[key]){map.slots[slot]={type:pre[key].type||'MEASUREMENT',token_uid:pre[key].measurement_token_uid||'',category_uid:pre[key].measurement_category_uid||'',value:pre[key].value!=null?pre[key].value:1};}
       else{const hit=slots.named?roofSuggestToken(slot):null;map.slots[slot]=hit?{type:'MEASUREMENT',token_uid:hit.token_uid,category_uid:hit.category_uid,value:1}:{type:'CONSTANT',token_uid:'',category_uid:'',value:1};}
     });
@@ -7243,7 +7370,7 @@ async function roofApplyFormulas(dry){
     done++;roofProg((done/total*100).toFixed(0),done+'/'+total+' formulas');
     if(existing.has(roofNorm(f.key))){skip++;_roof.results.push({stage:'formula',name:f.key,status:'skipped (exists)'});continue;}
     const map=_roof.formulaMapping[f.key]||{_order:[],_expr:f.expression,slots:{}};
-    const emap=map._order.map((slot,i)=>{const s=map.slots[slot];const key='$'+(i+1);return s.type==='MEASUREMENT'?{key,type:'MEASUREMENT',measurement_token_uid:s.token_uid,measurement_category_uid:s.category_uid}:{key,type:'CONSTANT',value:s.value==null?1:s.value};});
+    const emap=map._order.map((slot,i)=>{const s=map.slots[slot];const key=roofMapKey(slot,i,map.named);return s.type==='MEASUREMENT'?{key,type:'MEASUREMENT',measurement_token_uid:s.token_uid,measurement_category_uid:s.category_uid}:{key,type:'CONSTANT',value:s.value==null?1:s.value};});
     const unmapped=emap.filter(e=>e.type==='MEASUREMENT'&&!e.measurement_token_uid).length;
     if(unmapped){roofLog('⚠ '+f.name+': '+unmapped+' placeholder(s) set to Measurement but no token chosen','warn');}
     const payload={formula:{formula_name:f.name,formula_key:f.key,formula_category:f.category,formula_description:f.description||'',formula:{expression:map._expr||f.expression,expression_map:emap,rounding_mechanism:f.rounding||'NEXT_WHOLE_NUMBER'}}};
@@ -8442,6 +8569,20 @@ function onModuleChange(){
   $('s-module').textContent=cfg?cfg.label:modKey();
   allRecs=[];filtRecs=[];selUids=new Set();uidField=null;currentPage=1;
   sortCol=null;sortDir=1;_selectAllMode=false;hideSellAllBanner();
+  // Drop every pending dry-run context and hide the cards that expose their
+  // "proceed for real" buttons. These used to survive a module switch: after
+  // dry-running a delete of 50 Jobs the "→ DELETE 50 found record(s)" button stayed
+  // visible, and clicking it after switching to Customers issued
+  // DELETE customers/{job_uid} for each of the old UIDs against the new endpoint.
+  // Mostly 404s, but the confirmation named the wrong module and a UID collision on
+  // a permissive endpoint would delete the wrong record.
+  dryCtx=null;migDryCtx=null;_updDryCtx=null;_ttDryCtx=null;_ttiDryCtx=null;
+  // "Deactivate only" is module-scoped; re-evaluate it for the new module so it
+  // can't stay ticked (and mislabel the run button) on a module that has no
+  // deactivate step.
+  syncDeactivateOnlyVisibility();
+  if(typeof hideDelete==='function') hideDelete();
+  const proceedBtn=$('proceed-btn');if(proceedBtn) proceedBtn.style.display='none';
   _statusCatMapping={}; // reset job status category mapping on module switch
   _formulaUidMap={};    // reset formula mapping on module switch
   // Clear search
