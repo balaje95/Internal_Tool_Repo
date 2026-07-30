@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Zuper Process Doc Generator</title>
+<link rel="icon" href="../assets/logos/zuper-favicon.svg">
+<link rel="stylesheet" href="../assets/zuper-brand.css">
 
 <!-- ==========================================================================
      Zuper Process / Configuration Document Generator
@@ -28,10 +30,11 @@
 
 <style id="docStyle">
   /* ---- Palette (matches the Roof & Nail sample document) ---- */
+  /* Palette maps onto the Zuper DLS tokens in ../assets/zuper-brand.css */
   :root{
-    --ink:#1f2937; --muted:#6b7280; --head:#2e74b5; --accent:#1d4ed8;
-    --note:#b91c1c; --line:#d5dbe3; --paper:#ffffff; --bg:#eef1f5;
-    --good:#1f9d55; --bad:#d64545;
+    --ink:var(--zb-ink); --muted:var(--zb-text-2); --head:var(--zb-primary); --accent:var(--zb-primary-hover);
+    --note:var(--zb-red-deep); --line:var(--zb-border); --paper:var(--zb-white); --bg:var(--zb-warm);
+    --good:var(--zb-success); --bad:var(--zb-error);
     --font:Calibri,Carlito,"Segoe UI",Candara,Optima,-apple-system,BlinkMacSystemFont,sans-serif;
   }
   *{box-sizing:border-box;}
@@ -121,11 +124,11 @@
   /* ---- Tables ---- */
   table{width:100%;border-collapse:collapse;font-size:10.5pt;margin:6px 0 14px;}
   th,td{border:1px solid #b9c2cc;padding:8px 10px;text-align:left;vertical-align:top;}
-  thead th{background:#2e74b5;color:#fff;font-weight:700;}
+  thead th{background:#282828;color:#fff;font-weight:700;}
   tbody tr:nth-child(even){background:#f6f9fc;}
   .checklist-wrap{margin:2px 0 16px 14px;border-left:3px solid #e6eefc;padding-left:14px;}
   .checklist-wrap .cl-title{font-size:10.5pt;font-weight:700;color:var(--muted);margin:8px 0 5px;}
-  .checklist-wrap thead th{background:#5a6b7d;}
+  .checklist-wrap thead th{background:#4B5563;}
   .cl-empty{font-size:10.5pt;color:var(--muted);font-style:italic;margin:4px 0 12px 14px;}
   .type-pill{display:inline-block;font-size:9pt;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;}
   .req-list{margin:0;padding-left:16px;} .req-list li{margin:1px 0;font-size:10pt;}
@@ -176,7 +179,8 @@
 
 <!-- ===== App toolbar ===== -->
 <div class="bar" id="bar">
-  <span class="title" id="barTitle">Zuper Process Doc Generator</span>
+  <img class="zb-logo" src="../assets/logos/zuper-horizontal.svg" alt="Zuper" style="height:22px">
+  <span class="title" id="barTitle">Process Doc Generator</span>
   <button id="btnReconnect" style="display:none;">↺ New key</button>
   <button id="btnAddMtg" style="display:none;">＋ Meeting</button>
   <button id="btnImport" style="display:none;">⬆ Import JSON</button>
@@ -805,7 +809,7 @@ function renderFlowDiagram(cats){
   if(!cats.length) return "";
   const parts=[];
   cats.forEach((cat,i)=>{
-    const color=cat.category_color||"#5a6b7d";
+    const color=cat.category_color||"#4B5563";
     parts.push('<div class="node" style="background:'+esc(color)+';">'+esc(cat.category_name||"—")+'</div>');
     if(i<cats.length-1) parts.push('<div class="arrow">→</div>');
   });
@@ -815,7 +819,7 @@ function renderFlowDiagram(cats){
 }
 
 function renderCategory(cat,idx){
-  const color=cat.category_color||"#5a6b7d";
+  const color=cat.category_color||"#4B5563";
   const statuses=orderStatuses(cat.job_statuses||[]);
   let h='<h1 class="h"><span class="swatch" style="background:'+esc(color)+';"></span>'+esc(cat.category_name||"Untitled Category")+'</h1>';
 
@@ -1234,17 +1238,17 @@ $("btnWord").addEventListener("click",()=>{
     body{font-family:Calibri,Arial,sans-serif;color:#1f2937;font-size:11pt;}
     .cover{text-align:center;margin-bottom:18pt;}
     .cover .brand{font-weight:bold;font-size:28pt;color:#1f2937;margin:0 0 4pt;}
-    .cover .doc-title{font-size:16pt;color:#1d4ed8;margin:0 0 3pt;}
+    .cover .doc-title{font-size:16pt;color:#FD5000;margin:0 0 3pt;}
     .cover .doc-sub{font-size:12pt;color:#6b7280;margin:0 0 10pt;}
     .cover .cover-logo{max-height:60px;} .cover .footer-line{font-size:10.5pt;color:#6b7280;}
     .summary .stat{display:inline-block;border:1px solid #d5dbe3;padding:6pt 12pt;margin-right:8pt;}
-    .summary .stat .v{font-size:16pt;font-weight:bold;color:#2e74b5;} .summary .stat .l{font-size:8pt;color:#6b7280;}
-    h1.h{color:#2e74b5;font-size:16pt;font-weight:bold;margin:16pt 0 5pt;}
-    h2.h{color:#2e74b5;font-size:13pt;font-weight:bold;margin:11pt 0 4pt;}
+    .summary .stat .v{font-size:16pt;font-weight:bold;color:#FD5000;} .summary .stat .l{font-size:8pt;color:#6b7280;}
+    h1.h{color:#FD5000;font-size:16pt;font-weight:bold;margin:16pt 0 5pt;}
+    h2.h{color:#FD5000;font-size:13pt;font-weight:bold;margin:11pt 0 4pt;}
     p{font-size:11pt;margin:0 0 8pt;} .note{color:#b91c1c;font-size:11pt;} .muted-line{color:#6b7280;font-size:9.5pt;font-style:italic;}
     .cl-title{font-size:10.5pt;font-weight:bold;color:#6b7280;margin:6pt 0 3pt;} .cl-empty{color:#6b7280;font-style:italic;font-size:10.5pt;}
     table{width:100%;border-collapse:collapse;font-size:10pt;} th,td{border:1px solid #b9c2cc;padding:5pt 7pt;text-align:left;vertical-align:top;}
-    thead th{background:#2e74b5;color:#fff;} .checklist-wrap thead th{background:#5a6b7d;}
+    thead th{background:#282828;color:#fff;} .checklist-wrap thead th{background:#4B5563;}
     .type-pill{font-weight:bold;font-size:9pt;} .req-list{margin:0;padding-left:14pt;}
   `;
   const full="<!DOCTYPE html><html><head><meta charset='utf-8'><style>"+wordCss+"</style></head><body>"+clone.innerHTML+"</body></html>";

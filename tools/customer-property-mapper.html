@@ -4,23 +4,29 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zuper Customer ↔ Property Mapper</title>
+<link rel="icon" href="../assets/logos/zuper-favicon.svg">
+<link rel="stylesheet" href="../assets/zuper-brand.css">
 <script>try{if(localStorage.getItem('zuper_tools_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 <style>
   /* Light is the default theme; dark is opt-in via [data-theme="dark"]. */
+  /* Palette maps onto the Zuper DLS tokens in ../assets/zuper-brand.css */
   :root{
-    --bg:#eef1f7; --panel:#ffffff; --panel2:#f3f6fc; --line:#dbe2ee; --line2:#c4cede;
-    --txt:#1b2436; --muted:#5f6b84; --accent:#2f6fe6; --accent2:#2257c2;
-    --ok:#1f9d57; --okbg:#e4f7ec; --err:#d13b3b; --errbg:#fdebeb; --warn:#a9781a; --warnbg:#fbf1dc;
-    --chip:#e7eefb; --code:#f6f8fc; --headbg:linear-gradient(180deg,#ffffff,#f4f7fd); --rowhover:#eaf0fb;
+    --bg:var(--zb-warm); --panel:var(--zb-white); --panel2:var(--zb-peach);
+    --line:var(--zb-border); --line2:var(--zb-border-strong);
+    --txt:var(--zb-ink); --muted:var(--zb-text-2); --accent:var(--zb-primary); --accent2:var(--zb-primary-hover);
+    --ok:var(--zb-success); --okbg:var(--zb-success-bg); --err:var(--zb-error); --errbg:var(--zb-error-bg);
+    --warn:var(--zb-warning); --warnbg:var(--zb-warning-bg);
+    --chip:var(--zb-banner); --code:var(--zb-gray-50);
+    --headbg:linear-gradient(180deg,var(--zb-white),var(--zb-warm)); --rowhover:var(--zb-hover);
   }
   :root[data-theme="dark"]{
-    --bg:#0f1420; --panel:#171e2e; --panel2:#1e2740; --line:#2a3450; --line2:#374363;
-    --txt:#e6ebf5; --muted:#8f9bb5; --accent:#4f8cff; --accent2:#3a6fe0;
-    --ok:#37c978; --okbg:#123324; --err:#ff6b6b; --errbg:#3a1a1e; --warn:#f0b32a; --warnbg:#3a2f12;
-    --chip:#233052; --code:#0b0f18; --headbg:linear-gradient(180deg,#141b2b,#0f1420); --rowhover:#1b2338;
+    --bg:#09090B; --panel:#141417; --panel2:#1C1C21; --line:#27272A; --line2:#3F3F46;
+    --txt:#FAFAFA; --muted:#A1A1AA; --accent:#FF8B5A; --accent2:#F2864F;
+    --ok:#4ADE80; --okbg:#0F2A1B; --err:#F87171; --errbg:#3A1A1E; --warn:#FBBF24; --warnbg:#3A2F12;
+    --chip:#27272A; --code:#09090B; --headbg:linear-gradient(180deg,#141417,#09090B); --rowhover:#1C1C21;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
+  body{margin:0;font-family:var(--zb-font-body);background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
   a{color:var(--accent)}
   header{padding:18px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;background:var(--headbg)}
   .theme-btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:.8rem;font-weight:600;cursor:pointer}
@@ -87,7 +93,8 @@
 </head>
 <body>
 <header>
-  <h1>🏠 Zuper Customer ↔ Property Mapper</h1>
+  <img class="zb-logo" src="../assets/logos/zuper-horizontal.svg" alt="Zuper">
+  <h1>Customer ↔ Property Mapper</h1>
   <span class="sub">Fetch properties &amp; customers, then bulk-<b>map customers to each property</b></span>
   <span class="head-spacer"></span>
   <span id="badge"></span>

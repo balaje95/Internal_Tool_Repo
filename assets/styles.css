@@ -1,29 +1,37 @@
+/* Palette is defined in assets/zuper-brand.css (Zuper DLS tokens).
+   The legacy variable names below are kept so existing rules keep
+   working, but they now resolve to the brand tokens. */
 :root {
-  --orange: #E8500A;
-  --purple: #5B2D8E;
-  --navy: #1a1a2e;
-  --navy-light: #23233f;
-  --text-light: #f4f4f8;
-  --text-muted: #a0a0b8;
-  --card-bg: #ffffff;
-  --page-bg: #f4f5f9;
-  --tile-title: var(--navy);
-  --tile-desc: #5a5a6e;
-  --border-soft: rgba(26, 26, 46, 0.06);
-  --input-bg: #ffffff;
-  --input-border: #d7d7e0;
-  --text-body: #222;
+  --orange: var(--zb-primary);
+  --orange-hover: var(--zb-primary-hover);
+  --purple: var(--zb-red-deep);   /* the DLS has no brand purple */
+  --navy: var(--zb-charcoal);
+  --navy-light: #3a3a3a;
+  --text-light: #ffffff;
+  --text-muted: rgba(255, 255, 255, 0.72);
+  --card-bg: var(--zb-white);
+  --page-bg: var(--zb-warm);
+  --tile-title: var(--zb-ink);
+  --tile-desc: var(--zb-text-2);
+  --border-soft: var(--zb-border-card);
+  --input-bg: var(--zb-white);
+  --input-border: var(--zb-border-strong);
+  --text-body: var(--zb-ink);
 }
 
+/* NOTE: the Zuper DLS reserves dark mode for Zuper Sense. This dark
+   theme is kept because the dashboard already shipped it and people
+   use it; it is deliberately neutral (no Sense black) so it does not
+   read as the Sense surface. */
 [data-theme="dark"] {
-  --card-bg: #1d2130;
-  --page-bg: #14151f;
-  --tile-title: #f0f1f6;
-  --tile-desc: #a8adbe;
-  --border-soft: rgba(255, 255, 255, 0.08);
-  --input-bg: #232838;
-  --input-border: #363c50;
-  --text-body: #e6e8ef;
+  --card-bg: #1C1C21;
+  --page-bg: #141417;
+  --tile-title: #FAFAFA;
+  --tile-desc: #A1A1AA;
+  --border-soft: #27272A;
+  --input-bg: #141417;
+  --input-border: #3F3F46;
+  --text-body: #FAFAFA;
 }
 
 * {
@@ -32,24 +40,32 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--zb-font-body);
   background: var(--page-bg);
   color: var(--text-body);
+  line-height: var(--zb-leading-body);
   transition: background 0.2s ease, color 0.2s ease;
 }
 
+/* Signature Zuper gradient. Copy sits over the dark end (top-left). */
 header.dashboard-header {
-  background: linear-gradient(135deg, var(--navy), var(--purple));
+  background: var(--zb-gradient);
   color: var(--text-light);
   padding: 2.5rem 2rem 3rem;
   text-align: center;
 }
 
+header.dashboard-header .dashboard-logo {
+  height: 30px;
+  margin: 0 auto 1.1rem;
+}
+
 header.dashboard-header h1 {
   margin: 0 0 0.4rem;
+  font-family: var(--zb-font-display);
   font-size: 2rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: var(--zb-tracking-heading);
 }
 
 header.dashboard-header p {
@@ -74,7 +90,7 @@ main.dashboard-grid {
   padding: 1.5rem;
   text-decoration: none;
   color: inherit;
-  box-shadow: 0 2px 8px rgba(26, 26, 46, 0.08);
+  box-shadow: var(--zb-shadow-card);
   border: 1px solid var(--border-soft);
   border-top: 3px solid var(--orange);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -85,7 +101,7 @@ main.dashboard-grid {
 
 .tile:hover {
   transform: translateY(-3px);
-  box-shadow: 0 10px 24px rgba(26, 26, 46, 0.14);
+  box-shadow: var(--zb-shadow-float);
 }
 
 /* Tool tiles wrap their content in an <a class="tile-link"> so action buttons
@@ -121,7 +137,7 @@ main.dashboard-grid {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
-  border-top-color: #ccc;
+  border-top-color: var(--zb-border-strong);
   filter: grayscale(0.6);
 }
 
@@ -132,8 +148,8 @@ main.dashboard-grid {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #999;
-  background: #eee;
+  color: var(--zb-text-muted);
+  background: var(--zb-gray-50);
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
   width: fit-content;
@@ -163,9 +179,9 @@ main.dashboard-grid {
 
 .tile-add {
   background: transparent;
-  border: 2px dashed rgba(91, 45, 142, 0.35);
-  border-top: 2px dashed rgba(91, 45, 142, 0.35);
-  color: var(--purple);
+  border: 2px dashed rgba(253, 80, 0, 0.35);
+  border-top: 2px dashed rgba(253, 80, 0, 0.35);
+  color: var(--zb-primary);
   cursor: pointer;
   font: inherit;
   text-align: left;
@@ -174,19 +190,19 @@ main.dashboard-grid {
 }
 
 .tile-add:hover {
-  border-color: var(--purple);
-  background: rgba(91, 45, 142, 0.05);
+  border-color: var(--zb-primary);
+  background: var(--zb-hover);
   box-shadow: none;
 }
 
 .tile-add h2 {
-  color: var(--purple);
+  color: var(--zb-primary);
 }
 
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(26, 26, 46, 0.55);
+  background: rgba(25, 25, 25, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -199,12 +215,12 @@ main.dashboard-grid {
 }
 
 .modal {
-  background: #fff;
+  background: var(--zb-white);
   border-radius: 14px;
   padding: 1.75rem;
   width: 100%;
   max-width: 420px;
-  box-shadow: 0 20px 48px rgba(26, 26, 46, 0.3);
+  box-shadow: var(--zb-shadow-float);
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
@@ -222,13 +238,13 @@ main.dashboard-grid {
   gap: 0.3rem;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #444;
+  color: var(--zb-text-2);
 }
 
 .modal input {
   font: inherit;
   padding: 0.55rem 0.7rem;
-  border: 1px solid #d7d7e0;
+  border: 1px solid var(--zb-border-strong);
   border-radius: 8px;
   font-weight: 400;
 }
@@ -236,17 +252,17 @@ main.dashboard-grid {
 .modal-hint {
   font-size: 0.75rem;
   font-weight: 400;
-  color: #888;
+  color: var(--zb-text-muted);
 }
 
 .modal input:focus {
   outline: none;
-  border-color: var(--purple);
+  border-color: var(--zb-primary); box-shadow: var(--zb-focus-ring);
 }
 
 .modal-error {
-  color: #b3261e;
-  background: #fdecea;
+  color: var(--zb-error);
+  background: var(--zb-error-bg);
   border-radius: 8px;
   padding: 0.6rem 0.8rem;
   font-size: 0.85rem;
@@ -255,7 +271,7 @@ main.dashboard-grid {
 
 .modal-status {
   color: var(--navy);
-  background: #eef0fb;
+  background: var(--zb-warm);
   border-radius: 8px;
   padding: 0.6rem 0.8rem;
   font-size: 0.85rem;
@@ -280,7 +296,7 @@ main.dashboard-grid {
 
 .btn-primary {
   background: var(--orange);
-  color: #fff;
+  color: var(--zb-on-dark);
 }
 
 .btn-primary:disabled {
@@ -289,8 +305,8 @@ main.dashboard-grid {
 }
 
 .btn-secondary {
-  background: #eee;
-  color: #333;
+  background: var(--zb-gray-50);
+  color: var(--zb-ink);
 }
 
 /* ---- Board controls (search / manage / theme) ---- */
@@ -315,7 +331,7 @@ main.dashboard-grid {
   background: var(--input-bg);
   color: var(--text-body);
 }
-.board-search:focus { outline: none; border-color: var(--purple); }
+.board-search:focus { outline: none; border-color: var(--zb-primary); box-shadow: var(--zb-focus-ring); }
 .board-btn {
   font: inherit;
   font-size: 0.85rem;
@@ -327,8 +343,8 @@ main.dashboard-grid {
   color: var(--text-body);
   cursor: pointer;
 }
-.board-btn:hover { border-color: var(--purple); }
-.board-btn.active { background: var(--orange); color: #fff; border-color: var(--orange); }
+.board-btn:hover { border-color: var(--zb-primary); box-shadow: var(--zb-focus-ring); }
+.board-btn.active { background: var(--orange); color: var(--zb-on-dark); border-color: var(--orange); }
 .board-empty {
   max-width: 1100px;
   margin: 1rem auto;
@@ -347,7 +363,7 @@ main.dashboard-grid {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #fff;
+  color: var(--zb-on-dark);
   background: var(--orange);
   padding: 0.12rem 0.5rem;
   border-radius: 999px;
@@ -376,8 +392,8 @@ main.dashboard-grid {
   justify-content: center;
   box-shadow: 0 1px 3px rgba(0,0,0,0.12);
 }
-.tile-action:hover { color: var(--purple); border-color: var(--purple); }
-.tile-action.tile-delete:hover { color: #d1453b; border-color: #d1453b; }
+.tile-action:hover { color: var(--purple); border-color: var(--zb-primary); box-shadow: var(--zb-focus-ring); }
+.tile-action.tile-delete:hover { color: var(--zb-error); border-color: var(--zb-error); }
 
 /* ---- Manage mode / drag-reorder ---- */
 .tile.dragging { opacity: 0.5; }
@@ -393,13 +409,13 @@ body.manage-mode .tile[draggable="true"] { cursor: grab; }
 }
 
 /* ---- Dark-mode modal + header tweaks ---- */
-[data-theme="dark"] .modal { background: #1d2130; }
-[data-theme="dark"] .modal h2 { color: #f0f1f6; }
-[data-theme="dark"] .modal label { color: #c7ccda; }
+[data-theme="dark"] .modal { background: #1C1C21; }
+[data-theme="dark"] .modal h2 { color: #FAFAFA; }
+[data-theme="dark"] .modal label { color: #A1A1AA; }
 [data-theme="dark"] .modal input,
 [data-theme="dark"] .modal select {
   background: var(--input-bg); border-color: var(--input-border); color: var(--text-body);
 }
-[data-theme="dark"] .modal-status { background: #23283a; color: #dfe3ef; }
-[data-theme="dark"] .btn-secondary { background: #2a3042; color: #dfe3ef; }
-[data-theme="dark"] .tile.tile-disabled .tile-badge { background: #2a3042; color: #9aa1b4; }
+[data-theme="dark"] .modal-status { background: #141417; color: #FAFAFA; }
+[data-theme="dark"] .btn-secondary { background: #27272A; color: #FAFAFA; }
+[data-theme="dark"] .tile.tile-disabled .tile-badge { background: #27272A; color: #A1A1AA; }

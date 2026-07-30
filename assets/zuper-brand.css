@@ -1,0 +1,160 @@
+/* ============================================================
+   Zuper brand tokens for the Internal Tools Dashboard.
+
+   Source of truth: https://github.com/karthiseyon/zuper-dls
+   (skills/zuper-brand/SKILL.md + bundle/tokens/*.css)
+
+   Load this BEFORE a tool's own <style> block. Tools keep their
+   existing local variable names and point them at the tokens
+   below, so no rule bodies have to change.
+
+   One orange: #FD5000. Status colours are semantic, never orange.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* --- Brand --------------------------------------------------- */
+  --zb-primary: #FD5000;           /* the one orange — one primary action per view */
+  --zb-primary-hover: #E04600;
+  --zb-primary-press: #DB3602;
+  --zb-red-deep: #B5271C;
+  --zb-ink: #191919;
+
+  --zb-gradient: linear-gradient(135deg, #1C0A06 0%, #7E1C0B 30%, #D43A14 64%, #F2864F 100%);
+  --zb-gradient-soft: linear-gradient(135deg, #D43A14, #F2864F);
+
+  /* --- Surfaces ------------------------------------------------ */
+  --zb-white: #FFFFFF;
+  --zb-warm: #F8F5F0;
+  --zb-cream: #FFFAEA;
+  --zb-hover: #FFF5F0;             /* orange-tinted hover wash */
+  --zb-peach: #F8F0EB;
+  --zb-banner: #FCE9E1;
+  --zb-charcoal: #282828;
+
+  /* --- Borders ------------------------------------------------- */
+  --zb-border-card: #F0F0F0;
+  --zb-border: #E6E6E6;
+  --zb-border-strong: #D1D5DB;
+
+  /* --- Text ---------------------------------------------------- */
+  --zb-text: #191919;
+  --zb-text-2: #4B5563;
+  --zb-text-3: #606063;
+  --zb-text-muted: #888888;
+  --zb-on-dark: #FFFFFF;
+
+  /* --- Gray ramp ----------------------------------------------- */
+  --zb-gray-50: #F3F4F6;
+  --zb-gray-100: #E5E7EB;
+  --zb-gray-200: #D1D5DB;
+  --zb-gray-300: #9CA3AF;
+  --zb-gray-400: #6B7280;
+  --zb-gray-500: #374151;
+  --zb-gray-900: #111827;
+
+  /* --- Semantic status (never the brand orange) ---------------- */
+  --zb-success: #1E854B;
+  --zb-success-bg: #E7F6EC;
+  --zb-warning: #A66A00;
+  --zb-warning-bg: #FEF3DC;
+  --zb-error: #C42121;
+  --zb-error-bg: #FDECEC;
+
+  /* --- Product-UI accents (charts, tags) ----------------------- */
+  --zb-accent-green: #22C55E;
+  --zb-accent-purple: #A855F7;
+  --zb-accent-teal: #14B8A6;
+  --zb-accent-yellow: #EAB308;
+  --zb-accent-red: #EF4444;
+  --zb-accent-blue: #3B82F6;
+
+  /* --- Chart emphasis ladder (not a rainbow) ------------------- */
+  --zb-chart-focus: #FD5000;
+  --zb-chart-compare: #191919;
+  --zb-chart-context: #7A7268;
+  --zb-chart-field: #E7E0D6;
+
+  /* --- Type ---------------------------------------------------- */
+  --zb-font-display: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --zb-font-body: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --zb-font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --zb-tracking-display: -0.03em;
+  --zb-tracking-heading: -0.02em;
+  --zb-leading-body: 1.55;
+
+  /* --- Radius / shadow / motion -------------------------------- */
+  --zb-radius-sm: 8px;
+  --zb-radius-md: 12px;
+  --zb-radius-card: 14px;
+  --zb-radius-lg: 16px;
+  --zb-radius-pill: 999px;
+  --zb-shadow-sm: 0 1px 2px rgba(25, 25, 25, 0.06);
+  --zb-shadow-card: 0 1px 3px rgba(25, 25, 25, 0.06), 0 8px 24px rgba(25, 25, 25, 0.06);
+  --zb-shadow-float: 0 12px 40px rgba(25, 25, 25, 0.12);
+  --zb-shadow-orange: 0 8px 24px rgba(253, 80, 0, 0.24);
+  --zb-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --zb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --zb-duration-fast: 120ms;
+  --zb-duration: 200ms;
+  --zb-duration-slow: 320ms;
+
+  /* --- Focus ring ---------------------------------------------- */
+  --zb-focus-ring: 0 0 0 3px rgba(253, 80, 0, 0.32);
+
+  /* --- Spacing (4px scale) ------------------------------------- */
+  --zb-space-1: 4px;  --zb-space-2: 8px;  --zb-space-3: 12px;
+  --zb-space-4: 16px; --zb-space-6: 24px; --zb-space-8: 32px;
+  --zb-space-12: 48px; --zb-space-16: 64px;
+}
+
+/* ============================================================
+   Shared brand furniture
+   ============================================================ */
+
+/* Logo lockup used in every tool header. */
+.zb-brandbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.zb-brandbar img,
+img.zb-logo {
+  height: 26px;
+  width: auto;
+  display: block;
+  flex: none;
+}
+.zb-brandbar .zb-divider {
+  width: 1px;
+  height: 22px;
+  background: currentColor;
+  opacity: 0.22;
+  flex: none;
+}
+
+/* Geist Mono uppercase orange eyebrow, per the DLS. */
+.zb-eyebrow {
+  font-family: var(--zb-font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--zb-primary);
+}
+
+/* Focus ring on every focusable control. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--zb-focus-ring);
+  border-radius: var(--zb-radius-sm);
+}
+
+/* Orange is a large/bold-text colour only (3.3:1 on white).
+   This guards against it being used for body copy. */
+.zb-orange-text {
+  color: var(--zb-primary);
+  font-size: 18px;
+  font-weight: 600;
+}

@@ -3,34 +3,37 @@
 <head>
 <meta charset="utf-8" />
 <title>CPQ Importer to Zuper</title>
+<link rel="icon" href="../assets/logos/zuper-favicon.svg">
+<link rel="stylesheet" href="../assets/zuper-brand.css">
 <script>(function(){try{if(localStorage.getItem('zuper_tools_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="../assets/zuper-regions.js"></script>
 <script src="../assets/zuper-connect.js"></script>
 <script src="../assets/theme.js" defer></script>
 <style>
+  /* Palette maps onto the Zuper DLS tokens in ../assets/zuper-brand.css */
   :root{
-    --bg:#f7f7fa; --panel:#ffffff; --panel2:#eef0f4; --border:#dcdfe6;
-    --text:#1a1a2e; --muted:#6b7280; --accent:#ff7a1a; --accent2:#e8500a;
-    --good:#1f9d55; --bad:#d1453b; --radius:10px;
-    --log-bg:#f0f1f5; --warn-bg:#fff4e5; --warn-border:#f3c98b; --warn-text:#8a5a10;
+    --bg:var(--zb-warm); --panel:var(--zb-white); --panel2:var(--zb-gray-50); --border:var(--zb-border);
+    --text:var(--zb-ink); --muted:var(--zb-text-2); --accent:var(--zb-primary); --accent2:var(--zb-primary-hover);
+    --good:var(--zb-success); --bad:var(--zb-error); --radius:var(--zb-radius-sm);
+    --log-bg:var(--zb-gray-50); --warn-bg:var(--zb-warning-bg); --warn-border:#E8C98B; --warn-text:var(--zb-warning);
   }
   [data-theme="dark"]{
-    --bg:#0f1115; --panel:#171a21; --panel2:#1d2129; --border:#2a2f3a;
-    --text:#e6e8eb; --muted:#9aa3b2; --accent:#ff7a1a; --accent2:#ffa05c;
-    --good:#3ddc84; --bad:#ff5c5c;
-    --log-bg:#0a0b0e; --warn-bg:#2a1f10; --warn-border:#5a3d12; --warn-text:#ffcf9a;
+    --bg:#09090B; --panel:#141417; --panel2:#1C1C21; --border:#27272A;
+    --text:#FAFAFA; --muted:#A1A1AA; --accent:#FF8B5A; --accent2:#F2864F;
+    --good:#4ADE80; --bad:#F87171;
+    --log-bg:#09090B; --warn-bg:#2A1F10; --warn-border:#5A3D12; --warn-text:#FBBF24;
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--zb-font-body);}
   header{padding:24px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;}
-  header img.logo{width:28px;height:28px;border-radius:6px;background:var(--accent);}
+  header img.logo{height:26px;width:auto;}
   header h1{font-size:18px;margin:0;font-weight:600;}
   header span.sub{color:var(--muted);font-size:13px;}
   main{max-width:1080px;margin:0 auto;padding:28px 32px 80px;}
   .step{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:22px 24px;margin-bottom:20px;}
   .step h2{display:flex;align-items:center;gap:10px;font-size:15px;margin:0 0 14px;}
-  .step h2 .num{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#1a1a1a;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;}
+  .step h2 .num{width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--zb-on-dark);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;}
   .step.disabled{opacity:.45;pointer-events:none;}
   .hint{color:var(--muted);font-size:12.5px;margin:4px 0 14px;line-height:1.5;}
   .dropzone{border:1.5px dashed var(--border);border-radius:var(--radius);padding:28px;text-align:center;color:var(--muted);cursor:pointer;transition:border-color .15s;}
@@ -41,7 +44,7 @@
   label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;}
   input[type=text],input[type=password]{width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13.5px;}
   input[type=text]:focus,input[type=password]:focus{outline:none;border-color:var(--accent);}
-  button{background:var(--accent);color:#1a1300;border:none;border-radius:8px;padding:9px 16px;font-size:13.5px;font-weight:600;cursor:pointer;}
+  button{background:var(--accent);color:var(--zb-on-dark);border:none;border-radius:8px;padding:9px 16px;font-size:13.5px;font-weight:600;cursor:pointer;}
   button:hover{background:var(--accent2);}
   button.secondary{background:transparent;border:1px solid var(--border);color:var(--text);}
   button.secondary:hover{border-color:var(--accent);background:var(--panel2);}
@@ -75,7 +78,7 @@
 <body>
 
 <header>
-  <img class="logo" alt="" />
+  <img class="logo zb-logo" src="../assets/logos/zuper-horizontal.svg" alt="Zuper" />
   <div>
     <h1>CPQ Importer to Zuper</h1>
     <span class="sub">Convert any CPQ spreadsheet and import directly into a Zuper account</span>

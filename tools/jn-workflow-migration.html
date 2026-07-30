@@ -4,24 +4,27 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JN → Zuper Workflow Converter</title>
+<link rel="icon" href="../assets/logos/zuper-favicon.svg">
+<link rel="stylesheet" href="../assets/zuper-brand.css">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+/* Palette maps onto the Zuper DLS tokens in ../assets/zuper-brand.css */
 :root{
-  --z:#FF5C00;--zl:#FFF3EC;--zd:#C94400;
-  --bg:#F5F7FA;--sf:#FFF;--bd:#E3E7EF;
-  --t1:#1A2033;--t2:#5A6478;--t3:#9AA3B8;
-  --green:#16A34A;--gbg:#DCFCE7;
-  --yellow:#D97706;--ybg:#FEF9C3;
-  --red:#DC2626;--rbg:#FEE2E2;
-  --blue:#2563EB;--bbg:#EFF6FF;
-  --purple:#7C3AED;--pbg:#F5F3FF;
+  --z:var(--zb-primary);--zl:var(--zb-hover);--zd:var(--zb-primary-hover);
+  --bg:var(--zb-warm);--sf:var(--zb-white);--bd:var(--zb-border);
+  --t1:var(--zb-ink);--t2:var(--zb-text-2);--t3:var(--zb-gray-300);
+  --green:var(--zb-success);--gbg:var(--zb-success-bg);
+  --yellow:var(--zb-warning);--ybg:var(--zb-warning-bg);
+  --red:var(--zb-error);--rbg:var(--zb-error-bg);
+  --blue:var(--zb-accent-blue);--bbg:#EFF6FF;
+  --purple:var(--zb-accent-purple);--pbg:#F5F3FF;
 }
 body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t1);min-height:100vh;display:flex;flex-direction:column}
 
 /* HEADER */
 header{background:var(--z);height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;flex-shrink:0;box-shadow:0 2px 8px rgba(255,92,0,.2)}
 .hl{display:flex;align-items:center;gap:11px}
-.hlogo{width:30px;height:30px;background:#fff;border-radius:7px;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--z);font-size:14px}
+.hlogo{height:24px;width:auto;display:block}
 .htitle{color:#fff;font-weight:700;font-size:14px}
 .hsub{color:rgba(255,255,255,.7);font-size:11px;margin-top:1px}
 .hr{display:flex;gap:8px;align-items:center}
@@ -149,7 +152,7 @@ main{flex:1;display:flex;overflow:hidden;height:calc(100vh - 54px)}
 
 <header>
   <div class="hl">
-    <div class="hlogo">Z</div>
+    <img class="hlogo zb-logo" src="../assets/logos/zuper-horizontal-white.svg" alt="Zuper">
     <div>
       <div class="htitle">JN → Zuper Workflow Converter</div>
       <div class="hsub">v3 · Full condition mapping · Test Run validator · Drop JobNimbus JSON → Zuper Workflow Builder JSON</div>
@@ -993,7 +996,7 @@ function setTab(t) {
 // ── NODE STYLE
 function ns(ak) {
   if(!ak) return{bg:'#F8FAFC',bd:'#CBD5E1',dot:'#94A3B8',l:'Node'};
-  if(ak.includes('.')) return{bg:'#FFF7F0',bd:'#FF9A5C',dot:'#FF5C00',l:'Trigger'};
+  if(ak.includes('.')) return{bg:'#FFF5F0',bd:'#F2864F',dot:'#FD5000',l:'Trigger'};
   const m={
     if_else:{bg:'#FEF9C3',bd:'#FCD34D',dot:'#D97706',l:'If/Else'},
     zuper_get_record:{bg:'#EFF6FF',bd:'#93C5FD',dot:'#2563EB',l:'Get Record'},

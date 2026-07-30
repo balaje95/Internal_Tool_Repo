@@ -4,20 +4,23 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>Zuper Dashboard</title>
+<link rel="icon" href="../assets/logos/zuper-favicon.svg">
+<link rel="stylesheet" href="../assets/zuper-brand.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
+/* Palette maps onto the Zuper DLS tokens in ../assets/zuper-brand.css */
 :root{
-  --zuper:#FF6B2C;--zuper2:#e85a1e;--zuper-glow:rgba(255,107,44,.18);
-  --bg:#f4f5f7;--surface:#fff;--surface2:#f0f1f3;--surface3:#e8e9ec;
-  --border:rgba(0,0,0,0.08);--border2:rgba(0,0,0,0.13);
-  --text:#111827;--text2:#6b7280;--text3:#9ca3af;
-  --green:#15803d;--green-bg:#dcfce7;
-  --red:#dc2626;--red-bg:#fee2e2;
-  --amber:#d97706;--amber-bg:#fef3c7;
-  --blue:#2563eb;--blue-bg:#dbeafe;
-  --purple:#7c3aed;--purple-bg:#ede9fe;
-  --teal:#0f766e;--teal-bg:#ccfbf1;
-  --gray:#6b7280;--gray-bg:#f3f4f6;
+  --zuper:var(--zb-primary);--zuper2:var(--zb-primary-hover);--zuper-glow:rgba(253,80,0,.18);
+  --bg:var(--zb-warm);--surface:var(--zb-white);--surface2:var(--zb-gray-50);--surface3:var(--zb-gray-100);
+  --border:var(--zb-border-card);--border2:var(--zb-border);
+  --text:var(--zb-ink);--text2:var(--zb-text-2);--text3:var(--zb-gray-300);
+  --green:var(--zb-success);--green-bg:var(--zb-success-bg);
+  --red:var(--zb-error);--red-bg:var(--zb-error-bg);
+  --amber:var(--zb-warning);--amber-bg:var(--zb-warning-bg);
+  --blue:var(--zb-accent-blue);--blue-bg:#DBEAFE;
+  --purple:var(--zb-accent-purple);--purple-bg:#EDE9FE;
+  --teal:var(--zb-accent-teal);--teal-bg:#CCFBF1;
+  --gray:var(--zb-gray-400);--gray-bg:var(--zb-gray-50);
   --sidebar-w:220px;--topbar-h:56px;
 }
 [data-theme=dark]{
@@ -26,7 +29,7 @@
   --text:#e8eaf0;--text2:#8b90a0;--text3:#555a6b;
   --green:#22c98a;--green-bg:rgba(34,201,138,.12);
   --red:#f05252;--red-bg:rgba(240,82,82,.12);
-  --amber:#f5a623;--amber-bg:rgba(245,166,35,.12);
+  --amber:var(--zb-warning);--amber-bg:rgba(166,106,0,.12);
   --blue:#4f8ef7;--blue-bg:rgba(79,142,247,.12);
   --purple:#9b6dff;--purple-bg:rgba(155,109,255,.12);
   --teal:#14b8a6;--teal-bg:rgba(20,184,166,.12);
@@ -413,8 +416,8 @@ td.mono{font-family:monospace;font-size:11px;color:var(--text2)}
   <!-- TOPBAR -->
   <div class="topbar">
     <div class="topbar-logo">
-      <div class="topbar-logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
-      <span class="topbar-brand">Zuper <em>Analytics</em></span>
+      <img class="zb-logo" src="../assets/logos/zuper-horizontal.svg" alt="Zuper" style="height:24px">
+      <span class="topbar-brand"><em>Analytics</em></span>
     </div>
     <span class="company-name" id="topCo">—</span>
     <span class="company-pill" id="topRegion">—</span>
@@ -424,7 +427,7 @@ td.mono{font-family:monospace;font-size:11px;color:var(--text2)}
       <span class="status-txt" id="statusTxt">Ready</span>
       <button class="theme-ico" onclick="toggleTheme()" id="dashThemeBtn" title="Toggle theme">🌙</button>
       <select class="theme-ico" id="accentPick" onchange="setAccent(this.value)" title="Accent color" style="width:auto;padding:0 6px">
-        <option value="#FF6B2C">🎨 Orange</option>
+        <option value="#FD5000">Orange</option>
         <option value="#7c3aed">🎨 Purple</option>
         <option value="#2563eb">🎨 Blue</option>
         <option value="#15803d">🎨 Green</option>
@@ -657,8 +660,8 @@ td.mono{font-family:monospace;font-size:11px;color:var(--text2)}
 <script>
 // Region detection uses the shared connect module (all known DCs); this list is a fallback.
 const REGIONS=(window.ZUPER_DCS||['https://us-east-1.zuperpro.com','https://us-west-1c.zuperpro.com']).map(d=>d+'/api/');
-const CL=['#FF6B2C','#2563eb','#15803d','#7c3aed','#d97706','#0f766e','#dc2626','#db2777'];
-const CD=['#FF6B2C','#4f8ef7','#22c98a','#9b6dff','#f5a623','#14b8a6','#f05252','#e879a0'];
+const CL=['#FD5000','#3B82F6','#22C55E','#A855F7','#EAB308','#14B8A6','#EF4444','#B5271C'];
+const CD=['#FF8B5A','#60A5FA','#4ADE80','#C084FC','#FBBF24','#2DD4BF','#F87171','#F2864F'];
 let apiKey='',baseUrl='',isDark=false,charts={},cache={},activePage='overview';
 
 function gc(){return isDark?CD:CL;}
@@ -973,7 +976,7 @@ function priB(p){
 // ─── OVERVIEW ──────────────────────────────────────────────
 function renderOverview(){
   const modules=[
-    {name:'Jobs',val:tot('jobs'),icon:'#FF6B2C',cls:'bz',page:'jobs'},
+    {name:'Jobs',val:tot('jobs'),icon:'#FD5000',cls:'bz',page:'jobs'},
     {name:'Customers',val:tot('customers'),icon:'#2563eb',cls:'bb',page:'customers'},
     {name:'Properties',val:tot('properties'),icon:'#7c3aed',cls:'bp',page:'properties'},
     {name:'Invoices',val:tot('invoices'),icon:'#15803d',cls:'bg',page:'invoices'},
@@ -981,7 +984,7 @@ function renderOverview(){
     {name:'Purchase Orders',val:tot('purchase_orders'),icon:'#0f766e',cls:'bt',page:'purchaseorders'},
     {name:'Material Requests',val:tot('material_requests'),icon:'#dc2626',cls:'br',page:'materialrequests'},
     {name:'Parts & Services',val:tot('parts'),icon:'#db2777',cls:'bgr',page:'parts'},
-    {name:'Assets',val:tot('assets'),icon:'#FF6B2C',cls:'bz',page:'assets'},
+    {name:'Assets',val:tot('assets'),icon:'#FD5000',cls:'bz',page:'assets'},
   ].filter(m=>!hiddenModules.has(m.page));
   document.getElementById('overviewModules').innerHTML=modules.map(m=>`
     <div class="module-card" onclick="showPage('${m.page}')">
@@ -1210,7 +1213,7 @@ function renderInvoices(){
   ]);
   const statusC=countBy(invs,i=>i.invoice_status||'Unknown');
   const sKeys=Object.keys(statusC);
-  const invColorMap=isDark?{PAID:'#22c98a',SENT:'#4f8ef7',DRAFT:'#f5a623',VOID:'#f05252',PARTIALLY_PAID:'#14b8a6',APPROVED:'#9b6dff'}
+  const invColorMap=isDark?{PAID:'#22c98a',SENT:'#4f8ef7',DRAFT:'#FBBF24',VOID:'#f05252',PARTIALLY_PAID:'#14b8a6',APPROVED:'#9b6dff'}
     :{PAID:'#15803d',SENT:'#2563eb',DRAFT:'#d97706',VOID:'#dc2626',PARTIALLY_PAID:'#0f766e',APPROVED:'#7c3aed'};
   const iColors=sKeys.map(k=>invColorMap[k]||gc()[7]);
   document.getElementById('invCharts').innerHTML=chartCard('invStatusChart','By status',invs.length+' invoices',200,'invStatusLeg');
@@ -2743,7 +2746,7 @@ function renderRevenueForecast(){
   setTimeout(function(){
     makeLineChart('revForecastChart',allLabels,[
       {label:'Actual',data:actualData,borderColor:isDark?'#22c98a':'#15803d',backgroundColor:isDark?'rgba(34,201,138,.08)':'rgba(21,128,61,.08)',tension:.35,pointRadius:4,borderWidth:2,fill:true},
-      {label:'Projected',data:projData,borderColor:'#FF6B2C',backgroundColor:'transparent',tension:.35,pointRadius:4,borderWidth:2,borderDash:[5,4]}
+      {label:'Projected',data:projData,borderColor:'#FD5000',backgroundColor:'transparent',tension:.35,pointRadius:4,borderWidth:2,borderDash:[5,4]}
     ]);
   },50);
 }

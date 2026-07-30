@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+<style>
+	.bolt{fill:#F16222}
+	.slab{fill:#393A3C}
+	@media (prefers-color-scheme:dark){.slab{fill:#FFFFFF}}
+</style>
+<g>
+	<polygon class="bolt" points="316.8,180.5 433.5,181.1 371.1,277.2 254,277.2"/>
+	<polygon class="bolt" points="229.9,71 387.5,71.2 317.5,180.5 157.6,181.1"/>
+	<polygon class="slab" points="130.3,222.2 247,222.8 184.6,318.9 67.5,318.9"/>
+	<polygon class="slab" points="184.7,318.9 342.3,319.1 270.3,428.4 112.4,429"/>
+</g>
+</svg>
