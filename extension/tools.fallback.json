@@ -1,0 +1,90 @@
+[
+  {
+    "name": "Background Studio",
+    "description": "Overlay an auto-adapting Zuper logo on images and download",
+    "file": "tools/background-studio.html",
+    "icon": "🖼️",
+    "updated": "2026-07-24",
+    "help": "Runs entirely in your browser. Drop one or more images (PNG/JPG) and it overlays the Zuper logo, automatically choosing the most legible treatment for each scene — Auto (reads the area under the logo), White, Dark, Zuper orange, or Tint-to-scene. Pick the logo position from a 9-point grid or drag it on the preview to fine-tune, then download the current image or all of them as a .zip. No upload, no API key."
+  },
+  {
+    "name": "Lat & Long Capture",
+    "description": "Bulk-geocode an address spreadsheet to latitude/longitude",
+    "file": "tools/latlong-capture.html",
+    "icon": "📍",
+    "updated": "2026-07-16",
+    "help": "Runs entirely in your browser. Enter a Google Maps Geocoding API key (never stored or exported), upload an address spreadsheet (.xlsx/.xls/.csv), and it auto-detects Street/City/State/Zipcode/Country columns plus their Billing variants. Each row geocodes when it has Street + City or Street + Zipcode; billing coordinates copy the service address when identical or absent, otherwise geocode separately. Live progress with Stop, then download full / geocoded-only / failed-with-reason Excel files."
+  },
+  {
+    "name": "Product Mapper",
+    "description": "Bulk-map formulas, vendors, colors, or update product IDs & custom fields",
+    "file": "tools/product-formula-mapper.html",
+    "icon": "🧮",
+    "updated": "2026-07-17",
+    "help": "Connect with a Zuper API key (region auto-detected), then pick a mode. Formula: assign a CPQ formula per product. Vendor: add one or more vendors per product with SKU & cost. Color: merge color options into products. Product ID: fetch products (and their custom fields) and bulk-update the Product ID and any custom-field values — edit inline in the grid or import a Product UID / Product ID sheet with a column per custom field. Every mode reads each product fresh and sends PUT product/{uid} with the full flattened payload (like the update_product_ids.py script). Run a Dry Run, then Apply, then export a results CSV."
+  },
+  {
+    "name": "Customer ↔ Property Mapper",
+    "description": "Bulk-map customers to a property in a Zuper account",
+    "file": "tools/customer-property-mapper.html",
+    "icon": "🏠",
+    "updated": "2026-07-20",
+    "help": "Connect with a Zuper API key (region auto-detected), then fetch every property and customer in the account. Each row is a property showing its already-linked customers. Add one or more customers to a property inline, bulk-add one customer to many selected properties, auto-match by address, or import a sheet with Property UID + Customer UID(s) columns (put several comma-separated customer UIDs in one cell to add them all to that property). On apply, each property is read fresh and the staged customers are merged into its customer list (existing customers preserved) via PUT property/{uid}. Run a Dry Run first and validate on a test account."
+  },
+  {
+    "name": "Product Catalog",
+    "description": "Search the live SRS, ABC & QXO roofing catalogs",
+    "file": "tools/product-catalog.html",
+    "icon": "📚",
+    "updated": "2026-07-21",
+    "help": "Browse and search the shared roofing product catalog across all three sources — SRS (19.8k products), ABC Supply (34.9k), and QXO/Beacon (76.8k). Pick a source, then search by name/brand/category or filter by category, brand, tier (Good/Better/Best/Add-on), universal, priced, or has-image. Results show image, id, category, brand, tier and suggested price; click a row to see full details plus its colors/sizes (variants). Export the current result set to CSV. Runs entirely client-side against the catalog's read-only (RLS SELECT-only) Supabase API — no Zuper account or login needed."
+  },
+  {
+    "name": "Zuper CPQ Importer",
+    "description": "Push Acculynx CPQ templates/products into Zuper via API",
+    "file": "tools/cpq-importer.html",
+    "icon": "📋",
+    "updated": "2026-07-06",
+    "help": "Upload a CPQ spreadsheet (.xlsx or .csv), connect with your Zuper API key, and it creates the products, categories, and a proposal template in the account. Run a Dry Run first to preview what will be created vs reused."
+  },
+  {
+    "name": "Training Deck Generator",
+    "description": "Auto-generate branded training decks by team type",
+    "file": "tools/training-deck-generator.html",
+    "icon": "🖥️",
+    "updated": "2026-07-01",
+    "help": "Pick a team, optionally fetch customer info via an API key, choose chapters and screenshots, then generate a branded PowerPoint training deck client-side."
+  },
+  {
+    "name": "JN to Zuper Workflow Migration",
+    "description": "Migrate JobNimbus workflows into Zuper",
+    "file": "tools/jn-workflow-migration.html",
+    "icon": "🔀",
+    "updated": "2026-07-01",
+    "help": "Drop a JobNimbus automations JSON export and it converts each automation into Zuper Workflow Builder JSON, flagging anything that needs manual mapping."
+  },
+  {
+    "name": "Zuper Dashboard Builder",
+    "description": "Build and configure custom Zuper dashboards",
+    "file": "tools/dashboard-builder.html",
+    "icon": "📊",
+    "updated": "2026-07-01",
+    "help": "Connect with your Zuper API key to view live analytics across modules, build custom widget layouts, filter by date, and export CSV/PDF."
+  },
+  {
+    "name": "Zuper Data Manager",
+    "description": "Bulk data operations and cleanup for Zuper FSM",
+    "file": "tools/data-manager.html",
+    "icon": "🗂️",
+    "updated": "2026-07-17",
+    "help": "Bulk fetch, delete, dedupe, migrate, and import Zuper records across many modules — jobs, products, CPQ, workflows and more. Dry Run is on by default for destructive actions. CPQ → 🏠 Roofing CPQ Import: upload one workbook (Measurement Tokens, Formulas, Packages, Bundles sheets) to bulk-create CPQ measurement categories/tokens, formulas (with a confirm-before-apply variable→token mapping grid), service packages, and product bundles — dry-run, dedupe, and rate-limited."
+  },
+  {
+    "name": "Zuper Process Doc Generator",
+    "description": "Generate a process doc, or a support-handover deck, from a Zuper account",
+    "file": "tools/process-doc-generator.html",
+    "icon": "📝",
+    "updated": "2026-07-27",
+    "help": "Connect with a Zuper API key (region auto-detected), then choose what to build. Process Doc: a polished, editable document built from the account's job categories, statuses, checklists and CPQ — with a lifecycle flow diagram and a required-items checkpoint table; export to Word, PDF, HTML or JSON. Handover Document: a Support Handover Checklist (Questionnaire) that starts as a blank template pre-filled with the account name/region, with sections for overview, environment, integrations, automations, config, promises, risks, an acceptance checklist and Fathom meeting findings — edit each section inline, add meeting blocks, or import a prepared JSON (round-trips with JSON export), then export a branded PowerPoint (.pptx). The API key is never written into any export."
+  }
+]

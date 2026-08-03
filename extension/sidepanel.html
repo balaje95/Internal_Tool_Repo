@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Zuper Internal Tools</title>
+<link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+
+<!-- ============ Launcher view ============ -->
+<section class="view" id="view-list">
+  <header class="panel-head">
+    <img class="panel-logo" src="icons/icon48.png" alt="">
+    <div class="panel-head-text">
+      <span class="eyebrow">Internal Tools</span>
+      <h1>Zuper Tools</h1>
+    </div>
+    <button type="button" class="icon-btn" id="btn-refresh" title="Refresh the tool list">&#10227;</button>
+    <button type="button" class="icon-btn" id="btn-options" title="Settings">&#9881;</button>
+  </header>
+
+  <div class="search-wrap">
+    <input type="search" id="search" placeholder="Search tools&hellip;" autocomplete="off" spellcheck="false">
+  </div>
+
+  <p class="list-status" id="list-status" hidden></p>
+
+  <ul class="tool-list" id="tool-list"></ul>
+
+  <p class="list-empty" id="list-empty" hidden>No tools match that search.</p>
+
+  <footer class="panel-foot" id="context-foot" hidden>
+    <span class="ctx-label" id="ctx-label"></span>
+    <button type="button" class="ctx-copy" id="ctx-copy" hidden>Copy UID</button>
+  </footer>
+</section>
+
+<!-- ============ Tool view ============ -->
+<section class="view" id="view-tool" hidden>
+  <header class="tool-head">
+    <button type="button" class="icon-btn" id="btn-back" title="Back to all tools">&#8592;</button>
+    <span class="tool-title" id="tool-title"></span>
+    <button type="button" class="icon-btn" id="btn-reload" title="Reload this tool">&#10227;</button>
+    <button type="button" class="icon-btn" id="btn-newtab" title="Open in a full tab">&#8599;</button>
+  </header>
+  <div class="frame-wrap">
+    <div class="frame-loading" id="frame-loading">Loading&hellip;</div>
+    <iframe id="tool-frame"
+            title="Tool"
+            allow="clipboard-write; clipboard-read; downloads"
+            referrerpolicy="no-referrer"></iframe>
+  </div>
+</section>
+
+<script src="sidepanel.js"></script>
+</body>
+</html>

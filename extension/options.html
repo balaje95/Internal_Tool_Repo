@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Zuper Internal Tools — Settings</title>
+<link rel="stylesheet" href="sidepanel.css">
+<link rel="stylesheet" href="options.css">
+</head>
+<body class="options-body">
+
+<div class="wrap">
+  <header class="opt-head">
+    <img class="opt-logo" src="icons/icon128.png" alt="">
+    <div>
+      <span class="eyebrow">Internal Tools</span>
+      <h1>Extension settings</h1>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2>Dashboard</h2>
+    <label class="field">
+      <span class="field-label">Dashboard base URL</span>
+      <input type="url" id="dashboardBase" placeholder="https://internal-tool-repo.vercel.app" spellcheck="false">
+      <span class="hint">Where the tools are served from. The tool list is read from
+        <code>&lt;base&gt;/assets/tools.config.js</code>, so adding a tool to the dashboard makes it
+        show up here automatically. Point this at a local server for development — note that a host
+        other than the two the extension ships with must send
+        <code>Access-Control-Allow-Origin</code> for the list to load.</span>
+    </label>
+    <div class="row">
+      <button type="button" class="btn btn-secondary" id="clear-cache">Clear cached tool list</button>
+      <span class="inline-status" id="cache-status"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>In-page button</h2>
+    <label class="check">
+      <input type="checkbox" id="showButton">
+      <span>Show the floating <strong>Zuper Tools</strong> button on Zuper web app pages</span>
+    </label>
+    <label class="field">
+      <span class="field-label">Button position</span>
+      <select id="buttonSide">
+        <option value="right">Bottom right</option>
+        <option value="left">Bottom left</option>
+      </select>
+      <span class="hint">Changes apply to open Zuper tabs immediately — no reload needed.</span>
+    </label>
+  </section>
+
+  <section class="card">
+    <h2>Keyboard shortcut</h2>
+    <p class="hint">
+      <strong>Alt+Z</strong> opens the panel from any tab. Chrome will not let an extension change
+      its own shortcut, so rebind it on the browser's shortcuts page.
+    </p>
+    <button type="button" class="btn btn-secondary" id="open-shortcuts">Open Chrome shortcut settings</button>
+  </section>
+
+  <div class="actions">
+    <button type="button" class="btn btn-primary" id="save">Save settings</button>
+    <span class="inline-status" id="save-status"></span>
+  </div>
+</div>
+
+<script src="options.js"></script>
+</body>
+</html>
