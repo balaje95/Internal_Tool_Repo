@@ -194,9 +194,32 @@
 
   // ------------------------------------------------------------------- chip
 
-  function makeChip(uid, keyName, how) {
+  // Is the surface behind this element dark? Walks up until it finds an opaque
+  // background, because table rows are usually transparent over a themed page.
+  // Duplicated in content.js rather than shared, so the badges keep working when
+  // the floating launcher is switched off.
+  function isDarkBackdrop(el) {
+    let node = el;
+    for (let i = 0; i < 12 && node && node.nodeType === 1; i++) {
+      let bg = '';
+      try { bg = getComputedStyle(node).backgroundColor || ''; } catch (e) {}
+      const m = bg.match(/rgba?\(([^)]+)\)/);
+      if (m) {
+        const parts = m[1].split(',').map((n) => parseFloat(n));
+        const alpha = parts.length > 3 ? parts[3] : 1;
+        if (alpha > 0.5) {
+          const lum = (0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2]) / 255;
+          return lum < 0.5;
+        }
+      }
+      node = node.parentElement;
+    }
+    return false;   // nothing opaque found — assume a light page
+  }
+
+  function makeChip(uid, keyName, how, onDark) {
     const chip = document.createElement('span');
-    chip.className = CHIP_CLASS;
+    chip.className = CHIP_CLASS + (onDark ? ' ' + CHIP_CLASS + '--on-dark' : '');
     chip.setAttribute('data-uid', uid);
     chip.textContent = uid.slice(0, 8);
     chip.title =
@@ -241,6 +264,9 @@
       const found = findRows();
       let exact = 0;
       let matched = 0;
+      // Sampled once per scan off the first row: cheaper than per row, and it
+      // keeps every chip in a list looking the same.
+      const onDark = found.rows.length ? isDarkBackdrop(found.rows[0]) : false;
 
       for (const row of found.rows) {
         if (!row || isOurs(row)) continue;
@@ -262,7 +288,7 @@
         const target = row.querySelector('td, th, [role="cell"], [role="gridcell"]') || row;
         const stale = row.querySelector('.' + CHIP_CLASS);
         if (stale) stale.remove();
-        target.appendChild(makeChip(uid, rec ? rec.key : '', how));
+        target.appendChild(makeChip(uid, rec ? rec.key : '', how, onDark));
         row.setAttribute(DONE_ATTR, uid);
         if (how === 'exact') exact++; else matched++;
       }
@@ -283,7 +309,13 @@
           records.size + ' records captured, list type: ' + found.kind
         );
       }
+      // Storage feeds the options page's diagnostics card (global, last-write
+      // wins). The window event feeds this tab's Show/Hide UID pill, which needs
+      // a per-tab count another tab's scan cannot clobber.
       try { chrome.storage.local.set({ uidReport: report }); } catch (e) {}
+      try {
+        window.dispatchEvent(new CustomEvent('zuper-uid-report', { detail: report }));
+      } catch (e) {}
     } catch (e) {
       console.warn('[Zuper Tools] UID badge scan failed:', e);
     } finally {

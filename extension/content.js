@@ -13,9 +13,80 @@
   const CSS = `
     :host { all: initial; }
 
-    /* The host is pointer-events:none so it can never be a click trap; the two
+    /* The host is pointer-events:none so it can never be a click trap; the
        things the user actually interacts with opt back in. */
-    .launcher, .hint { pointer-events: auto; }
+    .launcher, .hint, .uid-toggle { pointer-events: auto; }
+
+    /* Show/Hide UID control, parked directly above the launcher. Deliberately a
+       neutral pill rather than a second orange one — it is a state toggle, not a
+       primary action, and should not compete with the launcher. */
+    .uid-toggle {
+      position: fixed;
+      bottom: 76px;
+      z-index: 2147483000;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 30px;
+      padding: 0 11px;
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #191919;
+      background: #FFFFFF;
+      border: 1px solid #E6E6E6;
+      border-radius: 999px;
+      box-shadow: 0 4px 14px rgba(25, 25, 25, 0.14);
+      cursor: pointer;
+      transition: box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+                  color 160ms linear;
+    }
+    .uid-toggle.side-right { right: 22px; }
+    .uid-toggle.side-left  { left: 22px; }
+    .uid-toggle:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 22px rgba(25, 25, 25, 0.18);
+    }
+    .uid-toggle:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(253, 80, 0, 0.32);
+    }
+    .uid-toggle.off { color: #6B7280; }
+
+    .uid-dot {
+      width: 7px;
+      height: 7px;
+      flex: none;
+      border-radius: 50%;
+      background: #FD5000;
+      box-sizing: border-box;
+    }
+    .uid-toggle.off .uid-dot {
+      background: transparent;
+      border: 1.5px solid #9CA3AF;
+    }
+
+    .uid-count {
+      font-family: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Menlo, monospace;
+      font-size: 10.5px;
+      font-weight: 500;
+      color: #888888;
+    }
+    .uid-count[hidden] { display: none; }
+
+    /* Matched to the page behind it rather than to prefers-color-scheme: the pill
+       floats over Zuper's UI, so a dark desktop theme should not put a dark pill
+       on a light app. start() measures the page and sets .on-dark. */
+    .uid-toggle.on-dark {
+      color: #F2F2F3;
+      background: #232325;
+      border-color: #3A3A3D;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    }
+    .uid-toggle.on-dark.off { color: #9CA3AF; }
+    .uid-toggle.on-dark .uid-count { color: #8A8A8E; }
 
     .launcher {
       position: fixed;
@@ -119,7 +190,8 @@
 
     .hint {
       position: fixed;
-      bottom: 76px;
+      /* Clears both the launcher (bottom 22, 44 tall) and the UID toggle above it. */
+      bottom: 118px;
       z-index: 2147483000;
       max-width: 240px;
       padding: 10px 12px;
@@ -146,8 +218,54 @@
   let hintEl = null;
   let hintTimer = 0;
   let dismissedForSession = false;
+  let uidToggleEl = null;
+  let uidLabelEl = null;
+  let uidCountEl = null;
+  let uidOn = true;
+  let uidBadged = 0;
+  let currentSide = 'right';
+  let pageIsDark = false;
+
+  // Is the page behind the pill dark? Walks up for an opaque background, since
+  // app containers are often transparent. Duplicated in uid-badges.js on purpose
+  // — the chips must keep working when this launcher is switched off.
+  function isDarkBackdrop(el) {
+    let node = el;
+    for (let i = 0; i < 12 && node && node.nodeType === 1; i++) {
+      let bg = '';
+      try { bg = getComputedStyle(node).backgroundColor || ''; } catch (e) {}
+      const m = bg.match(/rgba?\(([^)]+)\)/);
+      if (m) {
+        const parts = m[1].split(',').map((n) => parseFloat(n));
+        const alpha = parts.length > 3 ? parts[3] : 1;
+        if (alpha > 0.5) {
+          const lum = (0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2]) / 255;
+          return lum < 0.5;
+        }
+      }
+      node = node.parentElement;
+    }
+    return false;
+  }
+
+  function renderUidToggle() {
+    if (!uidToggleEl) return;
+    // Rebuilt wholesale so a side change cannot drop the theme class, or vice versa.
+    uidToggleEl.className =
+      'uid-toggle side-' + currentSide + (pageIsDark ? ' on-dark' : '') + (uidOn ? '' : ' off');
+    uidToggleEl.setAttribute('aria-checked', uidOn ? 'true' : 'false');
+    uidLabelEl.textContent = uidOn ? 'Hide UID' : 'Show UID';
+    uidToggleEl.title = uidOn
+      ? 'Record UID chips are on for this page — click to hide them'
+      : 'Show a copyable record UID on each listing row';
+    // The count is only meaningful while the badges are actually rendered.
+    const show = uidOn && uidBadged > 0;
+    uidCountEl.hidden = !show;
+    if (show) uidCountEl.textContent = String(uidBadged);
+  }
 
   function build(side) {
+    currentSide = side;
     const host = document.createElement('div');
     host.id = HOST_ID;
     // The host must not affect layout or intercept clicks. Every declaration is
@@ -202,12 +320,49 @@
     dismiss.title = 'Hide until this page reloads';
     dismiss.setAttribute('aria-label', 'Hide the Zuper Tools button until this page reloads');
 
+    // Show/Hide UID toggle.
+    const uidToggle = document.createElement('button');
+    uidToggle.type = 'button';
+    uidToggle.setAttribute('role', 'switch');   // className is set by renderUidToggle
+
+    const uidDot = document.createElement('span');
+    uidDot.className = 'uid-dot';
+
+    const uidLabel = document.createElement('span');
+    uidLabel.className = 'uid-label';
+
+    const uidCount = document.createElement('span');
+    uidCount.className = 'uid-count';
+    uidCount.hidden = true;
+
+    uidToggle.append(uidDot, uidLabel, uidCount);
+
     const hint = document.createElement('div');
     hint.className = 'hint side-' + side;
     hint.hidden = true;
 
     launcher.append(chip, dismiss);
-    shadow.append(launcher, hint);
+    shadow.append(uidToggle, launcher, hint);
+
+    uidToggleEl = uidToggle;
+    uidLabelEl = uidLabel;
+    uidCountEl = uidCount;
+
+    // Writing the setting is the whole implementation: uid-badges.js watches
+    // chrome.storage and adds or strips the chips itself, so the two stay in
+    // step even when the setting is changed from the options page instead.
+    uidToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      uidOn = !uidOn;
+      if (!uidOn) uidBadged = 0;
+      renderUidToggle();
+      try {
+        chrome.storage.local.set({ showUidBadges: uidOn });
+      } catch (err) {
+        /* extension context torn down — the UI already reflects the intent */
+      }
+    });
+    renderUidToggle();
 
     chip.addEventListener('click', onLaunch);
     dismiss.addEventListener('click', (e) => {
@@ -264,14 +419,26 @@
     if (document.body) observer.observe(document.body, { childList: true });
   }
 
+  // uid-badges.js is a separate content script but runs in the same isolated
+  // world for this frame, so a window event is a per-tab channel between them.
+  // Storage would be wrong here: it is global, so another tab's scan would
+  // overwrite this tab's count.
+  window.addEventListener('zuper-uid-report', (e) => {
+    const d = e.detail || {};
+    uidBadged = (d.exact || 0) + (d.matched || 0);
+    renderUidToggle();
+  });
+
   async function start() {
     let settings;
     try {
-      settings = await chrome.storage.local.get(['showButton', 'buttonSide']);
+      settings = await chrome.storage.local.get(['showButton', 'buttonSide', 'showUidBadges']);
     } catch (e) {
       settings = {};
     }
     if (settings.showButton === false) return;
+    uidOn = settings.showUidBadges !== false;
+    try { pageIsDark = isDarkBackdrop(document.body); } catch (e) { pageIsDark = false; }
     build(settings.buttonSide === 'left' ? 'left' : 'right');
     watch();
   }
@@ -287,9 +454,16 @@
       }
     }
     if (changes.buttonSide && launcherEl) {
-      const side = changes.buttonSide.newValue === 'left' ? 'left' : 'right';
-      launcherEl.className = 'launcher side-' + side;
-      if (hintEl) hintEl.className = 'hint side-' + side;
+      currentSide = changes.buttonSide.newValue === 'left' ? 'left' : 'right';
+      launcherEl.className = 'launcher side-' + currentSide;
+      if (hintEl) hintEl.className = 'hint side-' + currentSide;
+      renderUidToggle();
+    }
+    // Keeps the pill honest when the badges are toggled from the options page.
+    if (changes.showUidBadges) {
+      uidOn = changes.showUidBadges.newValue !== false;
+      if (!uidOn) uidBadged = 0;
+      renderUidToggle();
     }
   });
 

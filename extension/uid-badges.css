@@ -56,17 +56,20 @@
   border-color: rgba(196, 33, 33, 0.4) !important;
 }
 
-@media (prefers-color-scheme: dark) {
-  .zuper-uid-chip {
-    color: #9CA3AF !important;
-    background: rgba(255, 255, 255, 0.06) !important;
-    border-color: rgba(255, 255, 255, 0.14) !important;
-  }
-  .zuper-uid-chip:hover {
-    color: #FF7A3D !important;
-    background: rgba(253, 80, 0, 0.14) !important;
-    border-color: rgba(253, 80, 0, 0.5) !important;
-  }
+/* Deliberately keyed off a class rather than prefers-color-scheme. The chip sits
+   inside Zuper's own table, so what matters is the brightness of the row behind
+   it, not the brightness of the user's OS theme. Keying this off the OS made a
+   light Zuper UI on a dark-themed desktop render near-invisible chips.
+   uid-badges.js measures the backdrop and sets this class. */
+.zuper-uid-chip--on-dark {
+  color: #9CA3AF !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+.zuper-uid-chip--on-dark:hover {
+  color: #FF7A3D !important;
+  background: rgba(253, 80, 0, 0.16) !important;
+  border-color: rgba(253, 80, 0, 0.5) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

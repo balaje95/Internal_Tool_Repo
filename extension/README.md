@@ -57,6 +57,16 @@ characters of its record UID; clicking copies the full UID. It saves opening a r
 just to read its id out of the address bar before pasting it into Data Manager or one of
 the mappers.
 
+A **Show/Hide UID** pill sits directly above the floating launcher and toggles them for
+every page, showing how many rows on the current page got a badge. It and the options
+checkbox are the same switch — both write one setting, and the badges add or strip
+themselves in response, so the two can never disagree.
+
+Chip and pill colours follow **the brightness of the page behind them**, not
+`prefers-color-scheme`. Keying them off the OS theme made a light Zuper UI on a
+dark-themed desktop render chips at `rgba(255,255,255,0.06)` on a white table row — a
+contrast ratio well under 1.5:1.
+
 Zuper's markup is not something this extension can know, and hard-coded selectors would
 break the first time the app is restyled — so row detection is selector-agnostic (all
 `<table>`s, all ARIA grids, plus a repeated-sibling sweep for card layouts) and UIDs are
