@@ -33,7 +33,18 @@
     xhrOpen: XMLHttpRequest.prototype.open,
     xhrSend: XMLHttpRequest.prototype.send,
   };
+  // Must start armed. The whole reason this runs at document_start is to be in
+  // place before the app's first request, and the listing fetch normally lands
+  // well before uid-badges.js loads at document_idle and can say 'on'. If the
+  // user has the feature off, uid-badges.js sends 'off' a moment later and
+  // whatever was captured in between is dropped without ever being displayed.
   let enabled = true;
+
+  // postMessage is not buffered, so records published before uid-badges.js exists
+  // would simply vanish — which is most of them on a normal page load. They are
+  // kept here and re-sent when the badge script announces itself.
+  const buffer = [];
+  const MAX_BUFFER = 20;
 
   // postMessage plumbing. `event.source !== window` is the real guarantee that a
   // message came from this page and not an embedded frame; the origin comparison
@@ -164,6 +175,14 @@
     return records;
   }
 
+  function send(msg) {
+    try {
+      window.postMessage(msg, targetOrigin());
+    } catch (e) {
+      /* structured-clone failure — drop it */
+    }
+  }
+
   function publish(data, url) {
     if (!enabled) return;
     let records;
@@ -173,14 +192,10 @@
       return;
     }
     if (!records.length) return;
-    try {
-      window.postMessage(
-        { __zuperUidRecords: true, url: String(url || ''), records: records },
-        targetOrigin()
-      );
-    } catch (e) {
-      /* structured-clone failure — drop it */
-    }
+    const msg = { __zuperUidRecords: true, url: String(url || ''), records: records };
+    buffer.push(msg);
+    if (buffer.length > MAX_BUFFER) buffer.shift();
+    send(msg);
   }
 
   // ------------------------------------------------------------------ fetch
@@ -250,17 +265,20 @@
     if (!fromThisWindow(event)) return;
     const d = event.data;
     if (!d || d.__zuperUidControl === undefined) return;
+    // The wrappers stay installed and go inert instead of being torn out. They
+    // used to restore the originals here, which made "off" a one-way door: the
+    // 'on' message could set the flag back but nothing re-wrapped, so re-enabling
+    // the badges within a page could never resume observation.
+    //
+    // Inert is not a compromise on privacy: with `enabled` false every wrapper
+    // returns before touching the response — nothing is read, cloned or parsed.
     if (d.__zuperUidControl === 'off') {
       enabled = false;
-      // Restore only if nobody wrapped us afterwards; blindly reassigning could
-      // tear out another extension's hook.
-      try {
-        if (window.fetch !== originals.fetch) window.fetch = originals.fetch;
-        XMLHttpRequest.prototype.open = originals.xhrOpen;
-        XMLHttpRequest.prototype.send = originals.xhrSend;
-      } catch (e) {}
     } else if (d.__zuperUidControl === 'on') {
       enabled = true;
+      // Replay whatever was captured before the badge script was listening.
+      // Re-sending is harmless: records are de-duplicated by uid on arrival.
+      for (const msg of buffer) send(msg);
     }
   });
 })();

@@ -213,6 +213,46 @@
     }
   `;
 
+  // The logomark is drawn inline rather than loaded from icons/icon48.png. An
+  // <img> in the page's DOM pointing at a chrome-extension:// URL needs the file
+  // listed in web_accessible_resources, and is still blocked by a strict img-src
+  // CSP on the host page. Inline SVG is markup, not a subresource fetch, so
+  // neither applies. Points come from assets/logos/zuper-logomark.svg.
+  const LOGOMARK = [
+    { points: '316.8,180.5 433.5,181.1 371.1,277.2 254,277.2', opacity: 1 },
+    { points: '229.9,71 387.5,71.2 317.5,180.5 157.6,181.1', opacity: 1 },
+    { points: '130.3,222.2 247,222.8 184.6,318.9 67.5,318.9', opacity: 0.72 },
+    { points: '184.7,318.9 342.3,319.1 270.3,428.4 112.4,429', opacity: 0.72 },
+  ];
+
+  function buildLogomark() {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '58 62 386 376');
+    svg.setAttribute('class', 'mark');
+    svg.setAttribute('aria-hidden', 'true');
+    for (const part of LOGOMARK) {
+      const poly = document.createElementNS(NS, 'polygon');
+      poly.setAttribute('points', part.points);
+      poly.setAttribute('fill', '#FFFFFF');
+      if (part.opacity !== 1) poly.setAttribute('opacity', String(part.opacity));
+      svg.appendChild(poly);
+    }
+    return svg;
+  }
+
+  // An unpacked extension that gets reloaded orphans the content scripts already
+  // running in open tabs: chrome.storage calls throw and its onChanged listeners
+  // are dead. Detecting that lets us say "reload the page" instead of appearing
+  // to do nothing.
+  function extensionAlive() {
+    try {
+      return !!(chrome.runtime && chrome.runtime.id);
+    } catch (e) {
+      return false;
+    }
+  }
+
   let hostEl = null;
   let launcherEl = null;
   let hintEl = null;
@@ -225,6 +265,7 @@
   let uidBadged = 0;
   let currentSide = 'right';
   let pageIsDark = false;
+  let uidFeedbackTimer = 0;
 
   // Is the page behind the pill dark? Walks up for an opaque background, since
   // app containers are often transparent. Duplicated in uid-badges.js on purpose
@@ -302,16 +343,11 @@
     chip.setAttribute('aria-label', 'Open Zuper internal tools (Alt+Z)');
     chip.title = 'Zuper internal tools — Alt+Z';
 
-    const mark = document.createElement('img');
-    mark.className = 'mark';
-    mark.src = chrome.runtime.getURL('icons/icon48.png');
-    mark.alt = '';
-
     const label = document.createElement('span');
     label.className = 'label';
     label.textContent = 'Zuper Tools';
 
-    chip.append(mark, label);
+    chip.append(buildLogomark(), label);
 
     const dismiss = document.createElement('button');
     dismiss.type = 'button';
@@ -348,18 +384,42 @@
     uidLabelEl = uidLabel;
     uidCountEl = uidCount;
 
-    // Writing the setting is the whole implementation: uid-badges.js watches
-    // chrome.storage and adds or strips the chips itself, so the two stay in
-    // step even when the setting is changed from the options page instead.
     uidToggle.addEventListener('click', (e) => {
       e.stopPropagation();
+
+      // Without this the pill would flip its label and nothing else would ever
+      // happen, which is indistinguishable from a broken button.
+      if (!extensionAlive()) {
+        showHint('The extension was reloaded, so this page is no longer connected to it. Refresh the page (Ctrl+Shift+R) to restore the UID badges.');
+        return;
+      }
+
       uidOn = !uidOn;
       if (!uidOn) uidBadged = 0;
       renderUidToggle();
+
+      // Drive uid-badges.js directly. Both scripts share this frame's isolated
+      // world, so this applies instantly and does not depend on the
+      // storage.onChanged round-trip, which is the part that silently dies when
+      // the extension is reloaded under an open tab.
+      try {
+        window.dispatchEvent(new CustomEvent('zuper-uid-set', { detail: { on: uidOn } }));
+      } catch (err) {}
+
+      // Persist for other tabs and for the options page checkbox.
       try {
         chrome.storage.local.set({ showUidBadges: uidOn });
-      } catch (err) {
-        /* extension context torn down — the UI already reflects the intent */
+      } catch (err) {}
+
+      // Turning it on with nothing to show is the symptom of row detection
+      // failing on this page — say so rather than leaving a silent no-op.
+      clearTimeout(uidFeedbackTimer);
+      if (uidOn) {
+        uidFeedbackTimer = setTimeout(() => {
+          if (uidOn && uidBadged === 0) {
+            showHint('No record UIDs found on this page. If it is a listing, open the extension options and send the Diagnostics.');
+          }
+        }, 2000);
       }
     });
     renderUidToggle();
@@ -425,7 +485,9 @@
   // overwrite this tab's count.
   window.addEventListener('zuper-uid-report', (e) => {
     const d = e.detail || {};
-    uidBadged = (d.exact || 0) + (d.matched || 0);
+    // `total` is the page-wide chip count; exact+matched is only what the latest
+    // pass added, which is zero on any re-scan of an already-badged list.
+    uidBadged = typeof d.total === 'number' ? d.total : (d.exact || 0) + (d.matched || 0);
     renderUidToggle();
   });
 

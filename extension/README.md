@@ -87,7 +87,17 @@ cannot see the page's `fetch`/`XMLHttpRequest`. It is strictly a read-only obser
 requests are never altered, the response body is read from a `clone()` so the app still
 gets its own untouched copy, every hook falls through to the original function on error,
 and nothing is transmitted anywhere. Turning off **"Also match UIDs from the app's own
-API responses"** in options unhooks it entirely and leaves only layer 1.
+API responses"** makes it inert: the wrappers stay installed but return before touching
+any response, so nothing is read, cloned or parsed.
+
+The wrappers deliberately stay installed rather than restoring the originals. Removing
+them made "off" a one-way door — nothing re-wrapped on the way back, so re-enabling the
+badges within a page could never resume matching.
+
+It also buffers what it captures and replays it when `uid-badges.js` announces itself.
+`postMessage` is not queued, and the hook runs at `document_start` while the badge script
+runs at `document_idle`, so on a normal page load the listing response lands in that gap
+and would otherwise be lost entirely.
 
 Both behaviours are toggleable in options, and the **Diagnostics** card there reports the
 last scan (rows found, how many were badged by each layer, records captured) — that is
@@ -121,6 +131,10 @@ marketing site.
   page instead of the tool. `api/login.js` issues `zuper_auth` as `SameSite=Lax`, which
   Chrome will not send on a cross-site iframe request. Fixing it means changing that
   cookie to `SameSite=None; Secure`.
+- **Reloading the extension orphans open tabs.** A reloaded unpacked extension leaves the
+  content scripts in already-open tabs disconnected — `chrome.storage` throws and its
+  change listeners are dead. The pill detects this and tells you to refresh rather than
+  appearing to do nothing, but the fix is always `Ctrl+Shift+R` on the Zuper tab.
 - **A custom dashboard URL needs CORS.** Only the two hosts in `host_permissions` are
   granted outright; any other base URL you set in options must send
   `Access-Control-Allow-Origin` for the tool list to load. (Vercel already sends `*`.)

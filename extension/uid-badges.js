@@ -32,7 +32,8 @@
   const records = new Map();      // uid -> { uid, key, fields }
   const tokenIndex = new Map();   // token -> Set(uid)
   let enabled = true;
-  let deepMode = true;
+  let deepMode = true;   // observation currently active
+  let deepPref = true;   // the user's setting, preserved across on/off cycles
   let annotating = false;
   let scanTimer = 0;
   let observer = null;
@@ -293,20 +294,27 @@
         if (how === 'exact') exact++; else matched++;
       }
 
+      // `total` is every chip currently on the page; exact/matched count only what
+      // this pass added. A re-scan skips rows that are already badged, so reporting
+      // exact+matched as the page total made the count collapse to zero on the
+      // first DOM mutation after the initial scan.
+      const total = document.querySelectorAll('.' + CHIP_CLASS).length;
       report = {
         url: location.href,
         rows: found.rows.length,
         kind: found.kind,
         exact: exact,
         matched: matched,
+        total: total,
         records: records.size,
         at: new Date().toISOString(),
       };
       if (exact || matched) {
         console.info(
-          '[Zuper Tools] UID badges: ' + (exact + matched) + '/' + found.rows.length +
-          ' rows (' + exact + ' from the page, ' + matched + ' matched from API), ' +
-          records.size + ' records captured, list type: ' + found.kind
+          '[Zuper Tools] UID badges: ' + total + ' on page, +' + (exact + matched) +
+          ' this pass (' + exact + ' from the page, ' + matched + ' matched from API) ' +
+          'across ' + found.rows.length + ' rows, ' + records.size +
+          ' records captured, list type: ' + found.kind
         );
       }
       // Storage feeds the options page's diagnostics card (global, last-write
@@ -380,11 +388,28 @@
     if (added) queueScan();
   });
 
-  function setDeep(on) {
-    deepMode = !!on;
+  // deepPref is the user's setting; deepMode is whether observation is actually
+  // running right now. They differ because switching the badges off has to stop
+  // observation too — collapsing the two lost the preference, so switching the
+  // badges back on left layer 2 dead until the page was reloaded.
+  function syncHook() {
+    const want = enabled && deepPref;
+    deepMode = want;
     try {
-      window.postMessage({ __zuperUidControl: on ? 'on' : 'off' }, targetOrigin());
+      window.postMessage({ __zuperUidControl: want ? 'on' : 'off' }, targetOrigin());
     } catch (e) {}
+  }
+
+  function setEnabled(on) {
+    enabled = !!on;
+    syncHook();
+    if (enabled) {
+      startObserver();
+      queueScan();
+    } else {
+      stopObserver();
+      removeAll();
+    }
   }
 
   async function start() {
@@ -394,23 +419,24 @@
     } catch (e) {
       s = {};
     }
-    enabled = s.showUidBadges !== false;
-    setDeep(s.uidDeepMode !== false);
-    if (!enabled) { setDeep(false); return; }
-    startObserver();
-    queueScan();
+    deepPref = s.uidDeepMode !== false;
+    setEnabled(s.showUidBadges !== false);
   }
+
+  // Direct in-page channel from the Show/Hide UID pill. Same isolated world, so
+  // this lands immediately and keeps working even when the storage listener below
+  // has been orphaned by an extension reload.
+  window.addEventListener('zuper-uid-set', (e) => {
+    setEnabled(!!(e.detail && e.detail.on));
+  });
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
-    if (changes.showUidBadges) {
-      enabled = changes.showUidBadges.newValue !== false;
-      if (enabled) { startObserver(); queueScan(); }
-      else { stopObserver(); removeAll(); setDeep(false); }
-    }
+    if (changes.showUidBadges) setEnabled(changes.showUidBadges.newValue !== false);
     if (changes.uidDeepMode) {
-      setDeep(changes.uidDeepMode.newValue !== false);
-      if (enabled && deepMode) queueScan();
+      deepPref = changes.uidDeepMode.newValue !== false;
+      syncHook();
+      if (enabled && deepPref) queueScan();
     }
   });
 

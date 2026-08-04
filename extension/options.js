@@ -30,15 +30,17 @@ function flash(node, text, isError) {
 
 function renderDiag(r) {
   if (!r || !r.url) return;
-  const total = (r.exact || 0) + (r.matched || 0);
+  const added = (r.exact || 0) + (r.matched || 0);
+  const total = typeof r.total === 'number' ? r.total : added;
   f.diag.textContent = [
-    'page          ' + r.url,
-    'scanned at    ' + (r.at || '?'),
-    'list type     ' + (r.kind || '?'),
-    'rows found    ' + (r.rows || 0),
-    'badged        ' + total + '  (' + (r.exact || 0) + ' read from the page, ' +
+    'page            ' + r.url,
+    'scanned at      ' + (r.at || '?'),
+    'list type       ' + (r.kind || '?'),
+    'rows found      ' + (r.rows || 0),
+    'badged on page  ' + total,
+    'added last pass ' + added + '  (' + (r.exact || 0) + ' read from the page, ' +
       (r.matched || 0) + ' matched from API)',
-    'records seen  ' + (r.records || 0),
+    'records seen    ' + (r.records || 0),
   ].join('\n');
 }
 
