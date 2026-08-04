@@ -31,9 +31,40 @@
 
   const records = new Map();      // uid -> { uid, key, fields }
   const tokenIndex = new Map();   // token -> Set(uid)
+  const prefixIndex = new Map();  // first 5 chars -> Set(uid), for truncated cells
+  const PREFIX_LEN = 5;
+
+  // Listing cells are ellipsised ("hannah@hiredgunsre…"), so the visible token is
+  // a truncated form of the stored one and can never match exactly. A short
+  // prefix index recovers those at a lower weight.
+  const ROUTE_HINTS = [
+    [/purchase[-_ ]?order/, 'purchase_orders'],
+    [/propert/, 'property'],
+    [/customer|client/, 'customers'],
+    [/\bjobs?\b|work[-_ ]?order/, 'jobs'],
+    [/product|\bparts?\b|service|inventory/, 'product'],
+    [/invoice/, 'invoice'],
+    [/estimate|quote|proposal/, 'estimate'],
+    [/asset/, 'assets'],
+    [/vendor|supplier/, 'vendor'],
+    [/\busers?\b|employee|technician|\bstaff\b/, 'user'],
+    [/\bteams?\b/, 'team'],
+    [/organi[sz]ation|\bcompan/, 'organization'],
+  ];
+
+  // The route names the module. Path and fragment are checked before the query
+  // string, so /jobs?customer=… is read as jobs rather than customers.
+  function detectModule() {
+    const path = (location.pathname + ' ' + location.hash.split('?')[0]).toLowerCase();
+    for (const [re, mod] of ROUTE_HINTS) if (re.test(path)) return mod;
+    const rest = (location.search + ' ' + location.hash).toLowerCase();
+    for (const [re, mod] of ROUTE_HINTS) if (re.test(rest)) return mod;
+    return null;
+  }
   let enabled = true;
   let deepMode = true;   // observation currently active
   let deepPref = true;   // the user's setting, preserved across on/off cycles
+  let apiPref = true;    // fetch records from the Zuper API
   let annotating = false;
   let scanTimer = 0;
   let observer = null;
@@ -67,6 +98,12 @@
       let set = tokenIndex.get(t);
       if (!set) { set = new Set(); tokenIndex.set(t, set); }
       set.add(rec.uid);
+      if (t.length >= PREFIX_LEN) {
+        const p = t.slice(0, PREFIX_LEN);
+        let ps = prefixIndex.get(p);
+        if (!ps) { ps = new Set(); prefixIndex.set(p, ps); }
+        ps.add(rec.uid);
+      }
     }
   }
 
@@ -168,15 +205,25 @@
     if (!records.size) return null;
     const seen = new Set();
     const scores = new Map();
+    const bump = (uids, weight) => {
+      for (const uid of uids) scores.set(uid, (scores.get(uid) || 0) + weight);
+    };
     for (const token of tokenize(rowText)) {
       if (seen.has(token)) continue;
       seen.add(token);
       const uids = tokenIndex.get(token);
-      if (!uids) continue;
-      const df = uids.size;
-      if (df > COMMON_TOKEN_DF) continue;
-      const weight = df === 1 ? 2 : 1;   // a token unique to one record is strong
-      for (const uid of uids) scores.set(uid, (scores.get(uid) || 0) + weight);
+      if (uids) {
+        const df = uids.size;
+        if (df <= COMMON_TOKEN_DF) bump(uids, df === 1 ? 2 : 1);
+        continue;
+      }
+      // No exact hit. A truncated cell ("hiredgunsre" for "hiredgunsrestoration")
+      // still carries its opening characters, so fall back to the prefix index at
+      // a lower weight — enough to corroborate, not enough to decide alone.
+      if (token.length >= PREFIX_LEN) {
+        const ps = prefixIndex.get(token.slice(0, PREFIX_LEN));
+        if (ps && ps.size <= COMMON_TOKEN_DF) bump(ps, 1);
+      }
     }
     if (!scores.size) return null;
 
@@ -307,6 +354,10 @@
         matched: matched,
         total: total,
         records: records.size,
+        module: apiModule || detectModule() || '(not detected)',
+        apiState: apiState,
+        apiCount: apiCount,
+        apiMessage: apiMessage,
         at: new Date().toISOString(),
       };
       if (exact || matched) {
@@ -388,6 +439,83 @@
     if (added) queueScan();
   });
 
+  // ------------------------------------------------------- Zuper API records
+  //
+  // The primary source. Rather than hoping a UID is somewhere in the markup or
+  // that the app happened to fetch it while we were listening, this pulls the
+  // module's records straight from the Zuper API with a saved key — the same
+  // thing Data Manager does — and matches them to the rows on screen.
+  // The fetch runs in the service worker because a content-script fetch is
+  // subject to the page's CORS rules.
+
+  let apiState = 'idle';   // idle | loading | ok | error | no-module | no-key
+  let apiMessage = '';
+  let apiCount = 0;
+  let apiModule = null;
+  let apiInFlight = false;
+
+  function emitStatus() {
+    try {
+      window.dispatchEvent(new CustomEvent('zuper-uid-status', {
+        detail: {
+          state: apiState,
+          message: apiMessage,
+          module: apiModule,
+          apiCount: apiCount,
+        },
+      }));
+    } catch (e) {}
+  }
+
+  async function loadApiRecords(force) {
+    if (!enabled || !apiPref) return;
+    if (apiInFlight) return;
+    if (apiState === 'ok' && !force) return;
+
+    apiModule = detectModule();
+    if (!apiModule) {
+      apiState = 'no-module';
+      apiMessage = 'Could not tell which module this page lists, so there is nothing to fetch.';
+      emitStatus();
+      return;
+    }
+
+    apiInFlight = true;
+    apiState = 'loading';
+    apiMessage = '';
+    emitStatus();
+
+    let res;
+    try {
+      res = await chrome.runtime.sendMessage({ type: 'uid-fetch', module: apiModule });
+    } catch (e) {
+      apiInFlight = false;
+      apiState = 'error';
+      apiMessage = 'Lost contact with the extension. Reload this page (Ctrl+Shift+R).';
+      emitStatus();
+      return;
+    }
+    apiInFlight = false;
+
+    if (!res || !res.ok) {
+      apiState = /API key/i.test((res && res.error) || '') ? 'no-key' : 'error';
+      apiMessage = (res && res.error) || 'The record fetch failed.';
+      emitStatus();
+      return;
+    }
+
+    for (const rec of res.records) {
+      indexRecord({ uid: rec.uid, key: apiModule, fields: rec.fields });
+    }
+    apiCount = res.records.length;
+    apiState = 'ok';
+    apiMessage = apiCount + ' ' + apiModule + ' records from ' +
+      (res.account || 'the account') + (res.region ? ' (' + res.region + ')' : '') +
+      (res.cached ? ', cached' : '');
+    emitStatus();
+    queueScan();
+  }
+
   // deepPref is the user's setting; deepMode is whether observation is actually
   // running right now. They differ because switching the badges off has to stop
   // observation too — collapsing the two lost the preference, so switching the
@@ -406,6 +534,7 @@
     if (enabled) {
       startObserver();
       queueScan();
+      loadApiRecords(false);
     } else {
       stopObserver();
       removeAll();
@@ -415,11 +544,12 @@
   async function start() {
     let s;
     try {
-      s = await chrome.storage.local.get(['showUidBadges', 'uidDeepMode']);
+      s = await chrome.storage.local.get(['showUidBadges', 'uidDeepMode', 'uidApiMode']);
     } catch (e) {
       s = {};
     }
     deepPref = s.uidDeepMode !== false;
+    apiPref = s.uidApiMode !== false;
     setEnabled(s.showUidBadges !== false);
   }
 
@@ -437,6 +567,15 @@
       deepPref = changes.uidDeepMode.newValue !== false;
       syncHook();
       if (enabled && deepPref) queueScan();
+    }
+    if (changes.uidApiMode) {
+      apiPref = changes.uidApiMode.newValue !== false;
+      if (enabled && apiPref) loadApiRecords(false);
+    }
+    // A newly saved key should take effect without a reload.
+    if (changes.apiKey && enabled && apiPref) {
+      apiState = 'idle';
+      loadApiRecords(true);
     }
   });
 

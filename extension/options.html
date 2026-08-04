@@ -55,12 +55,39 @@
   </section>
 
   <section class="card">
+    <h2>Zuper account</h2>
+    <label class="field">
+      <span class="field-label">API key</span>
+      <input type="password" id="apiKey" placeholder="Paste a Zuper API key" spellcheck="false" autocomplete="off">
+      <span class="hint">Used to look up record UIDs for listing pages — the same key you would paste
+        into Data Manager. The region is detected automatically. Stored with the extension on this
+        machine only, in <code>chrome.storage.local</code>, and sent nowhere except to your own
+        Zuper data centre. Note that <code>chrome.storage.local</code> is not encrypted, so treat
+        this the same way you treat the key in any of the other tools.</span>
+    </label>
+    <div class="row">
+      <button type="button" class="btn btn-secondary" id="test-key">Test connection</button>
+      <button type="button" class="btn btn-secondary" id="clear-records">Clear fetched records</button>
+      <span class="inline-status" id="key-status"></span>
+    </div>
+  </section>
+
+  <section class="card">
     <h2>Record UID badges</h2>
     <label class="check">
       <input type="checkbox" id="showUidBadges">
       <span>Show a copyable <strong>UID chip</strong> on each row of Zuper listing pages
         <span class="hint" style="margin-top:3px">Same switch as the <strong>Show/Hide UID</strong>
           pill on the page itself — either one updates the other immediately.</span>
+      </span>
+    </label>
+    <label class="check">
+      <input type="checkbox" id="uidApiMode">
+      <span>Look up UIDs by <strong>fetching records from the Zuper API</strong> (recommended)
+        <span class="hint" style="margin-top:3px">The reliable source, and the one that works on
+          Zuper's listing pages: the module is read from the page's URL, its records are fetched
+          with the API key above, and each row is matched to its record. Cached for 10 minutes
+          per module. Requires the API key.</span>
       </span>
     </label>
     <label class="check">

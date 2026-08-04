@@ -70,12 +70,27 @@ contrast ratio well under 1.5:1.
 Zuper's markup is not something this extension can know, and hard-coded selectors would
 break the first time the app is restyled — so row detection is selector-agnostic (all
 `<table>`s, all ARIA grids, plus a repeated-sibling sweep for card layouts) and UIDs are
-resolved in two layers:
+resolved from three sources:
 
-1. **Exact** — a UUID already present in the row's own markup, normally a detail-page
-   link. Solid border.
-2. **Matched** — paired against records captured from the responses the app already
-   fetched for that page, scored on shared rare tokens. **Dashed** border.
+1. **API lookup (primary)** — the module is read from the page's route, its records are
+   fetched from the Zuper API with a saved key, and each row is matched to its record.
+   This is the path that works on Zuper's real listings, where rows carry no UID at all.
+   Needs an API key in options. **Dashed** border.
+2. **Exact** — a UUID already present in the row's own markup, normally a detail-page
+   link. No key needed. Solid border.
+3. **Observed** — records captured from responses the app already fetched for that page.
+   A free fallback for routes the module map does not cover. **Dashed** border.
+
+The API fetch runs in the service worker, not the content script: a content-script fetch
+is treated as coming from the page's origin and would be blocked by CORS. Endpoints, uid
+keys and the paginated response shape are taken from Data Manager's `MODULES`, which is
+the proven reference for this API. Records are cached for 10 minutes per module, and
+reduced to `{uid, fields}` on arrival rather than held whole.
+
+Matching tolerates **truncated cells**. Listings ellipsise long values
+(`hannah@hiredgunsre…`), so the visible token can never equal the stored one; a
+short-prefix index recovers those at a lower weight — enough to corroborate a match, not
+enough to decide one alone.
 
 Layer 2 only labels a row when one record wins by a clear margin. Two customers with the
 same name and email leave *both* rows unbadged, and a row with no corresponding record
@@ -109,7 +124,7 @@ the thing to copy if a page comes up unbadged.
 | --- | --- |
 | `sidePanel` | Open and host the panel |
 | `storage` | Settings + the cached tool list |
-| `*://*.zuper.co/*`, `*://*.zuperpro.com/*` | Inject the button and the UID badges; read the active tab's URL for the context strip |
+| `*://*.zuper.co/*`, `*://*.zuperpro.com/*` | Inject the button and the UID badges; fetch records for UID lookup; read the active tab's URL for the context strip |
 | `https://internal-tool-repo.vercel.app/*` | Fetch the tool list and frame the tools |
 
 There is no `tabs` permission — the context strip relies on the host permissions above to

@@ -20,6 +20,8 @@
     /* Show/Hide UID control, parked directly above the launcher. Deliberately a
        neutral pill rather than a second orange one — it is a state toggle, not a
        primary action, and should not compete with the launcher. */
+    /* Solid charcoal, not white. A white pill with a #E6E6E6 border sitting on
+       Zuper's white page was effectively invisible. */
     .uid-toggle {
       position: fixed;
       bottom: 76px;
@@ -27,33 +29,40 @@
       display: inline-flex;
       align-items: center;
       gap: 7px;
-      height: 30px;
-      padding: 0 11px;
+      height: 32px;
+      padding: 0 13px;
       font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
       font-size: 12px;
       font-weight: 600;
       letter-spacing: -0.01em;
-      color: #191919;
-      background: #FFFFFF;
-      border: 1px solid #E6E6E6;
+      color: #FFFFFF;
+      background: #191919;
+      border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 999px;
-      box-shadow: 0 4px 14px rgba(25, 25, 25, 0.14);
+      box-shadow: 0 6px 18px rgba(25, 25, 25, 0.28);
       cursor: pointer;
+      white-space: nowrap;
       transition: box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
                   transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
-                  color 160ms linear;
+                  background-color 160ms linear;
     }
     .uid-toggle.side-right { right: 22px; }
     .uid-toggle.side-left  { left: 22px; }
     .uid-toggle:hover {
       transform: translateY(-1px);
-      box-shadow: 0 8px 22px rgba(25, 25, 25, 0.18);
+      background: #2A2A2A;
+      box-shadow: 0 10px 26px rgba(25, 25, 25, 0.34);
     }
     .uid-toggle:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px rgba(253, 80, 0, 0.32);
+      box-shadow: 0 0 0 3px rgba(253, 80, 0, 0.45), 0 6px 18px rgba(25, 25, 25, 0.28);
     }
-    .uid-toggle.off { color: #6B7280; }
+    .uid-toggle.off { color: #C9C9CC; }
+    .uid-toggle.loading { color: #FFFFFF; }
+    .uid-toggle.error { border-color: rgba(255, 122, 61, 0.65); }
+
+    /* A light border keeps the charcoal pill defined on a dark page too. */
+    .uid-toggle.on-dark { border-color: rgba(255, 255, 255, 0.28); }
 
     .uid-dot {
       width: 7px;
@@ -65,28 +74,27 @@
     }
     .uid-toggle.off .uid-dot {
       background: transparent;
-      border: 1.5px solid #9CA3AF;
+      border: 1.5px solid #8A8A8E;
+    }
+    .uid-toggle.error .uid-dot { background: #FF7A3D; }
+    .uid-toggle.loading .uid-dot { animation: uid-pulse 900ms ease-in-out infinite; }
+
+    @keyframes uid-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.35; transform: scale(0.7); }
     }
 
     .uid-count {
       font-family: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Menlo, monospace;
       font-size: 10.5px;
       font-weight: 500;
-      color: #888888;
+      color: rgba(255, 255, 255, 0.62);
     }
     .uid-count[hidden] { display: none; }
 
-    /* Matched to the page behind it rather than to prefers-color-scheme: the pill
-       floats over Zuper's UI, so a dark desktop theme should not put a dark pill
-       on a light app. start() measures the page and sets .on-dark. */
-    .uid-toggle.on-dark {
-      color: #F2F2F3;
-      background: #232325;
-      border-color: #3A3A3D;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    @media (prefers-reduced-motion: reduce) {
+      .uid-toggle.loading .uid-dot { animation: none; opacity: 0.6; }
     }
-    .uid-toggle.on-dark.off { color: #9CA3AF; }
-    .uid-toggle.on-dark .uid-count { color: #8A8A8E; }
 
     .launcher {
       position: fixed;
@@ -266,6 +274,8 @@
   let currentSide = 'right';
   let pageIsDark = false;
   let uidFeedbackTimer = 0;
+  let uidStatus = { state: 'idle', message: '', module: null, apiCount: 0 };
+  let uidStatusHintTimer = 0;
 
   // Is the page behind the pill dark? Walks up for an opaque background, since
   // app containers are often transparent. Duplicated in uid-badges.js on purpose
@@ -291,18 +301,45 @@
 
   function renderUidToggle() {
     if (!uidToggleEl) return;
+    const loading = uidOn && uidStatus.state === 'loading';
+    // A failed lookup only counts as a failure if it left the page with nothing.
+    // Rows can be badged straight from the markup without the API, and flagging an
+    // error over working badges is just crying wolf.
+    const failed = uidOn && uidBadged === 0 &&
+      (uidStatus.state === 'error' || uidStatus.state === 'no-key' ||
+       uidStatus.state === 'no-module');
+
     // Rebuilt wholesale so a side change cannot drop the theme class, or vice versa.
-    uidToggleEl.className =
-      'uid-toggle side-' + currentSide + (pageIsDark ? ' on-dark' : '') + (uidOn ? '' : ' off');
+    uidToggleEl.className = 'uid-toggle side-' + currentSide +
+      (pageIsDark ? ' on-dark' : '') +
+      (uidOn ? '' : ' off') +
+      (loading ? ' loading' : '') +
+      (failed ? ' error' : '');
     uidToggleEl.setAttribute('aria-checked', uidOn ? 'true' : 'false');
-    uidLabelEl.textContent = uidOn ? 'Hide UID' : 'Show UID';
-    uidToggleEl.title = uidOn
-      ? 'Record UID chips are on for this page — click to hide them'
-      : 'Show a copyable record UID on each listing row';
-    // The count is only meaningful while the badges are actually rendered.
-    const show = uidOn && uidBadged > 0;
-    uidCountEl.hidden = !show;
-    if (show) uidCountEl.textContent = String(uidBadged);
+
+    uidLabelEl.textContent = !uidOn ? 'Show UID'
+      : loading ? 'Fetching records'
+      : 'Hide UID';
+
+    uidToggleEl.title = !uidOn
+      ? 'Show a copyable record UID on each listing row'
+      : loading
+        ? 'Fetching ' + (uidStatus.module || 'record') + ' records from Zuper…'
+        : failed
+          ? uidStatus.message + '\n\nClick to hide.'
+          : 'Record UID chips are on' +
+            (uidStatus.message ? '\n' + uidStatus.message : '') +
+            '\n\nClick to hide them.';
+
+    // Count area doubles as the status readout.
+    let countText = '';
+    if (uidOn) {
+      if (loading) countText = '…';
+      else if (uidBadged > 0) countText = String(uidBadged);
+      else if (failed) countText = '!';
+    }
+    uidCountEl.hidden = !countText;
+    if (countText) uidCountEl.textContent = countText;
   }
 
   function build(side) {
@@ -483,6 +520,31 @@
   // world for this frame, so a window event is a per-tab channel between them.
   // Storage would be wrong here: it is global, so another tab's scan would
   // overwrite this tab's count.
+  // Fetch progress and failures from uid-badges.js. A failure has to surface on
+  // the pill — the whole complaint about the old build was that clicking it
+  // produced no visible response whatsoever.
+  window.addEventListener('zuper-uid-status', (e) => {
+    uidStatus = e.detail || uidStatus;
+    renderUidToggle();
+
+    const state = uidStatus.state;
+    if (state !== 'no-key' && state !== 'error' && state !== 'no-module') return;
+
+    // Wait for the scan to land before complaining. If the page ended up badged
+    // from its own markup, a failed API lookup is not worth interrupting over.
+    clearTimeout(uidStatusHintTimer);
+    uidStatusHintTimer = setTimeout(() => {
+      if (!uidOn || uidBadged > 0) return;
+      if (state === 'no-key') {
+        showHint('No Zuper API key saved, so UIDs cannot be looked up. Add one in the extension options — right-click the toolbar icon and choose Options.');
+      } else if (state === 'error') {
+        showHint('Could not load UIDs: ' + uidStatus.message);
+      } else {
+        showHint('This page does not look like a records listing, so there is nothing to look up.');
+      }
+    }, 1400);
+  });
+
   window.addEventListener('zuper-uid-report', (e) => {
     const d = e.detail || {};
     // `total` is the page-wide chip count; exact+matched is only what the latest

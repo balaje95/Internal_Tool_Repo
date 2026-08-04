@@ -4,6 +4,8 @@ const DEFAULTS = {
   buttonSide: 'right',
   showUidBadges: true,
   uidDeepMode: true,
+  uidApiMode: true,
+  apiKey: '',
 };
 
 const f = {
@@ -12,6 +14,11 @@ const f = {
   side: document.getElementById('buttonSide'),
   badges: document.getElementById('showUidBadges'),
   deep: document.getElementById('uidDeepMode'),
+  api: document.getElementById('uidApiMode'),
+  apiKey: document.getElementById('apiKey'),
+  testKey: document.getElementById('test-key'),
+  clearRecords: document.getElementById('clear-records'),
+  keyStatus: document.getElementById('key-status'),
   save: document.getElementById('save'),
   saveStatus: document.getElementById('save-status'),
   clear: document.getElementById('clear-cache'),
@@ -37,10 +44,13 @@ function renderDiag(r) {
     'scanned at      ' + (r.at || '?'),
     'list type       ' + (r.kind || '?'),
     'rows found      ' + (r.rows || 0),
+    'module detected ' + (r.module || '?'),
+    'api fetch       ' + (r.apiState || '?') + (r.apiCount ? ' — ' + r.apiCount + ' records' : ''),
+    'api detail      ' + (r.apiMessage || '—'),
     'badged on page  ' + total,
     'added last pass ' + added + '  (' + (r.exact || 0) + ' read from the page, ' +
-      (r.matched || 0) + ' matched from API)',
-    'records seen    ' + (r.records || 0),
+      (r.matched || 0) + ' matched)',
+    'records indexed ' + (r.records || 0),
   ].join('\n');
 }
 
@@ -51,8 +61,39 @@ async function load() {
   f.side.value = s.buttonSide === 'left' ? 'left' : 'right';
   f.badges.checked = s.showUidBadges !== false;
   f.deep.checked = s.uidDeepMode !== false;
+  f.api.checked = s.uidApiMode !== false;
+  f.apiKey.value = s.apiKey || '';
   renderDiag(s.uidReport);
 }
+
+f.testKey.addEventListener('click', async () => {
+  const key = f.apiKey.value.trim();
+  if (!key) { flash(f.keyStatus, 'Enter an API key first.', true); return; }
+  f.keyStatus.className = 'inline-status';
+  f.keyStatus.textContent = 'Checking every Zuper region…';
+  let res;
+  try {
+    res = await chrome.runtime.sendMessage({ type: 'uid-test-key', apiKey: key });
+  } catch (e) {
+    flash(f.keyStatus, 'Could not reach the extension worker.', true);
+    return;
+  }
+  if (res && res.ok) {
+    flash(f.keyStatus, '✓ ' + (res.account || 'Connected') +
+      (res.region ? ' — ' + res.region : '') + '. Remember to Save.');
+  } else {
+    flash(f.keyStatus, (res && res.error) || 'Connection failed.', true);
+  }
+});
+
+f.clearRecords.addEventListener('click', async () => {
+  try {
+    await chrome.runtime.sendMessage({ type: 'uid-clear-cache' });
+    flash(f.keyStatus, 'Cached records cleared — the next page will refetch.');
+  } catch (e) {
+    flash(f.keyStatus, 'Could not reach the extension worker.', true);
+  }
+});
 
 // The report is written by the content script on another tab, so reflect updates
 // live rather than making the user reopen this page.
@@ -92,6 +133,8 @@ f.save.addEventListener('click', async () => {
     buttonSide: f.side.value === 'left' ? 'left' : 'right',
     showUidBadges: f.badges.checked,
     uidDeepMode: f.deep.checked,
+    uidApiMode: f.api.checked,
+    apiKey: f.apiKey.value.trim(),
   });
   f.base.value = base;
   flash(f.saveStatus, 'Saved.');
