@@ -44,9 +44,44 @@ used only on a very first run with no network.
 | `background.js` | Opens the panel (toolbar click, `Alt+Z`, or a message from the page button) |
 | `sidepanel.html/.css/.js` | The launcher list and the iframe tool viewer |
 | `content.js` | The floating in-page button, in a shadow root |
-| `options.html/.css/.js` | Dashboard URL, button visibility/position, clear cache |
+| `uid-hook.js` | MAIN-world observer of the app's API responses (see UID badges below) |
+| `uid-badges.js/.css` | Injects the per-row UID chips |
+| `options.html/.css/.js` | Dashboard URL, button and badge settings, diagnostics |
 | `tools.fallback.json` | First-run snapshot of the tool list |
 | `icons/` | Logomark PNGs, generated from `assets/logos/zuper-logomark.svg` |
+
+## Record UID badges
+
+On Zuper listing pages each row gets a small monospace chip showing the first 8
+characters of its record UID; clicking copies the full UID. It saves opening a record
+just to read its id out of the address bar before pasting it into Data Manager or one of
+the mappers.
+
+Zuper's markup is not something this extension can know, and hard-coded selectors would
+break the first time the app is restyled — so row detection is selector-agnostic (all
+`<table>`s, all ARIA grids, plus a repeated-sibling sweep for card layouts) and UIDs are
+resolved in two layers:
+
+1. **Exact** — a UUID already present in the row's own markup, normally a detail-page
+   link. Solid border.
+2. **Matched** — paired against records captured from the responses the app already
+   fetched for that page, scored on shared rare tokens. **Dashed** border.
+
+Layer 2 only labels a row when one record wins by a clear margin. Two customers with the
+same name and email leave *both* rows unbadged, and a row with no corresponding record
+stays bare. That asymmetry is deliberate: a missing badge costs a click, while a wrong
+one gets pasted into a bulk delete.
+
+`uid-hook.js` needs `world: "MAIN"` because content scripts run in an isolated world and
+cannot see the page's `fetch`/`XMLHttpRequest`. It is strictly a read-only observer —
+requests are never altered, the response body is read from a `clone()` so the app still
+gets its own untouched copy, every hook falls through to the original function on error,
+and nothing is transmitted anywhere. Turning off **"Also match UIDs from the app's own
+API responses"** in options unhooks it entirely and leaves only layer 1.
+
+Both behaviours are toggleable in options, and the **Diagnostics** card there reports the
+last scan (rows found, how many were badged by each layer, records captured) — that is
+the thing to copy if a page comes up unbadged.
 
 ## Permissions, and why each is needed
 
@@ -54,7 +89,7 @@ used only on a very first run with no network.
 | --- | --- |
 | `sidePanel` | Open and host the panel |
 | `storage` | Settings + the cached tool list |
-| `*://*.zuper.co/*`, `*://*.zuperpro.com/*` | Inject the button; read the active tab's URL for the context strip |
+| `*://*.zuper.co/*`, `*://*.zuperpro.com/*` | Inject the button and the UID badges; read the active tab's URL for the context strip |
 | `https://internal-tool-repo.vercel.app/*` | Fetch the tool list and frame the tools |
 
 There is no `tabs` permission — the context strip relies on the host permissions above to

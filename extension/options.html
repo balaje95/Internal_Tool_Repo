@@ -51,6 +51,42 @@
   </section>
 
   <section class="card">
+    <h2>Record UID badges</h2>
+    <label class="check">
+      <input type="checkbox" id="showUidBadges">
+      <span>Show a copyable <strong>UID chip</strong> on each row of Zuper listing pages</span>
+    </label>
+    <label class="check">
+      <input type="checkbox" id="uidDeepMode">
+      <span>Also match UIDs from the app's own API responses
+        <span class="hint" style="margin-top:3px">
+          Most listing rows carry their UID in a detail link, and those are read straight from the
+          page. When a row does not, this reads the responses the Zuper app has <em>already</em>
+          fetched for that page and pairs each row to its record. Nothing is sent anywhere, no
+          request is modified, and no extra API calls are made. Turn it off to use only UIDs that
+          are literally present in the page.
+        </span>
+      </span>
+    </label>
+    <p class="hint">
+      A chip with a <strong>dashed</strong> border was matched from API data rather than read
+      directly from the row. A row is left unbadged whenever the match is not unambiguous —
+      it will never show a UID it is not sure of.
+    </p>
+  </section>
+
+  <section class="card">
+    <h2>Diagnostics</h2>
+    <p class="hint">Result of the most recent listing-page scan. Useful for reporting a page where
+      the chips did not appear.</p>
+    <pre class="diag" id="diag">No scan recorded yet — open a Zuper listing page.</pre>
+    <div class="row">
+      <button type="button" class="btn btn-secondary" id="copy-diag">Copy diagnostics</button>
+      <span class="inline-status" id="diag-status"></span>
+    </div>
+  </section>
+
+  <section class="card">
     <h2>Keyboard shortcut</h2>
     <p class="hint">
       <strong>Alt+Z</strong> opens the panel from any tab. Chrome will not let an extension change

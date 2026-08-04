@@ -58,6 +58,22 @@
       "js": ["content.js"],
       "run_at": "document_idle",
       "all_frames": false
+    },
+    {
+      "matches": ["*://*.zuper.co/*", "*://*.zuperpro.com/*"],
+      "exclude_matches": ["*://zuper.co/*", "*://www.zuper.co/*"],
+      "js": ["uid-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": ["*://*.zuper.co/*", "*://*.zuperpro.com/*"],
+      "exclude_matches": ["*://zuper.co/*", "*://www.zuper.co/*"],
+      "js": ["uid-badges.js"],
+      "css": ["uid-badges.css"],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ]
 }

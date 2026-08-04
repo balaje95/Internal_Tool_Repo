@@ -1,0 +1,74 @@
+/* Styles for the injected UID chips.
+   These elements live in Zuper's own DOM rather than a shadow root — a chip has
+   to sit inside a table cell to line up with its row — so the properties that
+   decide legibility are pinned with !important against the app's stylesheet.
+   Loaded via the manifest's "css", which Chrome injects in a way the page's CSP
+   cannot block. */
+
+.zuper-uid-chip {
+  display: inline-block !important;
+  vertical-align: middle !important;
+  margin-left: 6px !important;
+  padding: 1px 5px !important;
+  font-family: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Menlo, monospace !important;
+  font-size: 10.5px !important;
+  font-weight: 500 !important;
+  line-height: 1.5 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  white-space: nowrap !important;
+  color: #6B7280 !important;
+  background: #F3F4F6 !important;
+  border: 1px solid #E5E7EB !important;
+  border-radius: 999px !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  opacity: 0.75;
+  transition: opacity 120ms ease, color 120ms ease,
+              background-color 120ms ease, border-color 120ms ease;
+}
+
+.zuper-uid-chip:hover {
+  opacity: 1;
+  color: #FD5000 !important;
+  background: #FFF5F0 !important;
+  border-color: rgba(253, 80, 0, 0.45) !important;
+}
+
+/* A dashed edge marks a UID that was matched from API data rather than read
+   straight out of the row, so a lower-confidence badge always looks different
+   from a certain one. */
+.zuper-uid-chip[data-inferred="1"] {
+  border-style: dashed !important;
+}
+
+.zuper-uid-chip[data-state="copied"] {
+  opacity: 1;
+  color: #1E854B !important;
+  background: #E7F6EC !important;
+  border-color: rgba(30, 133, 75, 0.4) !important;
+}
+
+.zuper-uid-chip[data-state="failed"] {
+  opacity: 1;
+  color: #C42121 !important;
+  background: #FDECEC !important;
+  border-color: rgba(196, 33, 33, 0.4) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .zuper-uid-chip {
+    color: #9CA3AF !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+  }
+  .zuper-uid-chip:hover {
+    color: #FF7A3D !important;
+    background: rgba(253, 80, 0, 0.14) !important;
+    border-color: rgba(253, 80, 0, 0.5) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zuper-uid-chip { transition: none; }
+}

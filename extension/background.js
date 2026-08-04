@@ -10,6 +10,8 @@ const DEFAULTS = {
   dashboardBase: 'https://internal-tool-repo.vercel.app',
   showButton: true,
   buttonSide: 'right',
+  showUidBadges: true,
+  uidDeepMode: true,
 };
 
 // Clicking the toolbar icon opens the side panel. Safe to call on every worker
