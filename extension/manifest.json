@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Zuper Internal Tools",
   "short_name": "Zuper Tools",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Launch the Internal Tools Dashboard in a side panel next to the Zuper web app.",
   "minimum_chrome_version": "116",
 

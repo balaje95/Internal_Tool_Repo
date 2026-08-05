@@ -207,19 +207,23 @@
       if (added) kinds.push(kind + ':' + added);
     }
 
+    // One row is enough for a real table or ARIA grid. Requiring two meant a
+    // listing filtered or searched down to a single result got no badges at all.
+    // The "at least a few" rule is a property of the repeated-sibling guess below,
+    // where it guards against latching onto a nav menu; a <tbody> is not a guess.
     document.querySelectorAll('table').forEach((t) => {
       const trs = Array.prototype.filter.call(
         t.querySelectorAll('tbody tr'),
         (r) => r.children.length >= 2
       );
-      if (trs.length >= 2) add(trs, 'table');
+      if (trs.length) add(trs, 'table');
     });
 
     const ariaRows = Array.prototype.filter.call(
       document.querySelectorAll('[role="row"]'),
       (r) => !r.closest('thead') && r.children.length >= 2
     );
-    if (ariaRows.length >= 2) add(ariaRows, 'aria');
+    if (ariaRows.length) add(ariaRows, 'aria');
 
     // Repeated-sibling fallback for card/div listings — best group only.
     let bestSiblings = null;
@@ -375,7 +379,12 @@
 
         let uid = uuidFromRow(row);
         let how = 'exact';
-        if (!uid && deepMode) {
+        // Gate on having records, not on deepMode. Each source is already gated
+        // where it ingests — the hook by deepMode, the API lookup by apiPref — so
+        // gating here too meant switching off the observer option silently
+        // disabled matching of API-fetched records as well, and the badges
+        // vanished while the API option was still on.
+        if (!uid && records.size) {
           uid = matchRow(rowText(row));
           how = 'match';
         }
@@ -436,6 +445,25 @@
     clearTimeout(scanTimer);
     scanTimer = setTimeout(scan, DEBOUNCE_MS);
   }
+
+  // Route changes have to be noticed, or the module stays whatever it was when the
+  // tab loaded. A single-page app navigates with pushState, which fires no event at
+  // all, so popstate/hashchange are not enough on their own and the observer
+  // callback re-checks the URL as well (a string compare, so it is free).
+  let lastHref = location.href;
+
+  function checkRoute() {
+    if (location.href === lastHref) return;
+    lastHref = location.href;
+    pageModuleCache = { href: '', mod: null };
+    if (enabled) {
+      loadApiRecords(false);   // wipes and refetches if the module changed
+      queueScan();
+    }
+  }
+
+  window.addEventListener('popstate', checkRoute);
+  window.addEventListener('hashchange', checkRoute);
 
   // ------------------------------------------------- UID collection for copying
   //
@@ -508,6 +536,7 @@
   function startObserver() {
     if (observer || !document.body) return;
     observer = new MutationObserver((mutations) => {
+      checkRoute();
       if (annotating) return;
       // Ignore the mutations we caused ourselves, or the observer would loop.
       for (const m of mutations) {
@@ -569,6 +598,7 @@
   let apiCached = false;
   let apiFetchedAt = 0;
   let apiAccount = '';
+  let apiTruncated = false;
 
   function emitStatus() {
     try {
@@ -586,9 +616,28 @@
   async function loadApiRecords(force) {
     if (!enabled || !apiPref) return;
     if (apiInFlight) return;
+
+    const mod = detectModule();
+
+    // Never match rows against another module's records. A jobs row shows its
+    // customer's name, so a customer index left over from the previous route
+    // matches it and badges the row with a customer_uid — a wrong UID, presented
+    // with the same confidence as a right one, on its way into a bulk delete.
+    if (mod && apiModule && mod !== apiModule) {
+      records.clear();
+      tokenIndex.clear();
+      prefixIndex.clear();
+      removeAll();
+      apiState = 'idle';
+      apiCount = 0;
+      apiCached = false;
+      apiFetchedAt = 0;
+      force = true;
+    }
+
     if (apiState === 'ok' && !force) return;
 
-    apiModule = detectModule();
+    apiModule = mod;
     if (!apiModule) {
       apiState = 'no-module';
       apiMessage = 'Could not tell which module this page lists, so there is nothing to fetch.';
@@ -628,9 +677,14 @@
     apiCached = !!res.cached;
     apiFetchedAt = res.fetchedAt || Date.now();
     apiAccount = res.account || '';
+    apiTruncated = !!res.truncated;
     apiMessage = apiCount + ' ' + apiModule + ' records from ' +
       (res.account || 'the account') + (res.region ? ' (' + res.region + ')' : '') +
-      (res.cached ? ', cached' : '');
+      (res.cached ? ', cached' : '') +
+      (apiTruncated
+        ? '. CAPPED at ' + (res.maxRecords || apiCount) + ' — this module has more, so rows ' +
+          'beyond that will stay unbadged.'
+        : '');
     emitStatus();
     queueScan();
   }

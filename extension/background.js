@@ -334,7 +334,10 @@ async function fetchModuleRecords(moduleKey, apiKey) {
   const cacheKey = dcUrl + '|' + moduleKey;
   const hit = recordCache.get(cacheKey);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
-    return { records: hit.records, accountName, dcUrl, cached: true, fetchedAt: hit.at };
+    return {
+      records: hit.records, accountName, dcUrl,
+      cached: true, fetchedAt: hit.at, truncated: !!hit.truncated,
+    };
   }
 
   const base = dcUrl + '/api/';
@@ -343,6 +346,9 @@ async function fetchModuleRecords(moduleKey, apiKey) {
   let page = 1;
   let stop = false;
 
+  // Whether we ran out of pages naturally or hit the cap. A capped fetch leaves
+  // later rows unmatched, and a bare row with no explanation reads as "this record
+  // has no UID" rather than "we never looked it up".
   while (!stop && page <= MAX_PAGES) {
     const pages = [];
     for (let i = 0; i < PAGE_BATCH && page <= MAX_PAGES; i++) pages.push(page++);
@@ -358,8 +364,9 @@ async function fetchModuleRecords(moduleKey, apiKey) {
     }
   }
 
-  recordCache.set(cacheKey, { records, at: Date.now() });
-  return { records, accountName, dcUrl, cached: false };
+  const truncated = !stop && page > MAX_PAGES;
+  recordCache.set(cacheKey, { records, at: Date.now(), truncated });
+  return { records, accountName, dcUrl, cached: false, truncated, fetchedAt: Date.now() };
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, respond) => {
@@ -382,6 +389,8 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
           region: (out.dcUrl.match(/\/\/([^.]+)\./) || [])[1] || '',
           cached: out.cached,
           fetchedAt: out.fetchedAt || Date.now(),
+          truncated: !!out.truncated,
+          maxRecords: MAX_PAGES * PAGE_LIMIT,
         });
       } catch (err) {
         respond({ ok: false, error: String((err && err.message) || err) });
