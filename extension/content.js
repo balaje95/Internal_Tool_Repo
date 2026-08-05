@@ -266,9 +266,12 @@
   let hintEl = null;
   let hintTimer = 0;
   let dismissedForSession = false;
-  let uidToggleEl = null;
-  let uidLabelEl = null;
-  let uidCountEl = null;
+  // Every mounted Show/Hide UID control. There is always the floating pill, and
+  // when an anchor can be found in the page's own toolbar, one inline beside it.
+  const toggles = [];
+  let floatingToggleEl = null;
+  let inlineHost = null;
+  let inlineTimer = 0;
   let uidOn = true;
   let uidBadged = 0;
   let currentSide = 'right';
@@ -300,7 +303,7 @@
   }
 
   function renderUidToggle() {
-    if (!uidToggleEl) return;
+    if (!toggles.length) return;
     const loading = uidOn && uidStatus.state === 'loading';
     // A failed lookup only counts as a failure if it left the page with nothing.
     // Rows can be badged straight from the markup without the API, and flagging an
@@ -309,19 +312,7 @@
       (uidStatus.state === 'error' || uidStatus.state === 'no-key' ||
        uidStatus.state === 'no-module');
 
-    // Rebuilt wholesale so a side change cannot drop the theme class, or vice versa.
-    uidToggleEl.className = 'uid-toggle side-' + currentSide +
-      (pageIsDark ? ' on-dark' : '') +
-      (uidOn ? '' : ' off') +
-      (loading ? ' loading' : '') +
-      (failed ? ' error' : '');
-    uidToggleEl.setAttribute('aria-checked', uidOn ? 'true' : 'false');
-
-    uidLabelEl.textContent = !uidOn ? 'Show UID'
-      : loading ? 'Fetching records'
-      : 'Hide UID';
-
-    uidToggleEl.title = !uidOn
+    const title = !uidOn
       ? 'Show a copyable record UID on each listing row'
       : loading
         ? 'Fetching ' + (uidStatus.module || 'record') + ' records from Zuper…'
@@ -331,15 +322,227 @@
             (uidStatus.message ? '\n' + uidStatus.message : '') +
             '\n\nClick to hide them.';
 
-    // Count area doubles as the status readout.
+    // The count area doubles as the status readout.
     let countText = '';
     if (uidOn) {
       if (loading) countText = '…';
       else if (uidBadged > 0) countText = String(uidBadged);
       else if (failed) countText = '!';
     }
-    uidCountEl.hidden = !countText;
-    if (countText) uidCountEl.textContent = countText;
+
+    const state = (uidOn ? '' : ' off') + (loading ? ' loading' : '') + (failed ? ' error' : '');
+
+    for (const t of toggles) {
+      if (!t.root || !t.root.isConnected) continue;
+      // Rebuilt wholesale so a side change cannot drop the theme class, or vice versa.
+      t.root.className = t.kind === 'inline'
+        ? 'uid-inline' + state
+        : 'uid-toggle side-' + currentSide + (pageIsDark ? ' on-dark' : '') + state;
+      t.root.setAttribute('aria-checked', uidOn ? 'true' : 'false');
+      t.root.title = title;
+      // The toolbar is tight, so the inline copy uses a shorter busy label.
+      t.labelEl.textContent = !uidOn ? 'Show UID'
+        : loading ? (t.kind === 'inline' ? 'Fetching…' : 'Fetching records')
+        : 'Hide UID';
+      t.countEl.hidden = !countText;
+      if (countText) t.countEl.textContent = countText;
+    }
+
+    // Once the control is sitting in the toolbar, the floating pill is clutter.
+    if (floatingToggleEl) {
+      floatingToggleEl.style.display = (inlineHost && inlineHost.isConnected) ? 'none' : '';
+    }
+  }
+
+  // Shared by the floating pill and the inline toolbar control.
+  function onUidToggleClick(e) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    // Without this the control would flip its label and nothing else would ever
+    // happen, which is indistinguishable from a broken button.
+    if (!extensionAlive()) {
+      showHint('The extension was reloaded, so this page is no longer connected to it. Refresh the page (Ctrl+Shift+R) to restore the UID badges.');
+      return;
+    }
+
+    uidOn = !uidOn;
+    if (!uidOn) uidBadged = 0;
+    renderUidToggle();
+
+    // Drive uid-badges.js directly. Both scripts share this frame's isolated
+    // world, so this applies instantly and does not depend on the
+    // storage.onChanged round-trip, which is the part that silently dies when the
+    // extension is reloaded under an open tab.
+    try {
+      window.dispatchEvent(new CustomEvent('zuper-uid-set', { detail: { on: uidOn } }));
+    } catch (err) {}
+
+    // Persist for other tabs and for the options page checkbox.
+    try {
+      chrome.storage.local.set({ showUidBadges: uidOn });
+    } catch (err) {}
+
+    // Turning it on with nothing to show is the symptom of row detection failing
+    // on this page — say so rather than leaving a silent no-op.
+    clearTimeout(uidFeedbackTimer);
+    if (uidOn) {
+      uidFeedbackTimer = setTimeout(() => {
+        if (uidOn && uidBadged === 0) {
+          showHint('No record UIDs found on this page. If it is a listing, open the extension options and send the Diagnostics.');
+        }
+      }, 2000);
+    }
+  }
+
+  // ---------------------------------------- inline toolbar control
+  //
+  // Preferred placement: right beside the listing's own view chip ("All
+  // Customers"), where the eye already is, rather than floating in a corner.
+  // Rendered inside its own shadow root so Zuper's toolbar CSS cannot restyle it
+  // and ours cannot leak out.
+
+  const INLINE_HOST_ID = 'zuper-tools-uid-inline';
+
+  const INLINE_CSS = `
+    :host { all: initial; }
+
+    .uid-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 30px;
+      padding: 0 11px;
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12.5px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #191919;
+      background: #FFFFFF;
+      border: 1px solid #D1D5DB;
+      border-radius: 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 140ms linear, background-color 140ms linear, color 140ms linear;
+    }
+    .uid-inline:hover {
+      color: #FD5000;
+      background: #FFF5F0;
+      border-color: rgba(253, 80, 0, 0.55);
+    }
+    .uid-inline:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(253, 80, 0, 0.32);
+    }
+    .uid-inline.off { color: #6B7280; }
+    .uid-inline.error { border-color: rgba(255, 122, 61, 0.8); }
+
+    .uid-dot {
+      width: 7px; height: 7px; flex: none;
+      border-radius: 50%;
+      background: #FD5000;
+      box-sizing: border-box;
+    }
+    .uid-inline.off .uid-dot { background: transparent; border: 1.5px solid #9CA3AF; }
+    .uid-inline.loading .uid-dot { animation: uid-pulse 900ms ease-in-out infinite; }
+
+    .uid-count {
+      font-family: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Menlo, monospace;
+      font-size: 10.5px;
+      font-weight: 500;
+      color: #6B7280;
+    }
+    .uid-count[hidden] { display: none; }
+
+    @keyframes uid-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.35; transform: scale(0.7); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .uid-inline.loading .uid-dot { animation: none; opacity: 0.6; }
+    }
+  `;
+
+  // "All Customers" is the target; "Create New View" is the backup anchor. Both
+  // are matched on their visible text rather than a class, because Zuper's class
+  // names are not ours to depend on.
+  function findToolbarAnchor() {
+    if (!document.body) return null;
+    const els = document.body.querySelectorAll('button, a, li, span, div');
+    const cap = Math.min(els.length, 3000);
+    let fallback = null;
+    for (let i = 0; i < cap; i++) {
+      const el = els[i];
+      if (el.children.length > 2) continue;
+      const text = (el.textContent || '').trim();
+      if (!text || text.length > 40) continue;
+
+      // Match the text before measuring. getBoundingClientRect forces layout, and
+      // running it on every short-text element in a real app page — thousands of
+      // them, on every re-render — is enough to make the page feel sticky.
+      const isAll = /^all\s+\S+/i.test(text);
+      const isNewView = /^create\s+new\s+view$/i.test(text);
+      if (!isAll && !isNewView) continue;
+      if (el.id === INLINE_HOST_ID || el.closest('#' + INLINE_HOST_ID)) continue;
+
+      const r = el.getBoundingClientRect();
+      if (r.width < 30 || r.height < 12 || r.top < 0 || r.top > window.innerHeight) continue;
+      if (isAll) return el;
+      if (!fallback) fallback = el;
+    }
+    return fallback;
+  }
+
+  function mountInlineToggle() {
+    if (!hostEl) return;                                  // launcher disabled entirely
+    if (inlineHost && inlineHost.isConnected) return;
+    const anchor = findToolbarAnchor();
+    if (!anchor || !anchor.parentNode) return;
+
+    const host = document.createElement('span');
+    host.id = INLINE_HOST_ID;
+    host.style.cssText = [
+      'all: initial !important',
+      'display: inline-flex !important',
+      'vertical-align: middle !important',
+      'margin: 0 0 0 8px !important',
+      'line-height: normal !important',
+    ].join(';');
+
+    const shadow = host.attachShadow({ mode: 'open' });
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(INLINE_CSS);
+    shadow.adoptedStyleSheets = [sheet];
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.setAttribute('role', 'switch');
+
+    const dot = document.createElement('span');
+    dot.className = 'uid-dot';
+    const label = document.createElement('span');
+    label.className = 'uid-label';
+    const count = document.createElement('span');
+    count.className = 'uid-count';
+    count.hidden = true;
+
+    btn.append(dot, label, count);
+    btn.addEventListener('click', onUidToggleClick);
+    shadow.append(btn);
+
+    anchor.parentNode.insertBefore(host, anchor.nextSibling);
+    inlineHost = host;
+
+    for (let i = toggles.length - 1; i >= 0; i--) {
+      if (toggles[i].kind === 'inline') toggles.splice(i, 1);
+    }
+    toggles.push({ root: btn, labelEl: label, countEl: count, kind: 'inline' });
+    renderUidToggle();
+  }
+
+  function queueInlineMount() {
+    clearTimeout(inlineTimer);
+    inlineTimer = setTimeout(mountInlineToggle, 350);
   }
 
   function build(side) {
@@ -417,48 +620,9 @@
     launcher.append(chip, dismiss);
     shadow.append(uidToggle, launcher, hint);
 
-    uidToggleEl = uidToggle;
-    uidLabelEl = uidLabel;
-    uidCountEl = uidCount;
-
-    uidToggle.addEventListener('click', (e) => {
-      e.stopPropagation();
-
-      // Without this the pill would flip its label and nothing else would ever
-      // happen, which is indistinguishable from a broken button.
-      if (!extensionAlive()) {
-        showHint('The extension was reloaded, so this page is no longer connected to it. Refresh the page (Ctrl+Shift+R) to restore the UID badges.');
-        return;
-      }
-
-      uidOn = !uidOn;
-      if (!uidOn) uidBadged = 0;
-      renderUidToggle();
-
-      // Drive uid-badges.js directly. Both scripts share this frame's isolated
-      // world, so this applies instantly and does not depend on the
-      // storage.onChanged round-trip, which is the part that silently dies when
-      // the extension is reloaded under an open tab.
-      try {
-        window.dispatchEvent(new CustomEvent('zuper-uid-set', { detail: { on: uidOn } }));
-      } catch (err) {}
-
-      // Persist for other tabs and for the options page checkbox.
-      try {
-        chrome.storage.local.set({ showUidBadges: uidOn });
-      } catch (err) {}
-
-      // Turning it on with nothing to show is the symptom of row detection
-      // failing on this page — say so rather than leaving a silent no-op.
-      clearTimeout(uidFeedbackTimer);
-      if (uidOn) {
-        uidFeedbackTimer = setTimeout(() => {
-          if (uidOn && uidBadged === 0) {
-            showHint('No record UIDs found on this page. If it is a listing, open the extension options and send the Diagnostics.');
-          }
-        }, 2000);
-      }
-    });
+    floatingToggleEl = uidToggle;
+    toggles.push({ root: uidToggle, labelEl: uidLabel, countEl: uidCount, kind: 'floating' });
+    uidToggle.addEventListener('click', onUidToggleClick);
     renderUidToggle();
 
     chip.addEventListener('click', onLaunch);
@@ -500,20 +664,35 @@
 
   function teardown() {
     if (hostEl && hostEl.parentNode) hostEl.parentNode.removeChild(hostEl);
+    if (inlineHost && inlineHost.parentNode) inlineHost.parentNode.removeChild(inlineHost);
+    clearTimeout(inlineTimer);
+    toggles.length = 0;
     hostEl = null;
     launcherEl = null;
     hintEl = null;
+    floatingToggleEl = null;
+    inlineHost = null;
   }
 
-  // Zuper is a single-page app; if a route change wipes our node we put it back.
+  // Zuper is a single-page app; if a route change wipes our nodes we put them
+  // back. The toolbar control needs the deeper subtree watch, because navigating
+  // between listings re-renders the toolbar without touching document.body's own
+  // children.
   function watch() {
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
       if (dismissedForSession || !hostEl) return;
       if (!document.getElementById(HOST_ID) && document.body) {
         document.body.appendChild(hostEl);
       }
+      // Ignore our own insertions or this would re-enter continuously.
+      for (const m of mutations) {
+        for (const n of m.addedNodes) {
+          if (n.id === HOST_ID || n.id === INLINE_HOST_ID) return;
+        }
+      }
+      if (!inlineHost || !inlineHost.isConnected) queueInlineMount();
     });
-    if (document.body) observer.observe(document.body, { childList: true });
+    if (document.body) observer.observe(document.body, { childList: true, subtree: true });
   }
 
   // uid-badges.js is a separate content script but runs in the same isolated
@@ -565,6 +744,10 @@
     try { pageIsDark = isDarkBackdrop(document.body); } catch (e) { pageIsDark = false; }
     build(settings.buttonSide === 'left' ? 'left' : 'right');
     watch();
+    // The toolbar usually renders after document_idle, so try now and let the
+    // observer catch it if the anchor is not there yet.
+    mountInlineToggle();
+    queueInlineMount();
   }
 
   // React to the options page without needing a reload.

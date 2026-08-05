@@ -57,10 +57,22 @@ characters of its record UID; clicking copies the full UID. It saves opening a r
 just to read its id out of the address bar before pasting it into Data Manager or one of
 the mappers.
 
-A **Show/Hide UID** pill sits directly above the floating launcher and toggles them for
-every page, showing how many rows on the current page got a badge. It and the options
-checkbox are the same switch — both write one setting, and the badges add or strip
-themselves in response, so the two can never disagree.
+The **Show/Hide UID** control mounts **inline in Zuper's own toolbar**, immediately after
+the listing's view chip ("All Customers"), which is where you are already looking. The
+anchor is found by its visible text rather than a class name — Zuper's class names are not
+ours to depend on — falling back to "Create New View", and then to a floating pill above
+the launcher if neither is present. When the inline control mounts, the floating pill hides
+itself so there is only ever one.
+
+It renders in its own shadow root with `adoptedStyleSheets`, so the surrounding toolbar CSS
+cannot restyle it and its own styles cannot leak out. Zuper is a single-page app and
+re-renders that toolbar on navigation, so a debounced observer re-mounts it, guarding
+against duplicates.
+
+Either control shows how many rows on the current page got a badge, and doubles as the
+status readout: a pulsing dot while records are being fetched, `!` when the lookup failed.
+The controls and the options checkbox are all one switch — they write a single setting, and
+the badges add or strip themselves in response, so they can never disagree.
 
 Chip and pill colours follow **the brightness of the page behind them**, not
 `prefers-color-scheme`. Keying them off the OS theme made a light Zuper UI on a

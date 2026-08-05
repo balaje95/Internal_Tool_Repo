@@ -366,6 +366,15 @@ el.ctxCopy.addEventListener('click', async () => {
 // ---------------------------------------------------------------- boot
 
 (async function init() {
+  // Stamp the running version into the header. Loading unpacked makes it very
+  // easy to be looking at an older copy than the one on disk, and a visible
+  // version turns "did the reload take?" into something checkable.
+  try {
+    const v = chrome.runtime.getManifest().version;
+    const eyebrow = document.querySelector('.eyebrow');
+    if (eyebrow) eyebrow.textContent = 'Internal Tools · v' + v;
+  } catch (e) {}
+
   const stored = await chrome.storage.local.get(['dashboardBase', CACHE_KEY]);
   if (stored.dashboardBase) dashboardBase = trimBase(stored.dashboardBase);
 
