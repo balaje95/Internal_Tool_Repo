@@ -54,12 +54,61 @@
 
   // The route names the module. Path and fragment are checked before the query
   // string, so /jobs?customer=… is read as jobs rather than customers.
-  function detectModule() {
-    const path = (location.pathname + ' ' + location.hash.split('?')[0]).toLowerCase();
+  function detectModuleFromUrl() {
+    // Only the tail of the path is considered. A route name lives at the end, and
+    // matching the whole path lets an unrelated ancestor decide the module — a
+    // tenant folder, a deploy prefix, or (as this was caught by) a path
+    // containing "Users" turning every page into the users module.
+    const tail = location.pathname.split('/').filter(Boolean).slice(-3).join('/');
+    const path = (tail + ' ' + location.hash.split('?')[0]).toLowerCase();
     for (const [re, mod] of ROUTE_HINTS) if (re.test(path)) return mod;
     const rest = (location.search + ' ' + location.hash).toLowerCase();
     for (const [re, mod] of ROUTE_HINTS) if (re.test(rest)) return mod;
     return null;
+  }
+
+  // Fallback for routes that do not name their module (opaque ids, /list, #/home).
+  // Zuper prints the listing name beside its total — "Customers 3043" — which is a
+  // reliable second source. Memoised per URL because it walks the DOM.
+  let pageModuleCache = { href: '', mod: null };
+
+  function detectModuleFromPage() {
+    if (pageModuleCache.href === location.href) return pageModuleCache.mod;
+
+    const texts = [];
+    if (document.title) texts.push(document.title);
+    const heads = document.querySelectorAll('h1, h2, h3, [role="heading"]');
+    for (let i = 0; i < heads.length && i < 12; i++) {
+      texts.push((heads[i].textContent || '').trim());
+    }
+
+    // "<Name> <count>" near the top of the page.
+    const els = document.body ? document.body.querySelectorAll('span, div, p, a') : [];
+    const cap = Math.min(els.length, 1500);
+    for (let i = 0; i < cap; i++) {
+      const el = els[i];
+      if (el.children.length) continue;
+      const t = (el.textContent || '').trim();
+      if (!t || t.length > 30) continue;
+      if (!/^[A-Za-z][A-Za-z &/-]+\s+[\d,]{1,9}$/.test(t)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.top >= 0 && r.top < 260 && r.width > 20) texts.push(t);
+    }
+
+    let found = null;
+    for (const t of texts) {
+      const low = t.toLowerCase();
+      for (const [re, mod] of ROUTE_HINTS) {
+        if (re.test(low)) { found = mod; break; }
+      }
+      if (found) break;
+    }
+    pageModuleCache = { href: location.href, mod: found };
+    return found;
+  }
+
+  function detectModule() {
+    return detectModuleFromUrl() || detectModuleFromPage();
   }
   let enabled = true;
   let deepMode = true;   // observation currently active
@@ -375,6 +424,7 @@
       try {
         window.dispatchEvent(new CustomEvent('zuper-uid-report', { detail: report }));
       } catch (e) {}
+      emitSelection();
     } catch (e) {
       console.warn('[Zuper Tools] UID badge scan failed:', e);
     } finally {
@@ -386,6 +436,69 @@
     clearTimeout(scanTimer);
     scanTimer = setTimeout(scan, DEBOUNCE_MS);
   }
+
+  // ------------------------------------------------- UID collection for copying
+  //
+  // Zuper's own row checkboxes decide the selection — the point is to pick records
+  // in Zuper and paste their UIDs into Data Manager or a mapper, so the selection
+  // that matters is the one already on screen.
+  function rowIsChecked(row) {
+    const boxes = row.querySelectorAll('input[type="checkbox"]');
+    for (let i = 0; i < boxes.length; i++) if (boxes[i].checked) return true;
+    // Some grids fake the control, so honour the ARIA state too.
+    const aria = row.querySelector('[role="checkbox"][aria-checked="true"], [aria-selected="true"]');
+    return !!aria;
+  }
+
+  // Returns { uids, selected } — selected is true when it reflects a real
+  // checkbox selection rather than the whole page.
+  function collectUids() {
+    const picked = [];
+    const all = [];
+    const chips = document.querySelectorAll('.' + CHIP_CLASS);
+    for (const chip of chips) {
+      const uid = chip.getAttribute('data-uid');
+      if (!uid) continue;
+      const row = chip.closest('[' + DONE_ATTR + ']');
+      if (all.indexOf(uid) < 0) all.push(uid);
+      if (row && rowIsChecked(row) && picked.indexOf(uid) < 0) picked.push(uid);
+    }
+    return picked.length
+      ? { uids: picked, selected: true }
+      : { uids: all, selected: false };
+  }
+
+  function emitSelection() {
+    const { uids, selected } = collectUids();
+    try {
+      window.dispatchEvent(new CustomEvent('zuper-uid-selection', {
+        detail: { count: uids.length, selected: selected },
+      }));
+    } catch (e) {}
+  }
+
+  // The launcher asks for the list at click time so it is never stale.
+  window.addEventListener('zuper-uid-collect', (e) => {
+    const { uids, selected } = collectUids();
+    const detail = e.detail;
+    if (detail && typeof detail.resolve === 'function') detail.resolve({ uids, selected });
+  });
+
+  // Checking a box changes no markup, so a change/click listener is the only way
+  // to know the selection moved.
+  document.addEventListener('change', (e) => {
+    if (!enabled) return;
+    const t = e.target;
+    if (t && (t.type === 'checkbox' || t.getAttribute('role') === 'checkbox')) emitSelection();
+  }, true);
+  document.addEventListener('click', (e) => {
+    if (!enabled) return;
+    const t = e.target;
+    if (!t || !t.closest) return;
+    if (t.closest('input[type="checkbox"], [role="checkbox"], th, [role="columnheader"]')) {
+      setTimeout(emitSelection, 60);
+    }
+  }, true);
 
   function removeAll() {
     document.querySelectorAll('.' + CHIP_CLASS).forEach((c) => c.remove());
@@ -453,6 +566,9 @@
   let apiCount = 0;
   let apiModule = null;
   let apiInFlight = false;
+  let apiCached = false;
+  let apiFetchedAt = 0;
+  let apiAccount = '';
 
   function emitStatus() {
     try {
@@ -509,6 +625,9 @@
     }
     apiCount = res.records.length;
     apiState = 'ok';
+    apiCached = !!res.cached;
+    apiFetchedAt = res.fetchedAt || Date.now();
+    apiAccount = res.account || '';
     apiMessage = apiCount + ' ' + apiModule + ' records from ' +
       (res.account || 'the account') + (res.region ? ' (' + res.region + ')' : '') +
       (res.cached ? ', cached' : '');
@@ -568,8 +687,31 @@
   // ever missing (an orphaned context, a partially torn-down extension) an
   // exception here would abort the rest of the file — including start() — and the
   // badges would fail completely with nothing to show why.
+  // Drops everything learned so far and looks the records up again. Used by the
+  // panel's Refresh, for when a record was created after the 10-minute cache was
+  // filled and its row would otherwise stay bare until the cache expired.
+  function refreshRecords() {
+    records.clear();
+    tokenIndex.clear();
+    prefixIndex.clear();
+    pageModuleCache = { href: '', mod: null };
+    apiState = 'idle';
+    apiCount = 0;
+    apiCached = false;
+    apiFetchedAt = 0;
+    removeAll();
+    emitStatus();
+    loadApiRecords(true);
+    queueScan();
+  }
+
   try {
   chrome.runtime.onMessage.addListener((msg, sender, respond) => {
+    if (msg && msg.type === 'uid-refresh') {
+      refreshRecords();
+      respond({ ok: true });
+      return false;
+    }
     if (!msg || msg.type !== 'uid-ping') return false;
     let rows = 0;
     let kind = '';
@@ -588,6 +730,9 @@
       apiState: apiState,
       apiMessage: apiMessage,
       apiCount: apiCount,
+      apiCached: apiCached,
+      apiAgeSec: apiFetchedAt ? Math.round((Date.now() - apiFetchedAt) / 1000) : null,
+      apiAccount: apiAccount,
       indexed: records.size,
       href: location.href,
     });

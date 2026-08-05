@@ -74,6 +74,40 @@ status readout: a pulsing dot while records are being fetched, `!` when the look
 The controls and the options checkbox are all one switch — they write a single setting, and
 the badges add or strip themselves in response, so they can never disagree.
 
+### Copying UIDs in bulk
+
+Beside the toggle sits **Copy N UIDs**. It reads **Zuper's own row checkboxes**, so the
+selection that counts is the one already on screen: tick the rows you want and copy just
+those. With nothing ticked it copies every UID on the page. One per line by default —
+**hold Shift** for comma separated.
+
+Ticking a box changes no markup, so the count is kept live from `change`/`click` rather
+than the DOM observer, and the list itself is requested at click time so a box ticked a
+moment earlier is always included.
+
+### Filling the API key into tools
+
+With **Fill this key into tools opened in the side panel** on (default), opening a tool in
+the panel populates its API key field from the key in options — no more pasting the same
+key into eleven tools.
+
+The tool half is `assets/zuper-panel-bridge.js`, included by all 11 tools next to
+`back-link.js`. It is deliberately constrained, since it handles a credential:
+
+- **Write only.** It never reads a key out of a page and never posts one anywhere. Its only
+  outbound message is a contentless "ready" ping.
+- **Extension-origin only.** Messages are ignored unless the parent frame is
+  `chrome-extension://`, so an ordinary web page cannot drive it by framing a tool.
+- **Never overwrites.** A value already in the field wins.
+- **Never connects.** It fills the field and stops; clicking Connect stays deliberate, so
+  no tool fires API calls unasked.
+- **Refuses ambiguity.** The field is found by shape rather than a per-tool id list
+  (`api key` in the id/name/placeholder/label, or a single lone password box). Two password
+  fields and it does nothing rather than fill the wrong one.
+
+Outside the panel it is inert — unframed pages return immediately, so a tool opened in a
+normal tab behaves exactly as before.
+
 Chip and pill colours follow **the brightness of the page behind them**, not
 `prefers-color-scheme`. Keying them off the OS theme made a light Zuper UI on a
 dark-themed desktop render chips at `rgba(255,255,255,0.06)` on a white table row — a

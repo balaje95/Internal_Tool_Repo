@@ -6,6 +6,7 @@ const DEFAULTS = {
   uidDeepMode: true,
   uidApiMode: true,
   apiKey: '',
+  autofillKey: true,
   extraHosts: '',
 };
 
@@ -32,6 +33,7 @@ const f = {
   deep: document.getElementById('uidDeepMode'),
   api: document.getElementById('uidApiMode'),
   apiKey: document.getElementById('apiKey'),
+  autofillKey: document.getElementById('autofillKey'),
   testKey: document.getElementById('test-key'),
   clearRecords: document.getElementById('clear-records'),
   keyStatus: document.getElementById('key-status'),
@@ -81,6 +83,7 @@ async function load() {
   f.deep.checked = s.uidDeepMode !== false;
   f.api.checked = s.uidApiMode !== false;
   f.apiKey.value = s.apiKey || '';
+  f.autofillKey.checked = s.autofillKey !== false;
   f.extraHosts.value = s.extraHosts || '';
   renderDiag(s.uidReport);
 }
@@ -187,6 +190,7 @@ f.save.addEventListener('click', async () => {
     uidDeepMode: f.deep.checked,
     uidApiMode: f.api.checked,
     apiKey: f.apiKey.value.trim(),
+    autofillKey: f.autofillKey.checked,
   });
   f.base.value = base;
   flash(f.saveStatus, 'Saved.');

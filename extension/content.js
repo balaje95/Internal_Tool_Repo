@@ -272,6 +272,8 @@
   let floatingToggleEl = null;
   let inlineHost = null;
   let inlineTimer = 0;
+  let copyBtnEl = null;
+  let uidSelection = { count: 0, selected: false };
   let uidOn = true;
   let uidBadged = 0;
   let currentSide = 'right';
@@ -352,7 +354,66 @@
     if (floatingToggleEl) {
       floatingToggleEl.style.display = (inlineHost && inlineHost.isConnected) ? 'none' : '';
     }
+    renderCopyBtn();
   }
+
+  // -------------------------------------------------- copy UIDs
+  //
+  // The list is requested from uid-badges.js at click time rather than cached, so
+  // a checkbox ticked a moment ago is always included.
+  function requestUids() {
+    return new Promise((resolve) => {
+      let done = false;
+      try {
+        window.dispatchEvent(new CustomEvent('zuper-uid-collect', {
+          detail: { resolve: (r) => { done = true; resolve(r); } },
+        }));
+      } catch (e) {}
+      if (!done) resolve(null);   // badge script absent — nothing to copy
+    });
+  }
+
+  function renderCopyBtn() {
+    if (!copyBtnEl) return;
+    const show = uidOn && uidSelection.count > 0;
+    copyBtnEl.hidden = !show;
+    if (!show) return;
+    if (copyBtnEl.classList.contains('done')) return;   // mid-confirmation
+    copyBtnEl.textContent = 'Copy ' + uidSelection.count + ' UID' +
+      (uidSelection.count === 1 ? '' : 's');
+    copyBtnEl.title = (uidSelection.selected
+      ? 'Copy the UIDs of the ' + uidSelection.count + ' selected row(s)'
+      : 'No rows are ticked, so this copies all ' + uidSelection.count +
+        ' UIDs on this page') +
+      '\n\nOne per line. Hold Shift to copy them comma separated.';
+  }
+
+  async function onCopyUidsClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const res = await requestUids();
+    const uids = (res && res.uids) || [];
+    if (!uids.length) return;
+
+    const text = e.shiftKey ? uids.join(', ') : uids.join('\n');
+    const label = 'Copied ' + uids.length;
+    try {
+      await navigator.clipboard.writeText(text);
+      copyBtnEl.textContent = '✓ ' + label;
+    } catch (err) {
+      copyBtnEl.textContent = '✗ Copy failed';
+    }
+    copyBtnEl.classList.add('done');
+    setTimeout(() => {
+      copyBtnEl.classList.remove('done');
+      renderCopyBtn();
+    }, 1500);
+  }
+
+  window.addEventListener('zuper-uid-selection', (e) => {
+    uidSelection = e.detail || { count: 0, selected: false };
+    renderCopyBtn();
+  });
 
   // Shared by the floating pill and the inline toolbar control.
   function onUidToggleClick(e) {
@@ -454,6 +515,42 @@
     }
     .uid-count[hidden] { display: none; }
 
+    /* Copy control, sharing the toggle's shape but visually secondary to it. */
+    .uid-copy {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 30px;
+      padding: 0 11px;
+      margin-left: 6px;
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12.5px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #4B5563;
+      background: #FFFFFF;
+      border: 1px solid #D1D5DB;
+      border-radius: 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 140ms linear, background-color 140ms linear, color 140ms linear;
+    }
+    .uid-copy:hover {
+      color: #FD5000;
+      background: #FFF5F0;
+      border-color: rgba(253, 80, 0, 0.55);
+    }
+    .uid-copy:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(253, 80, 0, 0.32);
+    }
+    .uid-copy[hidden] { display: none; }
+    .uid-copy.done {
+      color: #1E854B;
+      background: #E7F6EC;
+      border-color: rgba(30, 133, 75, 0.45);
+    }
+
     @keyframes uid-pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
       50%      { opacity: 0.35; transform: scale(0.7); }
@@ -528,7 +625,15 @@
 
     btn.append(dot, label, count);
     btn.addEventListener('click', onUidToggleClick);
-    shadow.append(btn);
+
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'uid-copy';
+    copy.hidden = true;
+    copy.addEventListener('click', onCopyUidsClick);
+
+    shadow.append(btn, copy);
+    copyBtnEl = copy;
 
     anchor.parentNode.insertBefore(host, anchor.nextSibling);
     inlineHost = host;
@@ -672,6 +777,7 @@
     hintEl = null;
     floatingToggleEl = null;
     inlineHost = null;
+    copyBtnEl = null;
   }
 
   // Zuper is a single-page app; if a route change wipes our nodes we put them

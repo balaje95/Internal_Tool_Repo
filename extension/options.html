@@ -79,6 +79,14 @@
         Zuper data centre. Note that <code>chrome.storage.local</code> is not encrypted, so treat
         this the same way you treat the key in any of the other tools.</span>
     </label>
+    <label class="check">
+      <input type="checkbox" id="autofillKey">
+      <span>Fill this key into tools opened in the side panel
+        <span class="hint" style="margin-top:3px">Saves pasting the same key into all eleven tools.
+          The key is written into the tool's API key field only — nothing is sent back, an
+          existing value is never overwritten, and connecting stays a deliberate click.</span>
+      </span>
+    </label>
     <div class="row">
       <button type="button" class="btn btn-secondary" id="test-key">Test connection</button>
       <button type="button" class="btn btn-secondary" id="clear-records">Clear fetched records</button>

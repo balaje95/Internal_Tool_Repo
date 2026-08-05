@@ -36,6 +36,7 @@ const el = {
   diag: document.getElementById('badge-diag'),
   diagText: document.getElementById('badge-diag-text'),
   recheck: document.getElementById('badge-recheck'),
+  refreshRecs: document.getElementById('badge-refresh'),
 };
 
 let tools = [];
@@ -163,6 +164,53 @@ function closeTool() {
 
 el.frame.addEventListener('load', () => {
   el.frameLoading.hidden = true;
+  sendApiKeyToFrame();
+});
+
+// ------------------------------------------------- API key hand-off
+//
+// Saves pasting the same key into all eleven tools. The tool side is
+// assets/zuper-panel-bridge.js, which only ever writes the key into a field and
+// never sends one back.
+//
+// Posted to the dashboard's exact origin, never '*', so the key cannot be read by
+// a frame that has navigated somewhere else.
+async function sendApiKeyToFrame() {
+  if (!currentTool || !el.frame.contentWindow) return;
+  let store;
+  try {
+    store = await chrome.storage.local.get(['apiKey', 'autofillKey']);
+  } catch (e) {
+    return;
+  }
+  if (!store.apiKey || store.autofillKey === false) return;
+
+  let origin;
+  try {
+    origin = new URL(dashboardBase).origin;
+  } catch (e) {
+    return;
+  }
+  try {
+    el.frame.contentWindow.postMessage(
+      { type: 'zuper-tools-apikey', apiKey: store.apiKey },
+      origin
+    );
+  } catch (e) {}
+}
+
+// The bridge announces itself once loaded, which avoids racing the iframe's own
+// scripts — the load event can fire before the tool has built its form.
+window.addEventListener('message', (event) => {
+  if (!event.data || event.data.type !== 'zuper-tools-ready') return;
+  let origin;
+  try {
+    origin = new URL(dashboardBase).origin;
+  } catch (e) {
+    return;
+  }
+  if (event.origin !== origin) return;
+  sendApiKeyToFrame();
 });
 
 el.back.addEventListener('click', closeTool);
@@ -333,8 +381,20 @@ async function readBadgeStatus() {
     return;
   }
   if (res.chips > 0) {
+    // Name the record set and its age: a bare row on an otherwise working page is
+    // almost always a record created after this cache was filled.
+    let detail = '';
+    if (res.apiCount) {
+      detail = ' · ' + res.apiCount + ' records';
+      if (res.apiAgeSec != null) {
+        detail += res.apiAgeSec < 90
+          ? ', just fetched'
+          : ', ' + Math.round(res.apiAgeSec / 60) + ' min old';
+      }
+    }
     setDiag('UID badges: ' + res.chips + ' shown on ' + host +
-            (res.module ? ' · ' + res.module : '') + '.', 'ok');
+            (res.module ? ' · ' + res.module : '') + detail + '.', 'ok');
+    el.refreshRecs.hidden = false;
     return;
   }
 
@@ -358,6 +418,24 @@ async function readBadgeStatus() {
 }
 
 if (el.recheck) el.recheck.addEventListener('click', readBadgeStatus);
+
+// Clears the worker's 10-minute cache and makes the page look the records up
+// again — both halves are needed, or the tab just re-reads the same stale set.
+if (el.refreshRecs) {
+  el.refreshRecs.addEventListener('click', async () => {
+    el.refreshRecs.textContent = '…';
+    try {
+      await chrome.runtime.sendMessage({ type: 'uid-clear-cache' });
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (tab && tab.id != null) await chrome.tabs.sendMessage(tab.id, { type: 'uid-refresh' });
+      setDiag('Re-fetching records for this page…', '');
+      setTimeout(readBadgeStatus, 2500);
+    } catch (e) {
+      setDiag('Could not refresh: ' + ((e && e.message) || e), 'warn');
+    }
+    el.refreshRecs.textContent = 'Refresh';
+  });
+}
 
 el.ctxCopy.addEventListener('click', async () => {
   if (!contextUid) return;

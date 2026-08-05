@@ -334,7 +334,7 @@ async function fetchModuleRecords(moduleKey, apiKey) {
   const cacheKey = dcUrl + '|' + moduleKey;
   const hit = recordCache.get(cacheKey);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
-    return { records: hit.records, accountName, dcUrl, cached: true };
+    return { records: hit.records, accountName, dcUrl, cached: true, fetchedAt: hit.at };
   }
 
   const base = dcUrl + '/api/';
@@ -381,6 +381,7 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
           account: out.accountName,
           region: (out.dcUrl.match(/\/\/([^.]+)\./) || [])[1] || '',
           cached: out.cached,
+          fetchedAt: out.fetchedAt || Date.now(),
         });
       } catch (err) {
         respond({ ok: false, error: String((err && err.message) || err) });
