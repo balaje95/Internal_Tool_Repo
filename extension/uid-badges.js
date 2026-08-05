@@ -560,6 +560,45 @@
     setEnabled(!!(e.detail && e.detail.on));
   });
 
+  // Lets the side panel ask "are you actually running on this tab?". A missing
+  // reply is itself the answer — it means this script was never injected here,
+  // which no amount of in-page UI could report on its own.
+  //
+  // Wrapped because this sits at module scope: if chrome.runtime.onMessage is
+  // ever missing (an orphaned context, a partially torn-down extension) an
+  // exception here would abort the rest of the file — including start() — and the
+  // badges would fail completely with nothing to show why.
+  try {
+  chrome.runtime.onMessage.addListener((msg, sender, respond) => {
+    if (!msg || msg.type !== 'uid-ping') return false;
+    let rows = 0;
+    let kind = '';
+    try {
+      const found = findRows();
+      rows = found.rows.length;
+      kind = found.kind;
+    } catch (e) {}
+    respond({
+      ok: true,
+      chips: document.querySelectorAll('.' + CHIP_CLASS).length,
+      rows: rows,
+      kind: kind,
+      enabled: enabled,
+      module: apiModule || detectModule(),
+      apiState: apiState,
+      apiMessage: apiMessage,
+      apiCount: apiCount,
+      indexed: records.size,
+      href: location.href,
+    });
+    return false;
+  });
+  } catch (e) {
+    console.warn('[Zuper Tools] could not register the status responder:', e);
+  }
+
+  // Same reasoning as above: never let a listener registration take start() down.
+  try {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes.showUidBadges) setEnabled(changes.showUidBadges.newValue !== false);
@@ -578,6 +617,9 @@
       loadApiRecords(true);
     }
   });
+  } catch (e) {
+    console.warn('[Zuper Tools] could not watch settings:', e);
+  }
 
   start();
 })();

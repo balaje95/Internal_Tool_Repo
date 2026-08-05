@@ -55,6 +55,20 @@
   </section>
 
   <section class="card">
+    <h2>Where the extension runs</h2>
+    <p class="hint" style="margin-top:0">Built in: <code>*.zuper.co</code> and
+      <code>*.zuperpro.com</code>. If your Zuper app is on any other host, the floating button
+      and the UID badges cannot appear there at all — add it here.</p>
+    <label class="field">
+      <span class="field-label">Additional hosts</span>
+      <input type="text" id="extraHosts" placeholder="app.mycompany.com, zuper.example.com" spellcheck="false">
+      <span class="hint">One or more hostnames, comma separated. Chrome will ask permission for each
+        when you save. Reload the Zuper tab afterwards.</span>
+    </label>
+    <p class="modal-error" id="hosts-status" hidden></p>
+  </section>
+
+  <section class="card">
     <h2>Zuper account</h2>
     <label class="field">
       <span class="field-label">API key</span>

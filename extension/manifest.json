@@ -6,13 +6,15 @@
   "description": "Launch the Internal Tools Dashboard in a side panel next to the Zuper web app.",
   "minimum_chrome_version": "116",
 
-  "permissions": ["sidePanel", "storage"],
+  "permissions": ["sidePanel", "storage", "scripting"],
 
   "host_permissions": [
     "https://internal-tool-repo.vercel.app/*",
     "*://*.zuper.co/*",
     "*://*.zuperpro.com/*"
   ],
+
+  "optional_host_permissions": ["*://*/*"],
 
   "background": {
     "service_worker": "background.js"

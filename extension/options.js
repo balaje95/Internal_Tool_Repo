@@ -6,7 +6,23 @@ const DEFAULTS = {
   uidDeepMode: true,
   uidApiMode: true,
   apiKey: '',
+  extraHosts: '',
 };
+
+// Mirrors parseHosts() in background.js.
+function parseHosts(raw) {
+  return String(raw || '')
+    .split(/[\s,;]+/)
+    .map((h) => h.trim())
+    .filter(Boolean)
+    .map((h) => {
+      let out = h;
+      if (!/^[a-z*]+:\/\//i.test(out)) out = '*://' + out;
+      if (!/\/\*$/.test(out)) out = out.replace(/\/+$/, '') + '/*';
+      return out;
+    })
+    .filter((h) => /^[a-z*]+:\/\/[^/]+\/\*$/i.test(h));
+}
 
 const f = {
   base: document.getElementById('dashboardBase'),
@@ -19,6 +35,8 @@ const f = {
   testKey: document.getElementById('test-key'),
   clearRecords: document.getElementById('clear-records'),
   keyStatus: document.getElementById('key-status'),
+  extraHosts: document.getElementById('extraHosts'),
+  hostsStatus: document.getElementById('hosts-status'),
   save: document.getElementById('save'),
   saveStatus: document.getElementById('save-status'),
   clear: document.getElementById('clear-cache'),
@@ -63,7 +81,14 @@ async function load() {
   f.deep.checked = s.uidDeepMode !== false;
   f.api.checked = s.uidApiMode !== false;
   f.apiKey.value = s.apiKey || '';
+  f.extraHosts.value = s.extraHosts || '';
   renderDiag(s.uidReport);
+}
+
+function showHostsStatus(text, isError) {
+  f.hostsStatus.textContent = text;
+  f.hostsStatus.style.color = isError ? 'var(--zb-error)' : 'var(--zb-success)';
+  f.hostsStatus.hidden = !text;
 }
 
 f.testKey.addEventListener('click', async () => {
@@ -127,8 +152,35 @@ f.save.addEventListener('click', async () => {
     return;
   }
 
+  // Host permissions must be requested from a user gesture, so it happens here
+  // on the Save click rather than in the worker.
+  const hosts = parseHosts(f.extraHosts.value);
+  const hostsRaw = f.extraHosts.value.trim();
+  if (hostsRaw && !hosts.length) {
+    showHostsStatus('Could not read a hostname from that. Try "app.mycompany.com".', true);
+    return;
+  }
+  if (hosts.length) {
+    let granted = false;
+    try {
+      granted = await chrome.permissions.request({ origins: hosts });
+    } catch (err) {
+      showHostsStatus('Chrome refused the permission request: ' + err.message, true);
+      return;
+    }
+    if (!granted) {
+      showHostsStatus('Permission was declined, so the extension still cannot run on ' +
+        hosts.join(', ') + '.', true);
+      return;
+    }
+    showHostsStatus('✓ Allowed on ' + hosts.join(', ') + '. Reload the Zuper tab.', false);
+  } else {
+    showHostsStatus('', false);
+  }
+
   await chrome.storage.local.set({
     dashboardBase: base,
+    extraHosts: hostsRaw,
     showButton: f.show.checked,
     buttonSide: f.side.value === 'left' ? 'left' : 'right',
     showUidBadges: f.badges.checked,

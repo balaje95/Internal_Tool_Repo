@@ -33,6 +33,9 @@ const el = {
   ctxFoot: document.getElementById('context-foot'),
   ctxLabel: document.getElementById('ctx-label'),
   ctxCopy: document.getElementById('ctx-copy'),
+  diag: document.getElementById('badge-diag'),
+  diagText: document.getElementById('badge-diag-text'),
+  recheck: document.getElementById('badge-recheck'),
 };
 
 let tools = [];
@@ -268,6 +271,87 @@ async function readContext() {
   el.ctxFoot.hidden = false;
 }
 
+// ------------------------------------------------- UID badge status readout
+//
+// Reports whether the badge script is alive on the active tab. This lives in the
+// panel because it is the only surface that can tell the difference between
+// "injected but found nothing" and "never injected here at all" — an in-page
+// message cannot report that it was never inserted.
+function setDiag(text, kind) {
+  el.diagText.textContent = text;
+  el.diag.className = 'badge-diag' + (kind ? ' ' + kind : '');
+  el.diag.hidden = false;
+}
+
+async function readBadgeStatus() {
+  let tab;
+  try {
+    [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  } catch (e) {
+    return;
+  }
+  if (!tab) return;
+
+  // A hidden URL means the extension holds no permission for this tab's host,
+  // which is exactly why nothing would be injected there.
+  if (!tab.url) {
+    setDiag('UID badges: this extension has no access to the current tab, so nothing can run on it. If this is your Zuper app, its host is not in the extension\'s match list — send me the URL.', 'warn');
+    return;
+  }
+
+  let host = '';
+  try { host = new URL(tab.url).hostname; } catch (e) { return; }
+
+  if (/^chrome:|^edge:|^about:/.test(tab.url)) {
+    el.diag.hidden = true;
+    return;
+  }
+
+  let res = null;
+  try {
+    res = await chrome.tabs.sendMessage(tab.id, { type: 'uid-ping' });
+  } catch (e) {
+    res = null;
+  }
+
+  if (!res || !res.ok) {
+    setDiag('UID badges are NOT running on ' + host + '. Either that host is not in the ' +
+            'extension\'s match list (currently *.zuper.co and *.zuperpro.com), or this tab ' +
+            'was open before the extension was reloaded — try Ctrl+Shift+R first.', 'warn');
+    return;
+  }
+
+  if (!res.enabled) {
+    setDiag('UID badges are switched off on ' + host + '. Use the Show UID button on the page, or the checkbox in options.', '');
+    return;
+  }
+  if (res.chips > 0) {
+    setDiag('UID badges: ' + res.chips + ' shown on ' + host +
+            (res.module ? ' · ' + res.module : '') + '.', 'ok');
+    return;
+  }
+
+  // Injected and on, but nothing badged — name the reason.
+  let why;
+  if (res.apiState === 'no-key') {
+    why = 'no API key saved yet — add one in the extension options.';
+  } else if (res.apiState === 'no-module') {
+    why = 'the module could not be read from this URL, so there is nothing to look up.';
+  } else if (res.apiState === 'loading') {
+    why = 'still fetching records…';
+  } else if (res.apiState === 'error') {
+    why = 'the record fetch failed: ' + (res.apiMessage || 'unknown error');
+  } else if (!res.rows) {
+    why = 'no listing rows were detected on the page (' + (res.kind || 'no list found') + ').';
+  } else {
+    why = res.rows + ' rows found and ' + res.indexed +
+          ' records indexed, but none matched confidently.';
+  }
+  setDiag('UID badges are running on ' + host + ' but nothing is badged: ' + why, 'warn');
+}
+
+if (el.recheck) el.recheck.addEventListener('click', readBadgeStatus);
+
 el.ctxCopy.addEventListener('click', async () => {
   if (!contextUid) return;
   try {
@@ -297,6 +381,7 @@ el.ctxCopy.addEventListener('click', async () => {
   }
   render();
   readContext();
+  readBadgeStatus();
   refresh(false);
   el.search.focus();
 })();

@@ -47,6 +47,78 @@ chrome.commands.onCommand.addListener(async (command) => {
 });
 
 // ===========================================================================
+// Extra hosts.
+//
+// The manifest can only match hosts guessed up front (*.zuper.co,
+// *.zuperpro.com). A Zuper app served from anywhere else — a white-labelled or
+// custom domain — would get no content scripts at all, and the symptom is total
+// silence: no launcher, no badges, nothing to debug. Rather than widening the
+// static match list to every site, hosts entered in options are granted
+// individually and their scripts registered at runtime.
+// ===========================================================================
+
+const DYNAMIC_SCRIPT_IDS = ['dyn-launcher', 'dyn-uid-hook', 'dyn-uid-badges'];
+
+// Accepts "example.com", "app.example.com/*", "https://app.example.com/*".
+function parseHosts(raw) {
+  return String(raw || '')
+    .split(/[\s,;]+/)
+    .map((h) => h.trim())
+    .filter(Boolean)
+    .map((h) => {
+      let out = h;
+      if (!/^[a-z*]+:\/\//i.test(out)) out = '*://' + out;
+      if (!/\/\*$/.test(out)) out = out.replace(/\/+$/, '') + '/*';
+      return out;
+    })
+    .filter((h) => /^[a-z*]+:\/\/[^/]+\/\*$/i.test(h));
+}
+
+async function syncDynamicScripts() {
+  let hosts = [];
+  try {
+    const s = await chrome.storage.local.get('extraHosts');
+    hosts = parseHosts(s.extraHosts);
+  } catch (e) { /* keep going — we still want stale registrations cleared */ }
+
+  try {
+    const existing = await chrome.scripting.getRegisteredContentScripts();
+    const mine = existing.filter((s) => DYNAMIC_SCRIPT_IDS.indexOf(s.id) >= 0);
+    if (mine.length) {
+      await chrome.scripting.unregisterContentScripts({ ids: mine.map((s) => s.id) });
+    }
+  } catch (e) {}
+
+  if (!hosts.length) return;
+
+  // Registering a match we hold no permission for throws and would take the
+  // whole batch down with it, so filter to what was actually granted.
+  const granted = [];
+  for (const h of hosts) {
+    const ok = await chrome.permissions.contains({ origins: [h] }).catch(() => false);
+    if (ok) granted.push(h);
+  }
+  if (!granted.length) return;
+
+  try {
+    await chrome.scripting.registerContentScripts([
+      { id: 'dyn-launcher', matches: granted, js: ['content.js'], runAt: 'document_idle' },
+      { id: 'dyn-uid-hook', matches: granted, js: ['uid-hook.js'], runAt: 'document_start', world: 'MAIN' },
+      { id: 'dyn-uid-badges', matches: granted, js: ['uid-badges.js'], css: ['uid-badges.css'], runAt: 'document_idle' },
+    ]);
+    console.info('[Zuper Tools] content scripts registered for', granted.join(', '));
+  } catch (err) {
+    console.warn('[Zuper Tools] could not register scripts for extra hosts:', err);
+  }
+}
+
+syncDynamicScripts();
+chrome.runtime.onStartup.addListener(syncDynamicScripts);
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.extraHosts) syncDynamicScripts();
+});
+
+// ===========================================================================
 // Zuper API access for the UID badges.
 //
 // Fetches happen HERE, not in the content script: a content-script fetch is
