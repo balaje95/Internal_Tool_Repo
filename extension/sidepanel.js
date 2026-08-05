@@ -42,6 +42,9 @@ let tools = [];
 let dashboardBase = 'https://internal-tool-repo.vercel.app';
 let currentTool = null;
 let contextUid = '';
+// Set when the loaded manifest is older than the one on disk; the stale-load
+// warning outranks any other status, since it is the cause of them.
+let staleLoad = false;
 
 // ---------------------------------------------------------------- utilities
 
@@ -284,6 +287,10 @@ function setDiag(text, kind) {
 }
 
 async function readBadgeStatus() {
+  // A stale load is the reason everything else is broken — do not overwrite that
+  // message with a downstream symptom.
+  if (staleLoad) return;
+
   let tab;
   try {
     [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -366,13 +373,30 @@ el.ctxCopy.addEventListener('click', async () => {
 // ---------------------------------------------------------------- boot
 
 (async function init() {
-  // Stamp the running version into the header. Loading unpacked makes it very
-  // easy to be looking at an older copy than the one on disk, and a visible
-  // version turns "did the reload take?" into something checkable.
+  // Stale-load detector.
+  //
+  // getManifest() returns the manifest Chrome parsed when the extension was last
+  // loaded or reloaded. Fetching manifest.json reads the file as it is on disk
+  // NOW. When those disagree, the running extension is older than its files — and
+  // crucially, its content_scripts list is the old one, so scripts added since
+  // that load have never been injected at all. Nothing in the page can report
+  // that, because the code meant to report it was never registered.
   try {
-    const v = chrome.runtime.getManifest().version;
+    const loaded = chrome.runtime.getManifest().version;
     const eyebrow = document.querySelector('.eyebrow');
-    if (eyebrow) eyebrow.textContent = 'Internal Tools · v' + v;
+    if (eyebrow) eyebrow.textContent = 'Internal Tools · v' + loaded;
+
+    const res = await fetch(chrome.runtime.getURL('manifest.json'), { cache: 'no-store' });
+    const onDisk = (JSON.parse(await res.text()) || {}).version;
+    if (onDisk && onDisk !== loaded) {
+      setDiag('Chrome is running v' + loaded + ' but the files on disk are v' + onDisk +
+              '. Content scripts added since v' + loaded + ' are NOT injected, so the UID ' +
+              'badges cannot work. Fix: open chrome://extensions and press Reload on ' +
+              '"Zuper Internal Tools" — if the version here still does not say v' + onDisk +
+              ', Remove it and Load unpacked again.', 'warn');
+      if (eyebrow) eyebrow.textContent = 'Internal Tools · v' + loaded + ' (stale — disk v' + onDisk + ')';
+      staleLoad = true;
+    }
   } catch (e) {}
 
   const stored = await chrome.storage.local.get(['dashboardBase', CACHE_KEY]);
