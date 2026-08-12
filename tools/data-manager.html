@@ -415,6 +415,7 @@ input[type=checkbox]{accent-color:var(--primary)}
         <option value="product">Parts &amp; Services</option>
         <option value="vendor">Vendors</option>
         <option value="jobs">Jobs</option>
+        <option value="recurring_jobs">Recurring Jobs</option>
         <option value="invoice">Invoices</option>
         <option value="estimate">Quotes / Estimates</option>
         <option value="user">Users</option>
@@ -470,6 +471,22 @@ input[type=checkbox]{accent-color:var(--primary)}
       <option value="INVOICE">Invoice</option>
       <option value="ESTIMATE">Quote / Estimate</option>
     </select>
+  </div>
+  <!-- Recurring Jobs: delete-scope flags, sent as query params on each DELETE -->
+  <div id="recurring-params-row" style="display:none;margin-bottom:14px;padding:14px 16px;background:var(--th-bg);border-radius:10px;border:1px solid var(--border)">
+    <div class="sec-title" style="margin-bottom:10px;padding-bottom:8px">Delete scope</div>
+    <div style="font-size:.72rem;color:var(--text-sub);margin-bottom:10px">A recurring job is the recurrence definition. These flags decide what happens to the jobs it already generated.</div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:.82rem;margin-bottom:8px;cursor:pointer">
+      <input type="checkbox" id="rj-del-assoc" checked onchange="onRecurringFlagChange()" style="margin-top:3px">
+      <span>Also delete the jobs this recurrence generated
+        <div style="color:var(--text-sub);font-size:.75rem">Unticked, those jobs stay in the account and only the recurrence is removed.</div></span>
+    </label>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:.82rem;cursor:pointer">
+      <input type="checkbox" id="rj-future-only" checked onchange="onRecurringFlagChange()" style="margin-top:3px">
+      <span>Future jobs only — keep past &amp; completed ones
+        <div style="color:var(--text-sub);font-size:.75rem">Unticked, every generated job is deleted, including completed job history.</div></span>
+    </label>
+    <div id="rj-flag-note" style="font-size:.72rem;color:var(--text-sub);margin-top:10px;font-family:monospace"></div>
   </div>
   <!-- Measurement Categories: create form (shown when connected + module selected) -->
   <div id="measurement-params-row" style="display:none;margin-bottom:14px;padding:14px 16px;background:var(--th-bg);border-radius:10px;border:1px solid var(--border)">
@@ -1432,6 +1449,35 @@ const MODULES={
   product:{label:'Parts & Services',uid:['product_uid','uid','_id'],del:'product',dryRunSkipGet:true,fetchMethod:'POST',endpoint:'product/filter',fetchBody:(page,count)=>({page,count}),cols:[{h:'Name',f:'product_name'},{h:'Type',f:'product_type'},{h:'Category',f:'_cat_name'},{h:'Price',f:'price'},{h:'Formula',f:'_formula_name'},{h:'Trade Types',f:'_bu_names'},{h:'Vendors',f:'_vendors'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_cat_name:(r.product_category?.category_name||r.product_category||'—'),_formula_name:(r.formula?.formula_name||'—'),_bu_names:(r.business_unit||[]).map(b=>b.bu_name||b.name||'').filter(Boolean).join(', ')||'—',_vendors:'…'}))},
   vendor:{label:'Vendors',uid:['vendor_uid','uid','_id'],del:'vendors',dryRunSkipGet:true,fetchMethod:'POST',endpoint:'vendors/filter',fetchBody:(page,count)=>({page,limit:count,filter_rules:[]}),cols:[{h:'Name',f:'_vname'},{h:'Email',f:'vendor_email'},{h:'Phone',f:'vendor_phone'},{h:'Contact',f:'_contact'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_vname:(r.vendor_name||r.vendor_display_name||[r.vendor_first_name,r.vendor_last_name].filter(Boolean).join(' ')||r.company_name||'—'),_contact:([r.vendor_first_name,r.vendor_last_name].filter(Boolean).join(' ')||'—')}))},
   jobs:{label:'Jobs',uid:['job_uid','uid','_id'],del:'job',cols:[{h:'Job #',f:'_job_no'},{h:'Title',f:'job_title'},{h:'Status',f:'_status'},{h:'Customer',f:'_customer'},{h:'Scheduled',f:'scheduled_start_time'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_job_no:r.work_order_number||r.job_number||'—',_status:(r.current_job_status&&r.current_job_status.status_name)||'—',_customer:r.customer_name||(r.customer?[r.customer.customer_first_name,r.customer.customer_last_name].filter(Boolean).join(' '):'—')}))},
+  // Recurring Jobs — the recurrence definition, not the job instances it spawns.
+  // The delete takes two flags that decide what happens to the jobs already
+  // generated; they're picked in #recurring-params-row and appended by hitOne via
+  // delParams. Confirmed live:
+  //   DELETE /api/recurring_jobs/{uid}?delete_associate_jobs=true&delete_future_jobs_only=true
+  //   → 200 {"type":"success","message":"Recurring Job deleted successfully"}
+  // Field names vary across accounts/versions, so the transform reads each column
+  // from a list of candidates rather than one fixed key.
+  recurring_jobs:{label:'Recurring Jobs',uid:['recurring_job_uid','uid','_id'],del:'recurring_jobs',dryRunSkipGet:true,
+    delParams:()=>{const a=rjDeleteAssociated(),f=a&&rjFutureOnly();return 'delete_associate_jobs='+(a?'true':'false')+'&delete_future_jobs_only='+(f?'true':'false');},
+    deleteWarning:(recs)=>{
+      const n=recs.length,a=rjDeleteAssociated(),f=a&&rjFutureOnly();
+      if(!a) return 'Only the '+n+' recurrence definition(s) will be deleted — every job they already generated stays in the account.';
+      return f
+        ? 'The jobs generated by these '+n+' recurrence(s) will also be deleted, but only the FUTURE ones — past and completed jobs are kept.'
+        : 'EVERY job generated by these '+n+' recurrence(s) will be deleted — including past and COMPLETED jobs. This wipes that job history.';
+    },
+    cols:[{h:'Title',f:'_rj_title'},{h:'Customer',f:'_rj_customer'},{h:'Repeats',f:'_rj_repeat'},{h:'Starts',f:'_rj_start'},{h:'Ends',f:'_rj_end'},{h:'Jobs',f:'_rj_jobs'},{h:'Active',f:'_rj_active'},{h:'Created',f:'created_at'}],
+    transform:(recs)=>recs.map(r=>{
+      const cust=r.customer||{};
+      return{...r,
+        _rj_title:r.job_title||r.recurring_job_title||r.title||(r.job&&r.job.job_title)||'—',
+        _rj_customer:r.customer_name||[cust.customer_first_name,cust.customer_last_name].filter(Boolean).join(' ')||cust.customer_company_name||'—',
+        _rj_repeat:r.repeat_type||r.recurrence_type||r.recurring_type||r.frequency||r.repeat_frequency||'—',
+        _rj_start:r.start_date||r.recurrence_start_date||r.scheduled_start_date||r.from_date||'—',
+        _rj_end:r.end_date||r.recurrence_end_date||r.to_date||(r.never_ends?'Never':'—'),
+        _rj_jobs:Array.isArray(r.jobs)?r.jobs.length:(r.total_jobs??r.job_count??r.no_of_jobs??'—'),
+        _rj_active:r.is_active===false?'No':'Yes'};
+    })},
   invoice:{label:'Invoices',uid:['invoice_uid','uid','_id'],del:'invoice',cols:[{h:'Invoice #',f:'_inv_no'},{h:'Title',f:'invoice_title'},{h:'Status',f:'invoice_status'},{h:'Total',f:'_total'},{h:'Due',f:'due_date'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_inv_no:r.invoice_no||r.invoice_number||'—',_total:r.total||r.invoice_total||'—'}))},
   estimate:{label:'Quotes / Estimates',uid:['estimate_uid','quote_uid','uid'],del:'estimate',cols:[{h:'Quote #',f:'_est_no'},{h:'Title',f:'_est_title'},{h:'Status',f:'estimate_status'},{h:'Total',f:'_total'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_est_no:r.estimate_no||r.estimate_number||'—',_est_title:r.proposal_title||r.estimate_title||'—',_total:r.total||r.estimate_total||'—'}))},
   user:{label:'Users',uid:['user_uid','uid','_id'],del:'user',endpoint:'user/all',dryRunSkipGet:true,delUrl:(uid)=>'user/'+encodeURIComponent(uid)+'/delete',cols:[{h:'Name',f:'_name'},{h:'Email',f:'email'},{h:'Role',f:'_role_name'},{h:'Status',f:'_status'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_name:[r.first_name,r.last_name].filter(Boolean).join(' ')||'—',_role_name:(r.role&&r.role.role_name)||'—',_status:r.is_active===false?'Inactive':'Active'}))},
@@ -1531,6 +1577,7 @@ const MIGRATE_MODULES={
   measurement_category:{supported:true, ownUidField:'measurement_category_uid', migrateNative:(rec,dry)=>migrateMeasCategoryRecord(rec,dry)},
   proposal_template:{supported:true, ownUidField:'proposal_template_uid', migrateNative:(rec,dry)=>migrateProposalTemplateRecord(rec,dry)},
   jobs:       {supported:false, reason:'Jobs have relational dependencies (customers, assigned technicians, locations) that cannot be automatically mapped across accounts.'},
+  recurring_jobs:{supported:false, reason:'Recurring Jobs reference customers, properties and assigned technicians that cannot be automatically mapped across accounts.'},
   invoice:    {supported:false, reason:'Invoices depend on related Jobs and customer records that may not exist in the destination account.'},
   estimate:   {supported:false, reason:'Quotes/Estimates reference Jobs and customers that may not exist in the destination account.'},
   purchase_orders:{supported:false, reason:'Purchase Orders reference vendors and inventory records that require manual mapping.'},
@@ -2247,6 +2294,34 @@ async function deactivatePropertyBeforeDelete(uid, base){
   return {ok:false,msg:'Deactivate failed — '+((jd&&jd.message)||('HTTP '+put.status))};
 }
 
+// ── Recurring Jobs delete flags ──────────────────────────────────────────────
+// Read straight from #recurring-params-row. Defaults (both true) match what the
+// Zuper web app sends and are the safer combination: the recurrence and its
+// upcoming jobs go, completed history stays.
+function rjDeleteAssociated(){const cb=$('rj-del-assoc');return cb?cb.checked:true;}
+function rjFutureOnly(){const cb=$('rj-future-only');return cb?cb.checked:true;}
+function onRecurringFlagChange(){
+  const assoc=rjDeleteAssociated();
+  // "Future only" scopes the associated-jobs delete — meaningless on its own.
+  const fo=$('rj-future-only');if(fo) fo.disabled=!assoc;
+  const note=$('rj-flag-note');
+  if(note) note.textContent='Each delete will call: DELETE recurring_jobs/{uid}?'+
+    'delete_associate_jobs='+(assoc?'true':'false')+
+    '&delete_future_jobs_only='+((assoc&&rjFutureOnly())?'true':'false');
+}
+
+// Module-level delete warning, shown on both routes into a real delete: the
+// Delete button and the "proceed for real" button after a dry run. Returns false
+// when the user backs out.
+function confirmDeleteWarning(uids){
+  const cfg=modCfg();
+  if(!cfg||typeof cfg.deleteWarning!=='function') return true;
+  const selRecs=uids.map(uid=>allRecs.find(r=>String(r[uidField]||'')===uid)).filter(Boolean);
+  const warn=cfg.deleteWarning(selRecs);
+  if(!warn) return true;
+  return confirm('⚠ Warning\n\n'+warn+'\n\nProceed with deletion?');
+}
+
 // True when the user ticked "Deactivate only" and the current module actually
 // has a deactivate step to run.
 function deactivateOnlyMode(){
@@ -2258,7 +2333,11 @@ async function hitOne(uid,dry){
   const cfg=modCfg(),delEndpoint=cfg.del||modKey();
   const useBase=cfg.customBaseUrl?(_workflowBaseUrl||baseUrl()):baseUrl();
   // Some modules use a non-standard delete/get path (e.g. user → /user/{uid}/delete).
-  const delUrl=useBase+(cfg.delUrl?cfg.delUrl(uid):delEndpoint+'/'+encodeURIComponent(uid));
+  const delPath=cfg.delUrl?cfg.delUrl(uid):delEndpoint+'/'+encodeURIComponent(uid);
+  // A few deletes take query flags that widen what the server removes (e.g. a
+  // recurring job's already-generated jobs). Delete path only — never on the dry GET.
+  const delQuery=(typeof cfg.delParams==='function')?(cfg.delParams()||''):'';
+  const delUrl=useBase+delPath+(delQuery?(delPath.includes('?')?'&':'?')+delQuery:'');
   const getUrl=useBase+(cfg.getUrl?cfg.getUrl(uid):delEndpoint+'/'+encodeURIComponent(uid));
   const url=dry?getUrl:delUrl;
   // Some modules don't support GET-by-ID — skip the API call on dry run
@@ -2339,11 +2418,7 @@ async function startRun(){
   if(!apiKey()){alert('API key missing.');return;}if(!selUids.size){alert('No records selected.');return;}
   const dry=$('dryrun').checked,uids=Array.from(selUids);
   const cfg=modCfg();
-  if(!dry&&typeof cfg.deleteWarning==='function'){
-    const selRecs=uids.map(uid=>allRecs.find(r=>String(r[uidField]||'')===uid)).filter(Boolean);
-    const warn=cfg.deleteWarning(selRecs);
-    if(warn&&!confirm('⚠ Warning\n\n'+warn+'\n\nProceed with deletion?')) return;
-  }
+  if(!dry&&!deactivateOnlyMode()&&!confirmDeleteWarning(uids)) return;
   const deactOnly=deactivateOnlyMode();
   const action=dry?'DRY RUN CHECK':(deactOnly?'⏻ DEACTIVATE':'⚠ PERMANENTLY DELETE');
   const note=dry?'\n\nDry run — nothing will be changed.'
@@ -2362,7 +2437,9 @@ async function proceedReal(){if(!dryCtx)return;
   const q=dOnly
     ?('⏻ DEACTIVATE '+uids.length+' record(s) on '+$('s-account').textContent+'?\n\n'+preview+'\n\nRecords stay in the account and can be re-activated later.')
     :('⚠ PERMANENTLY DELETE '+uids.length+' record(s) on '+$('s-account').textContent+'?\n\n'+preview+'\n\nThis CANNOT be undone.');
-  if(!confirm(q))return;await runEngine(uids,false);}
+  if(!confirm(q))return;
+  if(!dOnly&&!confirmDeleteWarning(uids))return;
+  await runEngine(uids,false);}
 async function retryFailed(){if(!failUids.length)return;if(!confirm('Retry '+failUids.length+' failed record(s)?'))return;const uids=[...failUids];failUids=[];await runEngine(uids,$('dryrun').checked);}
 function togglePause(){if(!running)return;paused=!paused;$('pause-btn').textContent=paused?'▶ Resume':'⏸ Pause';}
 function cancelRun(){if(!running)return;if(confirm('Cancel? Progress so far will be in the log.')){cancelled=true;paused=false;}}
@@ -6006,7 +6083,7 @@ function exportCompareCsv(){
 // ════════════════════════════════════════════════════════════════════════
 // FEATURE 9: GLOBAL SEARCH
 // ════════════════════════════════════════════════════════════════════════
-const SEARCHABLE_MODULES=['customers','assets','product','jobs','invoice','estimate','user','team','customer_notification','job_status','job_category','asset_form','service_task','package','product_category','formula'];
+const SEARCHABLE_MODULES=['customers','assets','product','jobs','recurring_jobs','invoice','estimate','user','team','customer_notification','job_status','job_category','asset_form','service_task','package','product_category','formula'];
 let _gsRunning=false;
 
 function openGlobalSearch(){
@@ -8609,6 +8686,8 @@ function onModuleChange(){
   const clRow=$('checklist-params-row');
   if(clRow){clRow.style.display=(modKey()==='checklist')?'block':'none';if(modKey()==='checklist'&&_baseUrl) loadChecklistCategories();}
   const cfRow=$('custom-fields-params-row');if(cfRow) cfRow.style.display=(modKey()==='custom_fields')?'block':'none';
+  const rjRow=$('recurring-params-row');
+  if(rjRow){const isRj=modKey()==='recurring_jobs';rjRow.style.display=isRj?'block':'none';if(isRj) onRecurringFlagChange();}
   const measRow2=$('measurement-params-row');if(measRow2) measRow2.style.display=(modKey()==='measurement_category'&&!!_baseUrl)?'block':'none';
   // Hide panels
   hideDedupPanel();
