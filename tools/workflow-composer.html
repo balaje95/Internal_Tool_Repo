@@ -135,6 +135,26 @@
   .toast{position:fixed;bottom:76px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:12.5px;box-shadow:var(--sh-lg);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
   .autotag{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--cyan)}
+
+  /* Canvas preview. Same technique as the JN → Zuper converter's Flow Preview:
+     absolutely-positioned cards at the nodes' REAL canvas coordinates with SVG
+     bezier edges, so the shape on screen is the shape the Workflow Builder draws.
+     Node colours come from each node's own `color` block — the values the builder
+     itself uses — which is why this reads as a builder canvas and not a generic
+     flowchart. Kept light in both themes for the same reason: the builder is light. */
+  .wfp{background:#F8FAFC;border:1px solid var(--line);border-radius:12px;overflow:auto;max-height:420px;
+       background-image:linear-gradient(rgba(16,27,46,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(16,27,46,.05) 1px,transparent 1px);
+       background-size:22px 22px}
+  .wfp-inner{position:relative}
+  .wfp-n{position:absolute;width:150px;border-radius:9px;border:1.5px solid;padding:7px 10px;z-index:2;background:#fff;
+         box-shadow:0 1px 2px rgba(16,27,46,.08);transition:box-shadow .15s,transform .15s}
+  .wfp-n:hover{z-index:9;box-shadow:0 6px 18px rgba(16,27,46,.18);transform:translateY(-1px)}
+  .wfp-n.trig{border-style:dashed}
+  .wfp-t{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px;display:flex;align-items:center;gap:4px}
+  .wfp-t i{width:6px;height:6px;border-radius:50%;display:inline-block;flex:0 0 auto}
+  .wfp-nm{font-size:11px;font-weight:700;line-height:1.3;color:#101B2E;word-break:break-word}
+  .wfp-ak{font-size:9px;font-family:var(--mono);color:#8A97AB;margin-top:2px;word-break:break-all}
+  .wfp-leg{font-size:10.5px;color:var(--faint);padding:8px 12px 2px;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
 </style>
 </head>
 <body>
@@ -852,12 +872,22 @@ function updateDock(){
 
 /* ================= compile spec -> Workflow Builder node-graph ================= */
 function tokenizeTitle(tpl){return (tpl||"").replace(/\{first\}/g,"${customer.customer_first_name}").replace(/\{last\}/g,"${customer.customer_last_name}").replace(/\{email\}/g,"${customer.customer_email}").replace(/\{phone\}/g,"${customer.customer_contact_no}");}
+// The event's own label and module, from the trigger catalog. Only master_node_uid
+// has to come from a real capture; naming the node after the wrong event made the
+// canvas read "New Customer" on a job.new workflow.
+function trigCatalog(evKey){
+  for(const c of CAT){const e=c.events.find(x=>x[1]===evKey);if(e) return {name:e[0],module:c.module};}
+  return null;
+}
 function mkTriggerNode(evKey,exclude,warns){
   const t=JSON.parse(JSON.stringify(GOLDEN[0].nodes.find(n=>n.action_type==="TRIGGER")));
   const info=TRIG_MASTER[evKey];
-  if(!info) warns.push("Trigger “"+evKey+"” has no known Workflow Builder node ID — exported with customer.create's ID as a placeholder. Replace it (or capture this trigger) before relying on it.");
+  const cat=trigCatalog(evKey);
+  if(!info) warns.push("Trigger “"+esc(evKey)+"” has no known Workflow Builder node ID — exported with customer.create's ID as a placeholder. Replace it (or capture this trigger) before relying on it.");
   t.action_key=evKey; t.id=evKey; t.node_uid=uuid();
-  t.action_name=info?info.name:"New Customer"; t.module=info?info.module:"CUSTOMER"; t.master_node_uid=info?info.master:TRIG_MASTER["customer.create"].master;
+  t.action_name=(info&&info.name)||(cat&&cat.name)||"Trigger";
+  t.module=(info&&info.module)||(cat&&cat.module)||"CUSTOMER";
+  t.master_node_uid=info?info.master:TRIG_MASTER["customer.create"].master;
   t.form_fields={trigger_rules:{type:"FIXED",value:[]},excluded_user_uids:{type:"FIXED",value:exclude?[exclude]:[]}};
   return t;
 }
@@ -915,13 +945,20 @@ function catsFrom(nodeName){
 
 /* general assembly (update-job / conditions / non-golden triggers) */
 function compileFactory(spec,warns){
-  const trig=mkTriggerNode(spec.when.event_name,"",warns); let x=-465; const step=150; trig.position={x,y:30};
-  const cfg=mkCode("Configs",`const zuperBaseURL = VARIABLE.BASE_URL\nconst zuperApiKey = VARIABLE.API_KEY\nconst timeZone = VARIABLE.ZUPER_COMPANY_TIMEZONE\nreturn { zuperBaseURL, zuperApiKey, timeZone }`,{x:x+=step,y:30});
+  const trig=mkTriggerNode(spec.when.event_name,"",warns);
+  // Lay the graph out in rows of six rather than one endless strip. Positions are
+  // cosmetic to the builder, and a multi-action workflow on one line meant scrolling
+  // sideways forever both here and on the real canvas.
+  const step=150, PER_ROW=6, ROW_H=165, X0=-465, Y0=30;
+  let _seq=0;
+  const nextPos=()=>{const i=_seq++;return {x:X0+(i%PER_ROW)*step,y:Y0+Math.floor(i/PER_ROW)*ROW_H};};
+  trig.position=nextPos();
+  const cfg=mkCode("Configs",`const zuperBaseURL = VARIABLE.BASE_URL\nconst zuperApiKey = VARIABLE.API_KEY\nconst timeZone = VARIABLE.ZUPER_COMPANY_TIMEZONE\nreturn { zuperBaseURL, zuperApiKey, timeZone }`,nextPos());
   const nodes=[trig,cfg]; const conns=[triggerEdge(trig.id,cfg.id)]; let prev=cfg.id;
 
   if(spec.conditions.length){
     const checks=spec.conditions.map(c=>`{field:${JSON.stringify(c.field)},operator:${JSON.stringify(c.operator)},value:${JSON.stringify(c.value)}}`).join(",");
-    const guard=mkCode("Guard",`// Best-effort condition guard. Adjust field paths to your trigger payload.\nconst conditions = [${checks}];\nconst payload = $.getNodeData('${trig.action_name}')[0].data.body || {};\nfunction val(f){ return payload[f]; }\nfunction pass(c){ const v=(val(c.field)||'')+''; const t=(c.value||'')+'';\n  switch(c.operator){case 'Equal To':return v===t;case 'Not Equal To':return v!==t;case 'Contains':return v.includes(t);case 'Not Contains':return !v.includes(t);case 'Empty':return !v;case 'Not Empty':return !!v;default:return true;} }\nif(!conditions.every(pass)) throw new Error('Conditions not met — stopping');\nreturn { ok:true }`,{x:x+=step,y:30});
+    const guard=mkCode("Guard",`// Best-effort condition guard. Adjust field paths to your trigger payload.\nconst conditions = [${checks}];\nconst payload = $.getNodeData('${trig.action_name}')[0].data.body || {};\nfunction val(f){ return payload[f]; }\nfunction pass(c){ const v=(val(c.field)||'')+''; const t=(c.value||'')+'';\n  switch(c.operator){case 'Equal To':return v===t;case 'Not Equal To':return v!==t;case 'Contains':return v.includes(t);case 'Not Contains':return !v.includes(t);case 'Empty':return !v;case 'Not Empty':return !!v;default:return true;} }\nif(!conditions.every(pass)) throw new Error('Conditions not met — stopping');\nreturn { ok:true }`,nextPos());
     nodes.push(guard); conns.push(edge(prev,guard.id)); prev=guard.id; warns.push("Conditions compiled into a Guard code node — verify the field paths match your trigger payload.");
   }
 
@@ -931,7 +968,7 @@ function compileFactory(spec,warns){
     if(act.operation==="create_job"){
       const f=act.fields||{};
       const catName=(f.jobCategory||"").trim();
-      const getCats=mkHttp("Get Categories"+sfx,"GET",CATS_URL,"",{x:x+=step,y:30});
+      const getCats=mkHttp("Get Categories"+sfx,"GET",CATS_URL,"",nextPos());
       const days=(f.dueDays!=null&&f.dueDays!=="")?parseInt(f.dueDays,10):1;
       const hour=(f.dueHour!=null&&f.dueHour!=="")?parseInt(f.dueHour,10):18;
       const title=f.jobTitle?tokenizeTitle(f.jobTitle):"";
@@ -951,9 +988,9 @@ function compileFactory(spec,warns){
         `  job_priority: ${JSON.stringify(f.priority||"NORMAL")},\n`+
         `  job_type: 'NEW',\n`+
         `  due_date: due,\n  due_date_dt: due\n} };\n`+
-        `return { payload };`,{x:x+=step,y:30});
+        `return { payload };`,nextPos());
       const post=mkHttp("Create Job"+sfx,"POST","{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs",
-        `{{$.getNodeData('Payload${sfx}')[0]['data']['payload']}}`,{x:x+=step,y:30});
+        `{{$.getNodeData('Payload${sfx}')[0]['data']['payload']}}`,nextPos());
       nodes.push(getCats,pay,post); conns.push(edge(prev,getCats.id),edge(getCats.id,pay.id),edge(pay.id,post.id)); prev=post.id;
       if(!catName) warns.push("Create Job has no category — the generated code will throw until you set one.");
       if(!/^customer\./.test(spec.when.event_name)) warns.push("Create Job takes its customer from the trigger payload; on a non-customer trigger check that <code>customerUid</code> resolves.");
@@ -968,9 +1005,9 @@ function compileFactory(spec,warns){
         `const payload = {\n  first_name: body.first_name || '',\n  last_name: body.last_name || '',\n`+
         `  email: body.email || '',\n  phone: body.phone || '',\n`+
         `  customer_type: ${JSON.stringify(f.customerType||"RESIDENTIAL")}${f.source?",\n  source: "+JSON.stringify(f.source):""}\n};\n`+
-        `return { payload };`,{x:x+=step,y:30});
+        `return { payload };`,nextPos());
       const post=mkHttp("Create Customer"+sfx,"POST","{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/customers",
-        `{{$.getNodeData('Customer Payload${sfx}')[0]['data']['payload']}}`,{x:x+=step,y:30});
+        `{{$.getNodeData('Customer Payload${sfx}')[0]['data']['payload']}}`,nextPos());
       nodes.push(pay,post); conns.push(edge(prev,pay.id),edge(pay.id,post.id)); prev=post.id;
       warns.push("Create Customer maps only name / email / phone from the trigger payload — fill in the rest in the Payload node.");
       return;
@@ -979,17 +1016,17 @@ function compileFactory(spec,warns){
     if(act.operation==="http_request"){
       const f=act.fields||{};
       if(!f.url){ warns.push("HTTP Request has no URL — skipped."); return; }
-      const h=mkHttp("HTTP"+sfx,(f.method||"POST").toUpperCase(),f.url,f.body||"",{x:x+=step,y:30});
+      const h=mkHttp("HTTP"+sfx,(f.method||"POST").toUpperCase(),f.url,f.body||"",nextPos());
       if(f.body) h.form_fields.json_body={type:"FIXED",value:f.body};
       nodes.push(h); conns.push(edge(prev,h.id)); prev=h.id;
       return;
     }
     if(act.operation==="update_job"){
-      const getCats=mkHttp("Get Categories"+(ai||""),"GET","{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/category?populate_statuses=true","",{x:x+=step,y:30});
-      const resolve=mkCode("Resolve"+(ai||""),`const cats=(($.getNodeData('Get Categories${ai||""}')[0].data.body)&&(($.getNodeData('Get Categories${ai||""}')[0].data.body.data)||$.getNodeData('Get Categories${ai||""}')[0].data.body))||[];\nconst toCat=cats.find(c=>(c.category_name||'').trim()===${JSON.stringify((act.fields.jobCategory||"").trim())});\nconst statuses=(toCat&&(toCat.statuses||toCat.job_statuses))||[];\nconst toStat=${JSON.stringify(act.fields.jobStatus||"")}?statuses.find(s=>(s.status_name||s.job_status_name||'').trim()===${JSON.stringify((act.fields.jobStatus||"").trim())}):null;\nconst jobUid=$.getNodeData('${trig.action_name}')[0].data.body.job.job_uid; // EDIT for your trigger\nreturn { jobUid, categoryPayload:{job:{job_category: toCat?toCat.category_uid:null}}, statusPayload:{job_status_uid: toStat?toStat.status_uid:null} }`,{x:x+=step,y:30});
+      const getCats=mkHttp("Get Categories"+(ai||""),"GET","{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/category?populate_statuses=true","",nextPos());
+      const resolve=mkCode("Resolve"+(ai||""),`const cats=(($.getNodeData('Get Categories${ai||""}')[0].data.body)&&(($.getNodeData('Get Categories${ai||""}')[0].data.body.data)||$.getNodeData('Get Categories${ai||""}')[0].data.body))||[];\nconst toCat=cats.find(c=>(c.category_name||'').trim()===${JSON.stringify((act.fields.jobCategory||"").trim())});\nconst statuses=(toCat&&(toCat.statuses||toCat.job_statuses))||[];\nconst toStat=${JSON.stringify(act.fields.jobStatus||"")}?statuses.find(s=>(s.status_name||s.job_status_name||'').trim()===${JSON.stringify((act.fields.jobStatus||"").trim())}):null;\nconst jobUid=$.getNodeData('${trig.action_name}')[0].data.body.job.job_uid; // EDIT for your trigger\nreturn { jobUid, categoryPayload:{job:{job_category: toCat?toCat.category_uid:null}}, statusPayload:{job_status_uid: toStat?toStat.status_uid:null} }`,nextPos());
       nodes.push(getCats,resolve); conns.push(edge(prev,getCats.id),edge(getCats.id,resolve.id)); prev=resolve.id;
-      if(act.fields.jobCategory){const up=mkHttp("Update Category"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['categoryPayload']}}`,{x:x+=step,y:30});nodes.push(up);conns.push(edge(prev,up.id));prev=up.id;}
-      if(act.fields.jobStatus){const up=mkHttp("Update Status"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}/status`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['statusPayload']}}`,{x:x+=step,y:30});nodes.push(up);conns.push(edge(prev,up.id));prev=up.id;}
+      if(act.fields.jobCategory){const up=mkHttp("Update Category"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['categoryPayload']}}`,nextPos());nodes.push(up);conns.push(edge(prev,up.id));prev=up.id;}
+      if(act.fields.jobStatus){const up=mkHttp("Update Status"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}/status`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['statusPayload']}}`,nextPos());nodes.push(up);conns.push(edge(prev,up.id));prev=up.id;}
     } else {
       // Recognised by the parser, no proven endpoint to build from. Say which, so the
       // export is not mistaken for a complete workflow.
@@ -1018,6 +1055,83 @@ function compileToBuilder(quiet){
   return {wf,warns,via:goldenFits?"captured template":"assembled"};
 }
 
+/* ================= canvas preview =================
+   Node styling prefers the node's own `color` block, because those are the exact
+   values the Workflow Builder renders it with. The keyed map is only a fallback for
+   a node built without one. */
+const WFP_KINDS={
+  code:{l:"Code",bg:"#E0F4EC",bd:"#8ceac1",dot:"#2E8B57"},
+  http_request:{l:"HTTP Request",bg:"#DFEFF9",bd:"#9DC6E0",dot:"#4682B4"},
+  zuper_get_record:{l:"Get Record",bg:"#DFEFF9",bd:"#9DC6E0",dot:"#4682B4"},
+  if_else:{l:"If / Else",bg:"#FEF9C3",bd:"#FCD34D",dot:"#D97706"},
+  send_notification:{l:"Notification",bg:"#FDF4FF",bd:"#D8B4FE",dot:"#7C3AED"},
+  note:{l:"Note",bg:"#FFFBEB",bd:"#FDE68A",dot:"#B7791F"}
+};
+function wfpStyle(n){
+  if(n.action_type==="TRIGGER") return {l:"Trigger",bg:"#FFF5F0",bd:"#F2864F",dot:"#FD5000"};
+  const c=n.color;
+  if(c&&c.background) return {l:(WFP_KINDS[n.action_key]||{}).l||n.node_display_name||"Action",bg:c.background,bd:c.borderColor||c.main||"#CBD5E1",dot:c.main||"#64748B"};
+  const k=WFP_KINDS[n.action_key];
+  return k?{l:k.l,bg:k.bg,bd:k.bd,dot:k.dot}:{l:n.node_display_name||"Action",bg:"#F8FAFC",bd:"#CBD5E1",dot:"#64748B"};
+}
+// The builder's own nodes are much smaller than a readable card, so coordinates are
+// scaled for display only — the exported JSON keeps the real positions. One uniform
+// scale derived from the tightest pair on a row, because the captured template puts
+// two nodes 75px apart and a fixed scale would draw them on top of each other.
+const WFP_W=150, WFP_H=56;
+function wfpScale(nodes){
+  let minDx=Infinity;
+  for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
+    const a=nodes[i].position||{},b=nodes[j].position||{};
+    if(Math.abs((a.y||0)-(b.y||0))>60) continue;      // different rows; can't collide
+    const dx=Math.abs((a.x||0)-(b.x||0));
+    if(dx>0) minDx=Math.min(minDx,dx);
+  }
+  if(!isFinite(minDx)) return 1.55;
+  return Math.min(2.8,Math.max(1.4,(WFP_W+26)/minDx));
+}
+function renderFlowPreview(w){
+  const nodes=(w.nodes||[]).filter(n=>n.action_type!=="NOTE");
+  if(!nodes.length) return '<div class="hint">No nodes to draw.</div>';
+  const SC=wfpScale(nodes);
+  const px=n=>((n.position||{}).x||0)*SC, py=n=>((n.position||{}).y||0)*SC;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  nodes.forEach(n=>{minX=Math.min(minX,px(n));minY=Math.min(minY,py(n));maxX=Math.max(maxX,px(n)+WFP_W);maxY=Math.max(maxY,py(n)+WFP_H);});
+  const pad=26,W=Math.ceil(maxX-minX+pad*2),H=Math.ceil(maxY-minY+pad*2);
+  const at=n=>({x:px(n)-minX+pad,y:py(n)-minY+pad});
+  const byId={}; nodes.forEach(n=>byId[n.id]=n);
+  const cards=nodes.map(n=>{
+    const s=wfpStyle(n),p=at(n);
+    return `<div class="wfp-n${n.action_type==="TRIGGER"?" trig":""}" style="left:${p.x}px;top:${p.y}px;background:${esc(s.bg)};border-color:${esc(s.bd)}" title="${esc(n.action_name||"")} · ${esc(n.action_key||"")}">
+      <div class="wfp-t" style="color:${esc(s.dot)}"><i style="background:${esc(s.dot)}"></i>${esc(s.l)}</div>
+      <div class="wfp-nm">${esc(n.action_name||n.node_name||"(unnamed)")}</div>
+      <div class="wfp-ak">${esc(n.action_key||"")}</div>
+    </div>`;
+  }).join("");
+  let edges="";
+  (w.connections||[]).forEach(e=>{
+    const s=byId[e.source],t=byId[e.target]; if(!s||!t) return;
+    const a=at(s),b=at(t);
+    const sx=a.x+WFP_W,sy=a.y+WFP_H/2,tx=b.x,ty=b.y+WFP_H/2;
+    const c1=sx+(tx-sx)*.5,c2=tx-(tx-sx)*.5;
+    const col=e.output_value===true?"#16A34A":e.output_value===false?"#DC2626":"#94A3B8";
+    const dash=e.output_value===false?' stroke-dasharray="5,3"':"";
+    edges+=`<path d="M${sx},${sy} C${c1},${sy} ${c2},${ty} ${tx},${ty}" stroke="${col}" stroke-width="1.6" fill="none"${dash} marker-end="url(#wfparr)"/>`;
+    if(e.output_value===true||e.output_value===false)
+      edges+=`<text x="${(sx+tx)/2}" y="${(sy+ty)/2-6}" text-anchor="middle" fill="${col}" font-size="9" font-weight="700">${e.output_value?"TRUE":"FALSE"}</text>`;
+  });
+  return `<div class="wfp"><div class="wfp-inner" style="width:${W}px;height:${H}px">
+      <svg width="${W}" height="${H}" style="position:absolute;top:0;left:0;overflow:visible;pointer-events:none">
+        <defs><marker id="wfparr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#94A3B8"/></marker></defs>
+        ${edges}</svg>${cards}</div></div>
+    <div class="wfp-leg">
+      <span style="display:flex;align-items:center;gap:5px"><svg width="20" height="2"><line x1="0" y1="1" x2="20" y2="1" stroke="#94A3B8" stroke-width="2"/></svg>flow</span>
+      <span style="display:flex;align-items:center;gap:5px"><svg width="20" height="2"><line x1="0" y1="1" x2="20" y2="1" stroke="#16A34A" stroke-width="2"/></svg>true</span>
+      <span style="display:flex;align-items:center;gap:5px"><svg width="20" height="2"><line x1="0" y1="1" x2="20" y2="1" stroke="#DC2626" stroke-width="2" stroke-dasharray="5,3"/></svg>false</span>
+      <span style="margin-left:auto">dashed border = trigger &middot; hover for the action key &middot; laid out at the real canvas coordinates</span>
+    </div>`;
+}
+
 /* Compile after every parse so a workflow exists without pressing anything, and show
    what came out. Failures here must never break typing, hence the try/catch. */
 let _lastBuild=null;
@@ -1027,11 +1141,10 @@ function autoBuild(){
   try{ c=compileToBuilder(true); }catch(e){ el.innerHTML='<div class="warnrow">&#9888; Could not assemble a graph: '+esc(e.message)+'</div>'; return; }
   if(!c){ el.innerHTML='<div class="hint">Nothing to build yet — describe an action above.</div>'; return; }
   const w=c.wf[0];
-  const chain=w.nodes.filter(n=>n.action_type!=="NOTE").map(n=>esc(n.action_name||n.node_name)).join(" &rarr; ");
   el.innerHTML=
-    '<div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:6px">'+
+    '<div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:8px">'+
       'built automatically &middot; '+w.nodes.length+' nodes &middot; '+esc(c.via)+'</div>'+
-    '<div style="font-size:12px;color:var(--dim);line-height:1.7">'+chain+'</div>'+
+    renderFlowPreview(w)+
     warnHtml(c.warns);
   _lastBuild=c;
 }
@@ -1057,7 +1170,9 @@ function warnHtml(warns){return warns.length?warns.map(w=>`<div class="warnrow">
 
 $("#btnJson").addEventListener("click",()=>{
   const c=compileToBuilder(); if(!c) return;
-  openModal("Workflow Builder JSON",warnHtml(c.warns)+`<pre class="out">${JSON.stringify(c.wf,null,2).replace(/</g,"&lt;")}</pre>`);
+  openModal("Workflow Builder JSON",
+    renderFlowPreview(c.wf[0])+warnHtml(c.warns)+
+    `<pre class="out">${JSON.stringify(c.wf,null,2).replace(/</g,"&lt;")}</pre>`);
 });
 $("#btnExport").addEventListener("click",()=>{
   const c=compileToBuilder(); if(!c) return;
@@ -1071,6 +1186,7 @@ $("#btnPush").addEventListener("click",()=>{
   if(!S.base){toast("Connect to an account first.");return;}
   openModal("Push to Workflow Builder",`
     <div class="note">Pushes to <code>workflows/import</code> on <b>${esc(workflowHost()||"the workflow service")}</b> — the same endpoint the Data Manager tool imports workflows through, so this is a known-good path. It always creates a <b>new</b> workflow and never overwrites an existing one. It arrives inactive; publish it in the Workflow Builder once you have checked the nodes.</div>
+    ${renderFlowPreview(c.wf[0])}
     ${warnHtml(c.warns)}
     <pre class="out">${JSON.stringify(c.wf,null,2).replace(/</g,"&lt;")}</pre>
     <div style="display:flex;gap:10px;margin-top:12px"><button class="primary mini" id="doPush">Attempt push</button><button class="ghost mini" id="dl2">Download instead</button></div>
