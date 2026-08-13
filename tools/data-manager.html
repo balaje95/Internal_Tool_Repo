@@ -1507,7 +1507,10 @@ const MODULES={
   assets:{label:'Assets',uid:['asset_uid','uid','_id'],del:'assets',cols:[{h:'Name',f:'asset_name'},{h:'Serial #',f:'serial_number'},{h:'Type',f:'asset_type'},{h:'Status',f:'asset_status'},{h:'Created',f:'created_at'}]},
   product:{label:'Parts & Services',uid:['product_uid','uid','_id'],del:'product',dryRunSkipGet:true,fetchMethod:'POST',endpoint:'product/filter',fetchBody:(page,count)=>({page,count}),cols:[{h:'Name',f:'product_name'},{h:'Type',f:'product_type'},{h:'Category',f:'_cat_name'},{h:'Price',f:'price'},{h:'Formula',f:'_formula_name'},{h:'Trade Types',f:'_bu_names'},{h:'Vendors',f:'_vendors'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_cat_name:(r.product_category?.category_name||r.product_category||'—'),_formula_name:(r.formula?.formula_name||'—'),_bu_names:(r.business_unit||[]).map(b=>b.bu_name||b.name||'').filter(Boolean).join(', ')||'—',_vendors:'…'}))},
   vendor:{label:'Vendors',uid:['vendor_uid','uid','_id'],del:'vendors',dryRunSkipGet:true,fetchMethod:'POST',endpoint:'vendors/filter',fetchBody:(page,count)=>({page,limit:count,filter_rules:[]}),cols:[{h:'Name',f:'_vname'},{h:'Email',f:'vendor_email'},{h:'Phone',f:'vendor_phone'},{h:'Contact',f:'_contact'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_vname:(r.vendor_name||r.vendor_display_name||[r.vendor_first_name,r.vendor_last_name].filter(Boolean).join(' ')||r.company_name||'—'),_contact:([r.vendor_first_name,r.vendor_last_name].filter(Boolean).join(' ')||'—')}))},
-  jobs:{label:'Jobs',uid:['job_uid','uid','_id'],del:'job',cols:[{h:'Job #',f:'_job_no'},{h:'Title',f:'job_title'},{h:'Status',f:'_status'},{h:'Customer',f:'_customer'},{h:'Scheduled',f:'scheduled_start_time'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_job_no:r.work_order_number||r.job_number||'—',_status:(r.current_job_status&&r.current_job_status.status_name)||'—',_customer:r.customer_name||(r.customer?[r.customer.customer_first_name,r.customer.customer_last_name].filter(Boolean).join(' '):'—')}))},
+  // readPaths: candidates for GET-by-UID, tried in order. The delete resource is
+  // 'job' (singular) but GET job/{uid} 404s, so the read path is not simply the
+  // delete path — see resolveReadPath.
+  jobs:{label:'Jobs',uid:['job_uid','uid','_id'],del:'job',readPaths:['jobs','job','jobs/details','job/details'],cols:[{h:'Job #',f:'_job_no'},{h:'Title',f:'job_title'},{h:'Status',f:'_status'},{h:'Customer',f:'_customer'},{h:'Scheduled',f:'scheduled_start_time'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_job_no:r.work_order_number||r.job_number||'—',_status:(r.current_job_status&&r.current_job_status.status_name)||'—',_customer:r.customer_name||(r.customer?[r.customer.customer_first_name,r.customer.customer_last_name].filter(Boolean).join(' '):'—')}))},
   // Recurring Jobs — the recurrence definition, not the job instances it spawns.
   // The delete takes two flags that decide what happens to the jobs already
   // generated; they're picked in #recurring-params-row and appended by hitOne via
@@ -2391,6 +2394,33 @@ function deactivateOnlyMode(){
   return !!(cb&&cb.checked&&typeof (modCfg()||{}).preDelete==='function');
 }
 
+// Zuper is not consistent about singular vs plural, and the resource you DELETE is
+// not always the one you can GET: DELETE job/{uid} is right, GET job/{uid} is a 404.
+// A wrong read path is invisible — it looks exactly like "that record does not
+// exist" — so a module can list candidates and the first one that answers for a
+// real UID is used for the rest of the session. Probed once per module, not per
+// record. Never used to pick a DELETE path: a destructive call is not something to
+// aim by trial and error.
+const _readPathCache={};   // module key -> the path that answered
+async function resolveReadPath(modName,cfg,sampleUid){
+  if(_readPathCache[modName]) return {path:_readPathCache[modName],tried:[]};
+  const cands=(cfg.readPaths&&cfg.readPaths.length)?cfg.readPaths:[cfg.del||modName];
+  const tried=[];
+  for(const p of cands){
+    const url=baseUrl()+p+'/'+encodeURIComponent(sampleUid);
+    try{
+      const res=await fetch(url,{method:'GET',headers:getHdrs()});
+      if(res.ok){
+        _readPathCache[modName]=p;
+        console.info('[ZDM] GET-by-UID path for '+modName+': '+p+'/{uid}');
+        return {path:p,tried};
+      }
+      tried.push(p+'/{uid} → HTTP '+res.status);
+    }catch(e){ tried.push(p+'/{uid} → '+e.message); }
+  }
+  return {path:null,tried};
+}
+
 async function hitOne(uid,dry){
   const cfg=modCfg(),delEndpoint=cfg.del||modKey();
   const useBase=cfg.customBaseUrl?(_workflowBaseUrl||baseUrl()):baseUrl();
@@ -2400,12 +2430,20 @@ async function hitOne(uid,dry){
   // recurring job's already-generated jobs). Delete path only — never on the dry GET.
   const delQuery=(typeof cfg.delParams==='function')?(cfg.delParams()||''):'';
   const delUrl=useBase+delPath+(delQuery?(delPath.includes('?')?'&':'?')+delQuery:'');
-  const getUrl=useBase+(cfg.getUrl?cfg.getUrl(uid):delEndpoint+'/'+encodeURIComponent(uid));
-  const url=dry?getUrl:delUrl;
+  let getPath=cfg.getUrl?cfg.getUrl(uid):delEndpoint+'/'+encodeURIComponent(uid);
   // Some modules don't support GET-by-ID — skip the API call on dry run
   if(dry&&cfg.dryRunSkipGet){
     return{ok:true,msg:'200 would delete (simulated)'};
   }
+  // A dry run's whole job is to confirm the record resolves, so it has to use the
+  // path that can actually read it. Jobs dry-ran against the delete resource and
+  // reported every job as "not found".
+  if(dry&&!cfg.getUrl&&cfg.readPaths){
+    const r=await resolveReadPath(modKey(),cfg,uid);
+    if(r.path) getPath=r.path+'/'+encodeURIComponent(uid);
+  }
+  const getUrl=useBase+getPath;
+  const url=dry?getUrl:delUrl;
   try{
     // "Deactivate only" — flip the record inactive and stop. Used when a hard
     // delete is blocked server-side and taking the records out of circulation
@@ -8371,7 +8409,26 @@ async function uidiResolve(rawList){
 
   uidiRunning=true;uidiCancelled=false;uidiFailures=[];
   $('uidi-cancel-btn').style.display='inline-flex';
-  const base=baseUrl(),path=cfg.del||modKey();
+  const base=baseUrl();
+
+  // Find the readable path before spending a request per UID against a wrong one —
+  // otherwise every single lookup 404s and the report blames the UIDs.
+  $('uidi-prog-lbl').textContent='Checking which endpoint serves '+modLabel+' by UID…';
+  const probe=await resolveReadPath(modKey(),cfg,uids[0]);
+  if(!probe.path){
+    uidiRunning=false;
+    $('uidi-cancel-btn').style.display='none';
+    $('uidi-done-btn').style.display='inline-flex';
+    $('uidi-prog-lbl').textContent='';
+    $('uidi-summary').innerHTML='<div class="msg msg-err" style="display:block">✗ Could not read '+
+      esc(modLabel)+' by UID on this account — nothing was looked up and nothing was changed.<br><br>'+
+      'Tried:<br><code style="font-size:.72rem">'+esc(probe.tried.join('\n'))+'</code><br><br>'+
+      'If the first UID in your list is genuinely from another account that would explain it. '+
+      'Otherwise open a job in Zuper, copy the request path from the browser\'s Network tab, and '+
+      'it can be added to this module\'s <code>readPaths</code>.</div>';
+    return;
+  }
+  const path=probe.path;
   const found=[];
   let done=0;
   const setProg=()=>{
@@ -8414,7 +8471,7 @@ async function uidiResolve(rawList){
   const bits=[];
   bits.push('<div class="msg '+(found.length?'msg-ok':'msg-warn')+'" style="display:block">'+
     (found.length?'✓ ':'⚠ ')+found.length+' of '+uids.length+' UID(s) resolved'+
-    (uidiCancelled?' (stopped early)':'')+'.</div>');
+    (uidiCancelled?' (stopped early)':'')+' via <code>'+esc(path)+'/{uid}</code>.</div>');
   const notes=[];
   if(uidiFailures.length) notes.push(uidiFailures.length+' not found in this account — <strong>not</strong> loaded, so they cannot be deleted by mistake');
   if(dupes.length) notes.push(dupes.length+' duplicate UID(s) collapsed');
