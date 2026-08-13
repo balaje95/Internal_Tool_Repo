@@ -530,6 +530,7 @@ input[type=checkbox]{accent-color:var(--primary)}
     <button class="btn btn-p" id="pkg-import-btn" onclick="showPkgImportCard()" style="display:none">📦 Import Packages</button>
     <button class="btn btn-p" id="tpl-import-btn" onclick="showTplImportCard()" style="display:none">📥 Import Template</button>
     <button class="btn btn-p" id="wf-import-btn" onclick="showWfImportCard()" style="display:none">🔄 Import Workflow JSON</button>
+    <button class="btn btn-p" id="uid-import-btn" onclick="showUidImportCard()" style="display:none">🎯 Delete by UID List</button>
     <label id="dryrun-label" style="display:none;align-items:center;gap:6px;font-size:.82rem;font-weight:600;cursor:pointer;margin-left:4px">
       <input type="checkbox" id="dryrun" checked onchange="updatePill()">
       Dry Run <span id="mode-pill" class="mode-safe">● Safe</span>
@@ -1306,6 +1307,64 @@ input[type=checkbox]{accent-color:var(--primary)}
 </div>
 
 <!-- IMPORT WORKFLOW JSON -->
+<!-- Delete specific records by UID (Jobs). Resolves each UID against the API and
+     loads the matches into the normal grid, so the existing Dry Run / Delete /
+     history path does the actual work. -->
+<div class="card" id="uid-import-card" style="display:none">
+  <div class="sec-title">🎯 Delete by UID — import a list</div>
+  <div id="uidi-step1">
+    <div class="msg msg-info" style="margin-bottom:14px;font-size:.8rem">
+      Paste or upload the UIDs you want gone. Each one is <strong>looked up first</strong> and loaded
+      into the table below with its job number, title, customer and status — nothing is deleted by
+      this card. You then review the rows and use the usual <strong>🗑 Delete Selected</strong>
+      (Dry Run first, as always).
+    </div>
+    <div id="uidi-dropzone" onclick="$('uidi-file').click()" ondragover="event.preventDefault()" ondrop="event.preventDefault();onUidImportFile({files:event.dataTransfer.files})" style="border:2px dashed var(--border-inp);border-radius:14px;padding:26px;background:var(--inp-bg);text-align:center;cursor:pointer;margin-bottom:14px">
+      <div style="font-size:1.7rem;margin-bottom:6px">📂</div>
+      <p style="font-size:.85rem;color:var(--text-sub)"><strong style="color:var(--text)">Click to upload</strong> or drag &amp; drop</p>
+      <p style="font-size:.76rem;color:var(--text-sub);margin-top:4px">.xlsx, .xls or .csv with a column of job UIDs</p>
+      <input type="file" id="uidi-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="onUidImportFile(this)">
+    </div>
+    <div style="font-size:.78rem;color:var(--text-sub);margin-bottom:6px">…or paste UIDs directly — one per line, or separated by commas/spaces (the Chrome extension's <strong>Copy UIDs</strong> output pastes straight in):</div>
+    <textarea id="uidi-paste" class="inp" rows="4" placeholder="6488450c-be9c-4f1b-a8ac-10821c04cc7c&#10;a1b2c3d4-..." style="font-family:monospace;font-size:.78rem;resize:vertical"></textarea>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn btn-p" onclick="uidiFromPaste()">Use pasted UIDs →</button>
+      <button class="btn btn-g" onclick="hideUidImportCard()">← Back</button>
+    </div>
+    <div id="uidi-msg1" class="msg" style="display:none;margin-top:10px"></div>
+  </div>
+  <!-- Step 2: pick the UID column (file uploads only) -->
+  <div id="uidi-step2" style="display:none">
+    <div style="font-size:.8rem;color:var(--text-sub);margin-bottom:8px">
+      <span id="uidi-fname" style="font-weight:600;color:var(--text)"></span> — <span id="uidi-rowcount"></span>
+    </div>
+    <div class="field-lbl">Which column holds the job UID?</div>
+    <select id="uidi-col" class="inp" style="max-width:340px;font-size:.82rem" onchange="uidiUpdateSample()"></select>
+    <div id="uidi-sample" style="font-size:.76rem;color:var(--text-sub);margin-top:6px;font-family:monospace"></div>
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn btn-p" onclick="uidiFromSheet()">Look up these UIDs →</button>
+      <button class="btn btn-o" onclick="uidiGoTo(1);$('uidi-file').value=''">← Back</button>
+    </div>
+    <div id="uidi-msg2" class="msg" style="display:none;margin-top:10px"></div>
+  </div>
+  <!-- Step 3: resolving -->
+  <div id="uidi-step3" style="display:none">
+    <div id="uidi-prog-wrap" style="margin-bottom:12px">
+      <div style="height:8px;background:var(--th-bg);border-radius:5px;overflow:hidden">
+        <div id="uidi-prog-bar" style="height:100%;width:0%;background:var(--primary);transition:width .2s"></div>
+      </div>
+      <div id="uidi-prog-lbl" style="font-size:.78rem;color:var(--text-sub);margin-top:6px"></div>
+    </div>
+    <div id="uidi-summary" style="font-size:.82rem"></div>
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn btn-d" id="uidi-cancel-btn" onclick="uidiCancel()" style="display:none">✕ Stop</button>
+      <button class="btn btn-o" id="uidi-fail-btn" onclick="uidiDownloadFailures()" style="display:none">⬇ Download unresolved UIDs</button>
+      <button class="btn btn-g" id="uidi-done-btn" onclick="hideUidImportCard()" style="display:none">Close</button>
+    </div>
+    <div id="uidi-msg3" class="msg" style="display:none;margin-top:10px"></div>
+  </div>
+</div>
+
 <div class="card" id="wf-import-card" style="display:none">
   <div class="sec-title">🔄 Import Workflow JSON</div>
   <div style="display:flex;margin-bottom:20px;border-bottom:1.5px solid var(--sec-border)">
@@ -1609,6 +1668,7 @@ function showConnected(accountName, region){
   const _pkgIBtn=$('pkg-import-btn');if(_pkgIBtn) _pkgIBtn.style.display=modKey()==='package'?'inline-flex':'none';
   const _tplIBtn=$('tpl-import-btn');if(_tplIBtn) _tplIBtn.style.display=modKey()==='proposal_template'?'inline-flex':'none';
   const _wfIBtn=$('wf-import-btn');if(_wfIBtn) _wfIBtn.style.display=modKey()==='workflow'?'inline-flex':'none';
+  const _uidIBtn=$('uid-import-btn');if(_uidIBtn) _uidIBtn.style.display=modKey()==='jobs'?'inline-flex':'none';
   const _cpqRow=$('cpq-submodule-row');if(_cpqRow) _cpqRow.style.display=($('module').value==='cpq_group')?'block':'none';
   const _wfSubRow=$('workflow-submodule-row');if(_wfSubRow) _wfSubRow.style.display=($('module').value==='workflow_group')?'block':'none';
   // Hide delete button and dry-run toggle for no-delete modules
@@ -1657,6 +1717,8 @@ function doDisconnect(){
   const _pkgIBtnD=$('pkg-import-btn');if(_pkgIBtnD) _pkgIBtnD.style.display='none';
   const _tplIBtnD=$('tpl-import-btn');if(_tplIBtnD) _tplIBtnD.style.display='none';
   const _wfIBtnD=$('wf-import-btn');if(_wfIBtnD) _wfIBtnD.style.display='none';
+  const _uidIBtnD=$('uid-import-btn');if(_uidIBtnD) _uidIBtnD.style.display='none';
+  hideUidImportCard();
   const wfImpCardD=$('wf-import-card');if(wfImpCardD) wfImpCardD.style.display='none';
   const _cpqRowD=$('cpq-submodule-row');if(_cpqRowD) _cpqRowD.style.display='none';
   const _wfRowD=$('workflow-submodule-row');if(_wfRowD) _wfRowD.style.display='none';
@@ -8175,6 +8237,229 @@ function showWfImportCard(){
 }
 function hideWfImportCard(){const c=$('wf-import-card');if(c) c.style.display='none';}
 
+// ============================================================
+// Delete by UID list  (Jobs)
+//
+// Deleting arbitrary UIDs needs no new delete code: runEngine() already takes a
+// list of UIDs. What it needs is a trustworthy way IN. So this resolves every UID
+// against the API first and loads the hits into the normal grid — same rows, same
+// checkboxes, same Dry Run → Delete → history path. A UID that does not resolve is
+// never queued for deletion; it is reported instead, because "404 on delete" and
+// "you pasted the wrong column" look identical in a log and only one of them is
+// your fault.
+//
+// Gated to Jobs (showUidImportCard is only wired up for that module). The code
+// itself reads cfg.del/cfg.uid/cfg.transform, so enabling another module is a
+// change to the visibility check, not to this logic.
+// ============================================================
+let uidiHeaders=[], uidiRows=[], uidiFailures=[], uidiCancelled=false, uidiRunning=false;
+const UUID_ONLY=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function showUidImportCard(){
+  if(!_baseUrl){alert('Connect to an account first.');return;}
+  const c=$('uid-import-card');if(!c) return;
+  uidiGoTo(1);
+  hideMsg('uidi-msg1');hideMsg('uidi-msg2');hideMsg('uidi-msg3');
+  c.style.display='block';
+  c.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function hideUidImportCard(){const c=$('uid-import-card');if(c) c.style.display='none';}
+function uidiGoTo(step){
+  for(const s of [1,2,3]){const el=$('uidi-step'+s);if(el) el.style.display=(s===step)?'block':'none';}
+}
+
+// Accepts anything a person might paste: newlines, commas, spaces, quotes, or a
+// column of cells. Split on separators rather than on non-hex characters — the
+// latter shreds a wrong value instead of preserving it, so pasting a column of job
+// numbers reported "-10231" as the offending entry rather than "WO-10231", which
+// is the one thing that would have told the user which column they grabbed.
+function uidiExtract(text){
+  return String(text||'').split(/[\s,;:|"'`\[\]{}()=]+/).map(s=>s.trim()).filter(Boolean);
+}
+
+function onUidImportFile(input){
+  const file=input.files&&input.files[0];
+  if(!file) return;
+  const ext=(file.name.split('.').pop()||'').toLowerCase();
+  const reader=new FileReader();
+  reader.onload=function(e){
+    let parsed;
+    try{
+      if(ext==='csv'){
+        parsed=parseCSV(e.target.result);
+      }else{
+        if(typeof XLSX==='undefined'){showMsg('uidi-msg1','✗ Excel support failed to load. Use a CSV instead, or check your connection and retry.','err');return;}
+        const wb=XLSX.read(e.target.result,{type:'binary'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const json=XLSX.utils.sheet_to_json(ws,{defval:''});
+        const headers=json.length?Object.keys(json[0]):[];
+        parsed={headers,rows:json.map(r=>{const o={};headers.forEach(h=>o[h]=String(r[h]||'').trim());return o;})};
+      }
+    }catch(ex){showMsg('uidi-msg1','✗ Could not parse that file: '+ex.message,'err');return;}
+    if(!parsed.rows.length){showMsg('uidi-msg1','✗ That file has no data rows.','err');return;}
+    hideMsg('uidi-msg1');
+    uidiHeaders=parsed.headers;uidiRows=parsed.rows;
+    $('uidi-fname').textContent=file.name;
+    $('uidi-rowcount').textContent=parsed.rows.length+' row(s)';
+    // Prefer a column that is named like a UID, then any column whose first cell
+    // actually looks like one — a sheet exported from this tool has both.
+    const byName=uidiHeaders.find(h=>/job[_\s-]*uid|^uid$|record[_\s-]*uid/i.test(h));
+    const byValue=uidiHeaders.find(h=>UUID_ONLY.test(String((uidiRows[0]||{})[h]||'').trim()));
+    const auto=byName||byValue||uidiHeaders[0];
+    $('uidi-col').innerHTML=uidiHeaders.map(h=>'<option value="'+esc(h)+'"'+(h===auto?' selected':'')+'>'+esc(h)+'</option>').join('');
+    uidiUpdateSample();
+    uidiGoTo(2);
+  };
+  if(ext==='csv') reader.readAsText(file); else reader.readAsBinaryString(file);
+}
+
+function uidiUpdateSample(){
+  const col=$('uidi-col').value;
+  const vals=uidiRows.slice(0,3).map(r=>String(r[col]||'').trim()).filter(Boolean);
+  const good=uidiRows.filter(r=>UUID_ONLY.test(String(r[col]||'').trim())).length;
+  $('uidi-sample').textContent=vals.length
+    ? 'First values: '+vals.join(', ')+'  —  '+good+' of '+uidiRows.length+' row(s) hold a valid UID'
+    : 'That column is empty.';
+}
+
+function uidiFromSheet(){
+  const col=$('uidi-col').value;
+  if(!col){showMsg('uidi-msg2','✗ Pick the column holding the UIDs.','err');return;}
+  const raw=uidiRows.map(r=>String(r[col]||'').trim()).filter(Boolean);
+  if(!raw.length){showMsg('uidi-msg2','✗ That column is empty — pick another.','err');return;}
+  hideMsg('uidi-msg2');
+  uidiResolve(raw);
+}
+
+function uidiFromPaste(){
+  const raw=uidiExtract($('uidi-paste').value);
+  if(!raw.length){showMsg('uidi-msg1','✗ No UIDs found in that text.','err');return;}
+  hideMsg('uidi-msg1');
+  uidiResolve(raw);
+}
+
+function uidiCancel(){ if(uidiRunning) uidiCancelled=true; }
+
+// Resolve each UID, then hand the hits to the grid.
+async function uidiResolve(rawList){
+  const cfg=modCfg();
+  const modLabel=cfg?cfg.label:modKey();
+  // Separate the three ways an entry can be unusable, so the summary can say which.
+  const seen=new Set();
+  const uids=[],malformed=[],dupes=[];
+  for(const r of rawList){
+    const v=String(r).trim();
+    if(!UUID_ONLY.test(v)){malformed.push(v);continue;}
+    const k=v.toLowerCase();
+    if(seen.has(k)){dupes.push(v);continue;}
+    seen.add(k);uids.push(v);
+  }
+  uidiGoTo(3);
+  $('uidi-summary').innerHTML='';
+  $('uidi-fail-btn').style.display='none';
+  $('uidi-done-btn').style.display='none';
+
+  if(!uids.length){
+    $('uidi-prog-lbl').textContent='';
+    $('uidi-prog-bar').style.width='0%';
+    $('uidi-summary').innerHTML='<div class="msg msg-err" style="display:block">✗ None of the '+rawList.length+
+      ' value(s) is a UID. A job UID looks like <code>6488450c-be9c-4f1b-a8ac-10821c04cc7c</code> — '+
+      'you may have picked a job-number column.</div>';
+    $('uidi-done-btn').style.display='inline-flex';
+    return;
+  }
+
+  uidiRunning=true;uidiCancelled=false;uidiFailures=[];
+  $('uidi-cancel-btn').style.display='inline-flex';
+  const base=baseUrl(),path=cfg.del||modKey();
+  const found=[];
+  let done=0;
+  const setProg=()=>{
+    $('uidi-prog-bar').style.width=(done/uids.length*100).toFixed(1)+'%';
+    $('uidi-prog-lbl').textContent='Looking up '+done+' / '+uids.length+' — '+found.length+' found, '+uidiFailures.length+' not found';
+  };
+  setProg();
+
+  let idx=0;
+  const CONC=5; // gentle on the API — this is a read-only pre-flight, not the job
+  async function worker(){
+    while(true){
+      if(uidiCancelled) return;
+      const i=idx++;
+      if(i>=uids.length) return;
+      const uid=uids[i];
+      const url=base+path+'/'+encodeURIComponent(uid);
+      try{
+        const res=await fetch(url,{method:'GET',headers:getHdrs()});
+        if(res.ok){
+          const data=await res.json().catch(()=>null);
+          const recs=data?extractRecords(data,modKey()):[];
+          if(recs.length) found.push(recs[0]);
+          else uidiFailures.push({uid,reason:'200 OK but no record in the response'});
+        }else{
+          uidiFailures.push({uid,reason:'HTTP '+res.status+(res.status===404?' — no such record in this account':'')});
+        }
+      }catch(e){
+        uidiFailures.push({uid,reason:'Network: '+e.message});
+      }
+      done++;setProg();
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(CONC,uids.length)},worker));
+  uidiRunning=false;
+  $('uidi-cancel-btn').style.display='none';
+  $('uidi-done-btn').style.display='inline-flex';
+  if(uidiFailures.length) $('uidi-fail-btn').style.display='inline-flex';
+
+  const bits=[];
+  bits.push('<div class="msg '+(found.length?'msg-ok':'msg-warn')+'" style="display:block">'+
+    (found.length?'✓ ':'⚠ ')+found.length+' of '+uids.length+' UID(s) resolved'+
+    (uidiCancelled?' (stopped early)':'')+'.</div>');
+  const notes=[];
+  if(uidiFailures.length) notes.push(uidiFailures.length+' not found in this account — <strong>not</strong> loaded, so they cannot be deleted by mistake');
+  if(dupes.length) notes.push(dupes.length+' duplicate UID(s) collapsed');
+  if(malformed.length) notes.push(malformed.length+' value(s) skipped as not a UID: <code>'+esc(malformed.slice(0,3).join(', '))+(malformed.length>3?'…':'')+'</code>');
+  if(notes.length) bits.push('<ul style="margin:10px 0 0 18px;font-size:.8rem;color:var(--text-sub)"><li>'+notes.join('</li><li>')+'</li></ul>');
+  $('uidi-summary').innerHTML=bits.join('');
+
+  if(!found.length) return;
+  uidiLoadIntoGrid(found,cfg,modLabel);
+}
+
+// Put the resolved records through the same pipeline a normal fetch uses, so the
+// table, selection, dedupe, delete and history all behave exactly as they would
+// on a fetched listing.
+function uidiLoadIntoGrid(found,cfg,modLabel){
+  let recs=found;
+  if(typeof cfg.transform==='function') recs=cfg.transform(recs);
+  allRecs=recs;
+  uidField=findUid(allRecs[0],cfg.uid);
+  if(!uidField){
+    showMsg('uidi-msg3','✗ Resolved the records but could not find their UID field — nothing was loaded.','err');
+    allRecs=[];return;
+  }
+  filtRecs=[...allRecs];
+  sortCol=null;sortDir=1;currentPage=1;_selectAllMode=false;hideSellAllBanner();
+  // Pre-select every row: the user chose these UIDs deliberately, so the useful
+  // default is "all of them, minus anything you untick".
+  selUids=new Set(allRecs.map(r=>String(r[uidField]||'')).filter(Boolean));
+  $('s-total').textContent=allRecs.length;
+  $('s-module').textContent=modLabel;
+  renderTable();
+  renderHeaders();
+  renderRows();
+  updSel();
+  const dfRow=$('date-filter-row');if(dfRow) dfRow.style.display='flex';
+  showMsg('fetch-msg','🎯 '+allRecs.length+' record(s) loaded from your UID list and pre-selected. Review the rows, then use 🗑 Delete Selected (leave Dry Run ticked for the first pass).','ok');
+  const tbl=$('table-card');if(tbl) tbl.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function uidiDownloadFailures(){
+  if(!uidiFailures.length){alert('Nothing to download.');return;}
+  const csv='uid,reason\n'+uidiFailures.map(f=>'"'+f.uid.replace(/"/g,'""')+'","'+String(f.reason).replace(/"/g,'""')+'"').join('\n');
+  dlFile(csv,'zdm-unresolved-uids-'+modKey()+'-'+Date.now()+'.csv','text/csv');
+}
+
 function wfiGoTo(step){
   [1,2,3,4].forEach(n=>{
     const s=$('wfistep'+n);if(s) s.style.display=n===step?'block':'none';
@@ -8712,6 +8997,8 @@ function onModuleChange(){
   const ttIbtn=$('tt-import-btn');if(ttIbtn) ttIbtn.style.display=(isProduct&&isConn)?'inline-flex':'none';
   const pkgIbtn=$('pkg-import-btn');if(pkgIbtn) pkgIbtn.style.display=(modKey()==='package'&&isConn)?'inline-flex':'none';
   const wfIbtn=$('wf-import-btn');if(wfIbtn) wfIbtn.style.display=(modKey()==='workflow'&&isConn)?'inline-flex':'none';
+  const uidIbtn=$('uid-import-btn');if(uidIbtn) uidIbtn.style.display=(modKey()==='jobs'&&isConn)?'inline-flex':'none';
+  if(modKey()!=='jobs') hideUidImportCard();
   if(!isProduct&&typeof hideImportCard==='function') hideImportCard();
   if(!isProduct){const ttImpCard=$('tt-import-card');if(ttImpCard) ttImpCard.style.display='none';}
   if(modKey()!=='package'&&typeof hidePkgImportCard==='function') hidePkgImportCard();
