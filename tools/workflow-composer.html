@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Zuper Workflow Composer</title>
+<link rel="icon" href="../assets/logos/zuper-favicon.svg">
+<link rel="stylesheet" href="../assets/zuper-brand.css">
+<script>try{if(localStorage.getItem('zuper_tools_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F4F6F9; --bg-2:#EAEEF4; --card:#FFFFFF; --sunken:#F7F9FC;
+    --line:#E1E6EE; --line-2:#EEF1F6;
+    --ink:#101B2E; --dim:#54637C; --faint:#93A0B4;
+    --orange:#FD5000; --orange-2:#E8500A; --cyan:#0FB5A0; --violet:#6D5AE0;
+    --warn:#B7791F; --bad:#D64545;
+    --sh-sm:0 1px 2px rgba(16,27,46,.06),0 1px 3px rgba(16,27,46,.05);
+    --sh-md:0 4px 14px rgba(16,27,46,.08);
+    --sh-lg:0 12px 34px rgba(16,27,46,.12);
+    --mono:"JetBrains Mono",ui-monospace,monospace; --disp:"Space Grotesk",sans-serif; --sans:"Inter",system-ui,sans-serif;
+    --grid:rgba(16,27,46,.028);
+  }
+  /* Dark is opt-in via [data-theme="dark"], set by the dashboard's theme toggle
+     (and by the pre-flight script in <head> so there is no light flash). The whole
+     palette is variable-driven, so this override is the entire dark theme; values
+     match the other tools in the dashboard. */
+  :root[data-theme="dark"]{
+    --bg:#09090B; --bg-2:#141417; --card:#141417; --sunken:#1C1C21;
+    --line:#27272A; --line-2:#1C1C21;
+    --ink:#FAFAFA; --dim:#A1A1AA; --faint:#71717A;
+    --orange:#FF8B5A; --orange-2:#F2864F; --cyan:#2DD4BF; --violet:#9B8AFB;
+    --warn:#FBBF24; --bad:#F87171;
+    --grid:rgba(255,255,255,.03);
+    --sh-sm:0 1px 2px rgba(0,0,0,.4); --sh-md:0 4px 14px rgba(0,0,0,.45); --sh-lg:0 12px 34px rgba(0,0,0,.5);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans); line-height:1.5; -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(900px 460px at 90% -8%, rgba(253,80,0,.06), transparent 60%),
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size:auto,44px 44px,44px 44px;
+  }
+  .wrap{max-width:1240px;margin:0 auto;padding:22px 20px 120px}
+  code.k{font-family:var(--mono);font-size:11.5px;background:var(--sunken);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--orange-2)}
+
+  header.top{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+  .logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(140deg,var(--orange),var(--orange-2));display:grid;place-items:center;font-family:var(--disp);font-weight:700;color:#fff;box-shadow:0 6px 18px rgba(253,80,0,.32)}
+  h1{font-family:var(--disp);font-size:20px;font-weight:600;letter-spacing:-.02em;margin:0}
+  .sub{color:var(--faint);font-size:12px;margin-top:1px;font-family:var(--mono)}
+  .conn{margin-left:auto;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;color:var(--faint);border:1px solid var(--line);padding:7px 12px;border-radius:999px;background:var(--card);box-shadow:var(--sh-sm)}
+  .conn .dot{width:8px;height:8px;border-radius:999px;background:var(--faint)}
+  .conn.live .dot{background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+  .conn.live{color:var(--cyan);border-color:rgba(15,181,160,.4)}
+
+  .layout{display:grid;grid-template-columns:330px 1fr;gap:22px;align-items:start}
+  @media(max-width:900px){.layout{grid-template-columns:1fr}}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--sh-sm)}
+  .panel + .panel{margin-top:16px}
+  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
+
+  label{display:block;font-size:11px;color:var(--dim);margin:0 0 6px;font-weight:500}
+  .field{margin-bottom:13px}
+  input.t,select,textarea{width:100%;background:var(--sunken);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 12px;font-size:13px;font-family:var(--sans);outline:none;transition:border-color .15s,box-shadow .15s}
+  select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--faint) 50%),linear-gradient(135deg,var(--faint) 50%,transparent 50%);background-position:calc(100% - 16px) 16px,calc(100% - 11px) 16px;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:30px}
+  textarea{resize:vertical;min-height:96px}
+  input.t:focus,select:focus,textarea:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(253,80,0,.14)}
+  input.mono{font-family:var(--mono);font-size:12px}
+  .hint{font-size:10.5px;color:var(--faint);margin-top:5px;line-height:1.45}
+
+  button{font-family:var(--sans);cursor:pointer;border:none;border-radius:10px;font-weight:600;font-size:13px;padding:11px 16px;transition:transform .05s,filter .15s,box-shadow .15s}
+  button:active{transform:translateY(1px)}
+  .primary{background:linear-gradient(135deg,var(--orange),var(--orange-2));color:#fff;box-shadow:0 6px 16px rgba(253,80,0,.28)}
+  .primary:hover{filter:brightness(1.05)}
+  .ghost{background:var(--card);border:1px solid var(--line);color:var(--dim)}
+  .ghost:hover{border-color:var(--faint);color:var(--ink)}
+  .mini{font-size:11px;padding:7px 11px;border-radius:8px}
+
+  .status{display:flex;align-items:center;gap:9px;font-size:12.5px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--sunken);margin-top:10px}
+  .status.ok{border-color:rgba(15,181,160,.4)} .status.ok .d{background:var(--cyan)}
+  .status.err{border-color:rgba(214,69,69,.4)} .status.err .d{background:var(--bad)}
+  .status .d{width:8px;height:8px;border-radius:999px;flex:0 0 auto;background:var(--faint)}
+  .spin{width:13px;height:13px;border:2px solid var(--line);border-top-color:var(--orange);border-radius:999px;animation:sp .7s linear infinite;flex:0 0 auto}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  .flow{position:relative;padding-left:46px}
+  .spine{position:absolute;left:19px;top:14px;bottom:14px;width:2px;background:linear-gradient(var(--orange),var(--cyan) 45%,var(--violet));border-radius:2px;opacity:.5}
+  .spine::after{content:"";position:absolute;left:-1px;top:0;width:4px;height:40px;background:linear-gradient(var(--orange-2),transparent);border-radius:4px;filter:blur(1px);animation:travel 3.2s ease-in-out infinite}
+  @keyframes travel{0%{top:0;opacity:0}12%{opacity:1}88%{opacity:1}100%{top:100%;opacity:0}}
+  @media(prefers-reduced-motion:reduce){.spine::after{animation:none}.spin{animation:none}}
+
+  .stage{position:relative;margin-bottom:16px}
+  .node{position:absolute;left:-46px;top:16px;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-family:var(--disp);font-weight:600;font-size:12px;background:var(--card);border:1.5px solid var(--line);color:var(--faint);z-index:2;box-shadow:var(--sh-sm)}
+  .stage.when .node{border-color:var(--orange);color:var(--orange);box-shadow:0 0 0 4px rgba(253,80,0,.09)}
+  .stage.iff .node{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 0 4px rgba(15,181,160,.09)}
+  .stage.then .node{border-color:var(--violet);color:var(--violet);box-shadow:0 0 0 4px rgba(109,90,224,.09)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--sh-sm)}
+  .stage.when .card{border-color:rgba(253,80,0,.3)}
+  .card h3{font-family:var(--disp);font-size:14px;font-weight:600;margin:0 0 3px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+  .card p.d{margin:0 0 15px;color:var(--dim);font-size:12px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  @media(max-width:620px){.row,.row-3{grid-template-columns:1fr}}
+
+  .live-badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9.5px;color:var(--cyan);background:rgba(15,181,160,.09);border:1px solid rgba(15,181,160,.32);border-radius:999px;padding:2px 8px}
+  .live-badge.warn{color:var(--warn);background:rgba(183,121,31,.09);border-color:rgba(183,121,31,.32)}
+  .live-badge .p{width:6px;height:6px;border-radius:999px;background:currentColor}
+
+  .chip{background:var(--sunken);border:1px solid var(--line);border-radius:12px;padding:13px;margin-top:10px;position:relative}
+  .chip .rm{position:absolute;top:9px;right:10px;width:22px;height:22px;border-radius:6px;background:var(--card);border:1px solid var(--line);color:var(--faint);display:grid;place-items:center;cursor:pointer;font-size:13px;line-height:1}
+  .chip .rm:hover{color:var(--bad);border-color:rgba(214,69,69,.4)}
+  .addbtn{margin-top:12px;display:inline-flex;align-items:center;gap:7px;background:transparent;border:1px dashed var(--line);color:var(--dim);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:500}
+  .addbtn:hover{border-color:var(--orange);color:var(--orange-2)}
+  .joiner{font-family:var(--mono);font-size:10px;color:var(--faint);text-align:center;margin:8px 0;letter-spacing:.2em}
+
+  .dock{position:fixed;left:0;right:0;bottom:0;background:rgba(244,246,249,.92);border-top:1px solid var(--line);backdrop-filter:blur(10px);z-index:30}
+  .dock-inner{max-width:1240px;margin:0 auto;padding:12px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .dock .summary{font-size:12px;color:var(--dim);font-family:var(--mono);flex:1;min-width:200px}
+  .dock .summary b{color:var(--ink)}
+  pre.out{background:#0C1526;border:1px solid var(--line);border-radius:12px;padding:14px;overflow:auto;max-height:340px;font-family:var(--mono);font-size:11px;color:#c9d6ea;line-height:1.55;margin:14px 0 0}
+  .modal{position:fixed;inset:0;background:rgba(16,27,46,.4);display:none;align-items:center;justify-content:center;z-index:40;padding:20px}
+  .modal.show{display:flex}
+  .modal .box{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:780px;width:100%;max-height:82vh;overflow:auto;box-shadow:var(--sh-lg)}
+  .modal h3{font-family:var(--disp);margin:0 0 6px;font-size:16px}
+  .note{border-left:2px solid var(--orange);background:rgba(253,80,0,.05);padding:11px 13px;border-radius:0 10px 10px 0;font-size:12px;color:var(--dim);margin:12px 0}
+  .note b{color:var(--ink)}
+  .warnrow{font-size:12px;color:var(--warn);background:rgba(183,121,31,.07);border:1px solid rgba(183,121,31,.25);border-radius:10px;padding:9px 12px;margin-top:10px}
+  .toast{position:fixed;bottom:76px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:12.5px;box-shadow:var(--sh-lg);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+  .autotag{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--cyan)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="logo">Z</div>
+    <div>
+      <h1>Workflow Composer</h1>
+      <div class="sub">describe &rarr; auto-build &rarr; push to workflow builder</div>
+    </div>
+    <div class="conn" id="conn"><span class="dot"></span><span id="connTxt">not connected</span></div>
+  </header>
+
+  <div class="layout">
+    <aside>
+      <div class="panel">
+        <p class="eyebrow">Account</p>
+        <div class="field"><label for="apiKey">API key</label><input id="apiKey" class="t mono" type="password" placeholder="paste x-api-key" autocomplete="off"/></div>
+        <div class="field"><label for="region">Region</label>
+          <select id="region"><option value="auto">Auto-detect</option><option value="https://us-east-1.zuperpro.com/api">US East</option><option value="https://us-west-1c.zuperpro.com/api">US West</option><option value="https://stagingv2.zuperpro.com/api">Staging</option></select>
+        </div>
+        <button class="primary" id="btnConnect" style="width:100%">Connect</button>
+        <div id="connStatus"></div>
+      </div>
+
+      <div class="panel">
+        <p class="eyebrow">Describe it</p>
+        <div class="field">
+          <label for="genDesc">What should this workflow do? <span id="autoTag"></span></label>
+          <textarea id="genDesc" placeholder="e.g. When a customer is created, create a Qualification job due next day at 6pm.
+
+Type freely — the When / If / Then below build themselves as you write. Correct anything by hand afterward."></textarea>
+          <div class="hint">The stages update automatically a moment after you stop typing (or on blur). Anything mis-read, just fix it in place.</div>
+        </div>
+        <div id="autoStatus"></div>
+      </div>
+    </aside>
+
+    <main class="flow">
+      <div class="spine"></div>
+
+      <section class="stage when">
+        <div class="node">W</div>
+        <div class="card">
+          <h3>When <span class="tag">trigger</span></h3>
+          <p class="d">The event that starts the workflow.</p>
+          <div class="row">
+            <div class="field"><label for="tModule">Module</label><select id="tModule"></select></div>
+            <div class="field"><label for="tEvent">Event</label><select id="tEvent"></select></div>
+          </div>
+          <div class="field">
+            <label for="tEventKey">Resolved event key <span id="keyBadge"></span></label>
+            <input id="tEventKey" class="t mono" placeholder="event_name"/>
+            <div class="hint">Verified triggers have a Workflow Builder node ID and export cleanly. Inferred ones export with a placeholder ID you replace after capturing that trigger.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stage iff">
+        <div class="node">IF</div>
+        <div class="card">
+          <h3>If <span class="tag">conditions &middot; optional</span> <span id="condLive"></span></h3>
+          <p class="d">Only run when these are true. Leave empty to always run.</p>
+          <div id="condList"></div>
+          <button class="addbtn" id="btnAddCond">+ Add condition</button>
+        </div>
+      </section>
+
+      <section class="stage then">
+        <div class="node">DO</div>
+        <div class="card">
+          <h3>Then <span class="tag">actions</span></h3>
+          <p class="d">What happens when it fires. Add one or more.</p>
+          <div id="actList"></div>
+          <button class="addbtn" id="btnAddAct">+ Add action</button>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div class="dock"><div class="dock-inner">
+  <div class="summary" id="dockSummary">Describe your workflow to begin.</div>
+  <button class="ghost mini" id="btnJson">View JSON</button>
+  <button class="ghost mini" id="btnExport">Export Builder JSON</button>
+  <button class="primary" id="btnPush">Push to Workflow Builder</button>
+</div></div>
+
+<div class="modal" id="modal"><div class="box">
+  <h3 id="modalTitle">Workflow</h3>
+  <div id="modalBody"></div>
+  <div style="margin-top:14px;text-align:right"><button class="ghost mini" id="modalClose">Close</button></div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= golden Workflow Builder template (embedded) ================= */
+const GOLDEN = [{"workflow_name":"Create \u201cLead Qualification\u201d Job When a New Customer Is Created","workflow_description":"","workflow_icon":"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/283a4296-e481-48b5-be1d-8c20de718d2d.svg","nodes":[{"id":"zuper_get_record_zuper_get_record2db2a4ad-a98c-494a-be8a-e72ea2a394c0","color":{"main":"#4682B4","background":"#DFEFF9","borderColor":"#E3E5E6","iconBackground":"#C9DCE7"},"input":1,"module":"","output":1,"node_uid":"ba9e5186-ce76-4201-9031-99e406ca8ddf","position":{"x":-240,"y":30},"is_active":true,"node_icon":"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/283a4296-e481-48b5-be1d-8c20de718d2d.svg","node_name":"zuper_get_record","action_key":"zuper_get_record","action_name":"Get Customer","action_type":"ACTION","credentials":{},"description":"Get a Record in Zuper","form_fields":{"module":{"type":"FIXED","value":"CUSTOMER"},"module_uid":{"type":"EXPRESSION","value":"{{$.getNodeData('New Customer')[0]['data']['body']['customer']}}"},"status_uid":{"type":"FIXED","value":""},"source_node":{"type":"FIXED","value":"CUSTOM"},"source_type":{"type":"FIXED","value":""},"category_uid":{"type":"FIXED","value":""}},"master_node_uid":"7bd69fec-sudhaid65-4eb8-a94b-3158c252921c","node_display_name":"Edit Record"},{"id":"code_code39d47a60-27bd-44c6-b053-535b3fcb8954","color":{"main":"#2E8B57","background":"#E0F4EC","borderColor":"#8ceac1","iconBackground":"#BEEAD6"},"input":1,"module":"","output":1,"node_uid":"38d4035a-5489-4150-bcfc-5797b7b42da4","position":{"x":-390,"y":30},"is_active":true,"node_icon":"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/7f22be08-936d-4e6b-a054-0c4a9a438913.svg","node_name":"code","action_key":"code","action_name":"Configs","action_type":"ACTION","credentials":{},"description":"Run custom javascript code","form_fields":{"code":"const zuperBaseURL = VARIABLE.BASE_URL\nconst zuperApiKey = VARIABLE.API_KEY\nconst timeZone = VARIABLE.ZUPER_COMPANY_TIMEZONE\nconst jobCategory = \"Lead Qualification\" // Change based on you are job category \nreturn {\n  zuperBaseURL,\n  zuperApiKey,\n  jobCategory,\n  timeZone\n}\n\n\n\n\n\n\n\n\n\n\n\n\n"},"node_category":"FLOW","master_node_uid":"d15fd095-70f3-4d53-9103-5786dfd52b37","node_display_name":"Code"},{"id":"http_request_v2_http_request_v27ac9c6ec-4d89-4d1e-a6d8-308b66766eca","color":{"main":"#4682B4","background":"#DFEFF9","borderColor":"#E3E5E6","iconBackground":"#C9DCE7"},"input":1,"module":"","output":2,"node_uid":"de2715cf-595d-47d4-981d-edc40ec43ea6","position":{"x":-225,"y":195},"is_active":true,"node_icon":"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/14380500-c678-4798-b3b1-0abc9513abec.svg","node_name":"http_request","action_key":"http_request","action_name":"Create Job","action_type":"ACTION","credentials":{},"description":"Make HTTP call and handle error response","form_fields":{"url":{"type":"EXPRESSION","value":"{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs"},"method":{"type":"FIXED","value":"POST"},"timeout":{"type":"FIXED","value":60},"password":{"type":"FIXED","value":""},"username":{"type":"FIXED","value":""},"json_body":{"type":"EXPRESSION","value":"{{$.getNodeData('Payload to Create Job')[0]['data']['payload']}}"},"send_body":{"type":"FIXED","value":true},"ignore_ssl":{"type":"FIXED","value":false},"content_type":{"type":"FIXED","value":"application/json"},"error_action":{"type":"FIXED","value":"STOP"},"send_headers":{"type":"FIXED","value":true},"raw_body_data":{"type":"FIXED","value":""},"authentication":{"type":"FIXED","value":"NONE"},"body_data_type":{"type":"FIXED","value":"JSON"},"query_parameters":[],"send_query_param":{"type":"FIXED","value":false},"body_content_type":{"type":"FIXED","value":"JSON"},"header_parameters":[{"header_key":{"type":"FIXED","value":"x-api-key"},"header_value":{"type":"EXPRESSION","value":"{{$.getNodeData('Configs')[0]['data']['zuperApiKey']}}"}}],"form_data_parameters":[]},"node_category":"HELPERS","master_node_uid":"a69c5b83-0fcf-4746-a3dd-a357f2fe0646","node_display_name":"HTTP Request"},{"id":"code_code862f585a-6463-454d-a696-c93ed2ccc513","color":{"main":"#2E8B57","background":"#E0F4EC","borderColor":"#8ceac1","iconBackground":"#BEEAD6"},"input":1,"module":"","output":1,"node_uid":"82cbfa61-c3ed-431a-a1c9-faf71d7b6c73","position":{"x":-420,"y":195},"is_active":true,"node_icon":"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/7f22be08-936d-4e6b-a054-0c4a9a438913.svg","node_name":"code","action_key":"code","action_name":"Payload to Create Job","action_type":"ACTION","credentials":{},"description":"Run custom javascript code","form_fields":{"code":"const moment = require('moment-timezone');\n\nconst { timeZone, jobCategory } = $.getNodeData('Configs')[0]['data']// Insert your code here\nlet customer = $.getNodeData('Get Customer')[0]['data']['data'];\nlet jobCategories = $.getNodeData('Get job category')[0]['data']['data'];\nconst jobMasterCF = $.getNodeData('Get Job Custom Fields')[0]['data']['data']\n\nlet category = jobCategories.find(item => item.category_name.toLowerCase().trim() === jobCategory.toLowerCase().trim());\n\nif(!category) {\n  throw new Error(`Failed to find category: ${jobCategory}`)\n}\n\n// Build job title\nconst jobTitle = `Lead Qualification - ${customer.customer_first_name} ${customer.customer_last_name}`;\n\n\nconst jobCF =\n  jobMasterCF?.map((cf) => {\n    return {\n      dependent_on: cf.dependent_on,\n      dependent_options: cf.dependent_options,\n      hide_field: cf.hide_field,\n      hide_to_fe: cf.hide_to_fe,\n      hide_to_fe: cf.hide_to_fe,\n      label: cf.field_name,\n      value: \"\",\n      type: cf.field_type,\n    };\n  }) || [];\n\nconst jobDueDate = moment.utc(customer.created_at)   // input is UTC\n  .tz(timeZone)                                      // convert to target timezone\n  .add(1, 'day')                                     // add one day\n  .set({ hour: 18, minute: 0, second: 0 })           // set 6:00 PM\n  .utc()                                             // convert back to UTC\n  .format('YYYY-MM-DD HH:mm:ss');\n\n\n// Optional: Customer address\nconst address = customer.customer_address;\nlet payload = {\n  job: {\n    customer_uid: customer.customer_uid,\n    customer_address: customer.customer_address,\n\tcustomer_billing_address: customer.customer_billing_address,\n    due_date: jobDueDate,              \n    due_date_dt: jobDueDate,            \n    job_category: category.category_uid,\n    job_description: null,\n    job_priority: \"LOW\",\n    job_title: jobTitle,\n    job_type: \"NEW\",\n    custom_fields: jobCF\n  }\n}\nreturn { \n  payload\n};\n"},"node_category":"FLOW","master_node_uid":"d15fd095-70f3-4d53-9103-5786dfd52b37","node_display_name":"Code"},{"id":"note_f6f1b91f-d975-4601-a93e-81d900524607","meta":{},"input":0,"module":"","output":0,"node_uid":"6aeb01d0-7ec3-4cfb-abc0-e38c5602c3e7","position":{"x":-345,"y":-45},"is_active":true,"node_icon":"","node_name":"","action_key":"note","action_name":"","action_type":"NOTE","credentials":{},"form_fields":{"value":"Job Category Name : Lead Qualification \nIf needed change in the config ","width":"250px","height":"50px"},"node_category":"","master_node_uid":"","node_display_name":""},{"id":"http_request_v2_http_request_v2fbf60d67-6b01-4e3c-8c3b-26a2adfeb1df","color":{"main":"#4682B4","background":"#DFEFF9","borderColor":"#E3E5E6","iconBackground":"#C9DCE7"},"input":1,"module":"","output":2,"node_uid":"fce6033b-7184-489f-8cfc-1637d9661b59","position":{"x":-90,"y":30},"is_active":true,"node_icon":"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/14380500-c678-4798-b3b1-0abc9513abec.svg","node_name":"http_request","action_key":"http_request","action_name":"Get job category","action_type":"ACTION","credentials":{},"description":"Make HTTP call and handle error response","form_fields":{"url":{"type":"EXPRESSION","value":"{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/category"},"method":{"type":"FIXED","value":"GET"},"timeout":{"type":"FIXED","value":60},"password":{"type":"FIXED","value":""},"username":{"type":"FIXED","value":""},"json_body":{"type":"EXPRESSION","value":""},"send_body":{"type":"FIXED","value":false},"ignore_ssl":{"type":"FIXED","value":false},"content_type":{"type":"FIXED","value":"application/json"},"error_action":{"type":"FIXED","value":"STOP"},"send_headers":{"type":"FIXED","value":true},"raw_body_data":{"type":"FIXED","value":""},"authentication":{"type":"FIXED","value":"NONE"},"body_data_type":{"type":"FIXED","value":""},"query_parameters":[],"send_query_param":{"type":"FIXED","value":false},"body_content_type":{"type":"FIXED","value":"JSON"},"header_parameters":[{"header_key":{"type":"FIXED","value":"x-api-key"},"header_value":{"type":"EXPRESSION","value":"{{$.getNodeData('Configs')[0]['data']['zuperApiKey']}}"}}],"form_data_parameters":[]},"node_category":"HELPERS","master_node_uid":"a69c5b83-0fcf-4746-a3dd-a357f2fe0646","node_display_name":"HTTP Request"},{"id":"http_request_http_requesta8fa4340-681b-4a62-9926-873acf5e30cd","color":{"main":"#4682B4","background":"#DFEFF9","borderColor":"#E3E5E6","iconBackground":"#C9DCE7"},"input":1,"module":"","output":2,"node_uid":"35503b34-0969-42ea-8035-10008a5b0fda","position":{"x":75,"y":30},"is_active":true,"node_icon":"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/14380500-c678-4798-b3b1-0abc9513abec.svg","node_name":"http_request","action_key":"http_request","action_name":"Get Job Custom Fields","action_type":"ACTION","credentials":{},"description":"Make HTTP call and handle error response","form_fields":{"url":{"type":"EXPRESSION","value":"{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/settings/custom_fields?module_name=JOB&sort=ASC&sort_by=display_order"},"method":{"type":"FIXED","value":"GET"},"timeout":{"type":"FIXED","value":60},"password":{"type":"FIXED","value":""},"username":{"type":"FIXED","value":""},"json_body":{"type":"EXPRESSION","value":""},"send_body":{"type":"FIXED","value":false},"ignore_ssl":{"type":"FIXED","value":false},"content_type":{"type":"FIXED","value":"application/json"},"error_action":{"type":"FIXED","value":"STOP"},"send_headers":{"type":"FIXED","value":true},"raw_body_data":{"type":"FIXED","value":""},"authentication":{"type":"FIXED","value":"NONE"},"body_data_type":{"type":"FIXED","value":""},"query_parameters":[],"send_query_param":{"type":"FIXED","value":false},"body_content_type":{"type":"FIXED","value":"JSON"},"header_parameters":[{"header_key":{"type":"FIXED","value":"x-api-key"},"header_value":{"type":"EXPRESSION","value":"{{$.getNodeData('Configs')[0]['data']['zuperApiKey']}}"}}],"form_data_parameters":[]},"node_category":"HELPERS","master_node_uid":"a69c5b83-0fcf-4746-a3dd-a357f2fe0646","node_display_name":"HTTP Request"},{"id":"customer.create","input":0,"module":"CUSTOMER","output":1,"node_uid":"02b6513a-b4e0-41c4-b71b-23c5ebc87f74","position":{"x":-465,"y":30},"is_pinned":false,"node_icon":"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/283a4296-e481-48b5-be1d-8c20de718d2d.svg","node_name":"zuper","action_key":"customer.create","action_name":"New Customer","action_type":"TRIGGER","credentials":{},"form_fields":{"trigger_rules":{"type":"FIXED","value":[]},"excluded_user_uids":{"type":"FIXED","value":["79394a71-7ed1-4d6d-95ae-c241907ed2e4"]}},"pinned_data":"","master_node_uid":"721280c2-cf74-47fd-95f2-cdc4ad922c56"}],"connections":[{"id":"reactflow__edge-code_code39d47a60-27bd-44c6-b053-535b3fcb8954one-a-zuper_get_record_zuper_get_record2db2a4ad-a98c-494a-be8a-e72ea2a394c0a","type":"buttonEdge","source":"code_code39d47a60-27bd-44c6-b053-535b3fcb8954","target":"zuper_get_record_zuper_get_record2db2a4ad-a98c-494a-be8a-e72ea2a394c0","markerEnd":{"type":"arrow"},"sourceHandle":"one-a","targetHandle":"a"},{"id":"reactflow__edge-code_code862f585a-6463-454d-a696-c93ed2ccc513one-a-http_request_v2_http_request_v27ac9c6ec-4d89-4d1e-a6d8-308b66766ecaa","type":"buttonEdge","source":"code_code862f585a-6463-454d-a696-c93ed2ccc513","target":"http_request_v2_http_request_v27ac9c6ec-4d89-4d1e-a6d8-308b66766eca","markerEnd":{"type":"arrow"},"sourceHandle":"one-a","targetHandle":"a"},{"id":"reactflow__edge-zuper_get_record_zuper_get_record2db2a4ad-a98c-494a-be8a-e72ea2a394c0-http_request_v2_http_request_v2fbf60d67-6b01-4e3c-8c3b-26a2adfeb1dfa","type":"buttonEdge","source":"zuper_get_record_zuper_get_record2db2a4ad-a98c-494a-be8a-e72ea2a394c0","target":"http_request_v2_http_request_v2fbf60d67-6b01-4e3c-8c3b-26a2adfeb1df","markerEnd":{"type":"arrow"},"sourceHandle":"one-a","targetHandle":"a"},{"id":"reactflow__edge-http_request_http_requesta8fa4340-681b-4a62-9926-873acf5e30cdtwo-a-code_code862f585a-6463-454d-a696-c93ed2ccc513a","type":"buttonEdge","source":"http_request_http_requesta8fa4340-681b-4a62-9926-873acf5e30cd","target":"code_code862f585a-6463-454d-a696-c93ed2ccc513","markerEnd":{"type":"arrow"},"output_value":true,"sourceHandle":"two-a","targetHandle":"a"},{"id":"reactflow__edge-http_request_v2_http_request_v2fbf60d67-6b01-4e3c-8c3b-26a2adfeb1dftwo-a-http_request_http_requesta8fa4340-681b-4a62-9926-873acf5e30cda","type":"buttonEdge","source":"http_request_v2_http_request_v2fbf60d67-6b01-4e3c-8c3b-26a2adfeb1df","target":"http_request_http_requesta8fa4340-681b-4a62-9926-873acf5e30cd","markerEnd":{"type":"arrow"},"output_value":true,"sourceHandle":"two-a","targetHandle":"a"},{"id":"reactflow__edge-customer.createtrigger-a-code_code39d47a60-27bd-44c6-b053-535b3fcb8954a","type":"buttonEdge","source":"customer.create","target":"code_code39d47a60-27bd-44c6-b053-535b3fcb8954","markerEnd":{"type":"arrow"},"sourceHandle":"trigger-a","targetHandle":"a"}],"meta_data":{"variables":{},"total_nodes":8,"initial_nodes":[{"id":"customer.create","data":{"icon":"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/283a4296-e481-48b5-be1d-8c20de718d2d.svg","color":{"main":"#4682B4","background":"#DFEFF9","borderColor":"#E3E5E6","iconBackground":"#C9DCE7"},"label":"New Customer","module":"CUSTOMER","node_uid":"02b6513a-b4e0-41c4-b71b-23c5ebc87f74","viewOnly":false,"node_name":"zuper","action_key":"customer.create","action_name":"New Customer","action_type":"TRIGGER","master_node_uid":"721280c2-cf74-47fd-95f2-cdc4ad922c56","execution_status":"NONE"},"type":"triggerNode","style":{"background":"#fff"},"width":36,"height":36,"position":{"x":-465,"y":30},"positionAbsolute":{"x":-465,"y":30}},{"id":"code_code39d47a60-27bd-44c6-b053-535b3fcb8954","data":{"icon":"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/7f22be08-936d-4e6b-a054-0c4a9a438913.svg","color":{"main":"#2E8B57","background":"#E0F4EC","borderColor":"#8ceac1","iconBackground":"#BEEAD6"},"label":"Configs","module":"","node_uid":"38d4035a-5489-4150-bcfc-5797b7b42da4","viewOnly":false,"is_active":true,"node_name":"code","action_key":"code","action_name":"Configs","action_type":"ACTION","description":"Run custom javascript code","master_node_uid":"d15fd095-70f3-4d53-9103-5786dfd52b37","execution_status":"NONE"},"type":"actionNodeOne","style":{"background":"#fff"},"width":119,"height":37,"position":{"x":-390,"y":30},"positionAbsolute":{"x":-390,"y":30}},{"id":"zuper_get_record_zuper_get_record2db2a4ad-a98c-494a-be8a-e72ea2a394c0","data":{"icon":"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/283a4296-e481-48b5-be1d-8c20de718d2d.svg","color":{"main":"#4682B4","background":"#DFEFF9","borderColor":"#E3E5E6","iconBackground":"#C9DCE7"},"label":"Get Customer","module":"","node_uid":"ba9e5186-ce76-4201-9031-99e406ca8ddf","viewOnly":false,"is_active":true,"node_name":"zuper_get_record","action_key":"zuper_get_record","action_name":"Get Customer","action_type":"ACTION","description":"Get a Record in Zuper","master_node_uid":"7bd69fec-sudhaid65-4eb8-a94b-3158c252921c","execution_status":"NONE"},"type":"actionNodeOne","style":{"background":"#fff"},"width":103,"height":37,"position":{"x":-240,"y":30},"positionAbsolute":{"x":-240,"y":30}}]}}];
+
+/* ================= catalog (native builder screenshots) ================= */
+const CAT = [
+  { label:"Jobs", module:"JOB", events:[
+    ["New Job","job.new",true],["Update Job","job.update",false],["Schedule Job","job.schedule",false],
+    ["Reschedule Job","job.reschedule",false],["Assign Users","job.assign_users",false],["Unassign Users","job.unassign_users",false],
+    ["Job Accept / Reject","job.accept_reject",false],["Status Update","job.status_update",true],["Update Checklist","job.update_checklist",false],
+    ["Status Rollback","job.status_rollback",false],["Status Delete","job.status_delete",false],["Job Feedback","job.feedback",false],
+    ["New Note","job.new_note",false],["Delete Note","job.delete_note",false],["Delete Job","job.delete",false],
+    ["New Service Task","job.new_service_task",false],["Service Task Status Update","job.service_task_status_update",false],["Delete Service Task","job.delete_service_task",false]
+  ]},
+  { label:"Customers/Contacts", module:"CUSTOMER", events:[
+    ["New Customer","customer.create",true],["Customer Update","customer.update",false],["Customer Deactivate","customer.deactivate",false],
+    ["Customer Activate","customer.activate",false],["Customer Accounts Update","customer.accounts_update",false],
+    ["Favourite Technician Update","customer.favourite_technician_update",false],["New Note","customer.new_note",false],
+    ["New Customer Card","customer.new_card",false],["Remove Customer Card","customer.remove_card",false]
+  ]},
+  { label:"Quotes", module:"QUOTE", events:[
+    ["New Quote","quote.create",false],["Quote Update","quote.update",false],["Quote Status Update","quote.status_update",false],
+    ["Quote Deposit Payment","quote.deposit_payment",false],["Print Quote","quote.print",false],["Send Quote","quote.send",false],
+    ["Quote New Note","quote.new_note",false],["Quote New Attachment","quote.new_attachment",false],
+    ["Quote Delete Attachment","quote.delete_attachment",false],["Quote Delete Note","quote.delete_note",false],["Quote Delete","quote.delete",false]
+  ]},
+  { label:"Invoices", module:"INVOICE", events:[
+    ["New Invoice","invoice.create",false],["Invoice Update","invoice.update",false],["Invoice Status Update","invoice.status_update",false],
+    ["Invoice Payment","invoice.payment",false],["Print Invoice","invoice.print",false],["Send Invoice","invoice.send",false],
+    ["Invoice New Note","invoice.new_note",false],["Invoice Attachment","invoice.new_attachment",false],
+    ["Invoice Delete Attachment","invoice.delete_attachment",false],["Invoice Delete Note","invoice.delete_note",false],["Invoice Delete","invoice.delete",false]
+  ]},
+  { label:"Payments", module:"PAYMENT", events:[ ["New Payment","payment.create",false],["Payment Update","payment.update",false] ]}
+];
+const OPERATORS = ["Equal To","Not Equal To","Contains","Not Contains","Empty","Not Empty"];
+/* fallback condition fields per module (from the native builder) — used when offline;
+   when connected, the live /workflow/conditions list replaces these */
+const COND_FIELDS = {
+  CUSTOMER:["Customer First Name","Customer Last Name","Customer Company Name","Customer Email","Customer Contact No","Customer Category","Customer Billing Address - Street","Customer Billing Address - City","Customer Billing Address - State","Customer Billing Address - Country","Customer Created By","Lead","Photo"],
+  JOB:["Job Title","Job Category","Job Status","Job Priority","Job Type","Customer Name","Assigned To","Job Created By","Job Tags"],
+  QUOTE:["Quote Status","Quote Amount","Quote Number","Customer Name","Quote Created By"],
+  INVOICE:["Invoice Status","Invoice Amount","Invoice Number","Customer Name","Invoice Created By"],
+  PAYMENT:["Payment Amount","Payment Status","Payment Mode","Customer Name"]
+};
+const ACTION_MODULES = [["Jobs","JOB"],["Customers/Contacts","CUSTOMER"],["Quotes","QUOTE"],["Invoices","INVOICE"],["Others","OTHERS"]];
+const OPS = {
+  JOB:{ Create:[["Create Job","create_job"]], Update:[["Update Job","update_job"]] },
+  CUSTOMER:{ Create:[["Create Customer","create_customer"]], Update:[["Update Customer","update_customer"]] },
+  QUOTE:{ Create:[["Create Quote","create_quote"]], Update:[["Update Quote","update_quote"]] },
+  INVOICE:{ Create:[["Create Invoice","create_invoice"]], Update:[["Update Invoice","update_invoice"]] },
+  OTHERS:{ Create:[["Send Notification","send_notification"]], Update:[["HTTP Request","http_request"]] }
+};
+/* trigger node identities for Workflow Builder compile — only verified ones bind correctly */
+const TRIG_MASTER = { "customer.create":{master:"721280c2-cf74-47fd-95f2-cdc4ad922c56",module:"CUSTOMER",name:"New Customer"} };
+const NODE_IDS = {
+  code:{master_node_uid:"d15fd095-70f3-4d53-9103-5786dfd52b37",node_category:"FLOW",node_name:"code",action_key:"code",display:"Code",
+    icon:"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/7f22be08-936d-4e6b-a054-0c4a9a438913.svg",
+    color:{main:"#2E8B57",background:"#E0F4EC",borderColor:"#8ceac1",iconBackground:"#BEEAD6"}},
+  http:{master_node_uid:"a69c5b83-0fcf-4746-a3dd-a357f2fe0646",node_category:"HELPERS",node_name:"http_request",action_key:"http_request",display:"HTTP Request",
+    icon:"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/14380500-c678-4798-b3b1-0abc9513abec.svg",
+    color:{main:"#4682B4",background:"#DFEFF9",borderColor:"#E3E5E6",iconBackground:"#C9DCE7"}}
+};
+
+const S={base:null,key:null,company:null,categories:[],statuses:{},conds:[],condCache:{}};
+const $=s=>document.querySelector(s);
+// Account text (category names, statuses, job titles) is interpolated into markup,
+// and real accounts have names like `Production - 6" Gutters` that would otherwise
+// close an attribute early and corrupt the control.
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// Every Zuper data centre, so auto-detect works outside the US. Same list as the
+// Data Manager tool and the Chrome extension.
+const REGIONS=[
+  "us-east-1","us-east-1a","us-east-1b","us-east-1c",
+  "us-west-1","us-west-1a","us-west-1b","us-west-1c","us-west-2",
+  "eu-west-1","eu-west-2","eu-central-1",
+  "ap-south-1","ap-south-2","ap-southeast-1","ap-southeast-2",
+  "ca-central-1","sa-east-1",
+].map(r=>"https://"+r+".zuperpro.com/api").concat(["https://stagingv2.zuperpro.com/api"]);
+function uuid(){return (crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);}));}
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1900);}
+function setStatus(el,kind,html,spin){el.innerHTML=`<div class="status ${kind}">${spin?'<div class="spin"></div>':'<div class="d"></div>'}<div>${html}</div></div>`;}
+
+/* ================= connect ================= */
+async function zget(base,path){const r=await fetch(base.replace(/\/$/,"")+path,{headers:{"x-api-key":S.key}});const t=await r.text();let d;try{d=JSON.parse(t)}catch{d=t}return{ok:r.ok,status:r.status,data:d};}
+$("#btnConnect").addEventListener("click",connect);
+async function connect(){
+  const key=$("#apiKey").value.trim(); if(!key){setStatus($("#connStatus"),"err","Paste an API key.");return;}
+  S.key=key; const sel=$("#region").value; const cands=sel==="auto"?REGIONS.slice():[sel];
+  setStatus($("#connStatus"),"","Detecting region &amp; validating&hellip;",true);
+  const results=await Promise.allSettled(cands.map(b=>zget(b,"/user/company").then(r=>({b,r}))));
+  let hit=null; for(const p of results){ if(p.status==="fulfilled"&&p.value.r.ok){hit=p.value;break;} }
+  if(!hit){setStatus($("#connStatus"),"err","Couldn&rsquo;t validate (key or CORS). You can still compose &amp; export.");return;}
+  S.base=hit.b.replace(/\/$/,"");
+  const c=hit.r.data&&(hit.r.data.data||hit.r.data); S.company=(c&&(c.company_name||c.name))||"account";
+  $("#conn").classList.add("live"); $("#connTxt").textContent=S.company;
+  setStatus($("#connStatus"),"ok",`Live on <b>${S.company}</b> &middot; loading categories&hellip;`,true);
+  const cats=await zget(S.base,"/jobs/category?populate_statuses=true").catch(()=>null);
+  const arr=cats&&cats.ok&&(cats.data.data||cats.data.categories||cats.data)||[];
+  S.categories=Array.isArray(arr)?arr.filter(x=>x&&x.category_name):[];
+  S.categories.forEach(c=>{ S.statuses[c.category_name]=(c.statuses||c.job_statuses||[]); });
+  setStatus($("#connStatus"),"ok",`Live on <b>${S.company}</b> &middot; <b>${S.categories.length}</b> categories loaded.`);
+  renderActions(); probeConditions();
+}
+
+/* ================= WHEN ================= */
+function fillModules(){const m=$("#tModule");m.innerHTML="";CAT.forEach((c,i)=>{const o=document.createElement("option");o.value=i;o.textContent=c.label;m.appendChild(o);});fillEvents();}
+function fillEvents(){const c=CAT[+$("#tModule").value];const e=$("#tEvent");e.innerHTML="";c.events.forEach((ev,i)=>{const o=document.createElement("option");o.value=i;o.textContent=ev[0];e.appendChild(o);});syncEventKey();}
+function currentEvent(){return CAT[+$("#tModule").value].events[+$("#tEvent").value];}
+function currentModule(){return CAT[+$("#tModule").value].module;}
+function syncEventKey(){
+  const ev=currentEvent();
+  $("#tEventKey").value=ev[1]; $("#tEventKey").readOnly=ev[2];
+  const hasNode=!!TRIG_MASTER[ev[1]];
+  $("#keyBadge").innerHTML= (ev[2]&&hasNode)?'<span class="live-badge"><span class="p"></span>verified</span>'
+    : hasNode?'<span class="live-badge"><span class="p"></span>node id known</span>'
+    : '<span class="live-badge warn"><span class="p"></span>no node id yet</span>';
+  probeConditions();
+}
+$("#tModule").addEventListener("change",fillEvents);
+$("#tEvent").addEventListener("change",syncEventKey);
+$("#tEventKey").addEventListener("change",probeConditions);
+
+async function probeConditions(){
+  const badge=$("#condLive");
+  if(!S.base){ badge.innerHTML='<span class="live-badge warn"><span class="p"></span>offline</span>'; S.conds=[]; refreshCondFields(); return; }
+  const evKey=$("#tEventKey").value.trim(),mod=currentModule(),ck=mod+"|"+evKey;
+  if(S.condCache[ck]){S.conds=S.condCache[ck];badge.innerHTML='<span class="live-badge"><span class="p"></span>'+S.conds.length+' fields</span>';refreshCondFields();return;}
+  badge.innerHTML='<span class="live-badge"><span class="p"></span>loading&hellip;</span>';
+  // Condition metadata belongs to the workflow service, which runs on its own host
+  // (<region>-workflow.zuperpro.com) — the same host the push uses. The main API base
+  // is tried first and the workflow host as a fallback, since only one of them serves
+  // this route and which one is not confirmed.
+  const q=`/workflow/conditions?event_name=${encodeURIComponent(evKey)}&module_name=${encodeURIComponent(mod)}`;
+  let r=await zget(S.base,q).catch(()=>null);
+  if(!r||!r.ok){
+    const wfHost=S.base.replace(/^https:\/\/([^.]+)\.zuperpro\.com/,"https://$1-workflow.zuperpro.com");
+    if(wfHost!==S.base) r=await zget(wfHost,q).catch(()=>null);
+  }
+  if(!r||!r.ok){badge.innerHTML='<span class="live-badge warn"><span class="p"></span>key unresolved</span>';S.conds=[];refreshCondFields();return;}
+  let list=r.data&&(r.data.data||r.data.conditions||r.data.fields||r.data); if(!Array.isArray(list))list=[];
+  S.conds=list.map(x=>typeof x==="string"?{label:x,key:x}:{label:x.label||x.field_label||x.name||x.field_name||x.key||"(field)",key:x.key||x.field_name||x.field||x.value||x.label||""});
+  S.condCache[ck]=S.conds;
+  badge.innerHTML=S.conds.length?'<span class="live-badge"><span class="p"></span>'+S.conds.length+' live fields</span>':'<span class="live-badge warn"><span class="p"></span>0 fields</span>';
+  refreshCondFields();
+}
+
+/* ================= IF ================= */
+let conds=[];
+$("#btnAddCond").addEventListener("click",()=>{conds.push({field:"",op:"Equal To",val:""});renderConds();});
+function condFieldList(){
+  if(S.conds&&S.conds.length) return S.conds.map(f=>({label:f.label||f.key,key:f.key||f.label}));
+  const mod=currentModule();
+  return (COND_FIELDS[mod]||[]).map(l=>({label:l,key:l.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"")}));
+}
+function renderConds(){
+  const wrap=$("#condList"); wrap.innerHTML="";
+  conds.forEach((c,i)=>{
+    if(i>0) wrap.insertAdjacentHTML("beforeend",'<div class="joiner">AND</div>');
+    const fl=condFieldList().slice();
+    if(c.field && !fl.some(f=>f.key===c.field)) fl.unshift({label:c.field.replace(/_/g," "),key:c.field});
+    const fieldSel=`<select data-k="field" data-i="${i}"><option value="">Select field</option>`+fl.map(f=>`<option value="${esc(f.key)}" ${c.field===f.key?"selected":""}>${esc(f.label)}</option>`).join("")+`</select>`;
+    const div=document.createElement("div"); div.className="chip";
+    div.innerHTML=`<div class="rm" data-i="${i}">&times;</div>
+      <div class="row-3">
+        <div class="field" style="margin:0"><label>Field</label>${fieldSel}</div>
+        <div class="field" style="margin:0"><label>Operator</label><select data-k="op" data-i="${i}">${OPERATORS.map(o=>`<option ${c.op===o?"selected":""}>${o}</option>`).join("")}</select></div>
+        <div class="field" style="margin:0"><label>Value</label><input class="t" data-k="val" data-i="${i}" value="${esc(c.val)}" placeholder="${/Empty/.test(c.op)?"(not needed)":"value"}" ${/Empty/.test(c.op)?"disabled":""}/></div>
+      </div>`;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll("select[data-k]").forEach(el=>el.addEventListener("change",e=>{const i=+e.target.dataset.i,k=e.target.dataset.k;conds[i][k]=e.target.value;if(k==="op")renderConds();updateDock();}));
+  wrap.querySelectorAll("input[data-k]").forEach(el=>el.addEventListener("input",e=>{const i=+e.target.dataset.i,k=e.target.dataset.k;conds[i][k]=e.target.value;updateDock();}));
+  wrap.querySelectorAll(".rm").forEach(el=>el.addEventListener("click",e=>{conds.splice(+e.target.dataset.i,1);renderConds();updateDock();}));
+  updateDock();
+}
+function refreshCondFields(){if(conds.length)renderConds();}
+
+/* ================= THEN ================= */
+let acts=[];
+$("#btnAddAct").addEventListener("click",()=>{acts.push({module:"JOB",type:"Create",op:"create_job",fields:{}});renderActions();});
+function opsFor(mod,type){return (OPS[mod]&&OPS[mod][type])||[];}
+function renderActions(){
+  const wrap=$("#actList"); wrap.innerHTML="";
+  if(!acts.length){wrap.innerHTML='<div class="hint">No actions yet — add one, or describe the workflow above.</div>';updateDock();return;}
+  acts.forEach((a,i)=>{
+    const ops=opsFor(a.module,a.type); if(!ops.some(o=>o[1]===a.op))a.op=ops[0]?ops[0][1]:"";
+    const div=document.createElement("div"); div.className="chip";
+    div.innerHTML=`<div class="rm" data-i="${i}">&times;</div>
+      <div class="row-3">
+        <div class="field" style="margin:0"><label>Module</label><select data-k="module" data-i="${i}">${ACTION_MODULES.map(m=>`<option value="${m[1]}" ${a.module===m[1]?"selected":""}>${m[0]}</option>`).join("")}</select></div>
+        <div class="field" style="margin:0"><label>Action type</label><select data-k="type" data-i="${i}">${["Create","Update"].map(t=>`<option ${a.type===t?"selected":""}>${t}</option>`).join("")}</select></div>
+        <div class="field" style="margin:0"><label>Operation</label><select data-k="op" data-i="${i}">${ops.map(o=>`<option value="${o[1]}" ${a.op===o[1]?"selected":""}>${o[0]}</option>`).join("")}</select></div>
+      </div>
+      <div style="margin-top:12px">${actionFields(a,i)}</div>`;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll("[data-k]").forEach(el=>el.addEventListener("change",e=>{const i=+e.target.dataset.i,k=e.target.dataset.k;acts[i][k]=e.target.value;if(k==="module"||k==="type")acts[i].fields={};renderActions();}));
+  wrap.querySelectorAll("[data-f]").forEach(el=>el.addEventListener("input",e=>{const i=+e.target.dataset.i;acts[i].fields[e.target.dataset.f]=e.target.value;if(e.target.dataset.f==="jobCategory")renderActions();updateDock();}));
+  wrap.querySelectorAll(".rm").forEach(el=>el.addEventListener("click",e=>{acts.splice(+e.target.dataset.i,1);renderActions();}));
+  updateDock();
+}
+function catOptions(sel,i){
+  const cands=catCandidates().slice();
+  if(sel && !cands.some(c=>c.toLowerCase()===String(sel).toLowerCase())) cands.unshift(sel);
+  return `<select data-f="jobCategory" data-i="${i}"><option value="">Select category</option>`+cands.map(c=>`<option value="${esc(c)}" ${sel===c?"selected":""}>${esc(c)}</option>`).join("")+`</select>`;
+}
+function statusOptions(cat,sel,i){
+  let list=(S.statuses[cat]||[]).map(s=>s.status_name||s.job_status_name||s);
+  if(!list.length) list=["Won","Lost","Open","In Progress","Scheduled","Completed","Cancelled","New"];
+  if(sel && !list.some(s=>String(s).toLowerCase()===String(sel).toLowerCase())) list=[sel,...list];
+  return `<select data-f="jobStatus" data-i="${i}"><option value="">Select status</option>`+list.map(s=>`<option value="${esc(s)}" ${sel===s?"selected":""}>${esc(s)}</option>`).join("")+`</select>`;
+}
+function actionFields(a,i){
+  const f=a.fields||{};
+  if(a.op==="create_job"){
+    return `<div class="row"><div class="field" style="margin:0"><label>Job category</label>${catOptions(f.jobCategory,i)}</div>
+        <div class="field" style="margin:0"><label>Job title</label><input class="t" data-f="jobTitle" data-i="${i}" value="${esc(f.jobTitle)}" placeholder="Lead Qualification - {first} {last}"/></div></div>
+      <div class="row-3" style="margin-top:12px">
+        <div class="field" style="margin:0"><label>Priority</label><select data-f="priority" data-i="${i}">${["LOW","NORMAL","HIGH"].map(p=>`<option ${f.priority===p?"selected":""}>${p}</option>`).join("")}</select></div>
+        <div class="field" style="margin:0"><label>Due (days after)</label><input class="t" data-f="dueDays" data-i="${i}" type="number" value="${f.dueDays!=null?f.dueDays:1}"/></div>
+        <div class="field" style="margin:0"><label>Due hour (24h)</label><input class="t" data-f="dueHour" data-i="${i}" type="number" value="${f.dueHour!=null?f.dueHour:18}"/></div>
+      </div>`;
+  }
+  if(a.op==="update_job"){
+    return `<div class="row"><div class="field" style="margin:0"><label>Move to category</label>${catOptions(f.jobCategory,i)}</div>
+        <div class="field" style="margin:0"><label>Set status</label>${statusOptions(f.jobCategory,f.jobStatus,i)}</div></div>
+      <div class="hint">Status must exist inside the target category. Category + status resolve to UIDs in the account at run time.</div>`;
+  }
+  return `<div class="hint">Fields for “${a.op}” aren&rsquo;t mapped yet — the operation is captured; send a sample of this action and I&rsquo;ll add its fields.</div>`;
+}
+
+/* ================= auto-build from description (LOCAL — no network) ================= */
+let descTimer,lastDesc="";
+$("#genDesc").addEventListener("input",()=>{clearTimeout(descTimer);descTimer=setTimeout(runAuto,600);});
+$("#genDesc").addEventListener("blur",runAuto);
+function runAuto(){
+  const t=$("#genDesc").value.trim();
+  if(t.length<10||t===lastDesc) return; lastDesc=t;
+  $("#autoTag").innerHTML='<span class="autotag">&#10022; auto</span>';
+  try{
+    const sp=parseDescription(t);
+    applySpec(sp);
+    const bits=[]; if(sp.eventKey)bits.push("trigger"); if(sp.conditions.length)bits.push(sp.conditions.length+" cond"); if(sp.actions.length)bits.push(sp.actions.length+" action"+(sp.actions.length>1?"s":""));
+    setStatus($("#autoStatus"),"ok", bits.length? "Read: "+bits.join(" · ")+". Adjust anything below.":"Couldn&rsquo;t infer much — set the stages by hand.");
+  }catch(err){ setStatus($("#autoStatus"),"err","Couldn&rsquo;t read that — set the stages manually."); }
+}
+
+/* ---- local natural-language parser (runs entirely in the browser) ---- */
+const MODMAP={customer:"CUSTOMER",job:"JOB",quote:"QUOTE",invoice:"INVOICE",payment:"PAYMENT"};
+function catCandidates(){
+  const known=["Production - Metal Roof","Production - Roof","Production - Gutters","Production - Siding","Production - Windows","Qualification","Inspection","Production"];
+  const live=S.categories.map(c=>c.category_name);
+  return [...new Set([...live,...known])];
+}
+function findCategory(text){const lt=text.toLowerCase();for(const c of catCandidates().sort((a,b)=>b.length-a.length)){if(lt.includes(c.toLowerCase()))return c;}return"";}
+function findCategoryIn(frag){const lf=(frag||"").toLowerCase().trim();for(const c of catCandidates().sort((a,b)=>b.length-a.length)){if(lf.includes(c.toLowerCase())||(lf&&c.toLowerCase().includes(lf)))return c;}return"";}
+function tidy(s){s=(s||"").trim();return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
+function mapOp(s){s=(s||"").toLowerCase();if(s.indexOf("not equal")>-1||s.indexOf("is not")===0)return"Not Equal To";if(s.indexOf("not contain")>-1)return"Not Contains";if(s.indexOf("contain")>-1)return"Contains";return"Equal To";}
+function parseDue(lt){
+  let dueDays=null,dueHour=null;
+  if(/\b(next day|tomorrow|following day)\b/.test(lt))dueDays=1;
+  else if(/\b(same day|today)\b/.test(lt))dueDays=0;
+  else{const dm=lt.match(/\bin\s+(\d+)\s+days?\b/)||lt.match(/\b(\d+)\s+days?\b/);if(dm)dueDays=parseInt(dm[1],10);}
+  const hm=lt.match(/\b(\d{1,2})\s*(am|pm)\b/);
+  if(hm){let h=parseInt(hm[1],10)%12;if(hm[2]==="pm")h+=12;dueHour=h;}
+  else{const h24=lt.match(/\b(\d{1,2}):00\b/);if(h24)dueHour=parseInt(h24[1],10);}
+  return {dueDays,dueHour};
+}
+function parsePriority(lt){if(/\b(high priority|urgent)\b/.test(lt))return"HIGH";if(/\blow priority\b/.test(lt))return"LOW";if(/\bnormal priority\b/.test(lt))return"NORMAL";return"";}
+function parseStatus(text){
+  const lt=text.toLowerCase();
+  let m=text.match(/status\s+(?:to|as|=)\s+["“']?([A-Za-z][A-Za-z \-]*?)["”']?(?:\s*(?:,|\.|and|when|if|$))/i);
+  if(m){const v=m[1].trim(); if(!/^(change|changes|update|updated|updates)$/i.test(v)) return tidy(v);}
+  m=text.match(/mark(?:ed)?\s+(?:it\s+)?as\s+["“']?([A-Za-z][A-Za-z \-]*?)["”']?(?:\s*(?:,|\.|and|$))/i);
+  if(m)return tidy(m[1]);
+  if(/\bwon\b/.test(lt))return"Won"; if(/\blost\b/.test(lt))return"Lost";
+  return"";
+}
+function normField(f){
+  const raw=(f||"").trim().toLowerCase().replace(/^(the|a|an)\s+/,"").trim();
+  if(S.conds&&S.conds.length){
+    const hit=S.conds.find(x=>(x.label||"").toLowerCase()===raw)||S.conds.find(x=>{const l=(x.label||"").toLowerCase();return l&&(l.includes(raw)||raw.includes(l));});
+    if(hit&&hit.key)return hit.key;
+  }
+  return raw.replace(/\s+/g,"_");
+}
+function isTriggerish(cl){return /\b(customer|quote|invoice|job|payment|contact)\b/.test(cl)&&/\b(created|is created|new|accepted|approved|won|paid|updated|deactivated|activated|deleted|added)\b/.test(cl);}
+function parseConditions(text){
+  const conds=[]; const clauses=text.split(/\s*(?:,|;|\band\b)\s*/i);
+  const RX=[
+    [/^(.+?)\s+is\s+not\s+empty$/i,"Not Empty",false],
+    [/^(.+?)\s+is\s+empty$/i,"Empty",false],
+    [/^(.+?)\s+(?:is\s+not|isn['’]t|are\s+not|not\s+equal\s+to|does\s+not\s+equal|doesn['’]t\s+equal)\s+(.+)$/i,"Not Equal To",true],
+    [/^(.+?)\s+(?:does\s+not\s+contain|doesn['’]t\s+contain|not\s+contains?)\s+(.+)$/i,"Not Contains",true],
+    [/^(.+?)\s+contains?\s+(.+)$/i,"Contains",true],
+    [/^(.+?)\s+(?:is|are|equals?|equal\s+to|=)\s+(.+)$/i,"Equal To",true]
+  ];
+  for(let cl of clauses){
+    cl=cl.trim().replace(/^(when|whenever|if|once|after|then|do|also)\s+/i,"").trim();
+    if(cl.length<3) continue;
+    if(/\b(create|make|generate|raise|open|move|change|switch|transition|advance|update|assign|unassign|send|notify|mark|set\s+status|status\s+to)\b/i.test(cl)) continue;
+    if(isTriggerish(cl)) continue;
+    for(const [rx,op,needsVal] of RX){
+      const m=cl.match(rx);
+      if(m){
+        const field=m[1].trim().replace(/^(the|a|an)\s+/i,"");
+        if(field.length<2) break;
+        let val=needsVal?(m[2]||"").trim():"";
+        val=val.replace(/^["“”'’]+|["“”'’.]+$/g,"");
+        conds.push({field:normField(field),op,val:tidy(val)});
+        break;
+      }
+    }
+  }
+  return conds;
+}
+function parseDescription(raw){
+  const t=raw.trim(); const lt=t.toLowerCase();
+  // ----- trigger -----
+  const trig=[
+    [/customer[^.]*\b(updated|update|edited|edit)\b/,"customer.update"],
+    [/\b(new|created|create|added)\b[^.]*\bcustomer\b|\bcustomer\b[^.]*\b(created|is created|new|added)\b/,"customer.create"],
+    [/\bquote\b[^.]*\b(accepted|won|approved)\b|\b(accepted|won|approved)\b[^.]*\bquote\b|\bquote\b[^.]*\bstatus\b/,"quote.status_update"],
+    [/\b(new|created)\b[^.]*\bquote\b|\bquote\b[^.]*\b(created|new)\b/,"quote.create"],
+    [/\binvoice\b[^.]*\b(paid|payment)\b|\bpayment\b[^.]*\binvoice\b/,"invoice.payment"],
+    [/\binvoice\b[^.]*\bstatus\b/,"invoice.status_update"],
+    [/\b(new|created)\b[^.]*\binvoice\b|\binvoice\b[^.]*\b(created|new)\b/,"invoice.create"],
+    [/\bjob\b[^.]*\b(status|stage|moved|updated)\b|\bstatus\b[^.]*\bjob\b/,"job.status_update"],
+    [/\b(new|created)\b[^.]*\bjob\b|\bjob\b[^.]*\b(created|new)\b/,"job.new"],
+    [/\bpayment\b[^.]*\b(received|new|created|made)\b/,"payment.create"]
+  ];
+  const wc=(lt.match(/\b(when|whenever|if|once|after)\b(.*?)(?:,|\bthen\b|\bdo\b|\bcreate\b|\bmove\b|\bupdate\b|\bset\b|$)/)||[])[2];
+  let eventKey="";
+  if(wc){for(const [re,k] of trig){if(re.test(wc)){eventKey=k;break;}}}
+  if(!eventKey){for(const [re,k] of trig){if(re.test(lt)){eventKey=k;break;}}}
+  const module=eventKey?(MODMAP[eventKey.split(".")[0]]||""):"";
+
+  // ----- actions -----
+  const actions=[];
+  const known=findCategory(t);
+  const createVerb=/\b(create|make|generate|raise|open|add|log|book|schedule)\b/.test(lt);
+  if(createVerb && (/\bjob\b/.test(lt) || known)){
+    const f={};
+    if(known)f.jobCategory=known;
+    const d=parseDue(lt); if(d.dueDays!=null)f.dueDays=d.dueDays; if(d.dueHour!=null)f.dueHour=d.dueHour;
+    const p=parsePriority(lt); if(p)f.priority=p;
+    const tm=t.match(/titled?\s+["“']?(.+?)["”']?(?:\s+(?:due|with|priority|and|,|\.)|$)/i); if(tm)f.jobTitle=tm[1].trim();
+    actions.push({module:"JOB",type:"Create",op:"create_job",fields:f});
+  }
+  const hasCreate=actions.some(a=>a.op==="create_job");
+  const movesCat=/\b(move|change|switch|transition|advance|reclassif|put)\b/.test(lt)&&/\b(category|categories|stage|pipeline|to|into)\b/.test(lt);
+  const setsStatus=/\bstatus\s+(?:to|as|=)\b/.test(lt)||/\bset\s+status\b/.test(lt)||/\bmark(ed)?\s+(?:it\s+)?as\b/.test(lt);
+  if((movesCat||setsStatus) && !hasCreate){
+    const f={};
+    let dest="";
+    const toM=t.match(/\b(?:to|into)\s+([A-Za-z][A-Za-z \-]*?)(?:\s+(?:and|with|then|,|\.|category|status|pipeline)|$)/i);
+    if(toM)dest=findCategoryIn(toM[1]);
+    if(!dest && movesCat)dest=findCategory(t);
+    if(dest)f.jobCategory=dest;
+    const st=parseStatus(t); if(st)f.jobStatus=st;
+    if(f.jobCategory||f.jobStatus)actions.push({module:"JOB",type:"Update",op:"update_job",fields:f});
+  }
+
+  // ----- conditions -----
+  let conditions=parseConditions(t);
+  if(/^job\./.test(eventKey)){
+    const fromM=t.match(/\bfrom\s+([A-Za-z][A-Za-z \-]*?)\s+(?:to|into)\b/i);
+    if(fromM){const fc=findCategoryIn(fromM[1]); if(fc && !conditions.some(c=>c.field==="job_category"))conditions.push({field:"job_category",op:"Equal To",val:fc});}
+  }
+  if(eventKey==="quote.status_update"&&!conditions.some(c=>/status/.test(c.field))){const qs=/accepted/.test(lt)?"Accepted":/approved/.test(lt)?"Approved":/declined|rejected/.test(lt)?"Declined":/sent/.test(lt)?"Sent":/won/.test(lt)?"Won":"";if(qs)conditions.push({field:"quote_status",op:"Equal To",val:qs});}
+  if(eventKey==="invoice.status_update"&&!conditions.some(c=>/status/.test(c.field))){const s=parseStatus(t);if(s)conditions.push({field:"invoice_status",op:"Equal To",val:s});}
+
+  return {module,eventKey,conditions,actions};
+}
+
+function applySpec(sp){
+  try{
+    if(sp.module){const mi=CAT.findIndex(c=>c.module===sp.module);if(mi>=0){$("#tModule").value=mi;fillEvents();
+      if(sp.eventKey){const ei=CAT[mi].events.findIndex(e=>e[1]===sp.eventKey);if(ei>=0){$("#tEvent").value=ei;syncEventKey();}else{syncEventKey();$("#tEventKey").value=sp.eventKey;probeConditions();}}}}
+  }catch(e){}
+  try{ if(Array.isArray(sp.conditions)){ conds=sp.conditions.map(c=>({field:c.field||"",op:c.op||"Equal To",val:c.val||""})); renderConds(); } }catch(e){}
+  try{ if(Array.isArray(sp.actions)&&sp.actions.length){ acts=sp.actions.map(a=>({module:a.module||"JOB",type:a.type||"Create",op:a.op||"create_job",fields:a.fields||{}})); renderActions(); } }catch(e){}
+}
+
+/* ================= spec + dock ================= */
+function autoName(){
+  const ev=currentEvent(); const a=acts[0];
+  const act=a?(a.op==="create_job"?"Create job":a.op==="update_job"?"Update job":a.op):"Action";
+  return `${act} on ${ev[0]}`;
+}
+function buildSpec(){
+  return {
+    when:{module_name:currentModule(),event_name:$("#tEventKey").value.trim(),event_label:currentEvent()[0]},
+    conditions:conds.filter(c=>c.field).map(c=>({field:c.field,operator:c.op,value:/Empty/.test(c.op)?null:c.val})),
+    actions:acts.map(a=>({module:a.module,action_type:a.type,operation:a.op,fields:a.fields}))
+  };
+}
+function updateDock(){
+  const ev=currentEvent(),nc=conds.filter(c=>c.field).length,na=acts.length;
+  $("#dockSummary").innerHTML=`<b>WHEN</b> ${currentModule()} · ${ev[1]} &nbsp;›&nbsp; <b>IF</b> ${nc} cond &nbsp;›&nbsp; <b>THEN</b> ${na} action${na!==1?"s":""}`;
+}
+
+/* ================= compile spec -> Workflow Builder node-graph ================= */
+function tokenizeTitle(tpl){return (tpl||"").replace(/\{first\}/g,"${customer.customer_first_name}").replace(/\{last\}/g,"${customer.customer_last_name}").replace(/\{email\}/g,"${customer.customer_email}").replace(/\{phone\}/g,"${customer.customer_contact_no}");}
+function mkTriggerNode(evKey,exclude,warns){
+  const t=JSON.parse(JSON.stringify(GOLDEN[0].nodes.find(n=>n.action_type==="TRIGGER")));
+  const info=TRIG_MASTER[evKey];
+  if(!info) warns.push("Trigger “"+evKey+"” has no known Workflow Builder node ID — exported with customer.create's ID as a placeholder. Replace it (or capture this trigger) before relying on it.");
+  t.action_key=evKey; t.id=evKey; t.node_uid=uuid();
+  t.action_name=info?info.name:"New Customer"; t.module=info?info.module:"CUSTOMER"; t.master_node_uid=info?info.master:TRIG_MASTER["customer.create"].master;
+  t.form_fields={trigger_rules:{type:"FIXED",value:[]},excluded_user_uids:{type:"FIXED",value:exclude?[exclude]:[]}};
+  return t;
+}
+function mkCode(name,code,pos){const d=NODE_IDS.code;return{id:`code_code${uuid()}`,input:1,output:1,module:"",node_uid:uuid(),position:pos,is_active:true,node_icon:d.icon,node_name:d.node_name,action_key:d.action_key,action_name:name,action_type:"ACTION",node_category:d.node_category,description:"Run custom javascript code",master_node_uid:d.master_node_uid,node_display_name:d.display,color:d.color,form_fields:{code}};}
+function mkHttp(name,method,urlExpr,bodyExpr,pos){const d=NODE_IDS.http;const ff={url:{type:"EXPRESSION",value:urlExpr},method:{type:"FIXED",value:method},timeout:{type:"FIXED",value:60},password:{type:"FIXED",value:""},username:{type:"FIXED",value:""},json_body:{type:"EXPRESSION",value:bodyExpr||""},send_body:{type:"FIXED",value:!!bodyExpr},ignore_ssl:{type:"FIXED",value:false},content_type:{type:"FIXED",value:"application/json"},error_action:{type:"FIXED",value:"STOP"},send_headers:{type:"FIXED",value:true},raw_body_data:{type:"FIXED",value:""},authentication:{type:"FIXED",value:"NONE"},body_data_type:{type:"FIXED",value:bodyExpr?"JSON":""},query_parameters:[],send_query_param:{type:"FIXED",value:false},body_content_type:{type:"FIXED",value:"JSON"},header_parameters:[{header_key:{type:"FIXED",value:"x-api-key"},header_value:{type:"EXPRESSION",value:"{{$.getNodeData('Configs')[0]['data']['zuperApiKey']}}"}}],form_data_parameters:[]};return{id:`http_request_http_request${uuid()}`,color:d.color,input:1,output:2,module:"",node_uid:uuid(),position:pos,is_active:true,node_icon:d.icon,node_name:d.node_name,action_key:d.action_key,action_name:name,action_type:"ACTION",credentials:{},node_category:d.node_category,master_node_uid:d.master_node_uid,node_display_name:d.display,form_fields:ff};}
+function edge(src,tgt){return{id:`reactflow__edge-${src}one-a-${tgt}a`,type:"buttonEdge",source:src,target:tgt,markerEnd:{type:"arrow"},sourceHandle:"one-a",targetHandle:"a"};}
+function triggerEdge(src,tgt){return{id:`reactflow__edge-${src}trigger-a-${tgt}a`,type:"buttonEdge",source:src,target:tgt,markerEnd:{type:"arrow"},sourceHandle:"trigger-a",targetHandle:"a"};}
+
+/* create-job via the proven golden template (best fidelity for customer.create) */
+function compileCreateGolden(spec,warns){
+  const a=spec.actions[0].fields||{};
+  // The golden graph is a captured customer.create workflow: its Get Customer node
+  // reads {{...['body']['customer']}} and the payload code builds the job title from
+  // customer_first_name/last_name. Swapping only the trigger's action_key leaves all
+  // of that pointing at a payload the new trigger does not send — it imports fine and
+  // then resolves the wrong customer at run time. Say so rather than ship it silently.
+  if(spec.when.event_name!=="customer.create"){
+    warns.push("This graph is a captured <b>New Customer</b> workflow and its Get Customer / payload nodes read the customer.create payload. You picked <b>"+esc(spec.when.event_name)+"</b>, which sends a different shape — the customer lookup will not resolve. Repoint those two nodes after importing, or use a customer.create trigger.");
+  }
+  if(spec.actions.length>1){
+    warns.push("Only the first action was compiled. "+(spec.actions.length-1)+" further action(s) are in the spec but not in this graph — add them in the Workflow Builder after importing.");
+  }
+  const wf=JSON.parse(JSON.stringify(GOLDEN)); const w=wf[0];
+  w.workflow_name=autoName(); w.workflow_description=$("#genDesc").value.trim();
+  const oldTrig=w.nodes.find(n=>n.action_type==="TRIGGER").id;
+  for(const n of w.nodes){
+    if(n.action_type==="TRIGGER"){ n.action_key=spec.when.event_name; n.id=spec.when.event_name; if(n.form_fields&&n.form_fields.excluded_user_uids)n.form_fields.excluded_user_uids.value=[]; }
+    if(n.action_name==="Configs"&&n.form_fields&&n.form_fields.code) n.form_fields.code=n.form_fields.code.replace(/const jobCategory = "[^"]*"/,`const jobCategory = ${JSON.stringify(a.jobCategory||"Lead Qualification")}`);
+    if(n.action_name==="Payload to Create Job"&&n.form_fields&&n.form_fields.code){
+      let c=n.form_fields.code;
+      if(a.jobTitle) c=c.replace(/const jobTitle = `[^`]*`;/,"const jobTitle = `"+tokenizeTitle(a.jobTitle)+"`;");
+      c=c.replace(/job_priority: "[^"]*"/,`job_priority: ${JSON.stringify(a.priority||"NORMAL")}`);
+      if(a.dueDays!=null&&a.dueDays!=="") c=c.replace(/\.add\(\d+, 'day'\)/,`.add(${parseInt(a.dueDays,10)}, 'day')`);
+      if(a.dueHour!=null&&a.dueHour!=="") c=c.replace(/hour: \d+, minute: 0, second: 0/,`hour: ${parseInt(a.dueHour,10)}, minute: 0, second: 0`);
+      n.form_fields.code=c;
+    }
+  }
+  if(oldTrig!==spec.when.event_name)(w.connections||[]).forEach(e=>{if(e.source===oldTrig)e.source=spec.when.event_name;});
+  return wf;
+}
+/* general assembly (update-job / conditions / non-golden triggers) */
+function compileFactory(spec,warns){
+  const trig=mkTriggerNode(spec.when.event_name,"",warns); let x=-465; const step=150; trig.position={x,y:30};
+  const cfg=mkCode("Configs",`const zuperBaseURL = VARIABLE.BASE_URL\nconst zuperApiKey = VARIABLE.API_KEY\nconst timeZone = VARIABLE.ZUPER_COMPANY_TIMEZONE\nreturn { zuperBaseURL, zuperApiKey, timeZone }`,{x:x+=step,y:30});
+  const nodes=[trig,cfg]; const conns=[triggerEdge(trig.id,cfg.id)]; let prev=cfg.id;
+
+  if(spec.conditions.length){
+    const checks=spec.conditions.map(c=>`{field:${JSON.stringify(c.field)},operator:${JSON.stringify(c.operator)},value:${JSON.stringify(c.value)}}`).join(",");
+    const guard=mkCode("Guard",`// Best-effort condition guard. Adjust field paths to your trigger payload.\nconst conditions = [${checks}];\nconst payload = $.getNodeData('${trig.action_name}')[0].data.body || {};\nfunction val(f){ return payload[f]; }\nfunction pass(c){ const v=(val(c.field)||'')+''; const t=(c.value||'')+'';\n  switch(c.operator){case 'Equal To':return v===t;case 'Not Equal To':return v!==t;case 'Contains':return v.includes(t);case 'Not Contains':return !v.includes(t);case 'Empty':return !v;case 'Not Empty':return !!v;default:return true;} }\nif(!conditions.every(pass)) throw new Error('Conditions not met — stopping');\nreturn { ok:true }`,{x:x+=step,y:30});
+    nodes.push(guard); conns.push(edge(prev,guard.id)); prev=guard.id; warns.push("Conditions compiled into a Guard code node — verify the field paths match your trigger payload.");
+  }
+
+  spec.actions.forEach((act,ai)=>{
+    if(act.operation==="update_job"){
+      const getCats=mkHttp("Get Categories"+(ai||""),"GET","{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/category?populate_statuses=true","",{x:x+=step,y:30});
+      const resolve=mkCode("Resolve"+(ai||""),`const cats=(($.getNodeData('Get Categories${ai||""}')[0].data.body)&&(($.getNodeData('Get Categories${ai||""}')[0].data.body.data)||$.getNodeData('Get Categories${ai||""}')[0].data.body))||[];\nconst toCat=cats.find(c=>(c.category_name||'').trim()===${JSON.stringify((act.fields.jobCategory||"").trim())});\nconst statuses=(toCat&&(toCat.statuses||toCat.job_statuses))||[];\nconst toStat=${JSON.stringify(act.fields.jobStatus||"")}?statuses.find(s=>(s.status_name||s.job_status_name||'').trim()===${JSON.stringify((act.fields.jobStatus||"").trim())}):null;\nconst jobUid=$.getNodeData('${trig.action_name}')[0].data.body.job.job_uid; // EDIT for your trigger\nreturn { jobUid, categoryPayload:{job:{job_category: toCat?toCat.category_uid:null}}, statusPayload:{job_status_uid: toStat?toStat.status_uid:null} }`,{x:x+=step,y:30});
+      nodes.push(getCats,resolve); conns.push(edge(prev,getCats.id),edge(getCats.id,resolve.id)); prev=resolve.id;
+      if(act.fields.jobCategory){const up=mkHttp("Update Category"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['categoryPayload']}}`,{x:x+=step,y:30});nodes.push(up);conns.push(edge(prev,up.id));prev=up.id;}
+      if(act.fields.jobStatus){const up=mkHttp("Update Status"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}/status`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['statusPayload']}}`,{x:x+=step,y:30});nodes.push(up);conns.push(edge(prev,up.id));prev=up.id;}
+    } else {
+      warns.push("Action “"+act.operation+"” isn’t compiled to Workflow Builder nodes yet — captured in the spec only.");
+    }
+  });
+
+  return [{workflow_name:autoName(),workflow_description:$("#genDesc").value.trim(),workflow_icon:GOLDEN[0].workflow_icon,nodes,connections:conns,meta_data:{variables:{},total_nodes:nodes.length,initial_nodes:[]}}];
+}
+function compileToBuilder(){
+  const spec=buildSpec(); const warns=[];
+  if(!spec.actions.length){toast("Add or describe an action first.");return null;}
+  let wf;
+  const first=spec.actions[0];
+  if(first.operation==="create_job") wf=compileCreateGolden(spec,warns);
+  else wf=compileFactory(spec,warns);
+  rebuildCanvas(wf[0]);
+  return {wf,warns};
+}
+
+/* rebuild the react-flow canvas layer the importer reads */
+function rebuildCanvas(w){
+  const handleBySrc={}; (w.connections||[]).forEach(e=>{handleBySrc[e.source]=e.sourceHandle;});
+  w.nodes=w.nodes.filter(n=>n.action_type!=="NOTE");
+  function ctype(n){if(n.action_type==="TRIGGER")return"triggerNode";const h=handleBySrc[n.id];if(h==="two-a")return"actionNodeTwo";if(h==="one-a")return"actionNodeOne";return /http_request_v2/.test(n.id)?"actionNodeTwo":"actionNodeOne";}
+  w.meta_data=w.meta_data||{}; w.meta_data.variables=w.meta_data.variables||{}; w.meta_data.total_nodes=w.nodes.length;
+  w.meta_data.initial_nodes=w.nodes.map(n=>{
+    const data={icon:n.node_icon,color:n.color,label:n.action_name,module:n.module||"",node_uid:n.node_uid,viewOnly:false,node_name:n.node_name,action_key:n.action_key,action_name:n.action_name,action_type:n.action_type,master_node_uid:n.master_node_uid,execution_status:"NONE"};
+    if(n.action_type==="ACTION"){data.is_active=(n.is_active!==false);if(n.description)data.description=n.description;}
+    const isTrig=n.action_type==="TRIGGER"; const pos=n.position||{x:0,y:0};
+    return {id:n.id,data,type:ctype(n),style:{background:"#fff"},width:isTrig?36:Math.max(90,(n.action_name||"").length*8+40),height:isTrig?36:37,position:{x:pos.x,y:pos.y},positionAbsolute:{x:pos.x,y:pos.y}};
+  });
+}
+
+/* ================= dock actions ================= */
+function openModal(title,html){$("#modalTitle").textContent=title;$("#modalBody").innerHTML=html;$("#modal").classList.add("show");}
+$("#modalClose").onclick=()=>$("#modal").classList.remove("show");
+function warnHtml(warns){return warns.length?warns.map(w=>`<div class="warnrow">&#9888; ${w}</div>`).join(""):"";}
+
+$("#btnJson").addEventListener("click",()=>{
+  const c=compileToBuilder(); if(!c) return;
+  openModal("Workflow Builder JSON",warnHtml(c.warns)+`<pre class="out">${JSON.stringify(c.wf,null,2).replace(/</g,"&lt;")}</pre>`);
+});
+$("#btnExport").addEventListener("click",()=>{
+  const c=compileToBuilder(); if(!c) return;
+  const b=new Blob([JSON.stringify(c.wf,null,2)],{type:"application/json"});const a=document.createElement("a");
+  a.href=URL.createObjectURL(b); a.download=autoName().replace(/[^a-z0-9]+/gi,"_")+".json"; a.click(); URL.revokeObjectURL(a.href);
+  toast("Exported — import via Workflow Builder → Import");
+  if(c.warns.length) openModal("Exported with notes",warnHtml(c.warns)+'<div class="hint" style="margin-top:8px">The file downloaded. Review the notes above before importing.</div>');
+});
+$("#btnPush").addEventListener("click",()=>{
+  const c=compileToBuilder(); if(!c) return;
+  if(!S.base){toast("Connect to an account first.");return;}
+  openModal("Push to Workflow Builder",`
+    <div class="note"><b>The Workflow Builder&rsquo;s create endpoint isn&rsquo;t confirmed yet.</b> Exporting the JSON and importing via <b>Workflow Builder → Import</b> is the reliable path today and works now. To enable one-click push, open the Workflow Builder, click <b>Save</b> on any workflow with the Network tab recording, and send me that request — I&rsquo;ll wire push to the real endpoint.</div>
+    ${warnHtml(c.warns)}
+    <pre class="out">${JSON.stringify(c.wf,null,2).replace(/</g,"&lt;")}</pre>
+    <div style="display:flex;gap:10px;margin-top:12px"><button class="primary mini" id="doPush">Attempt push</button><button class="ghost mini" id="dl2">Download instead</button></div>
+    <div id="pushResult"></div>`);
+  $("#dl2").onclick=()=>{const b=new Blob([JSON.stringify(c.wf,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=autoName().replace(/[^a-z0-9]+/gi,"_")+".json";a.click();toast("Downloaded");};
+  $("#doPush").onclick=async()=>{
+    setStatus($("#pushResult"),"","Attempting POST to the workflow service&hellip;",true);
+    const wfHost=S.base.replace(/^https:\/\/([^.]+)\.zuperpro\.com/,"https://$1-workflow.zuperpro.com");
+    try{
+      const r=await fetch(wfHost.replace(/\/$/,"")+"/workflows",{method:"POST",headers:{"x-api-key":S.key,"Content-Type":"application/json"},body:JSON.stringify(c.wf[0])});
+      if(r.ok) setStatus($("#pushResult"),"ok","Accepted. Check the Workflow Builder list.");
+      else setStatus($("#pushResult"),"err","Returned "+r.status+" — endpoint/schema unconfirmed. Use Export + Import, and send me a captured Save request to enable push.");
+    }catch(e){ setStatus($("#pushResult"),"err","Blocked ("+(e.message||e)+"). Use Export + Import for now."); }
+  };
+});
+
+/* init */
+fillModules(); renderActions(); updateDock();
+</script>
+<script src="../assets/back-link.js"></script>
+<script src="../assets/zuper-panel-bridge.js"></script>
+</body>
+</html>

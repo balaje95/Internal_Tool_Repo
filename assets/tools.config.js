@@ -90,6 +90,14 @@ const TOOLS = [
     "help": "Bulk fetch, delete, dedupe, migrate, and import Zuper records across many modules — jobs, recurring jobs, products, CPQ, workflows and more. Jobs → 🎯 Delete by UID List: paste or upload a spreadsheet of job UIDs and only those jobs are looked up, shown in the grid with their number/title/customer/status, and deleted — UIDs that don't exist are reported, never queued. Recurring Jobs: delete recurrence definitions with a delete-scope choice — keep the jobs they generated, delete only future ones, or delete every generated job including completed history. Dry Run is on by default for destructive actions. CPQ → 🏠 Roofing CPQ Import: upload one workbook (Measurement Tokens, Formulas, Packages, Bundles sheets) to bulk-create CPQ measurement categories/tokens, formulas (with a confirm-before-apply variable→token mapping grid), service packages, and product bundles — dry-run, dedupe, and rate-limited."
   },
   {
+    "name": "Workflow Composer",
+    "description": "Describe a workflow in plain English, get Workflow Builder JSON",
+    "file": "tools/workflow-composer.html",
+    "icon": "🧩",
+    "updated": "2026-08-13",
+    "help": "Type what the automation should do (\"when a customer is created, create a Qualification job due next day at 6pm\") and the When / If / Then stages build themselves as you write — parsed locally in your browser, no AI service and no API key needed for that part. Connect with a Zuper API key (region auto-detected) to pull the account's real job categories and statuses into the pickers. Fix anything mis-read by hand, then View / Export the Workflow Builder JSON and import it via Workflow Builder → Import. Best fidelity is on the New Customer → Create Job shape, which is built from a captured working workflow; other triggers and actions export with notes telling you exactly what to repoint after importing. One-click Push is present but the create endpoint is unconfirmed — Export + Import is the reliable path today."
+  },
+  {
     "name": "Zuper Process Doc Generator",
     "description": "Generate a process doc, or a support-handover deck, from a Zuper account",
     "file": "tools/process-doc-generator.html",
