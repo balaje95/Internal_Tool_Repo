@@ -212,6 +212,15 @@ Type freely — the When / If / Then below build themselves as you write. Correc
           <button class="addbtn" id="btnAddAct">+ Add action</button>
         </div>
       </section>
+
+      <section class="stage">
+        <div class="node">&#9881;</div>
+        <div class="card">
+          <h3>Workflow <span class="tag">built automatically</span></h3>
+          <p class="d">Compiled from the stages above every time they change — no button needed.</p>
+          <div id="buildPreview"><div class="hint">Nothing to build yet — describe an action above.</div></div>
+        </div>
+      </section>
     </main>
   </div>
 </div>
@@ -276,12 +285,42 @@ const COND_FIELDS = {
   PAYMENT:["Payment Amount","Payment Status","Payment Mode","Customer Name"]
 };
 const ACTION_MODULES = [["Jobs","JOB"],["Customers/Contacts","CUSTOMER"],["Quotes","QUOTE"],["Invoices","INVOICE"],["Others","OTHERS"]];
+// renderActions() rewrites any op that is not in this table, so the parser can only
+// emit ops listed here — keep the two in step.
 const OPS = {
-  JOB:{ Create:[["Create Job","create_job"]], Update:[["Update Job","update_job"]] },
+  JOB:{ Create:[["Create Job","create_job"]], Update:[["Update Job","update_job"],["Assign Users","assign_job"],["Add Note","add_job_note"]] },
   CUSTOMER:{ Create:[["Create Customer","create_customer"]], Update:[["Update Customer","update_customer"]] },
   QUOTE:{ Create:[["Create Quote","create_quote"]], Update:[["Update Quote","update_quote"]] },
   INVOICE:{ Create:[["Create Invoice","create_invoice"]], Update:[["Update Invoice","update_invoice"]] },
-  OTHERS:{ Create:[["Send Notification","send_notification"]], Update:[["HTTP Request","http_request"]] }
+  OTHERS:{ Create:[["Send Notification","send_notification"],["Send Email","send_email"]], Update:[["HTTP Request","http_request"]] }
+};
+/* Which ops compile to real Workflow Builder nodes, and on what authority.
+   'golden'  — cloned from a captured working workflow.
+   'api'     — assembled from an endpoint + payload shape proven elsewhere in this
+               repo (Data Manager's migrate/import paths).
+   'guess'   — endpoint shape is plausible but unverified; exported with a note.
+   absent    — recognised by the parser and kept in the spec, but no nodes; the
+               export says so rather than pretending. */
+const COMPILE_SUPPORT = {
+  create_job:"golden/api",   // POST /jobs {job:{…}} — the golden template proves it
+  create_customer:"api",     // POST /customers, flat payload — same as Data Manager migrate
+  http_request:"api",        // the builder's own HTTP node
+  update_job:"guess"         // PUT /jobs/{uid} and /jobs/{uid}/status — unverified
+};
+/* Extra editable fields per op, rendered generically. create_job / update_job keep
+   their own richer layouts below. */
+const ACTION_FIELD_SPECS = {
+  assign_job:[{k:"assignee",l:"Assign to (name or email)",ph:"dispatch@acme.com"}],
+  add_job_note:[{k:"note",l:"Note text",ph:"Called customer to confirm"}],
+  create_customer:[{k:"customerType",l:"Customer type",opts:["RESIDENTIAL","COMMERCIAL"]},{k:"source",l:"Source (optional)",ph:"web form"}],
+  update_customer:[{k:"customerType",l:"Set customer type",opts:["","RESIDENTIAL","COMMERCIAL"]},{k:"tags",l:"Tags (comma separated)",ph:"vip, roofing"}],
+  send_notification:[{k:"recipient",l:"Recipient",ph:"customer / assigned user"},{k:"message",l:"Message",ph:"Your job has been scheduled"}],
+  send_email:[{k:"recipient",l:"To",ph:"customer email"},{k:"subject",l:"Subject",ph:"Job scheduled"},{k:"message",l:"Body",ph:"Hello…"}],
+  http_request:[{k:"method",l:"Method",opts:["POST","GET","PUT","PATCH","DELETE"]},{k:"url",l:"URL",ph:"https://hooks.example.com/zuper"},{k:"body",l:"JSON body (optional)",ph:'{"job":"{{...}}"}'}],
+  create_quote:[{k:"note",l:"What should the quote contain?",ph:"captured for manual setup"}],
+  update_quote:[{k:"quoteStatus",l:"Set quote status",ph:"Accepted"}],
+  create_invoice:[{k:"note",l:"What should the invoice contain?",ph:"captured for manual setup"}],
+  update_invoice:[{k:"invoiceStatus",l:"Set invoice status",ph:"Paid"}]
 };
 /* trigger node identities for Workflow Builder compile — only verified ones bind correctly */
 const TRIG_MASTER = { "customer.create":{master:"721280c2-cf74-47fd-95f2-cdc4ad922c56",module:"CUSTOMER",name:"New Customer"} };
@@ -314,7 +353,22 @@ function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");se
 function setStatus(el,kind,html,spin){el.innerHTML=`<div class="status ${kind}">${spin?'<div class="spin"></div>':'<div class="d"></div>'}<div>${html}</div></div>`;}
 
 /* ================= connect ================= */
-async function zget(base,path){const r=await fetch(base.replace(/\/$/,"")+path,{headers:{"x-api-key":S.key}});const t=await r.text();let d;try{d=JSON.parse(t)}catch{d=t}return{ok:r.ok,status:r.status,data:d};}
+// The web-app client headers Zuper's own UI sends; the other tools in this dashboard
+// send them too. Pass json=false for multipart, so the browser can set the boundary.
+function zHeaders(json){
+  const h={"x-api-key":S.key,"x-zuper-client":"WEB_APP","x-zuper-client-version":"3.0"};
+  if(json) h["Content-Type"]="application/json";
+  return h;
+}
+// The workflow service runs on its own host, and the region loses its trailing letter
+// there: us-west-1c → us-west-1-workflow. Same derivation Data Manager uses; the old
+// regex here kept the letter and pointed at a host that does not exist.
+function workflowHost(){
+  const m=(S.base||"").match(/https?:\/\/([\w-]+)\.zuperpro\.com/);
+  if(!m) return "";
+  return "https://"+m[1].replace(/[a-z]$/,"")+"-workflow.zuperpro.com/api/";
+}
+async function zget(base,path){const r=await fetch(base.replace(/\/$/,"")+path,{headers:zHeaders(false)});const t=await r.text();let d;try{d=JSON.parse(t)}catch{d=t}return{ok:r.ok,status:r.status,data:d};}
 $("#btnConnect").addEventListener("click",connect);
 async function connect(){
   const key=$("#apiKey").value.trim(); if(!key){setStatus($("#connStatus"),"err","Paste an API key.");return;}
@@ -366,8 +420,8 @@ async function probeConditions(){
   const q=`/workflow/conditions?event_name=${encodeURIComponent(evKey)}&module_name=${encodeURIComponent(mod)}`;
   let r=await zget(S.base,q).catch(()=>null);
   if(!r||!r.ok){
-    const wfHost=S.base.replace(/^https:\/\/([^.]+)\.zuperpro\.com/,"https://$1-workflow.zuperpro.com");
-    if(wfHost!==S.base) r=await zget(wfHost,q).catch(()=>null);
+    const wfHost=workflowHost().replace(/\/api\/$/,"/api");
+    if(wfHost&&wfHost!==S.base) r=await zget(wfHost,q).catch(()=>null);
   }
   if(!r||!r.ok){badge.innerHTML='<span class="live-badge warn"><span class="p"></span>key unresolved</span>';S.conds=[];refreshCondFields();return;}
   let list=r.data&&(r.data.data||r.data.conditions||r.data.fields||r.data); if(!Array.isArray(list))list=[];
@@ -459,7 +513,23 @@ function actionFields(a,i){
         <div class="field" style="margin:0"><label>Set status</label>${statusOptions(f.jobCategory,f.jobStatus,i)}</div></div>
       <div class="hint">Status must exist inside the target category. Category + status resolve to UIDs in the account at run time.</div>`;
   }
-  return `<div class="hint">Fields for “${a.op}” aren&rsquo;t mapped yet — the operation is captured; send a sample of this action and I&rsquo;ll add its fields.</div>`;
+  // Generic renderer for the rest, driven by ACTION_FIELD_SPECS.
+  const spec=ACTION_FIELD_SPECS[a.op];
+  if(spec){
+    const cells=spec.map(fd=>{
+      const v=f[fd.k]==null?"":f[fd.k];
+      const input=fd.opts
+        ? `<select data-f="${fd.k}" data-i="${i}">`+fd.opts.map(o=>`<option value="${esc(o)}" ${String(v)===o?"selected":""}>${esc(o||"—")}</option>`).join("")+`</select>`
+        : `<input class="t" data-f="${fd.k}" data-i="${i}" value="${esc(v)}" placeholder="${esc(fd.ph||"")}"/>`;
+      return `<div class="field" style="margin:0"><label>${esc(fd.l)}</label>${input}</div>`;
+    }).join("");
+    const support=COMPILE_SUPPORT[a.op];
+    const note=support
+      ? `<div class="hint">Compiles to real nodes${support==="guess"?" — endpoint shape is unverified, check it after importing":""}.</div>`
+      : `<div class="hint">Captured in the spec. No confirmed Zuper endpoint for this yet, so no nodes are generated — add this step in the Workflow Builder after importing.</div>`;
+    return `<div class="${spec.length>2?"row-3":"row"}">${cells}</div>${note}`;
+  }
+  return `<div class="hint">Fields for “${esc(a.op)}” aren&rsquo;t mapped yet — the operation is captured in the spec.</div>`;
 }
 
 /* ================= auto-build from description (LOCAL — no network) ================= */
@@ -474,7 +544,10 @@ function runAuto(){
     const sp=parseDescription(t);
     applySpec(sp);
     const bits=[]; if(sp.eventKey)bits.push("trigger"); if(sp.conditions.length)bits.push(sp.conditions.length+" cond"); if(sp.actions.length)bits.push(sp.actions.length+" action"+(sp.actions.length>1?"s":""));
-    setStatus($("#autoStatus"),"ok", bits.length? "Read: "+bits.join(" · ")+". Adjust anything below.":"Couldn&rsquo;t infer much — set the stages by hand.");
+    const notes=(sp.notes||[]).slice(0,3).map(n=>'<div style="margin-top:5px;font-size:11px;color:var(--warn)">&#9888; '+esc(n)+'</div>').join("");
+    setStatus($("#autoStatus"),"ok",(bits.length? "Read: "+bits.join(" &middot; ")+". Adjust anything below.":"Couldn&rsquo;t infer much — set the stages by hand.")+notes);
+    // Compile straight away so the graph exists without pressing anything.
+    autoBuild();
   }catch(err){ setStatus($("#autoStatus"),"err","Couldn&rsquo;t read that — set the stages manually."); }
 }
 
@@ -487,7 +560,9 @@ function catCandidates(){
 }
 function findCategory(text){const lt=text.toLowerCase();for(const c of catCandidates().sort((a,b)=>b.length-a.length)){if(lt.includes(c.toLowerCase()))return c;}return"";}
 function findCategoryIn(frag){const lf=(frag||"").toLowerCase().trim();for(const c of catCandidates().sort((a,b)=>b.length-a.length)){if(lf.includes(c.toLowerCase())||(lf&&c.toLowerCase().includes(lf)))return c;}return"";}
-function tidy(s){s=(s||"").trim();return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
+// Sentence-cases a value for display. Addresses and identifiers are left alone —
+// capitalising an email or a URL changes it.
+function tidy(s){s=(s||"").trim();if(!s)return"";if(/[@:/]/.test(s))return s;return s.charAt(0).toUpperCase()+s.slice(1);}
 function mapOp(s){s=(s||"").toLowerCase();if(s.indexOf("not equal")>-1||s.indexOf("is not")===0)return"Not Equal To";if(s.indexOf("not contain")>-1)return"Not Contains";if(s.indexOf("contain")>-1)return"Contains";return"Equal To";}
 function parseDue(lt){
   let dueDays=null,dueHour=null;
@@ -518,35 +593,145 @@ function normField(f){
   return raw.replace(/\s+/g,"_");
 }
 function isTriggerish(cl){return /\b(customer|quote|invoice|job|payment|contact)\b/.test(cl)&&/\b(created|is created|new|accepted|approved|won|paid|updated|deactivated|activated|deleted|added)\b/.test(cl);}
-function parseConditions(text){
-  const conds=[]; const clauses=text.split(/\s*(?:,|;|\band\b)\s*/i);
-  const RX=[
-    [/^(.+?)\s+is\s+not\s+empty$/i,"Not Empty",false],
-    [/^(.+?)\s+is\s+empty$/i,"Empty",false],
-    [/^(.+?)\s+(?:is\s+not|isn['’]t|are\s+not|not\s+equal\s+to|does\s+not\s+equal|doesn['’]t\s+equal)\s+(.+)$/i,"Not Equal To",true],
-    [/^(.+?)\s+(?:does\s+not\s+contain|doesn['’]t\s+contain|not\s+contains?)\s+(.+)$/i,"Not Contains",true],
-    [/^(.+?)\s+contains?\s+(.+)$/i,"Contains",true],
-    [/^(.+?)\s+(?:is|are|equals?|equal\s+to|=)\s+(.+)$/i,"Equal To",true]
-  ];
-  for(let cl of clauses){
-    cl=cl.trim().replace(/^(when|whenever|if|once|after|then|do|also)\s+/i,"").trim();
-    if(cl.length<3) continue;
-    if(/\b(create|make|generate|raise|open|move|change|switch|transition|advance|update|assign|unassign|send|notify|mark|set\s+status|status\s+to)\b/i.test(cl)) continue;
-    if(isTriggerish(cl)) continue;
-    for(const [rx,op,needsVal] of RX){
-      const m=cl.match(rx);
-      if(m){
-        const field=m[1].trim().replace(/^(the|a|an)\s+/i,"");
-        if(field.length<2) break;
-        let val=needsVal?(m[2]||"").trim():"";
-        val=val.replace(/^["“”'’]+|["“”'’.]+$/g,"");
-        conds.push({field:normField(field),op,val:tidy(val)});
-        break;
-      }
-    }
-  }
-  return conds;
+
+/* A clause is an ACTION when it *opens* with an action verb. The old rule dropped any
+   clause merely containing one, so "job title contains create" was silently discarded
+   and never became a condition. */
+const ACTION_OPENER=/^(create|creates|created|make|makes|generate|generates|raise|raises|open|opens|add|adds|log|logs|book|books|schedule|schedules|update|updates|change|changes|switch|switches|transition|transitions|advance|advances|move|moves|set|sets|mark|marks|assign|assigns|unassign|unassigns|send|sends|notify|notifies|email|emails|text|texts|sms|put|puts|attach|attaches|close|closes|complete|completes|cancel|cancels|delete|deletes|post|posts|call|calls|hit|hits|webhook|ping|pings)\b/i;
+const URL_RX=/\bhttps?:\/\/[^\s"'<>]+/i;
+const LEADING_NOISE=/^(and|then|also|,|;|plus|after that|next|finally|please|it should|should|to)\s+/i;
+
+/* Split on sentence and clause boundaries. "then" and "and then" are strong action
+   separators; a bare "and" is weaker but still the common way people list steps. */
+function splitClauses(text){
+  return text
+    .replace(/\r/g,"")
+    // Only a sentence-ending period splits. Splitting on every dot tore
+    // "dispatch@acme.com" into "dispatch@acme" + "com" and silently dropped the TLD.
+    .split(/(?:[;\n]+|\.(?=\s|$)|\bthen\b|\band then\b|\balso\b)/i)
+    .flatMap(seg=>seg.split(/\s*,\s*|\s+\band\b\s+/i))
+    .map(s=>s.trim())
+    .filter(s=>s.length>2);
 }
+function stripNoise(cl){
+  let out=cl.trim();
+  for(let i=0;i<4;i++){const n=out.replace(LEADING_NOISE,"").trim();if(n===out)break;out=n;}
+  return out;
+}
+function isConditionish(cl){
+  return /\s(?:is|are|isn['’]t|equals?|=|contains?|does\s+not\s+contain|is\s+not|not\s+equal)\s/i.test(cl)
+      || /\bis\s+(?:not\s+)?(?:empty|set|blank)\b/i.test(cl);
+}
+
+const COND_RX=[
+  [/^(.+?)\s+is\s+(?:not\s+empty|set)$/i,"Not Empty",false],
+  [/^(.+?)\s+is\s+(?:empty|blank|not\s+set)$/i,"Empty",false],
+  [/^(.+?)\s+(?:is\s+not|isn['’]t|are\s+not|not\s+equal\s+to|does\s+not\s+equal|doesn['’]t\s+equal)\s+(.+)$/i,"Not Equal To",true],
+  [/^(.+?)\s+(?:does\s+not\s+contain|doesn['’]t\s+contain|not\s+contains?)\s+(.+)$/i,"Not Contains",true],
+  [/^(.+?)\s+contains?\s+(.+)$/i,"Contains",true],
+  [/^(.+?)\s+(?:is|are|equals?|equal\s+to|=)\s+(.+)$/i,"Equal To",true]
+];
+/* Zuper's condition operators are Equal/Not Equal/Contains/Not Contains/Empty/Not
+   Empty. Numeric comparisons have no operator to map onto, so they are reported
+   instead of being silently turned into an equality that would not hold. */
+const UNSUPPORTED_COMPARATOR=/\b(greater than|less than|more than|fewer than|at least|at most|over|under|before|after|between)\b/i;
+
+function parseConditionClause(cl,notes){
+  if(UNSUPPORTED_COMPARATOR.test(cl)){
+    notes.push('“'+cl+'” uses a comparison Zuper conditions do not have (only equals / contains / empty) — left out.');
+    return null;
+  }
+  for(const [rx,op,needsVal] of COND_RX){
+    const m=cl.match(rx);
+    if(!m) continue;
+    const field=m[1].trim().replace(/^(the|a|an|its|their)\s+/i,"");
+    if(field.length<2) return null;
+    let val=needsVal?(m[2]||"").trim():"";
+    val=val.replace(/^["“”'’]+|["“”'’.]+$/g,"").replace(/\s+(and|then)$/i,"");
+    return {field:normField(field),op,val:tidy(val)};
+  }
+  return null;
+}
+/* Turn one action clause into a spec action. Order matters: the most specific object
+   wins, because "create an invoice for the job" mentions both. */
+function parseActionClause(cl,fullText,notes){
+  const lc=cl.toLowerCase();
+  const verbCreate=/^(create|creates|make|makes|generate|generates|raise|raises|open|opens|add|adds|log|logs|book|books|schedule|schedules)\b/i.test(cl);
+  const verbSend=/^(send|sends|notify|notifies|email|emails|text|texts|sms)\b/i.test(cl);
+  const verbAssign=/^(assign|assigns|unassign|unassigns)\b/i.test(cl);
+  const verbSet=/^(set|sets|mark|marks|update|updates|change|changes|move|moves|switch|switches|transition|transitions|advance|advances|put|puts)\b/i.test(cl);
+  const mentions=o=>new RegExp("\\b"+o+"s?\\b","i").test(lc);
+
+  // --- a literal URL means an HTTP call, whatever verb introduced it --------
+  const url=(cl.match(URL_RX)||[])[0];
+  if(url){
+    const method=/^(get|fetch|read)\b/i.test(cl)?"GET":"POST";
+    return {module:"OTHERS",type:"Update",op:"http_request",fields:{url:url.replace(/[.,;]+$/,""),method}};
+  }
+
+  // --- send / notify -------------------------------------------------------
+  if(verbSend){
+    const isEmail=/\bemail\b/i.test(lc), f={};
+    const to=cl.match(/\bto\s+(?:the\s+)?([A-Za-z@.\- ]{3,40})/i); if(to)f.recipient=tidy(to[1].trim());
+    const msg=cl.match(/["“']([^"”']{4,})["”']/); if(msg)f.message=msg[1].trim();
+    return {module:"OTHERS",type:"Create",op:isEmail?"send_email":"send_notification",fields:f};
+  }
+  // --- assign --------------------------------------------------------------
+  if(verbAssign){
+    const f={}; const to=cl.match(/\bto\s+(?:the\s+)?([A-Za-z@.\- ]{2,40})/i);
+    if(to)f.assignee=tidy(to[1].trim());
+    return {module:"JOB",type:"Update",op:"assign_job",fields:f};
+  }
+  // --- notes ---------------------------------------------------------------
+  if(verbCreate&&/\bnote\b/i.test(lc)){
+    const f={}; const msg=cl.match(/["“']([^"”']{2,})["”']/); if(msg)f.note=msg[1].trim();
+    return {module:"JOB",type:"Update",op:"add_job_note",fields:f};
+  }
+  // --- create X ------------------------------------------------------------
+  if(verbCreate){
+    if(mentions("customer")||mentions("contact")){
+      const f={}; f.customerType=/\bcommercial\b/i.test(lc)?"COMMERCIAL":"RESIDENTIAL";
+      return {module:"CUSTOMER",type:"Create",op:"create_customer",fields:f};
+    }
+    if(mentions("quote")||mentions("estimate")||mentions("proposal"))
+      return {module:"QUOTE",type:"Create",op:"create_quote",fields:{}};
+    if(mentions("invoice"))
+      return {module:"INVOICE",type:"Create",op:"create_invoice",fields:{}};
+    // default: a job. Covers "create a Qualification job", "raise a follow-up",
+    // "book an inspection" — the category is matched against the account's own list.
+    const f={};
+    const cat=findCategoryIn(cl)||findCategory(fullText); if(cat)f.jobCategory=cat;
+    const d=parseDue(cl.toLowerCase()+" "+fullText.toLowerCase());
+    if(d.dueDays!=null)f.dueDays=d.dueDays; if(d.dueHour!=null)f.dueHour=d.dueHour;
+    const p=parsePriority(lc)||parsePriority(fullText.toLowerCase()); if(p)f.priority=p;
+    const tm=cl.match(/titled?\s+["“']?(.+?)["”']?(?:\s+(?:due|with|priority|and|,|\.)|$)/i)
+          ||fullText.match(/titled?\s+["“']?(.+?)["”']?(?:\s+(?:due|with|priority|and|,|\.)|$)/i);
+    if(tm)f.jobTitle=tm[1].trim();
+    return {module:"JOB",type:"Create",op:"create_job",fields:f};
+  }
+  // --- set / move / update -------------------------------------------------
+  if(verbSet){
+    if(mentions("quote")){const st=parseStatus(cl);return {module:"QUOTE",type:"Update",op:"update_quote",fields:st?{quoteStatus:st}:{}};}
+    if(mentions("invoice")){const st=parseStatus(cl);return {module:"INVOICE",type:"Update",op:"update_invoice",fields:st?{invoiceStatus:st}:{}};}
+    if(mentions("customer")||mentions("contact")){
+      const f={}; if(/\bcommercial\b/i.test(lc))f.customerType="COMMERCIAL"; else if(/\bresidential\b/i.test(lc))f.customerType="RESIDENTIAL";
+      return {module:"CUSTOMER",type:"Update",op:"update_customer",fields:f};
+    }
+    const f={};
+    const toM=cl.match(/\b(?:to|into)\s+([A-Za-z0-9][A-Za-z0-9 \-&']*?)(?:\s+(?:and|with|then|category|status|pipeline|stage)|$)/i);
+    let dest=toM?findCategoryIn(toM[1]):"";
+    if(!dest&&/\b(categor|stage|pipeline)\b/i.test(lc))dest=findCategoryIn(cl)||findCategory(fullText);
+    if(dest)f.jobCategory=dest;
+    const st=parseStatus(cl); if(st)f.jobStatus=st;
+    if(!f.jobCategory&&!f.jobStatus){
+      notes.push('“'+cl+'” looks like an update but no category or status could be read from it.');
+      return null;
+    }
+    return {module:"JOB",type:"Update",op:"update_job",fields:f};
+  }
+  return null;
+}
+
 function parseDescription(raw){
   const t=raw.trim(); const lt=t.toLowerCase();
   // ----- trigger -----
@@ -568,34 +753,55 @@ function parseDescription(raw){
   if(!eventKey){for(const [re,k] of trig){if(re.test(lt)){eventKey=k;break;}}}
   const module=eventKey?(MODMAP[eventKey.split(".")[0]]||""):"";
 
-  // ----- actions -----
-  const actions=[];
-  const known=findCategory(t);
-  const createVerb=/\b(create|make|generate|raise|open|add|log|book|schedule)\b/.test(lt);
-  if(createVerb && (/\bjob\b/.test(lt) || known)){
-    const f={};
-    if(known)f.jobCategory=known;
-    const d=parseDue(lt); if(d.dueDays!=null)f.dueDays=d.dueDays; if(d.dueHour!=null)f.dueHour=d.dueHour;
-    const p=parsePriority(lt); if(p)f.priority=p;
-    const tm=t.match(/titled?\s+["“']?(.+?)["”']?(?:\s+(?:due|with|priority|and|,|\.)|$)/i); if(tm)f.jobTitle=tm[1].trim();
-    actions.push({module:"JOB",type:"Create",op:"create_job",fields:f});
+  // ----- one pass over the clauses, each classified as action or condition -----
+  // Every clause is now examined, so a description can produce several actions
+  // ("create a job and send a notification and set the status") instead of the old
+  // one-create-plus-maybe-one-update ceiling.
+  const actions=[],conditions=[],notes=[];
+  const clauses=splitClauses(t);
+  let triggerClauseSeen=false;
+  for(const rawCl of clauses){
+    const cl=stripNoise(rawCl);
+    if(cl.length<3) continue;
+    const bare=cl.replace(/^(when|whenever|if|once|after)\s+/i,"").trim();
+    const wasGuard=bare!==cl;                       // clause opened with when/if/once
+    // The first trigger-shaped clause describes the trigger, which the block above
+    // already resolved — don't also read it as a condition.
+    if(!triggerClauseSeen&&isTriggerish(bare)&&!ACTION_OPENER.test(bare)){triggerClauseSeen=true;continue;}
+    if(ACTION_OPENER.test(bare)&&!wasGuard){
+      const a=parseActionClause(bare,t,notes);
+      if(a) actions.push(a);
+      continue;
+    }
+    if(isConditionish(bare)||UNSUPPORTED_COMPARATOR.test(bare)){
+      const c=parseConditionClause(bare,notes);
+      if(c&&!conditions.some(x=>x.field===c.field&&x.op===c.op&&x.val===c.val)) conditions.push(c);
+      continue;
+    }
+    // An action verb behind "if"/"when" is still an action ("when X, then create Y"
+    // splits such that the create clause can carry the guard word).
+    if(ACTION_OPENER.test(bare)){
+      const a=parseActionClause(bare,t,notes);
+      if(a){ actions.push(a); continue; }
+    }
+    // Nothing matched. Say so — a clause that quietly disappears is the reason a
+    // stage looks like it "didn't update".
+    if(bare.length>10&&notes.length<4) notes.push('Didn’t read “'+bare+'” as a condition or an action — add it below by hand.');
   }
-  const hasCreate=actions.some(a=>a.op==="create_job");
-  const movesCat=/\b(move|change|switch|transition|advance|reclassif|put)\b/.test(lt)&&/\b(category|categories|stage|pipeline|to|into)\b/.test(lt);
-  const setsStatus=/\bstatus\s+(?:to|as|=)\b/.test(lt)||/\bset\s+status\b/.test(lt)||/\bmark(ed)?\s+(?:it\s+)?as\b/.test(lt);
-  if((movesCat||setsStatus) && !hasCreate){
-    const f={};
-    let dest="";
-    const toM=t.match(/\b(?:to|into)\s+([A-Za-z][A-Za-z \-]*?)(?:\s+(?:and|with|then|,|\.|category|status|pipeline)|$)/i);
-    if(toM)dest=findCategoryIn(toM[1]);
-    if(!dest && movesCat)dest=findCategory(t);
-    if(dest)f.jobCategory=dest;
-    const st=parseStatus(t); if(st)f.jobStatus=st;
-    if(f.jobCategory||f.jobStatus)actions.push({module:"JOB",type:"Update",op:"update_job",fields:f});
-  }
-
-  // ----- conditions -----
-  let conditions=parseConditions(t);
+  // Collapse duplicates the clause splitter can produce from one long sentence.
+  const seenAct=new Set();
+  let cleaned=actions.filter(a=>{const k=a.op+"|"+JSON.stringify(a.fields);if(seenAct.has(k))return false;seenAct.add(k);return true;});
+  // "move it to X and set status to Y" is ONE update of one job, not two. Left split,
+  // the status-only update would look for its status inside a category it never set,
+  // and resolve to null.
+  const mergedUpdates=[];
+  cleaned=cleaned.filter(a=>{
+    if(a.op!=="update_job") return true;
+    const prior=mergedUpdates.find(m=>m.module===a.module);
+    if(prior){ prior.fields={...prior.fields,...a.fields}; return false; }
+    mergedUpdates.push(a); return true;
+  });
+  actions.length=0; actions.push(...cleaned);
   if(/^job\./.test(eventKey)){
     const fromM=t.match(/\bfrom\s+([A-Za-z][A-Za-z \-]*?)\s+(?:to|into)\b/i);
     if(fromM){const fc=findCategoryIn(fromM[1]); if(fc && !conditions.some(c=>c.field==="job_category"))conditions.push({field:"job_category",op:"Equal To",val:fc});}
@@ -603,7 +809,7 @@ function parseDescription(raw){
   if(eventKey==="quote.status_update"&&!conditions.some(c=>/status/.test(c.field))){const qs=/accepted/.test(lt)?"Accepted":/approved/.test(lt)?"Approved":/declined|rejected/.test(lt)?"Declined":/sent/.test(lt)?"Sent":/won/.test(lt)?"Won":"";if(qs)conditions.push({field:"quote_status",op:"Equal To",val:qs});}
   if(eventKey==="invoice.status_update"&&!conditions.some(c=>/status/.test(c.field))){const s=parseStatus(t);if(s)conditions.push({field:"invoice_status",op:"Equal To",val:s});}
 
-  return {module,eventKey,conditions,actions};
+  return {module,eventKey,conditions,actions,notes};
 }
 
 function applySpec(sp){
@@ -611,15 +817,24 @@ function applySpec(sp){
     if(sp.module){const mi=CAT.findIndex(c=>c.module===sp.module);if(mi>=0){$("#tModule").value=mi;fillEvents();
       if(sp.eventKey){const ei=CAT[mi].events.findIndex(e=>e[1]===sp.eventKey);if(ei>=0){$("#tEvent").value=ei;syncEventKey();}else{syncEventKey();$("#tEventKey").value=sp.eventKey;probeConditions();}}}}
   }catch(e){}
-  try{ if(Array.isArray(sp.conditions)){ conds=sp.conditions.map(c=>({field:c.field||"",op:c.op||"Equal To",val:c.val||""})); renderConds(); } }catch(e){}
+  // Replace a stage only when the description actually yielded something for it.
+  // Overwriting with an empty list wiped hand-made rows on the next keystroke.
+  try{ if(Array.isArray(sp.conditions)&&sp.conditions.length){ conds=sp.conditions.map(c=>({field:c.field||"",op:c.op||"Equal To",val:c.val||""})); renderConds(); } }catch(e){}
   try{ if(Array.isArray(sp.actions)&&sp.actions.length){ acts=sp.actions.map(a=>({module:a.module||"JOB",type:a.type||"Create",op:a.op||"create_job",fields:a.fields||{}})); renderActions(); } }catch(e){}
 }
 
 /* ================= spec + dock ================= */
+function opLabel(mod,op){
+  const groups=OPS[mod]||{};
+  for(const k in groups){const hit=groups[k].find(o=>o[1]===op);if(hit)return hit[0];}
+  return op;
+}
 function autoName(){
-  const ev=currentEvent(); const a=acts[0];
-  const act=a?(a.op==="create_job"?"Create job":a.op==="update_job"?"Update job":a.op):"Action";
-  return `${act} on ${ev[0]}`;
+  const ev=currentEvent();
+  if(!acts.length) return `Action on ${ev[0]}`;
+  const names=acts.slice(0,2).map(a=>opLabel(a.module,a.op));
+  const extra=acts.length>2?` +${acts.length-2} more`:"";
+  return `${names.join(" + ")}${extra} on ${ev[0]}`;
 }
 function buildSpec(){
   return {
@@ -631,6 +846,8 @@ function buildSpec(){
 function updateDock(){
   const ev=currentEvent(),nc=conds.filter(c=>c.field).length,na=acts.length;
   $("#dockSummary").innerHTML=`<b>WHEN</b> ${currentModule()} · ${ev[1]} &nbsp;›&nbsp; <b>IF</b> ${nc} cond &nbsp;›&nbsp; <b>THEN</b> ${na} action${na!==1?"s":""}`;
+  // Hand edits rebuild the graph too, not just typing in the description.
+  if(typeof autoBuild==="function") autoBuild();
 }
 
 /* ================= compile spec -> Workflow Builder node-graph ================= */
@@ -681,6 +898,21 @@ function compileCreateGolden(spec,warns){
   if(oldTrig!==spec.when.event_name)(w.connections||[]).forEach(e=>{if(e.source===oldTrig)e.source=spec.when.event_name;});
   return wf;
 }
+/* Trigger payloads differ per event and the tool cannot know each shape, so generated
+   code resolves the ids it needs defensively instead of assuming one layout. */
+function trigResolver(trigName){
+  const g=`$.getNodeData(${JSON.stringify(trigName)})`;
+  return `// Trigger payload shapes vary by event — resolve defensively.\n`+
+    `const _t = ${g}[0] || {};\nconst body = (_t.data && _t.data.body) || {};\n`+
+    `const jobUid = (body.job && (body.job.job_uid || body.job)) || body.job_uid || null;\n`+
+    `const customerUid = (body.customer && (body.customer.customer_uid || body.customer)) || body.customer_uid || null;\n`;
+}
+const CATS_URL="{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/category?populate_statuses=true";
+function catsFrom(nodeName){
+  return `const _c = $.getNodeData(${JSON.stringify(nodeName)})[0].data.body;\n`+
+         `const cats = (_c && (_c.data || _c)) || [];\n`;
+}
+
 /* general assembly (update-job / conditions / non-golden triggers) */
 function compileFactory(spec,warns){
   const trig=mkTriggerNode(spec.when.event_name,"",warns); let x=-465; const step=150; trig.position={x,y:30};
@@ -694,6 +926,64 @@ function compileFactory(spec,warns){
   }
 
   spec.actions.forEach((act,ai)=>{
+    const sfx=ai?String(ai):"";
+    // ---- create job: POST /jobs {job:{…}} — the shape the golden template proves ----
+    if(act.operation==="create_job"){
+      const f=act.fields||{};
+      const catName=(f.jobCategory||"").trim();
+      const getCats=mkHttp("Get Categories"+sfx,"GET",CATS_URL,"",{x:x+=step,y:30});
+      const days=(f.dueDays!=null&&f.dueDays!=="")?parseInt(f.dueDays,10):1;
+      const hour=(f.dueHour!=null&&f.dueHour!=="")?parseInt(f.dueHour,10):18;
+      const title=f.jobTitle?tokenizeTitle(f.jobTitle):"";
+      const pay=mkCode("Payload"+sfx,
+        `const moment = require('moment-timezone');\n`+
+        `const { timeZone } = $.getNodeData('Configs')[0]['data'];\n`+
+        trigResolver(trig.action_name)+
+        catsFrom("Get Categories"+sfx)+
+        `const category = cats.find(c => (c.category_name||'').trim().toLowerCase() === ${JSON.stringify(catName.toLowerCase())});\n`+
+        `if(!category) throw new Error('Job category not found: ' + ${JSON.stringify(catName)});\n`+
+        `const due = moment.utc(new Date().toISOString()).tz(timeZone).add(${days}, 'day')\n`+
+        `  .set({hour: ${hour}, minute: 0, second: 0}).utc().format('YYYY-MM-DD HH:mm:ss');\n`+
+        `const payload = { job: {\n`+
+        `  customer_uid: customerUid,\n`+
+        `  job_category: category.category_uid,\n`+
+        `  job_title: ${title?"`"+title+"`":"'"+(catName||"New job").replace(/'/g,"\\'")+"'"},\n`+
+        `  job_priority: ${JSON.stringify(f.priority||"NORMAL")},\n`+
+        `  job_type: 'NEW',\n`+
+        `  due_date: due,\n  due_date_dt: due\n} };\n`+
+        `return { payload };`,{x:x+=step,y:30});
+      const post=mkHttp("Create Job"+sfx,"POST","{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs",
+        `{{$.getNodeData('Payload${sfx}')[0]['data']['payload']}}`,{x:x+=step,y:30});
+      nodes.push(getCats,pay,post); conns.push(edge(prev,getCats.id),edge(getCats.id,pay.id),edge(pay.id,post.id)); prev=post.id;
+      if(!catName) warns.push("Create Job has no category — the generated code will throw until you set one.");
+      if(!/^customer\./.test(spec.when.event_name)) warns.push("Create Job takes its customer from the trigger payload; on a non-customer trigger check that <code>customerUid</code> resolves.");
+      return;
+    }
+    // ---- create customer: POST /customers, flat payload (same as Data Manager migrate) ----
+    if(act.operation==="create_customer"){
+      const f=act.fields||{};
+      const pay=mkCode("Customer Payload"+sfx,
+        trigResolver(trig.action_name)+
+        `// Flat payload — this is the shape Zuper accepts on POST /customers.\n`+
+        `const payload = {\n  first_name: body.first_name || '',\n  last_name: body.last_name || '',\n`+
+        `  email: body.email || '',\n  phone: body.phone || '',\n`+
+        `  customer_type: ${JSON.stringify(f.customerType||"RESIDENTIAL")}${f.source?",\n  source: "+JSON.stringify(f.source):""}\n};\n`+
+        `return { payload };`,{x:x+=step,y:30});
+      const post=mkHttp("Create Customer"+sfx,"POST","{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/customers",
+        `{{$.getNodeData('Customer Payload${sfx}')[0]['data']['payload']}}`,{x:x+=step,y:30});
+      nodes.push(pay,post); conns.push(edge(prev,pay.id),edge(pay.id,post.id)); prev=post.id;
+      warns.push("Create Customer maps only name / email / phone from the trigger payload — fill in the rest in the Payload node.");
+      return;
+    }
+    // ---- raw HTTP call ----
+    if(act.operation==="http_request"){
+      const f=act.fields||{};
+      if(!f.url){ warns.push("HTTP Request has no URL — skipped."); return; }
+      const h=mkHttp("HTTP"+sfx,(f.method||"POST").toUpperCase(),f.url,f.body||"",{x:x+=step,y:30});
+      if(f.body) h.form_fields.json_body={type:"FIXED",value:f.body};
+      nodes.push(h); conns.push(edge(prev,h.id)); prev=h.id;
+      return;
+    }
     if(act.operation==="update_job"){
       const getCats=mkHttp("Get Categories"+(ai||""),"GET","{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/category?populate_statuses=true","",{x:x+=step,y:30});
       const resolve=mkCode("Resolve"+(ai||""),`const cats=(($.getNodeData('Get Categories${ai||""}')[0].data.body)&&(($.getNodeData('Get Categories${ai||""}')[0].data.body.data)||$.getNodeData('Get Categories${ai||""}')[0].data.body))||[];\nconst toCat=cats.find(c=>(c.category_name||'').trim()===${JSON.stringify((act.fields.jobCategory||"").trim())});\nconst statuses=(toCat&&(toCat.statuses||toCat.job_statuses))||[];\nconst toStat=${JSON.stringify(act.fields.jobStatus||"")}?statuses.find(s=>(s.status_name||s.job_status_name||'').trim()===${JSON.stringify((act.fields.jobStatus||"").trim())}):null;\nconst jobUid=$.getNodeData('${trig.action_name}')[0].data.body.job.job_uid; // EDIT for your trigger\nreturn { jobUid, categoryPayload:{job:{job_category: toCat?toCat.category_uid:null}}, statusPayload:{job_status_uid: toStat?toStat.status_uid:null} }`,{x:x+=step,y:30});
@@ -701,21 +991,49 @@ function compileFactory(spec,warns){
       if(act.fields.jobCategory){const up=mkHttp("Update Category"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['categoryPayload']}}`,{x:x+=step,y:30});nodes.push(up);conns.push(edge(prev,up.id));prev=up.id;}
       if(act.fields.jobStatus){const up=mkHttp("Update Status"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}/status`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['statusPayload']}}`,{x:x+=step,y:30});nodes.push(up);conns.push(edge(prev,up.id));prev=up.id;}
     } else {
-      warns.push("Action “"+act.operation+"” isn’t compiled to Workflow Builder nodes yet — captured in the spec only.");
+      // Recognised by the parser, no proven endpoint to build from. Say which, so the
+      // export is not mistaken for a complete workflow.
+      const label=(OPS[act.module]&&Object.values(OPS[act.module]).flat().find(o=>o[1]===act.operation)||[act.operation])[0];
+      warns.push("<b>"+esc(label)+"</b> is in the spec but has no nodes: there is no confirmed Zuper endpoint for it yet, and guessing one would produce a workflow that fails at run time. Add that step in the Workflow Builder after importing.");
     }
   });
 
   return [{workflow_name:autoName(),workflow_description:$("#genDesc").value.trim(),workflow_icon:GOLDEN[0].workflow_icon,nodes,connections:conns,meta_data:{variables:{},total_nodes:nodes.length,initial_nodes:[]}}];
 }
-function compileToBuilder(){
+function compileToBuilder(quiet){
   const spec=buildSpec(); const warns=[];
-  if(!spec.actions.length){toast("Add or describe an action first.");return null;}
+  if(!spec.actions.length){ if(!quiet) toast("Add or describe an action first."); return null; }
   let wf;
   const first=spec.actions[0];
-  if(first.operation==="create_job") wf=compileCreateGolden(spec,warns);
+  // The golden clone is a captured customer.create → create job workflow. It is the
+  // best output available, but only for exactly that shape and only when it is the
+  // whole workflow — otherwise the factory assembles every action instead of the
+  // golden silently representing just the first one.
+  const goldenFits = first.operation==="create_job"
+    && spec.when.event_name==="customer.create"
+    && spec.actions.length===1;
+  if(goldenFits) wf=compileCreateGolden(spec,warns);
   else wf=compileFactory(spec,warns);
   rebuildCanvas(wf[0]);
-  return {wf,warns};
+  return {wf,warns,via:goldenFits?"captured template":"assembled"};
+}
+
+/* Compile after every parse so a workflow exists without pressing anything, and show
+   what came out. Failures here must never break typing, hence the try/catch. */
+let _lastBuild=null;
+function autoBuild(){
+  const el=$("#buildPreview"); if(!el) return;
+  let c=null;
+  try{ c=compileToBuilder(true); }catch(e){ el.innerHTML='<div class="warnrow">&#9888; Could not assemble a graph: '+esc(e.message)+'</div>'; return; }
+  if(!c){ el.innerHTML='<div class="hint">Nothing to build yet — describe an action above.</div>'; return; }
+  const w=c.wf[0];
+  const chain=w.nodes.filter(n=>n.action_type!=="NOTE").map(n=>esc(n.action_name||n.node_name)).join(" &rarr; ");
+  el.innerHTML=
+    '<div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:6px">'+
+      'built automatically &middot; '+w.nodes.length+' nodes &middot; '+esc(c.via)+'</div>'+
+    '<div style="font-size:12px;color:var(--dim);line-height:1.7">'+chain+'</div>'+
+    warnHtml(c.warns);
+  _lastBuild=c;
 }
 
 /* rebuild the react-flow canvas layer the importer reads */
@@ -752,20 +1070,27 @@ $("#btnPush").addEventListener("click",()=>{
   const c=compileToBuilder(); if(!c) return;
   if(!S.base){toast("Connect to an account first.");return;}
   openModal("Push to Workflow Builder",`
-    <div class="note"><b>The Workflow Builder&rsquo;s create endpoint isn&rsquo;t confirmed yet.</b> Exporting the JSON and importing via <b>Workflow Builder → Import</b> is the reliable path today and works now. To enable one-click push, open the Workflow Builder, click <b>Save</b> on any workflow with the Network tab recording, and send me that request — I&rsquo;ll wire push to the real endpoint.</div>
+    <div class="note">Pushes to <code>workflows/import</code> on <b>${esc(workflowHost()||"the workflow service")}</b> — the same endpoint the Data Manager tool imports workflows through, so this is a known-good path. It always creates a <b>new</b> workflow and never overwrites an existing one. It arrives inactive; publish it in the Workflow Builder once you have checked the nodes.</div>
     ${warnHtml(c.warns)}
     <pre class="out">${JSON.stringify(c.wf,null,2).replace(/</g,"&lt;")}</pre>
     <div style="display:flex;gap:10px;margin-top:12px"><button class="primary mini" id="doPush">Attempt push</button><button class="ghost mini" id="dl2">Download instead</button></div>
     <div id="pushResult"></div>`);
   $("#dl2").onclick=()=>{const b=new Blob([JSON.stringify(c.wf,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=autoName().replace(/[^a-z0-9]+/gi,"_")+".json";a.click();toast("Downloaded");};
   $("#doPush").onclick=async()=>{
-    setStatus($("#pushResult"),"","Attempting POST to the workflow service&hellip;",true);
-    const wfHost=S.base.replace(/^https:\/\/([^.]+)\.zuperpro\.com/,"https://$1-workflow.zuperpro.com");
+    const wfHost=workflowHost();
+    setStatus($("#pushResult"),"","Uploading to "+esc(wfHost)+"workflows/import&hellip;",true);
     try{
-      const r=await fetch(wfHost.replace(/\/$/,"")+"/workflows",{method:"POST",headers:{"x-api-key":S.key,"Content-Type":"application/json"},body:JSON.stringify(c.wf[0])});
-      if(r.ok) setStatus($("#pushResult"),"ok","Accepted. Check the Workflow Builder list.");
-      else setStatus($("#pushResult"),"err","Returned "+r.status+" — endpoint/schema unconfirmed. Use Export + Import, and send me a captured Save request to enable push.");
-    }catch(e){ setStatus($("#pushResult"),"err","Blocked ("+(e.message||e)+"). Use Export + Import for now."); }
+      // Same contract Data Manager's workflow import uses, which is known to work:
+      // multipart form with the workflow ARRAY as a JSON file part, and no explicit
+      // Content-Type so the browser sets the multipart boundary.
+      const blob=new Blob([JSON.stringify(c.wf)],{type:"application/json"});
+      const form=new FormData();
+      form.append("file",blob,"Workflow-Import.json");
+      const r=await fetch(wfHost+"workflows/import",{method:"POST",headers:zHeaders(false),body:form});
+      const txt=await r.text();
+      if(r.ok) setStatus($("#pushResult"),"ok","Imported. Open the Workflow Builder list to see it — it arrives as a new workflow, never overwriting an existing one.<pre class=\"out\" style=\"max-height:160px\">"+esc(txt.slice(0,600))+"</pre>");
+      else setStatus($("#pushResult"),"err","HTTP "+r.status+" from workflows/import.<pre class=\"out\" style=\"max-height:160px\">"+esc(txt.slice(0,600))+"</pre>");
+    }catch(e){ setStatus($("#pushResult"),"err","Blocked ("+esc(e.message||String(e))+"). Export + Import still works."); }
   };
 });
 
