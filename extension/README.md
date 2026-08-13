@@ -133,6 +133,24 @@ keys and the paginated response shape are taken from Data Manager's `MODULES`, w
 the proven reference for this API. Records are cached for 10 minutes per module, and
 reduced to `{uid, fields}` on arrival rather than held whole.
 
+`API_MODULES` covers the transactional listings plus the **Settings** lists — job
+categories, job statuses, customer notifications, email/SMS templates, product categories,
+trade types, service tasks, asset inspection forms, CPQ formulas, service packages,
+proposal templates and measurement categories. Those endpoints are not uniform, so a
+mapping may also carry `params` (fixed query string), `single` (serves the whole list in
+one response, so page/count are omitted and the batched loop is skipped — it would
+otherwise request the same URL six times) and `flatten` (job statuses arrive nested inside
+their category on the `jobs/category` response). **Custom fields** and **checklists** are
+deliberately absent: they are addressed by a `module_name`, or by a category and status
+pair, that the page's route does not carry, so there is nothing to look them up by.
+
+Route rules are matched **latest-position-wins**, not first-rule-wins, because a route
+names its module at the end: `/job-category/<uid>/job-status` lists statuses, and taking
+the first matching rule badged those rows with their category's UID. Rules at the same
+offset fall back to declaration order, which is why the specific settings rules are
+declared above the generic ones — `job-categories` is matched by `job[-_ ]?categor` and by
+`\bjobs?\b` at the same offset.
+
 Matching tolerates **truncated cells**. Listings ellipsise long values
 (`hannah@hiredgunsre…`), so the visible token can never equal the stored one; a
 short-prefix index recovers those at a lower weight — enough to corroborate a match, not

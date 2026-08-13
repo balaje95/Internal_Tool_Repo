@@ -37,7 +37,24 @@
   // Listing cells are ellipsised ("hannah@hiredgunsre…"), so the visible token is
   // a truncated form of the stored one and can never match exactly. A short
   // prefix index recovers those at a lower weight.
+  // Settings routes come FIRST, and the order is load-bearing. Their slugs contain
+  // the generic words too — "job-categories" contains "job", "product-category"
+  // contains "product", "service-task" contains "service" — so a generic hint
+  // placed above would claim the page and every row would be badged with a
+  // different module's UID.
   const ROUTE_HINTS = [
+    [/job[-_ ]?categor/, 'job_category'],
+    [/job[-_ ]?status|status[-_ ]?workflow/, 'job_status'],
+    [/(customer|client)[-_ ]?notification/, 'customer_notification'],
+    [/(email|sms|message)[-_ ]?template/, 'email_template'],
+    [/(product|part|item)[-_ ]?categor/, 'product_category'],
+    [/trade[-_ ]?type|business[-_ ]?unit/, 'trade_type'],
+    [/service[-_ ]?task/, 'service_task'],
+    [/(asset|inspection)[-_ ]?form|inspection[-_ ]?checklist/, 'asset_form'],
+    [/formula/, 'formula'],
+    [/service[-_ ]?package|\bpackages?\b/, 'package'],
+    [/(proposal|quote)[-_ ]?template/, 'proposal_template'],
+    [/measurement/, 'measurement_category'],
     [/purchase[-_ ]?order/, 'purchase_orders'],
     [/propert/, 'property'],
     [/customer|client/, 'customers'],
@@ -52,6 +69,22 @@
     [/organi[sz]ation|\bcompan/, 'organization'],
   ];
 
+  // Whichever rule matches LATEST in the text wins, not whichever is declared
+  // first. A route names its module at the end, so /job-category/<uid>/job-status
+  // lists statuses — taking the first matching rule labelled those rows with a
+  // category_uid. Equal positions fall back to declaration order, which is why the
+  // specific settings rules above sit ahead of the generic ones ("job-categories"
+  // is matched by both at the same offset).
+  function bestHint(text) {
+    let mod = null;
+    let at = -1;
+    for (const [re, candidate] of ROUTE_HINTS) {
+      const m = re.exec(text);
+      if (m && m.index > at) { at = m.index; mod = candidate; }
+    }
+    return mod;
+  }
+
   // The route names the module. Path and fragment are checked before the query
   // string, so /jobs?customer=… is read as jobs rather than customers.
   function detectModuleFromUrl() {
@@ -61,10 +94,7 @@
     // containing "Users" turning every page into the users module.
     const tail = location.pathname.split('/').filter(Boolean).slice(-3).join('/');
     const path = (tail + ' ' + location.hash.split('?')[0]).toLowerCase();
-    for (const [re, mod] of ROUTE_HINTS) if (re.test(path)) return mod;
-    const rest = (location.search + ' ' + location.hash).toLowerCase();
-    for (const [re, mod] of ROUTE_HINTS) if (re.test(rest)) return mod;
-    return null;
+    return bestHint(path) || bestHint((location.search + ' ' + location.hash).toLowerCase());
   }
 
   // Fallback for routes that do not name their module (opaque ids, /list, #/home).
@@ -97,10 +127,7 @@
 
     let found = null;
     for (const t of texts) {
-      const low = t.toLowerCase();
-      for (const [re, mod] of ROUTE_HINTS) {
-        if (re.test(low)) { found = mod; break; }
-      }
+      found = bestHint(t.toLowerCase());
       if (found) break;
     }
     pageModuleCache = { href: location.href, mod: found };

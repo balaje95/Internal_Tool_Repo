@@ -393,7 +393,7 @@ async function readBadgeStatus() {
       }
     }
     setDiag('UID badges: ' + res.chips + ' shown on ' + host +
-            (res.module ? ' · ' + res.module : '') + detail + '.', 'ok');
+            (res.module ? ' · ' + String(res.module).replace(/_/g, ' ') : '') + detail + '.', 'ok');
     el.refreshRecs.hidden = false;
     return;
   }

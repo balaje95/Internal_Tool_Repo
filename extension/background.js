@@ -208,6 +208,92 @@ const API_MODULES = {
     uid: ['purchase_order_uid', 'uid', '_id'],
     fields: ['reference_number', 'purchase_order_number', 'purchase_order_type'],
   },
+
+  // ---------------------------------------------------------------- settings
+  // The configuration modules behind Zuper's Settings section. Same source as
+  // above — Data Manager's MODULES — including the endpoints that are not
+  // page/count paginated (`single`) and the ones that need fixed query params.
+  job_category: {
+    endpoint: 'jobs/category',
+    params: 'populate_statuses=true',
+    single: true,
+    uid: ['category_uid', 'uid', '_id'],
+    fields: ['category_name'],
+  },
+  // Statuses are nested inside their category on the same endpoint, so the list
+  // is flattened before records are compacted.
+  job_status: {
+    endpoint: 'jobs/category',
+    params: 'populate_statuses=true',
+    single: true,
+    flatten: (list) => list.reduce(
+      (out, cat) => out.concat(Array.isArray(cat.job_statuses) ? cat.job_statuses : []),
+      []
+    ),
+    uid: ['status_uid', 'uid', '_id'],
+    fields: ['status_name', 'status_type'],
+  },
+  customer_notification: {
+    endpoint: 'customer_notification',
+    uid: ['customer_notification_uid', 'notification_uid', 'uid', '_id'],
+    fields: ['notification_name', 'notification_type'],
+  },
+  email_template: {
+    endpoint: 'misc/email_template',
+    params: 'sort=DESC&sort_by=created_at&filter.keyword=',
+    uid: ['template_uid', 'uid', '_id'],
+    fields: ['template_name', 'template_subject', 'template_module'],
+  },
+  product_category: {
+    endpoint: 'products/category',
+    params: 'filter.keyword=',
+    single: true,
+    uid: ['category_uid', 'product_category_uid', 'uid'],
+    fields: ['category_name', 'category_description'],
+  },
+  trade_type: {
+    endpoint: 'business_units',
+    params: 'filter.keyword=&filter.show_all_bu=true',
+    single: true,
+    uid: ['bu_uid', 'business_unit_uid', 'uid'],
+    fields: ['bu_name'],
+  },
+  service_task: {
+    endpoint: 'service_tasks/master',
+    uid: ['service_task_master_uid', 'service_task_uid', 'uid', '_id'],
+    fields: ['service_task_title', 'task_type'],
+  },
+  asset_form: {
+    endpoint: 'assets/inspection_form/master',
+    params: 'sort=DESC&sort_by=created_at&filter.keyword=',
+    uid: ['asset_form_uid', 'uid', '_id'],
+    fields: ['asset_form_name', 'asset_form_description'],
+  },
+  formula: {
+    endpoint: 'invoice_estimate/cpq/formulas',
+    uid: ['formula_uid', 'uid', '_id'],
+    fields: ['formula_name', 'formula_key'],
+  },
+  package: {
+    endpoint: 'invoice_estimate/package',
+    params: 'count=1000',
+    single: true,
+    uid: ['package_uid', 'uid', '_id'],
+    fields: ['package_name', 'package_description'],
+  },
+  proposal_template: {
+    endpoint: 'invoice_estimate/proposal_template',
+    params: 'filter.keyword=',
+    uid: ['proposal_template_uid', 'template_uid', 'uid', '_id'],
+    fields: ['template_name', 'proposal_template_name', 'name'],
+  },
+  measurement_category: {
+    endpoint: 'measurements/categories',
+    params: 'sort=ASC&sort_by=created_at',
+    single: true,
+    uid: ['measurement_category_uid', 'category_uid', 'uid', '_id'],
+    fields: ['measurement_category_name'],
+  },
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -271,6 +357,29 @@ async function resolveDc(apiKey) {
   return resolved;
 }
 
+// Settings endpoints are not uniform: some take page/count, some serve the whole
+// list in one response (`single`), and several need fixed query params before they
+// return anything at all.
+function listUrl(base, cfg, endpoint, page) {
+  const qs = [];
+  if (!cfg.single) qs.push('page=' + page, 'count=' + PAGE_LIMIT);
+  if (cfg.params) qs.push(cfg.params);
+  return base + endpoint + (qs.length ? '?' + qs.join('&') : '');
+}
+
+// The paginated shape is {data:[...]}, but a few config endpoints wrap the array
+// one level deeper. Nothing is guessed beyond "the first array in there".
+function extractList(data) {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object') return [];
+  if (Array.isArray(data.data)) return data.data;
+  const inner = data.data;
+  if (inner && typeof inner === 'object') {
+    for (const k of Object.keys(inner)) if (Array.isArray(inner[k])) return inner[k];
+  }
+  return [];
+}
+
 async function fetchPage(base, cfg, endpoint, apiKey, page) {
   for (let attempt = 0; attempt < 3; attempt++) {
     let res;
@@ -282,7 +391,7 @@ async function fetchPage(base, cfg, endpoint, apiKey, page) {
         body: JSON.stringify(body),
       });
     } else {
-      res = await fetch(base + endpoint + '?page=' + page + '&count=' + PAGE_LIMIT, {
+      res = await fetch(listUrl(base, cfg, endpoint, page), {
         headers: apiHeaders(apiKey, false),
       });
     }
@@ -297,8 +406,10 @@ async function fetchPage(base, cfg, endpoint, apiKey, page) {
       throw new Error('HTTP ' + res.status + ' — ' + text.slice(0, 160));
     }
     const data = await res.json();
-    const list = Array.isArray(data) ? data
-      : (Array.isArray(data.data) ? data.data : []);
+    let list = extractList(data);
+    if (cfg.flatten) {
+      try { list = cfg.flatten(list) || []; } catch (e) { list = []; }
+    }
     return { list, totalPages: data.total_pages || data.totalPages || null };
   }
   throw new Error('Rate limited by Zuper after 3 attempts.');
@@ -345,6 +456,18 @@ async function fetchModuleRecords(moduleKey, apiKey) {
   const records = [];
   let page = 1;
   let stop = false;
+
+  // A `single` endpoint ignores page/count, so the batched loop below would fetch
+  // the identical URL six times and index every record six times over.
+  if (cfg.single) {
+    const { list } = await fetchPage(base, cfg, endpoint, apiKey, 1);
+    for (const rec of list) {
+      const c = compact(rec, cfg);
+      if (c) records.push(c);
+    }
+    recordCache.set(cacheKey, { records, at: Date.now(), truncated: false });
+    return { records, accountName, dcUrl, cached: false, truncated: false, fetchedAt: Date.now() };
+  }
 
   // Whether we ran out of pages naturally or hit the cap. A capped fetch leaves
   // later rows unmatched, and a bare row with no explanation reads as "this record
