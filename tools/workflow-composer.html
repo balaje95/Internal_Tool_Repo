@@ -198,6 +198,19 @@
       </div>
 
       <div class="panel">
+        <p class="eyebrow">Trigger payloads</p>
+        <div class="hint" style="margin-bottom:10px">
+          What a trigger actually sends decides every field path in the generated nodes.
+          This reads the <em>run history</em> of the account's existing workflows and keeps one real
+          payload per trigger — so do the action once in Zuper (create the customer, move the job
+          Qualification&nbsp;&rarr;&nbsp;Approved), then capture it here.
+        </div>
+        <button class="ghost mini" id="btnPayloads" style="width:100%">Capture from run history</button>
+        <div id="payloadStatus"></div>
+        <div id="payloadList"></div>
+      </div>
+
+      <div class="panel">
         <p class="eyebrow">Describe it all</p>
         <div class="field">
           <label for="genDesc">One sentence, split into the three boxes <span id="autoTag"></span></label>
@@ -384,8 +397,19 @@ const NODE_IDS = {
     color:{main:"#2E8B57",background:"#E0F4EC",borderColor:"#8ceac1",iconBackground:"#BEEAD6"}},
   http:{master_node_uid:"a69c5b83-0fcf-4746-a3dd-a357f2fe0646",node_category:"HELPERS",node_name:"http_request",action_key:"http_request",display:"HTTP Request",
     icon:"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/14380500-c678-4798-b3b1-0abc9513abec.svg",
+    color:{main:"#4682B4",background:"#DFEFF9",borderColor:"#E3E5E6",iconBackground:"#C9DCE7"}},
+  // The builder's own branching node. Identity and form-field shape taken from the JN
+  // → Zuper converter, which builds these for production migrations.
+  if_else:{master_node_uid:"19dd8b19-5974-4a2c-9735-a9ca36ac5a4d",node_category:"FLOW",node_name:"if_else",action_key:"if_else",display:"If/Else",
+    icon:"https://s3.ap-south-1.amazonaws.com/staging.in.pro.zuper/attachments/6c287db0-ff7c-11e7-b3a8-29b417a4f3fa/b5fc5141-079b-4d5e-b58e-c309f53d7663.svg",
     color:{main:"#4682B4",background:"#DFEFF9",borderColor:"#E3E5E6",iconBackground:"#C9DCE7"}}
 };
+/* Composer operator → Zuper operation. Only operations seen in a real workflow are
+   used: Empty / Not Empty become an equality against "" rather than an invented
+   IS_EMPTY, because a wrong operation name can make the node unloadable, while an
+   empty-string comparison is both valid and true to the intent. */
+const ZOP={"Equal To":"EQUAL_TO","Not Equal To":"NOT_EQUAL_TO","Contains":"CONTAINS","Not Contains":"NOT_CONTAINS",
+           "Empty":"EQUAL_TO","Not Empty":"NOT_EQUAL_TO"};
 
 const S={base:null,key:null,company:null,categories:[],statuses:{},conds:[],condCache:{},nodeLib:null};
 const $=s=>document.querySelector(s);
@@ -519,6 +543,131 @@ function renderNodeLib(){
 }
 function libNode(key){ return (S.nodeLib&&S.nodeLib.byKey&&S.nodeLib.byKey[key])||null; }
 $("#btnNodeLib").addEventListener("click",fetchNodeLibrary);
+
+/* ================= trigger payload capture =================
+   The one thing that cannot be inferred: what a trigger actually sends. Every field
+   path in a generated node depends on it, and the fallbacks are guesses
+   (body.job?.job_uid ?? body.job_uid). A real payload replaces the guessing.
+
+   Zuper does not expose an event stream a page can subscribe to, so this takes the
+   route that does work from a browser: the account's existing workflows have already
+   run, and each run records the trigger's own output. Fire the event in Zuper, then
+   read it back from the run history. */
+const RUN_LIST_PATHS=[uid=>"workflows/"+uid+"/executions",uid=>"workflows/"+uid+"/runs",uid=>"workflows/"+uid+"/history",
+                      uid=>"workflows/"+uid+"/logs",uid=>"executions?workflow_uid="+uid,uid=>"execution?workflow_uid="+uid,
+                      uid=>"workflow_executions?workflow_uid="+uid,uid=>"logs?workflow_uid="+uid];
+const LS_PAYLOADS="zwc_trigger_payloads_v1";
+try{ const p=JSON.parse(localStorage.getItem(LS_PAYLOADS)||"null"); if(p&&p.byKey) S.payloads=p; }catch(e){}
+
+// Find the trigger's own emitted body inside a run record of unknown shape.
+function harvestBody(run){
+  let best=null;
+  (function walk(n,d){
+    if(!n||d>8||best) return;
+    if(Array.isArray(n)){ n.forEach(x=>walk(x,d+1)); return; }
+    if(typeof n!=="object") return;
+    const isTrig=n.action_type==="TRIGGER"||/trigger/i.test(String(n.node_name||n.type||""));
+    const body=(n.data&&n.data.body)||n.body;
+    if(body&&typeof body==="object"&&Object.keys(body).length){ if(isTrig||!best) best=body; if(isTrig) return; }
+    for(const k in n){ const v=n[k]; if(v&&typeof v==="object") walk(v,d+1); }
+  })(run,0);
+  return best;
+}
+// Note the paths that matter, so generated code can address them exactly.
+function payloadPaths(body){
+  const out={};
+  const probe=(obj,prefix,depth)=>{
+    if(!obj||typeof obj!=="object"||depth>3) return;
+    for(const k in obj){
+      const v=obj[k],p=prefix+"['"+k+"']";
+      if(typeof v==="string"&&UUID_ONLY_RX.test(v)&&/(^|_)uid$/i.test(k)===false&&/^(job|customer|quote|invoice|property|asset)$/i.test(k)) out[k+"_uid"]=p;
+      if(typeof v==="string"&&/(^|_)uid$/i.test(k)) out[k]=p;
+      if(v&&typeof v==="object") probe(v,p,depth+1);
+    }
+  };
+  probe(body,"['body']",0);
+  return out;
+}
+async function capturePayloads(){
+  const btn=$("#btnPayloads");
+  if(!S.base||!S.key){ setStatus($("#payloadStatus"),"err","Connect an account first."); return; }
+  const host=workflowHost();
+  if(!host){ setStatus($("#payloadStatus"),"err","Could not derive the workflow host."); return; }
+  btn.disabled=true;
+  setStatus($("#payloadStatus"),"","Listing workflows&hellip;",true);
+  const base=host.replace(/\/$/,"");
+  let wfs=[];
+  try{
+    const r=await zget(base,"/workflows?sort=DESC&sort_by=created_at&limit=50");
+    const d=r&&r.data;
+    wfs=(d&&(d.data||d.workflows||(Array.isArray(d)?d:[])))||[];
+  }catch(e){}
+  if(!Array.isArray(wfs)||!wfs.length){
+    btn.disabled=false;
+    setStatus($("#payloadStatus"),"err","No workflows came back from <code class=\"k\">workflows</code> on "+esc(base)+", so there is no run history to read. Build one workflow with the trigger you care about, let it fire once, then try again.");
+    return;
+  }
+  setStatus($("#payloadStatus"),"","Reading run history of "+wfs.length+" workflow(s)&hellip;",true);
+  const byKey=(S.payloads&&S.payloads.byKey)||{};
+  let added=0,runsRead=0,pathUsed="";
+  const tried=new Set();
+  for(const wf of wfs.slice(0,25)){
+    const wuid=wf.workflow_uid||wf.uid||wf._id; if(!wuid) continue;
+    // Trigger of this workflow, so the payload can be filed under the right event.
+    const trigNode=(wf.nodes||[]).find(n=>n.action_type==="TRIGGER");
+    const key=(trigNode&&trigNode.action_key)||wf.trigger_event_name||wf.trigger_event||"";
+    let runs=null;
+    for(const mk of RUN_LIST_PATHS){
+      const p=mk(wuid);
+      if(pathUsed&&!p.startsWith(pathUsed.split("?")[0].replace(/\/[0-9a-f-]{36}\//,"/"+wuid+"/"))&&pathUsed) { /* keep trying all on first wf only */ }
+      try{
+        const r=await zget(base,"/"+p);
+        tried.add(p.replace(wuid,"{uid}"));
+        if(r&&r.ok){
+          const d=r.data,list=(d&&(d.data||d.executions||d.runs||d.logs||(Array.isArray(d)?d:[])))||[];
+          if(Array.isArray(list)&&list.length){ runs=list; pathUsed=p.replace(wuid,"{uid}"); break; }
+        }
+      }catch(e){}
+      if(pathUsed) break;   // once a route is known, don't re-probe the others
+    }
+    if(!runs) continue;
+    runsRead+=runs.length;
+    for(const run of runs.slice(0,3)){
+      const body=harvestBody(run);
+      if(!body) continue;
+      const k=key||"(unknown trigger)";
+      if(!byKey[k]){ byKey[k]={action_key:k,body,paths:payloadPaths(body),at:new Date().toISOString(),from:pathUsed}; added++; }
+    }
+  }
+  S.payloads={byKey,at:new Date().toISOString()};
+  try{ localStorage.setItem(LS_PAYLOADS,JSON.stringify(S.payloads)); }catch(e){}
+  btn.disabled=false;
+  renderPayloads();
+  const have=Object.keys(byKey).length;
+  if(!have){
+    setStatus($("#payloadStatus"),"err","Read "+wfs.length+" workflow(s) but found no run payloads."+
+      (tried.size?"<br><span style=\"font-size:10.5px\">Tried: "+esc([...tried].join(" · "))+"</span>":"")+
+      "<br>If the Workflow Builder shows a run log in the UI, capture that request and the route can be added.");
+  }else{
+    setStatus($("#payloadStatus"),"ok","<b>"+have+"</b> trigger payload(s) known"+(added?" ("+added+" new)":"")+
+      (pathUsed?" via <code class=\"k\">"+esc(pathUsed)+"</code>":"")+". Generated nodes now address these fields directly.");
+  }
+  autoBuild();
+}
+function renderPayloads(){
+  const el=$("#payloadList"); if(!el) return;
+  const p=S.payloads&&S.payloads.byKey;
+  if(!p||!Object.keys(p).length){ el.innerHTML=""; return; }
+  el.innerHTML='<div style="margin-top:10px;max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:9px">'+
+    Object.values(p).map(x=>'<div style="padding:6px 9px;border-bottom:1px solid var(--line-2);font-size:10.5px">'+
+      '<code class="k">'+esc(x.action_key)+'</code>'+
+      '<div style="color:var(--faint);font-family:var(--mono);font-size:9.5px;margin-top:3px;word-break:break-all">'+
+        esc(Object.keys(x.paths||{}).slice(0,4).join(", ")||"top-level keys: "+Object.keys(x.body||{}).slice(0,5).join(", "))+
+      '</div></div>').join("")+'</div>';
+}
+function payloadFor(key){ return (S.payloads&&S.payloads.byKey&&S.payloads.byKey[key])||null; }
+$("#btnPayloads").addEventListener("click",capturePayloads);
+renderPayloads();
 
 /* ================= WHEN ================= */
 function fillModules(){const m=$("#tModule");m.innerHTML="";CAT.forEach((c,i)=>{const o=document.createElement("option");o.value=i;o.textContent=c.label;m.appendChild(o);});fillEvents();}
@@ -1089,6 +1238,13 @@ function mkTriggerNode(evKey,exclude,warns){
 function mkCode(name,code,pos){const d=nodeDefs("code");return{id:`code_code${uuid()}`,input:1,output:1,module:"",node_uid:uuid(),position:pos,is_active:true,node_icon:d.icon,node_name:d.node_name,action_key:d.action_key,action_name:name,action_type:"ACTION",node_category:d.node_category,description:"Run custom javascript code",master_node_uid:d.master_node_uid,node_display_name:d.display,color:d.color,form_fields:{code}};}
 function mkHttp(name,method,urlExpr,bodyExpr,pos){const d=nodeDefs("http");const ff={url:{type:"EXPRESSION",value:urlExpr},method:{type:"FIXED",value:method},timeout:{type:"FIXED",value:60},password:{type:"FIXED",value:""},username:{type:"FIXED",value:""},json_body:{type:"EXPRESSION",value:bodyExpr||""},send_body:{type:"FIXED",value:!!bodyExpr},ignore_ssl:{type:"FIXED",value:false},content_type:{type:"FIXED",value:"application/json"},error_action:{type:"FIXED",value:"STOP"},send_headers:{type:"FIXED",value:true},raw_body_data:{type:"FIXED",value:""},authentication:{type:"FIXED",value:"NONE"},body_data_type:{type:"FIXED",value:bodyExpr?"JSON":""},query_parameters:[],send_query_param:{type:"FIXED",value:false},body_content_type:{type:"FIXED",value:"JSON"},header_parameters:[{header_key:{type:"FIXED",value:"x-api-key"},header_value:{type:"EXPRESSION",value:"{{$.getNodeData('Configs')[0]['data']['zuperApiKey']}}"}}],form_data_parameters:[]};return{id:`http_request_http_request${uuid()}`,color:d.color,input:1,output:2,module:"",node_uid:uuid(),position:pos,is_active:true,node_icon:d.icon,node_name:d.node_name,action_key:d.action_key,action_name:name,action_type:"ACTION",credentials:{},node_category:d.node_category,master_node_uid:d.master_node_uid,node_display_name:d.display,form_fields:ff};}
 function edge(src,tgt){return{id:`reactflow__edge-${src}one-a-${tgt}a`,type:"buttonEdge",source:src,target:tgt,markerEnd:{type:"arrow"},sourceHandle:"one-a",targetHandle:"a"};}
+/* Two-output nodes (If/Else) branch on handles: two-a is TRUE, two-b is FALSE, and
+   output_value is what the canvas and the engine read. Handle names from the JN
+   converter, which wires these for production migrations. */
+function edgeBranch(src,tgt,handle,outVal){
+  return{id:`reactflow__edge-${src}${handle}-${tgt}a`,type:"buttonEdge",source:src,target:tgt,
+    markerEnd:{type:"arrow"},output_value:outVal,sourceHandle:handle,targetHandle:"a"};
+}
 function triggerEdge(src,tgt){return{id:`reactflow__edge-${src}trigger-a-${tgt}a`,type:"buttonEdge",source:src,target:tgt,markerEnd:{type:"arrow"},sourceHandle:"trigger-a",targetHandle:"a"};}
 
 /* create-job via the proven golden template (best fidelity for customer.create) */
@@ -1125,12 +1281,71 @@ function compileCreateGolden(spec,warns){
 }
 /* Trigger payloads differ per event and the tool cannot know each shape, so generated
    code resolves the ids it needs defensively instead of assuming one layout. */
-function trigResolver(trigName){
+function trigResolver(trigName,evKey){
   const g=`$.getNodeData(${JSON.stringify(trigName)})`;
-  return `// Trigger payload shapes vary by event — resolve defensively.\n`+
-    `const _t = ${g}[0] || {};\nconst body = (_t.data && _t.data.body) || {};\n`+
+  const cap=payloadFor(evKey);
+  const head=`const _t = ${g}[0] || {};\nconst body = (_t.data && _t.data.body) || {};\n`;
+  if(cap&&cap.paths){
+    // A real payload was captured for this trigger, so address it exactly and keep the
+    // defensive form only as a fallback for the fields it did not contain.
+    const pick=(names,fallback)=>{
+      for(const n of names){ if(cap.paths[n]) return "_t.data"+cap.paths[n]; }
+      return fallback;
+    };
+    const jp=pick(["job_uid","job"],"(body.job && (body.job.job_uid || body.job)) || body.job_uid || null");
+    const cp=pick(["customer_uid","customer"],"(body.customer && (body.customer.customer_uid || body.customer)) || body.customer_uid || null");
+    return `// Field paths below come from a real ${evKey} payload captured from this\n`+
+      `// account's run history, not from a guess.\n`+head+
+      `const jobUid = ${jp};\nconst customerUid = ${cp};\n`;
+  }
+  return `// Trigger payload shapes vary by event and none was captured for ${evKey||"this trigger"} —\n`+
+    `// resolve defensively. Capture one in the tool to make these paths exact.\n`+head+
     `const jobUid = (body.job && (body.job.job_uid || body.job)) || body.job_uid || null;\n`+
     `const customerUid = (body.customer && (body.customer.customer_uid || body.customer)) || body.customer_uid || null;\n`;
+}
+
+/* A field's expression path inside the trigger payload. Prefers a captured payload,
+   then the job-shaped path the JN converter proves, then a flat lookup. */
+function condExpr(trigName,evKey,field){
+  const cap=payloadFor(evKey);
+  if(cap){
+    if(cap.paths&&cap.paths[field]) return `{{$.getLatestNodeData('${trigName}')['data']${cap.paths[field]}}}`;
+    const mod=(evKey||"").split(".")[0];
+    if(cap.body&&cap.body[mod]&&typeof cap.body[mod]==="object")
+      return `{{$.getLatestNodeData('${trigName}')['data']['body']['${mod}']['${field}']}}`;
+    if(cap.body&&Object.prototype.hasOwnProperty.call(cap.body,field))
+      return `{{$.getLatestNodeData('${trigName}')['data']['body']['${field}']}}`;
+  }
+  if(/^job\./.test(evKey||"")) return `{{$.getLatestNodeData('${trigName}')['data']['body']['job']['${field}']}}`;
+  return `{{$.getLatestNodeData('${trigName}')['data']['body']['${field}']}}`;
+}
+
+/* Native If/Else node. Replaces the code-node guard, which stopped a run by throwing —
+   that marked every non-matching record as a FAILED run in the workflow log, when
+   "conditions not met" is a normal outcome, not an error. */
+function mkIfElse(spec,trigName,pos,warns){
+  const d=nodeDefs("if_else");
+  const conditions=spec.conditions.map(c=>{
+    const isEmpty=/Empty/.test(c.operator);
+    return {
+      value1:{type:"EXPRESSION",value:condExpr(trigName,spec.when.event_name,c.field)},
+      value2:{type:"FIXED",value:isEmpty?"":(c.value==null?"":c.value)},
+      field_key:"STRING",
+      operation:{type:"FIXED",value:ZOP[c.operator]||"EQUAL_TO"}
+    };
+  });
+  if(!payloadFor(spec.when.event_name))
+    warns.push("The If/Else node addresses <code>"+esc(spec.conditions.map(c=>c.field).join(", "))+"</code> using the usual payload layout — no real <b>"+esc(spec.when.event_name)+"</b> payload has been captured, so check those paths, or capture one in the Trigger payloads panel.");
+  if(spec.conditions.some(c=>/Empty/.test(c.operator)))
+    warns.push("Empty / Not Empty compile to an equality against an empty string, since Zuper's own operation name for emptiness is unconfirmed.");
+  return {
+    id:`if_else_if_else${uuid()}`,color:d.color,input:1,output:2,module:"",node_uid:uuid(),position:pos,is_active:true,
+    node_icon:d.icon,node_name:d.node_name,action_key:d.action_key,
+    action_name:spec.conditions.length===1?("Check: "+spec.conditions[0].field):("Check "+spec.conditions.length+" conditions"),
+    action_type:"ACTION",credentials:{},description:"Route items to different branch",
+    form_fields:{combine:{type:"FIXED",value:"AND"},conditions},
+    node_category:d.node_category,master_node_uid:d.master_node_uid,node_display_name:d.display
+  };
 }
 const CATS_URL="{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/category?populate_statuses=true";
 function catsFrom(nodeName){
@@ -1151,11 +1366,21 @@ function compileFactory(spec,warns){
   const cfg=mkCode("Configs",`const zuperBaseURL = VARIABLE.BASE_URL\nconst zuperApiKey = VARIABLE.API_KEY\nconst timeZone = VARIABLE.ZUPER_COMPANY_TIMEZONE\nreturn { zuperBaseURL, zuperApiKey, timeZone }`,nextPos());
   const nodes=[trig,cfg]; const conns=[triggerEdge(trig.id,cfg.id)]; let prev=cfg.id;
 
+  // Conditions become the builder's own If/Else node, and the actions hang off its
+  // TRUE branch. FALSE is left unconnected: the run simply ends, rather than being
+  // recorded as a failure the way a throwing guard did.
+  let branchHandle=null;
   if(spec.conditions.length){
-    const checks=spec.conditions.map(c=>`{field:${JSON.stringify(c.field)},operator:${JSON.stringify(c.operator)},value:${JSON.stringify(c.value)}}`).join(",");
-    const guard=mkCode("Guard",`// Best-effort condition guard. Adjust field paths to your trigger payload.\nconst conditions = [${checks}];\nconst payload = $.getNodeData('${trig.action_name}')[0].data.body || {};\nfunction val(f){ return payload[f]; }\nfunction pass(c){ const v=(val(c.field)||'')+''; const t=(c.value||'')+'';\n  switch(c.operator){case 'Equal To':return v===t;case 'Not Equal To':return v!==t;case 'Contains':return v.includes(t);case 'Not Contains':return !v.includes(t);case 'Empty':return !v;case 'Not Empty':return !!v;default:return true;} }\nif(!conditions.every(pass)) throw new Error('Conditions not met — stopping');\nreturn { ok:true }`,nextPos());
-    nodes.push(guard); conns.push(edge(prev,guard.id)); prev=guard.id; warns.push("Conditions compiled into a Guard code node — verify the field paths match your trigger payload.");
+    const ife=mkIfElse(spec,trig.action_name,nextPos(),warns);
+    // Plain edge INTO the If/Else — the branching happens on the way out.
+    nodes.push(ife); conns.push(edge(prev,ife.id)); prev=ife.id; branchHandle="two-a";
   }
+  // The first edge leaving the If/Else must be its TRUE branch; everything after is an
+  // ordinary single-output link.
+  const link=(src,tgt)=>{
+    if(branchHandle){const e=edgeBranch(src,tgt,branchHandle,true);branchHandle=null;return e;}
+    return edge(src,tgt);
+  };
 
   spec.actions.forEach((act,ai)=>{
     const sfx=ai?String(ai):"";
@@ -1186,7 +1411,7 @@ function compileFactory(spec,warns){
         `return { payload };`,nextPos());
       const post=mkHttp("Create Job"+sfx,"POST","{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs",
         `{{$.getNodeData('Payload${sfx}')[0]['data']['payload']}}`,nextPos());
-      nodes.push(getCats,pay,post); conns.push(edge(prev,getCats.id),edge(getCats.id,pay.id),edge(pay.id,post.id)); prev=post.id;
+      nodes.push(getCats,pay,post); conns.push(link(prev,getCats.id),edge(getCats.id,pay.id),edge(pay.id,post.id)); prev=post.id;
       if(!catName) warns.push("Create Job has no category — the generated code will throw until you set one.");
       if(!/^customer\./.test(spec.when.event_name)) warns.push("Create Job takes its customer from the trigger payload; on a non-customer trigger check that <code>customerUid</code> resolves.");
       return;
@@ -1203,7 +1428,7 @@ function compileFactory(spec,warns){
         `return { payload };`,nextPos());
       const post=mkHttp("Create Customer"+sfx,"POST","{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/customers",
         `{{$.getNodeData('Customer Payload${sfx}')[0]['data']['payload']}}`,nextPos());
-      nodes.push(pay,post); conns.push(edge(prev,pay.id),edge(pay.id,post.id)); prev=post.id;
+      nodes.push(pay,post); conns.push(link(prev,pay.id),edge(pay.id,post.id)); prev=post.id;
       warns.push("Create Customer maps only name / email / phone from the trigger payload — fill in the rest in the Payload node.");
       return;
     }
@@ -1213,15 +1438,15 @@ function compileFactory(spec,warns){
       if(!f.url){ warns.push("HTTP Request has no URL — skipped."); return; }
       const h=mkHttp("HTTP"+sfx,(f.method||"POST").toUpperCase(),f.url,f.body||"",nextPos());
       if(f.body) h.form_fields.json_body={type:"FIXED",value:f.body};
-      nodes.push(h); conns.push(edge(prev,h.id)); prev=h.id;
+      nodes.push(h); conns.push(link(prev,h.id)); prev=h.id;
       return;
     }
     if(act.operation==="update_job"){
       const getCats=mkHttp("Get Categories"+(ai||""),"GET","{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/category?populate_statuses=true","",nextPos());
-      const resolve=mkCode("Resolve"+(ai||""),`const cats=(($.getNodeData('Get Categories${ai||""}')[0].data.body)&&(($.getNodeData('Get Categories${ai||""}')[0].data.body.data)||$.getNodeData('Get Categories${ai||""}')[0].data.body))||[];\nconst toCat=cats.find(c=>(c.category_name||'').trim()===${JSON.stringify((act.fields.jobCategory||"").trim())});\nconst statuses=(toCat&&(toCat.statuses||toCat.job_statuses))||[];\nconst toStat=${JSON.stringify(act.fields.jobStatus||"")}?statuses.find(s=>(s.status_name||s.job_status_name||'').trim()===${JSON.stringify((act.fields.jobStatus||"").trim())}):null;\nconst jobUid=$.getNodeData('${trig.action_name}')[0].data.body.job.job_uid; // EDIT for your trigger\nreturn { jobUid, categoryPayload:{job:{job_category: toCat?toCat.category_uid:null}}, statusPayload:{job_status_uid: toStat?toStat.status_uid:null} }`,nextPos());
-      nodes.push(getCats,resolve); conns.push(edge(prev,getCats.id),edge(getCats.id,resolve.id)); prev=resolve.id;
-      if(act.fields.jobCategory){const up=mkHttp("Update Category"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['categoryPayload']}}`,nextPos());nodes.push(up);conns.push(edge(prev,up.id));prev=up.id;}
-      if(act.fields.jobStatus){const up=mkHttp("Update Status"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}/status`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['statusPayload']}}`,nextPos());nodes.push(up);conns.push(edge(prev,up.id));prev=up.id;}
+      const resolve=mkCode("Resolve"+(ai||""),`const cats=(($.getNodeData('Get Categories${ai||""}')[0].data.body)&&(($.getNodeData('Get Categories${ai||""}')[0].data.body.data)||$.getNodeData('Get Categories${ai||""}')[0].data.body))||[];\nconst toCat=cats.find(c=>(c.category_name||'').trim()===${JSON.stringify((act.fields.jobCategory||"").trim())});\nconst statuses=(toCat&&(toCat.statuses||toCat.job_statuses))||[];\nconst toStat=${JSON.stringify(act.fields.jobStatus||"")}?statuses.find(s=>(s.status_name||s.job_status_name||'').trim()===${JSON.stringify((act.fields.jobStatus||"").trim())}):null;\n${trigResolver(trig.action_name,spec.when.event_name)}return { jobUid, categoryPayload:{job:{job_category: toCat?toCat.category_uid:null}}, statusPayload:{job_status_uid: toStat?toStat.status_uid:null} }`,nextPos());
+      nodes.push(getCats,resolve); conns.push(link(prev,getCats.id),edge(getCats.id,resolve.id)); prev=resolve.id;
+      if(act.fields.jobCategory){const up=mkHttp("Update Category"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['categoryPayload']}}`,nextPos());nodes.push(up);conns.push(link(prev,up.id));prev=up.id;}
+      if(act.fields.jobStatus){const up=mkHttp("Update Status"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}/status`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['statusPayload']}}`,nextPos());nodes.push(up);conns.push(link(prev,up.id));prev=up.id;}
     } else {
       // Recognised by the parser, no proven endpoint to build from. Say which, so the
       // export is not mistaken for a complete workflow.
