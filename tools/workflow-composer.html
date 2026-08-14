@@ -501,34 +501,111 @@ function harvestNodes(data){
 }
 const UUID_ONLY_RX=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/* The account's own workflows, fetched once and shared by both harvesters. The list
+   endpoint is the one Data Manager uses, so it is known to work; list rows may omit
+   `nodes`, in which case each workflow is read individually. */
+async function loadAccountWorkflows(progress){
+  if(S.wfCache&&S.wfCache.length) return S.wfCache;
+  const base=workflowHost().replace(/\/$/,"");
+  if(!base) throw new Error("Could not derive the workflow host.");
+  const r=await zget(base,"/workflows?sort=DESC&sort_by=created_at&limit=100");
+  if(!r||!r.ok) throw new Error("workflows returned HTTP "+((r&&r.status)||"?"));
+  const d=r.data;
+  const list=(d&&(d.data||d.workflows))||(Array.isArray(d)?d:[]);
+  if(!Array.isArray(list)||!list.length) throw new Error("The workflows list came back empty.");
+  // Fill in definitions for rows that arrived without nodes.
+  const need=list.filter(w=>!Array.isArray(w.nodes)||!w.nodes.length).slice(0,40);
+  let done=0;
+  const CONC=4;
+  let idx=0;
+  await Promise.all(Array.from({length:Math.min(CONC,need.length)},async()=>{
+    while(idx<need.length){
+      const w=need[idx++];
+      const uid=w.workflow_uid||w.uid||w._id; if(!uid) continue;
+      try{
+        const one=await zget(base,"/workflows/"+encodeURIComponent(uid));
+        const od=one&&one.ok&&one.data;
+        const full=(od&&(od.data||od.workflow))||od;
+        if(full&&Array.isArray(full.nodes)) Object.assign(w,full);
+      }catch(e){}
+      done++;
+      if(progress) progress(done,need.length);
+    }
+  }));
+  S.wfCache=list;
+  return list;
+}
+
+/* Node identities, harvested from the account's existing workflows.
+   Better than a palette endpoint: these are the IDs this account's own working
+   workflows use, and they arrive with the node's category, icon, colours and
+   form-field names. A palette route is still tried first in case one exists. */
 async function fetchNodeLibrary(){
   const btn=$("#btnNodeLib");
   if(!S.base||!S.key){ setStatus($("#nodeLibStatus"),"err","Connect an account first."); return; }
   const host=workflowHost();
   if(!host){ setStatus($("#nodeLibStatus"),"err","Could not derive the workflow host from "+esc(S.base)+"."); return; }
   btn.disabled=true;
-  setStatus($("#nodeLibStatus"),"","Asking "+esc(host)+" for its node palette&hellip;",true);
+  const base=host.replace(/\/$/,"");
   const tried=[];
+  let found={},from="";
+
+  setStatus($("#nodeLibStatus"),"","Trying a node-palette route&hellip;",true);
   for(const p of NODE_LIB_PATHS){
     let r=null;
-    try{ r=await zget(host.replace(/\/$/,""),"/"+p); }catch(e){ tried.push(p+" → "+e.message); continue; }
+    try{ r=await zget(base,"/"+p); }catch(e){ tried.push(p+" → "+e.message); continue; }
     if(!r||!r.ok){ tried.push(p+" → HTTP "+((r&&r.status)||"?")); continue; }
-    const found=harvestNodes(r.data);
-    const n=Object.keys(found).length;
-    if(!n){ tried.push(p+" → 200 but no nodes in the response"); continue; }
-    S.nodeLib={byKey:found,from:p,at:new Date().toISOString(),host};
-    try{ localStorage.setItem(LS_NODELIB,JSON.stringify(S.nodeLib)); }catch(e){}
-    btn.disabled=false;
-    renderNodeLib();
-    setStatus($("#nodeLibStatus"),"ok","<b>"+n+"</b> node types from <code class=\"k\">"+esc(p)+"</code>. Exports now use these IDs.");
-    syncEventKey();
-    autoBuild();
+    const got=harvestNodes(r.data);
+    if(Object.keys(got).length){ found=got; from=p; break; }
+    // 200 with nothing recognisable: record the shape so it can be taught, rather
+    // than reporting a bare "no nodes".
+    const keys=r.data&&typeof r.data==="object"?Object.keys(r.data).slice(0,6).join("/"):typeof r.data;
+    tried.push(p+" → 200, keys: "+keys);
+  }
+
+  if(!Object.keys(found).length){
+    setStatus($("#nodeLibStatus"),"","No palette route — reading the account's own workflows instead&hellip;",true);
+    try{
+      const wfs=await loadAccountWorkflows((d,t)=>setStatus($("#nodeLibStatus"),"","Reading workflow "+d+" of "+t+"&hellip;",true));
+      let contributors=0;
+      for(const w of wfs){
+        if(!Array.isArray(w.nodes)||!w.nodes.length) continue;
+        contributors++;
+        for(const n of w.nodes){
+          const key=n.action_key||n.node_name;
+          const master=n.master_node_uid;
+          if(!key||!master||!UUID_ONLY_RX.test(master)) continue;
+          if(found[key]){ found[key].seen++; continue; }
+          found[key]={action_key:key,master_node_uid:master,name:n.node_display_name||n.action_name||key,
+            icon:n.node_icon||"",color:n.color||null,type:n.action_type||"ACTION",
+            node_category:n.node_category||"",node_name:n.node_name||key,
+            fields:n.form_fields?Object.keys(n.form_fields).slice(0,12):[],seen:1};
+        }
+      }
+      from=contributors+" existing workflow(s)";
+    }catch(e){
+      btn.disabled=false;
+      setStatus($("#nodeLibStatus"),"err","Could not read the account's workflows: "+esc(e.message)+
+        (tried.length?"<br><span style=\"font-size:10.5px\">Palette routes tried: "+esc(tried.join(" · "))+"</span>":""));
+      return;
+    }
+  }
+
+  btn.disabled=false;
+  const n=Object.keys(found).length;
+  if(!n){
+    setStatus($("#nodeLibStatus"),"err","Found no node identities."+
+      (tried.length?"<br><span style=\"font-size:10.5px\">Tried: "+esc(tried.join(" · "))+"</span>":""));
     return;
   }
-  btn.disabled=false;
-  setStatus($("#nodeLibStatus"),"err",
-    "No palette endpoint answered, so exports keep the captured IDs.<br><span style=\"font-size:10.5px\">Tried: "+
-    esc(tried.join(" · "))+"</span><br>If you can capture the request the Workflow Builder makes when it opens its node picker, that route can be added.");
+  S.nodeLib={byKey:found,from,at:new Date().toISOString(),host};
+  try{ localStorage.setItem(LS_NODELIB,JSON.stringify(S.nodeLib)); }catch(e){}
+  renderNodeLib();
+  const trigs=Object.values(found).filter(x=>x.type==="TRIGGER"||/\./.test(x.action_key)).length;
+  setStatus($("#nodeLibStatus"),"ok","<b>"+n+"</b> node types ("+trigs+" trigger"+(trigs===1?"":"s")+") from "+esc(from)+
+    ". Exports now use these IDs.");
+  syncEventKey();
+  autoBuild();
 }
 function renderNodeLib(){
   const el=$("#nodeLibList"); if(!el) return;
@@ -588,69 +665,140 @@ function payloadPaths(body){
   probe(body,"['body']",0);
   return out;
 }
+/* How a workflow's own nodes address its trigger. Someone built these against the
+   real payload and they work, so the expressions are evidence of the actual shape —
+   available without any run-log route. From the reference template:
+     {{$.getNodeData('New Customer')[0]['data']['body']['customer']}}
+   tells you customer.create puts the customer uid at body.customer. */
+function harvestTriggerPaths(wf){
+  const trig=(wf.nodes||[]).find(n=>n.action_type==="TRIGGER");
+  if(!trig) return null;
+  const key=trig.action_key||wf.trigger_event_name||"";
+  const name=trig.action_name||"";
+  if(!key||!name) return null;
+  const text=JSON.stringify(wf.nodes||[]);
+  const esc_=name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  const rx=new RegExp("get(?:Latest)?NodeData\\(\\\\?'"+esc_+"\\\\?'\\)\\[0\\]((?:\\['[^']+'\\])+)","g");
+  const observed=new Set();
+  let m;
+  while((m=rx.exec(text))){
+    // Drop the leading ['data'] so what remains is the payload path itself.
+    const suffix=m[1].replace(/^\['data'\]/,"");
+    if(/^\['body'\]/.test(suffix)) observed.add(suffix);
+  }
+  if(!observed.size) return null;
+  return {key,observed:[...observed]};
+}
+/* Name the paths the generators ask for: job_uid / job / customer_uid / customer.
+   Stored WITHOUT a leading ['data'] so both sources — these and payloadPaths() — are
+   in the same form and the consumers can prefix once. */
+function pathsFromObserved(list){
+  const out={};
+  for(const p of list){
+    const segs=(p.match(/\['([^']+)'\]/g)||[]).map(s=>s.slice(2,-2));
+    const last=segs[segs.length-1];
+    if(last&&!out[last]) out[last]=p;
+  }
+  return out;
+}
+
 async function capturePayloads(){
   const btn=$("#btnPayloads");
   if(!S.base||!S.key){ setStatus($("#payloadStatus"),"err","Connect an account first."); return; }
-  const host=workflowHost();
-  if(!host){ setStatus($("#payloadStatus"),"err","Could not derive the workflow host."); return; }
+  if(!workflowHost()){ setStatus($("#payloadStatus"),"err","Could not derive the workflow host."); return; }
   btn.disabled=true;
-  setStatus($("#payloadStatus"),"","Listing workflows&hellip;",true);
-  const base=host.replace(/\/$/,"");
-  let wfs=[];
-  try{
-    const r=await zget(base,"/workflows?sort=DESC&sort_by=created_at&limit=50");
-    const d=r&&r.data;
-    wfs=(d&&(d.data||d.workflows||(Array.isArray(d)?d:[])))||[];
-  }catch(e){}
-  if(!Array.isArray(wfs)||!wfs.length){
-    btn.disabled=false;
-    setStatus($("#payloadStatus"),"err","No workflows came back from <code class=\"k\">workflows</code> on "+esc(base)+", so there is no run history to read. Build one workflow with the trigger you care about, let it fire once, then try again.");
-    return;
-  }
-  setStatus($("#payloadStatus"),"","Reading run history of "+wfs.length+" workflow(s)&hellip;",true);
+  const base=workflowHost().replace(/\/$/,"");
+  setStatus($("#payloadStatus"),"","Reading the account's workflows&hellip;",true);
+  let wfs;
+  try{ wfs=await loadAccountWorkflows((d,t)=>setStatus($("#payloadStatus"),"","Reading workflow "+d+" of "+t+"&hellip;",true)); }
+  catch(e){ btn.disabled=false; setStatus($("#payloadStatus"),"err",esc(e.message)); return; }
+
   const byKey=(S.payloads&&S.payloads.byKey)||{};
-  let added=0,runsRead=0,pathUsed="";
+  let fromExpr=0,fromPinned=0,fromRuns=0;
+
+  // 1. Field paths from how existing workflows address their trigger.
+  for(const wf of wfs){
+    const h=harvestTriggerPaths(wf);
+    if(!h) continue;
+    const cur=byKey[h.key];
+    const merged=new Set([...(cur&&cur.observed||[]),...h.observed]);
+    byKey[h.key]={action_key:h.key,observed:[...merged],paths:pathsFromObserved([...merged]),
+      body:(cur&&cur.body)||null,at:new Date().toISOString(),
+      from:(cur&&cur.body)?cur.from:"expressions in "+esc(wf.workflow_name||"a workflow")};
+    if(!cur) fromExpr++;
+  }
+
+  // 2. A pinned sample on a trigger node is a real captured payload.
+  for(const wf of wfs){
+    const trig=(wf.nodes||[]).find(n=>n.action_type==="TRIGGER");
+    if(!trig||!trig.pinned_data) continue;
+    let pd=trig.pinned_data;
+    if(typeof pd==="string"){ try{ pd=JSON.parse(pd); }catch(e){ continue; } }
+    const body=harvestBody(pd)||(pd&&pd.body)||null;
+    if(!body||typeof body!=="object") continue;
+    const key=trig.action_key||"";
+    if(!key) continue;
+    const cur=byKey[key]||{action_key:key,observed:[]};
+    byKey[key]={...cur,body,paths:{...payloadPaths(body),...(cur.paths||{})},at:new Date().toISOString(),from:"pinned sample on "+esc(wf.workflow_name||"a workflow")};
+    fromPinned++;
+  }
+
+  // 3. Run history, if any route serves it. Probed on the first workflow only.
   const tried=new Set();
-  for(const wf of wfs.slice(0,25)){
-    const wuid=wf.workflow_uid||wf.uid||wf._id; if(!wuid) continue;
-    // Trigger of this workflow, so the payload can be filed under the right event.
-    const trigNode=(wf.nodes||[]).find(n=>n.action_type==="TRIGGER");
-    const key=(trigNode&&trigNode.action_key)||wf.trigger_event_name||wf.trigger_event||"";
-    let runs=null;
+  let runPath="";
+  const first=wfs.find(w=>w.workflow_uid||w.uid||w._id);
+  if(first){
+    const wuid=first.workflow_uid||first.uid||first._id;
     for(const mk of RUN_LIST_PATHS){
       const p=mk(wuid);
-      if(pathUsed&&!p.startsWith(pathUsed.split("?")[0].replace(/\/[0-9a-f-]{36}\//,"/"+wuid+"/"))&&pathUsed) { /* keep trying all on first wf only */ }
-      try{
-        const r=await zget(base,"/"+p);
-        tried.add(p.replace(wuid,"{uid}"));
-        if(r&&r.ok){
-          const d=r.data,list=(d&&(d.data||d.executions||d.runs||d.logs||(Array.isArray(d)?d:[])))||[];
-          if(Array.isArray(list)&&list.length){ runs=list; pathUsed=p.replace(wuid,"{uid}"); break; }
-        }
-      }catch(e){}
-      if(pathUsed) break;   // once a route is known, don't re-probe the others
-    }
-    if(!runs) continue;
-    runsRead+=runs.length;
-    for(const run of runs.slice(0,3)){
-      const body=harvestBody(run);
-      if(!body) continue;
-      const k=key||"(unknown trigger)";
-      if(!byKey[k]){ byKey[k]={action_key:k,body,paths:payloadPaths(body),at:new Date().toISOString(),from:pathUsed}; added++; }
+      const label=p.replace(wuid,"{uid}");
+      tried.add(label);                                  // record BEFORE awaiting, so a
+      let r=null;                                        // network failure still shows up
+      try{ r=await zget(base,"/"+p); }catch(e){ continue; }
+      if(r&&r.ok){
+        const d=r.data,list=(d&&(d.data||d.executions||d.runs||d.logs))||(Array.isArray(d)?d:[]);
+        if(Array.isArray(list)&&list.length){ runPath=label; break; }
+      }
     }
   }
+  if(runPath){
+    setStatus($("#payloadStatus"),"","Run history found — reading payloads&hellip;",true);
+    for(const wf of wfs.slice(0,20)){
+      const wuid=wf.workflow_uid||wf.uid||wf._id; if(!wuid) continue;
+      const trig=(wf.nodes||[]).find(n=>n.action_type==="TRIGGER");
+      const key=(trig&&trig.action_key)||wf.trigger_event_name||""; if(!key) continue;
+      if(byKey[key]&&byKey[key].body) continue;          // already have a real body
+      try{
+        const r=await zget(base,"/"+runPath.replace("{uid}",wuid));
+        const d=r&&r.ok&&r.data;
+        const list=(d&&(d.data||d.executions||d.runs||d.logs))||(Array.isArray(d)?d:[]);
+        for(const run of (list||[]).slice(0,3)){
+          const body=harvestBody(run);
+          if(!body) continue;
+          const cur=byKey[key]||{action_key:key,observed:[]};
+          byKey[key]={...cur,body,paths:{...payloadPaths(body),...(cur.paths||{})},at:new Date().toISOString(),from:"run history ("+runPath+")"};
+          fromRuns++; break;
+        }
+      }catch(e){}
+    }
+  }
+
   S.payloads={byKey,at:new Date().toISOString()};
   try{ localStorage.setItem(LS_PAYLOADS,JSON.stringify(S.payloads)); }catch(e){}
   btn.disabled=false;
   renderPayloads();
   const have=Object.keys(byKey).length;
   if(!have){
-    setStatus($("#payloadStatus"),"err","Read "+wfs.length+" workflow(s) but found no run payloads."+
-      (tried.size?"<br><span style=\"font-size:10.5px\">Tried: "+esc([...tried].join(" · "))+"</span>":"")+
-      "<br>If the Workflow Builder shows a run log in the UI, capture that request and the route can be added.");
+    setStatus($("#payloadStatus"),"err","Read "+wfs.length+" workflow(s), but none addresses its trigger through an expression and none has a pinned sample."+
+      "<br><span style=\"font-size:10.5px\">Run-history routes tried: "+esc([...tried].join(" · "))+"</span>");
   }else{
-    setStatus($("#payloadStatus"),"ok","<b>"+have+"</b> trigger payload(s) known"+(added?" ("+added+" new)":"")+
-      (pathUsed?" via <code class=\"k\">"+esc(pathUsed)+"</code>":"")+". Generated nodes now address these fields directly.");
+    const bits=[];
+    if(fromExpr) bits.push(fromExpr+" from existing expressions");
+    if(fromPinned) bits.push(fromPinned+" from pinned samples");
+    if(fromRuns) bits.push(fromRuns+" from run history");
+    setStatus($("#payloadStatus"),"ok","<b>"+have+"</b> trigger"+(have===1?"":"s")+" with known field paths"+
+      (bits.length?" ("+bits.join(", ")+")":"")+". Generated nodes address these directly."+
+      (runPath?"":"<br><span style=\"font-size:10.5px\">No run-history route answered, so full payload bodies are unavailable — paths came from how your workflows already read their triggers, which is the same information.</span>"));
   }
   autoBuild();
 }
