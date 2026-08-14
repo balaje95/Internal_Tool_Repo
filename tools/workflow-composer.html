@@ -49,7 +49,9 @@
   .wrap{max-width:1240px;margin:0 auto;padding:22px 20px 120px}
   code.k{font-family:var(--mono);font-size:11.5px;background:var(--sunken);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--orange-2)}
 
-  header.top{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+  /* Clears the fixed "← Back to Dashboard" pill that assets/back-link.js parks at the
+     top-left of every tool; without this it sits on top of the title. */
+  header.top{display:flex;align-items:center;gap:14px;margin:34px 0 18px}
   .logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(140deg,var(--orange),var(--orange-2));display:grid;place-items:center;font-family:var(--disp);font-weight:700;color:#fff;box-shadow:0 6px 18px rgba(253,80,0,.32)}
   h1{font-family:var(--disp);font-size:20px;font-weight:600;letter-spacing:-.02em;margin:0}
   .sub{color:var(--faint);font-size:12px;margin-top:1px;font-family:var(--mono)}
@@ -58,8 +60,11 @@
   .conn.live .dot{background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
   .conn.live{color:var(--cyan);border-color:rgba(15,181,160,.4)}
 
-  .layout{display:grid;grid-template-columns:330px 1fr;gap:22px;align-items:start}
-  @media(max-width:900px){.layout{grid-template-columns:1fr}}
+  /* minmax(0,1fr), not 1fr: a grid column will not shrink below its content, so the
+     wide canvas preview pushed the whole page into horizontal scroll and clipped the
+     right-hand fields. */
+  .layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:22px;align-items:start}
+  @media(max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}}
 
   .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--sh-sm)}
   .panel + .panel{margin-top:16px}
@@ -181,13 +186,13 @@
       </div>
 
       <div class="panel">
-        <p class="eyebrow">Describe it</p>
+        <p class="eyebrow">Describe it all</p>
         <div class="field">
-          <label for="genDesc">What should this workflow do? <span id="autoTag"></span></label>
-          <textarea id="genDesc" placeholder="e.g. When a customer is created, create a Qualification job due next day at 6pm.
+          <label for="genDesc">One sentence, split into the three boxes <span id="autoTag"></span></label>
+          <textarea id="genDesc" placeholder="e.g. When a customer is created, if the customer category is Residential, create a Qualification job due next day at 6pm.
 
-Type freely — the When / If / Then below build themselves as you write. Correct anything by hand afterward."></textarea>
-          <div class="hint">The stages update automatically a moment after you stop typing (or on blur). Anything mis-read, just fix it in place.</div>
+Optional — this box only fills in the When / If / Then boxes on the right. Type there directly if you prefer."></textarea>
+          <div class="hint">Splits your sentence into the three stage boxes so you can see exactly which part was read as what — then correct it in the box that got it wrong.</div>
         </div>
         <div id="autoStatus"></div>
       </div>
@@ -201,6 +206,11 @@ Type freely — the When / If / Then below build themselves as you write. Correc
         <div class="card">
           <h3>When <span class="tag">trigger</span></h3>
           <p class="d">The event that starts the workflow.</p>
+          <div class="field">
+            <label for="whenDesc">Describe the trigger</label>
+            <textarea id="whenDesc" style="min-height:52px" placeholder="a customer is created"></textarea>
+            <div id="whenStatus"></div>
+          </div>
           <div class="row">
             <div class="field"><label for="tModule">Module</label><select id="tModule"></select></div>
             <div class="field"><label for="tEvent">Event</label><select id="tEvent"></select></div>
@@ -218,6 +228,12 @@ Type freely — the When / If / Then below build themselves as you write. Correc
         <div class="card">
           <h3>If <span class="tag">conditions &middot; optional</span> <span id="condLive"></span></h3>
           <p class="d">Only run when these are true. Leave empty to always run.</p>
+          <div class="field">
+            <label for="ifDesc">Describe the conditions &mdash; one per line</label>
+            <textarea id="ifDesc" style="min-height:52px" placeholder="customer category is Residential
+customer email is not empty"></textarea>
+            <div id="ifStatus"></div>
+          </div>
           <div id="condList"></div>
           <button class="addbtn" id="btnAddCond">+ Add condition</button>
         </div>
@@ -228,6 +244,12 @@ Type freely — the When / If / Then below build themselves as you write. Correc
         <div class="card">
           <h3>Then <span class="tag">actions</span></h3>
           <p class="d">What happens when it fires. Add one or more.</p>
+          <div class="field">
+            <label for="thenDesc">Describe the actions &mdash; one per line</label>
+            <textarea id="thenDesc" style="min-height:52px" placeholder="create a Qualification job due next day at 6pm
+send a notification to the customer"></textarea>
+            <div id="thenStatus"></div>
+          </div>
           <div id="actList"></div>
           <button class="addbtn" id="btnAddAct">+ Add action</button>
         </div>
@@ -552,8 +574,76 @@ function actionFields(a,i){
   return `<div class="hint">Fields for “${esc(a.op)}” aren&rsquo;t mapped yet — the operation is captured in the spec.</div>`;
 }
 
-/* ================= auto-build from description (LOCAL — no network) ================= */
+/* ================= auto-build from description (LOCAL — no network) =================
+   Three stage boxes, one parser each. Splitting the input this way removes the part
+   that was actually unreliable: deciding whether a clause was a trigger, a condition
+   or an action. Inside a box there is nothing to classify — the If box holds
+   conditions and the Then box holds actions, by definition.
+
+   The combined box does NOT parse separately. It routes its clauses into the three
+   boxes and lets those parsers run, so there is exactly one code path per stage and
+   the split is visible: whatever ends up in the wrong box, you fix in that box. */
 let descTimer,lastDesc="";
+const noteHtml=(notes,max)=>(notes||[]).slice(0,max||3).map(n=>'<div style="margin-top:5px;font-size:11px;color:var(--warn)">&#9888; '+esc(n)+'</div>').join("");
+function bindStage(id,fn){
+  let t;
+  const run=()=>{try{fn();}catch(e){/* never let typing break */}};
+  $(id).addEventListener("input",()=>{clearTimeout(t);t=setTimeout(run,450);});
+  $(id).addEventListener("blur",run);
+}
+
+/* ---- WHEN box ---- */
+function runWhen(){
+  const txt=$("#whenDesc").value.trim();
+  if(!txt){ hideStatus("#whenStatus"); return; }
+  const key=matchTrigger(txt.toLowerCase());
+  if(!key){ setStatus($("#whenStatus"),"err","No trigger matched. Pick one from the dropdowns above."); return; }
+  applyTrigger(key);
+  const lbl=(trigCatalog(key)||{}).name||key;
+  setStatus($("#whenStatus"),"ok","Trigger: <b>"+esc(lbl)+"</b> &middot; <code class=\"k\">"+esc(key)+"</code>");
+  autoBuild();
+}
+/* ---- IF box: one condition per line ---- */
+function runIf(){
+  const txt=$("#ifDesc").value;
+  if(!txt.trim()){ hideStatus("#ifStatus"); return; }
+  const notes=[],found=[];
+  for(const line of splitLines(txt)){
+    const c=parseConditionClause(stripNoise(line),notes);
+    if(c) found.push(c); else if(!UNSUPPORTED_COMPARATOR.test(line)) notes.push('Couldn’t read “'+line+'” as a condition. Try “field is value”.');
+  }
+  if(found.length){ conds=found; renderConds(); }
+  setStatus($("#ifStatus"),found.length?"ok":"err",
+    (found.length?found.length+" condition"+(found.length>1?"s":"")+" read.":"Nothing read from this box.")+noteHtml(notes));
+  autoBuild();
+}
+/* ---- THEN box: one action per line ---- */
+function runThen(){
+  const txt=$("#thenDesc").value;
+  if(!txt.trim()){ hideStatus("#thenStatus"); return; }
+  const notes=[],found=[];
+  for(const line of splitLines(txt)){
+    const a=parseActionClause(stripNoise(line),txt,notes);
+    if(a) found.push(a); else notes.push('Couldn’t read “'+line+'” as an action. Try “create a <category> job” or “send a notification to the customer”.');
+  }
+  const merged=mergeActions(found);
+  if(merged.length){ acts=merged; renderActions(); }
+  setStatus($("#thenStatus"),merged.length?"ok":"err",
+    (merged.length?merged.length+" action"+(merged.length>1?"s":"")+" read: "+merged.map(a=>esc(opLabel(a.module,a.op))).join(", "):"Nothing read from this box.")+noteHtml(notes));
+  autoBuild();
+}
+function splitLines(txt){
+  // A line is one item. Lines that clearly hold two items ("… and send …") are split
+  // further, so pasting a sentence into a stage box still works.
+  return String(txt||"").split(/\n+/).flatMap(l=>l.split(/\s+\band\b\s+(?=[a-z])/i)).map(s=>s.trim().replace(/^[-•*\d.)\s]+/,"")).filter(s=>s.length>2);
+}
+function hideStatus(sel){const el=$(sel);if(el)el.innerHTML="";}
+
+bindStage("#whenDesc",runWhen);
+bindStage("#ifDesc",runIf);
+bindStage("#thenDesc",runThen);
+
+/* ---- combined box: route clauses into the three boxes, then let them parse ---- */
 $("#genDesc").addEventListener("input",()=>{clearTimeout(descTimer);descTimer=setTimeout(runAuto,600);});
 $("#genDesc").addEventListener("blur",runAuto);
 function runAuto(){
@@ -561,14 +651,22 @@ function runAuto(){
   if(t.length<10||t===lastDesc) return; lastDesc=t;
   $("#autoTag").innerHTML='<span class="autotag">&#10022; auto</span>';
   try{
-    const sp=parseDescription(t);
-    applySpec(sp);
-    const bits=[]; if(sp.eventKey)bits.push("trigger"); if(sp.conditions.length)bits.push(sp.conditions.length+" cond"); if(sp.actions.length)bits.push(sp.actions.length+" action"+(sp.actions.length>1?"s":""));
-    const notes=(sp.notes||[]).slice(0,3).map(n=>'<div style="margin-top:5px;font-size:11px;color:var(--warn)">&#9888; '+esc(n)+'</div>').join("");
-    setStatus($("#autoStatus"),"ok",(bits.length? "Read: "+bits.join(" &middot; ")+". Adjust anything below.":"Couldn&rsquo;t infer much — set the stages by hand.")+notes);
-    // Compile straight away so the graph exists without pressing anything.
+    const r=routeDescription(t);
+    if(r.when) $("#whenDesc").value=r.when;
+    if(r.ifs.length) $("#ifDesc").value=r.ifs.join("\n");
+    if(r.thens.length) $("#thenDesc").value=r.thens.join("\n");
+    if(r.when) runWhen();
+    if(r.ifs.length) runIf();
+    if(r.thens.length) runThen();
+    const bits=[];
+    if(r.when) bits.push("When");
+    if(r.ifs.length) bits.push(r.ifs.length+" If");
+    if(r.thens.length) bits.push(r.thens.length+" Then");
+    setStatus($("#autoStatus"),"ok",
+      (bits.length?"Split into: "+bits.join(" &middot; ")+". Check each box on the right.":"Couldn&rsquo;t split that — fill the three boxes directly.")
+      +noteHtml(r.notes));
     autoBuild();
-  }catch(err){ setStatus($("#autoStatus"),"err","Couldn&rsquo;t read that — set the stages manually."); }
+  }catch(err){ setStatus($("#autoStatus"),"err","Couldn&rsquo;t read that — fill the three boxes directly."); }
 }
 
 /* ---- local natural-language parser (runs entirely in the browser) ---- */
@@ -654,7 +752,10 @@ const COND_RX=[
 /* Zuper's condition operators are Equal/Not Equal/Contains/Not Contains/Empty/Not
    Empty. Numeric comparisons have no operator to map onto, so they are reported
    instead of being silently turned into an equality that would not hold. */
-const UNSUPPORTED_COMPARATOR=/\b(greater than|less than|more than|fewer than|at least|at most|over|under|before|after|between)\b/i;
+// Bare "over", "after", "between" are ordinary English — they only mean a comparison
+// when a number follows. Matching them unconditionally told a user that "somewhere
+// over the rainbow" used an unsupported comparison, which explains nothing.
+const UNSUPPORTED_COMPARATOR=/\b(?:greater than|less than|more than|fewer than|at least|at most|no more than|not more than)\b|\b(?:over|under|above|below|before|after|between)\s+\d/i;
 
 function parseConditionClause(cl,notes){
   if(UNSUPPORTED_COMPARATOR.test(cl)){
@@ -752,10 +853,22 @@ function parseActionClause(cl,fullText,notes){
   return null;
 }
 
-function parseDescription(raw){
-  const t=raw.trim(); const lt=t.toLowerCase();
-  // ----- trigger -----
-  const trig=[
+/* Duplicate update_job actions describe one update of one job. Left split, a
+   status-only update resolves its status inside a category it never set. */
+function mergeActions(list){
+  const seen=new Set();
+  let out=list.filter(a=>{const k=a.op+"|"+JSON.stringify(a.fields);if(seen.has(k))return false;seen.add(k);return true;});
+  const kept=[];
+  out=out.filter(a=>{
+    if(a.op!=="update_job") return true;
+    const prior=kept.find(m=>m.module===a.module);
+    if(prior){ prior.fields={...prior.fields,...a.fields}; return false; }
+    kept.push(a); return true;
+  });
+  return out;
+}
+
+const TRIGGER_RX=[
     [/customer[^.]*\b(updated|update|edited|edit)\b/,"customer.update"],
     [/\b(new|created|create|added)\b[^.]*\bcustomer\b|\bcustomer\b[^.]*\b(created|is created|new|added)\b/,"customer.create"],
     [/\bquote\b[^.]*\b(accepted|won|approved)\b|\b(accepted|won|approved)\b[^.]*\bquote\b|\bquote\b[^.]*\bstatus\b/,"quote.status_update"],
@@ -767,80 +880,61 @@ function parseDescription(raw){
     [/\b(new|created)\b[^.]*\bjob\b|\bjob\b[^.]*\b(created|new)\b/,"job.new"],
     [/\bpayment\b[^.]*\b(received|new|created|made)\b/,"payment.create"]
   ];
-  const wc=(lt.match(/\b(when|whenever|if|once|after)\b(.*?)(?:,|\bthen\b|\bdo\b|\bcreate\b|\bmove\b|\bupdate\b|\bset\b|$)/)||[])[2];
-  let eventKey="";
-  if(wc){for(const [re,k] of trig){if(re.test(wc)){eventKey=k;break;}}}
-  if(!eventKey){for(const [re,k] of trig){if(re.test(lt)){eventKey=k;break;}}}
-  const module=eventKey?(MODMAP[eventKey.split(".")[0]]||""):"";
+// A trigger phrase → an event key. Used by the When box and by the router.
+function matchTrigger(lt){
+  const scoped=(lt.match(/\b(when|whenever|if|once|after)\b(.*?)(?:,|\bthen\b|\bdo\b|\bcreate\b|\bmove\b|\bupdate\b|\bset\b|$)/)||[])[2];
+  if(scoped){for(const [re,k] of TRIGGER_RX){if(re.test(scoped))return k;}}
+  for(const [re,k] of TRIGGER_RX){if(re.test(lt))return k;}
+  return "";
+}
+// Drive the module/event dropdowns from an event key.
+function applyTrigger(key){
+  const module=MODMAP[key.split(".")[0]]||"";
+  const mi=CAT.findIndex(c=>c.module===module);
+  if(mi<0){ $("#tEventKey").value=key; probeConditions(); return; }
+  $("#tModule").value=mi; fillEvents();
+  const ei=CAT[mi].events.findIndex(e=>e[1]===key);
+  if(ei>=0){ $("#tEvent").value=ei; syncEventKey(); }
+  else { syncEventKey(); $("#tEventKey").value=key; probeConditions(); }
+}
 
-  // ----- one pass over the clauses, each classified as action or condition -----
-  // Every clause is now examined, so a description can produce several actions
-  // ("create a job and send a notification and set the status") instead of the old
-  // one-create-plus-maybe-one-update ceiling.
-  const actions=[],conditions=[],notes=[];
-  const clauses=splitClauses(t);
-  let triggerClauseSeen=false;
-  for(const rawCl of clauses){
+/* Route one sentence into the three stage boxes. This does NOT parse — it only
+   decides which box each clause belongs in, then the stage parsers do the reading.
+   One parser per stage, and the split is on screen where it can be corrected. */
+function routeDescription(raw){
+  const t=raw.trim(), lt=t.toLowerCase();
+  const key=matchTrigger(lt);
+  const ifs=[],thens=[],notes=[];
+  let whenText="",triggerClauseSeen=false;
+  for(const rawCl of splitClauses(t)){
     const cl=stripNoise(rawCl);
     if(cl.length<3) continue;
     const bare=cl.replace(/^(when|whenever|if|once|after)\s+/i,"").trim();
-    const wasGuard=bare!==cl;                       // clause opened with when/if/once
-    // The first trigger-shaped clause describes the trigger, which the block above
-    // already resolved — don't also read it as a condition.
-    if(!triggerClauseSeen&&isTriggerish(bare)&&!ACTION_OPENER.test(bare)){triggerClauseSeen=true;continue;}
-    if(ACTION_OPENER.test(bare)&&!wasGuard){
-      const a=parseActionClause(bare,t,notes);
-      if(a) actions.push(a);
-      continue;
-    }
-    if(isConditionish(bare)||UNSUPPORTED_COMPARATOR.test(bare)){
-      const c=parseConditionClause(bare,notes);
-      if(c&&!conditions.some(x=>x.field===c.field&&x.op===c.op&&x.val===c.val)) conditions.push(c);
-      continue;
-    }
-    // An action verb behind "if"/"when" is still an action ("when X, then create Y"
-    // splits such that the create clause can carry the guard word).
-    if(ACTION_OPENER.test(bare)){
-      const a=parseActionClause(bare,t,notes);
-      if(a){ actions.push(a); continue; }
-    }
-    // Nothing matched. Say so — a clause that quietly disappears is the reason a
-    // stage looks like it "didn't update".
-    if(bare.length>10&&notes.length<4) notes.push('Didn’t read “'+bare+'” as a condition or an action — add it below by hand.');
+    const wasGuard=bare!==cl;
+    if(!triggerClauseSeen&&isTriggerish(bare)&&!ACTION_OPENER.test(bare)){triggerClauseSeen=true;whenText=bare;continue;}
+    if(ACTION_OPENER.test(bare)&&!wasGuard){thens.push(bare);continue;}
+    if(isConditionish(bare)||UNSUPPORTED_COMPARATOR.test(bare)){ifs.push(bare);continue;}
+    if(ACTION_OPENER.test(bare)){thens.push(bare);continue;}
+    if(bare.length>10&&notes.length<4) notes.push('Didn’t place “'+bare+'” in any box — add it by hand.');
   }
-  // Collapse duplicates the clause splitter can produce from one long sentence.
-  const seenAct=new Set();
-  let cleaned=actions.filter(a=>{const k=a.op+"|"+JSON.stringify(a.fields);if(seenAct.has(k))return false;seenAct.add(k);return true;});
-  // "move it to X and set status to Y" is ONE update of one job, not two. Left split,
-  // the status-only update would look for its status inside a category it never set,
-  // and resolve to null.
-  const mergedUpdates=[];
-  cleaned=cleaned.filter(a=>{
-    if(a.op!=="update_job") return true;
-    const prior=mergedUpdates.find(m=>m.module===a.module);
-    if(prior){ prior.fields={...prior.fields,...a.fields}; return false; }
-    mergedUpdates.push(a); return true;
-  });
-  actions.length=0; actions.push(...cleaned);
-  if(/^job\./.test(eventKey)){
+  // Conditions the trigger phrasing implies rather than states. Emitted as text so
+  // they land in the If box visibly, instead of appearing as rows from nowhere.
+  if(/^job\./.test(key)){
     const fromM=t.match(/\bfrom\s+([A-Za-z][A-Za-z \-]*?)\s+(?:to|into)\b/i);
-    if(fromM){const fc=findCategoryIn(fromM[1]); if(fc && !conditions.some(c=>c.field==="job_category"))conditions.push({field:"job_category",op:"Equal To",val:fc});}
+    const fc=fromM?findCategoryIn(fromM[1]):"";
+    if(fc&&!ifs.some(l=>/categor/i.test(l))) ifs.push("job category is "+fc);
   }
-  if(eventKey==="quote.status_update"&&!conditions.some(c=>/status/.test(c.field))){const qs=/accepted/.test(lt)?"Accepted":/approved/.test(lt)?"Approved":/declined|rejected/.test(lt)?"Declined":/sent/.test(lt)?"Sent":/won/.test(lt)?"Won":"";if(qs)conditions.push({field:"quote_status",op:"Equal To",val:qs});}
-  if(eventKey==="invoice.status_update"&&!conditions.some(c=>/status/.test(c.field))){const s=parseStatus(t);if(s)conditions.push({field:"invoice_status",op:"Equal To",val:s});}
-
-  return {module,eventKey,conditions,actions,notes};
-}
-
-function applySpec(sp){
-  try{
-    if(sp.module){const mi=CAT.findIndex(c=>c.module===sp.module);if(mi>=0){$("#tModule").value=mi;fillEvents();
-      if(sp.eventKey){const ei=CAT[mi].events.findIndex(e=>e[1]===sp.eventKey);if(ei>=0){$("#tEvent").value=ei;syncEventKey();}else{syncEventKey();$("#tEventKey").value=sp.eventKey;probeConditions();}}}}
-  }catch(e){}
-  // Replace a stage only when the description actually yielded something for it.
-  // Overwriting with an empty list wiped hand-made rows on the next keystroke.
-  try{ if(Array.isArray(sp.conditions)&&sp.conditions.length){ conds=sp.conditions.map(c=>({field:c.field||"",op:c.op||"Equal To",val:c.val||""})); renderConds(); } }catch(e){}
-  try{ if(Array.isArray(sp.actions)&&sp.actions.length){ acts=sp.actions.map(a=>({module:a.module||"JOB",type:a.type||"Create",op:a.op||"create_job",fields:a.fields||{}})); renderActions(); } }catch(e){}
+  if(key==="quote.status_update"&&!ifs.some(l=>/status/i.test(l))){
+    const qs=/accepted/.test(lt)?"Accepted":/approved/.test(lt)?"Approved":/declined|rejected/.test(lt)?"Declined":/sent/.test(lt)?"Sent":/won/.test(lt)?"Won":"";
+    if(qs) ifs.push("quote status is "+qs);
+  }
+  if(key==="invoice.status_update"&&!ifs.some(l=>/status/i.test(l))){
+    const s=parseStatus(t); if(s) ifs.push("invoice status is "+s);
+  }
+  // No clause read as the trigger, but the sentence as a whole matched one: hand the
+  // When box the event's own label so it is not left blank.
+  if(!whenText&&key){ const c=trigCatalog(key); whenText=c?c.name.toLowerCase():key; }
+  return {when:whenText,ifs,thens,notes};
 }
 
 /* ================= spec + dock ================= */
