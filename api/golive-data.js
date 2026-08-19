@@ -26,6 +26,9 @@ const FALLBACK_PASSWORD = 'Admin@123';
 
 const GITHUB_API = 'https://api.github.com';
 const DATA_PATH = 'data/golive.json';
+// The snapshot being replaced is kept here so the dashboard can show what moved since
+// last week. Only one generation back — the rest is in the repo history.
+const PREV_PATH = 'data/golive-prev.json';
 const MAX_PROJECTS = 5000;
 const MAX_JSON_BYTES = 3 * 1024 * 1024;   // well under the ~4.5MB Vercel body cap
 
@@ -51,13 +54,14 @@ async function githubRequest(path, token, options = {}) {
 }
 
 // data/golive.json does not exist on the very first publish, and GitHub needs the blob
-// sha only when replacing an existing file.
-async function existingSha(path, token, owner, repo, branch) {
+// sha only when replacing an existing file. Returns the content too, so the outgoing
+// snapshot can be copied to PREV_PATH without a second read.
+async function existingFile(path, token, owner, repo, branch) {
   try {
     const file = await githubRequest(`/repos/${owner}/${repo}/contents/${path}?ref=${branch}`, token);
-    return file.sha || null;
+    return { sha: file.sha || null, content: file.content || null };
   } catch (err) {
-    if (/failed: 404/.test(err.message)) return null;
+    if (/failed: 404/.test(err.message)) return { sha: null, content: null };
     throw err;
   }
 }
@@ -135,14 +139,39 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const sha = await existingSha(DATA_PATH, GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO, branch);
+    const current = await existingFile(DATA_PATH, GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO, branch);
+
+    // Archive the snapshot being replaced first. Best effort: a failure here must not
+    // cost the publish itself, since the week-over-week panel is a nicety and the
+    // current numbers are the point.
+    let archived = false, archiveError = null;
+    if (current.content) {
+      try {
+        const prev = await existingFile(PREV_PATH, GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO, branch);
+        const prevBody = {
+          message: 'Go-Live Dashboard: archive previous export for week-over-week',
+          content: current.content.replace(/\n/g, ''),   // GitHub returns base64 wrapped
+          branch,
+        };
+        if (prev.sha) prevBody.sha = prev.sha;
+        await githubRequest(
+          `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${PREV_PATH}`,
+          GITHUB_TOKEN,
+          { method: 'PUT', body: JSON.stringify(prevBody) }
+        );
+        archived = true;
+      } catch (err) {
+        archiveError = err.message || 'could not archive the previous export';
+      }
+    }
+
     const body = {
       message: `Go-Live Dashboard: publish export (${clean.length} projects`
         + (payload.source.filename ? `, ${payload.source.filename}` : '') + ')',
       content: Buffer.from(text, 'utf-8').toString('base64'),
       branch,
     };
-    if (sha) body.sha = sha;
+    if (current.sha) body.sha = current.sha;
 
     const result = await githubRequest(
       `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${DATA_PATH}`,
@@ -156,6 +185,8 @@ module.exports = async (req, res) => {
       path: DATA_PATH,
       commit: (result.commit && result.commit.sha || '').slice(0, 7),
       updated_at: payload.updated_at,
+      archived_previous: archived,
+      archive_error: archiveError,
     });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Unknown error' });

@@ -133,7 +133,26 @@
   .errbar code{background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px;font-size:11.5px}
   @media(max-width:1050px){.kpis{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.flag{min-width:150px}}
 
-  /* hidden admin panel (Ctrl+A) */
+  /* week-over-week panel */
+  .changecard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px 15px;margin-bottom:16px;display:none}
+  .changecard.show{display:block}
+  .changehead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:11px}
+  .changehead h3{font-size:14px;font-weight:800}
+  .changehead .csub{font-size:11.5px;color:var(--muted)}
+  .chips{display:flex;gap:9px;flex-wrap:wrap}
+  .chip{border:1px solid var(--line);border-radius:10px;padding:7px 12px;cursor:pointer;transition:.15s;
+    display:inline-flex;align-items:baseline;gap:7px;font-size:12.5px;font-weight:600;color:var(--muted)}
+  .chip:hover{border-color:var(--orange);background:#FFF8F4;color:var(--ink)}
+  .chip b{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .chip.c-live b{color:var(--green)} .chip.c-slip b{color:var(--red)} .chip.c-pull b{color:var(--blue)}
+  .chip.c-new b{color:var(--orange)} .chip.c-stat b{color:var(--amber)} .chip.c-gone b{color:var(--grey)}
+  .chip.zero{opacity:.45;cursor:default}
+  .chip.zero:hover{border-color:var(--line);background:none;color:var(--muted)}
+  .nochange{font-size:12.5px;color:var(--muted)}
+  .delta{font-weight:700}
+  .delta.worse{color:var(--red)} .delta.better{color:var(--green)}
+
+  /* hidden admin panel */
   .admin-scrim{position:fixed;inset:0;background:rgba(20,30,50,.5);opacity:0;pointer-events:none;transition:.2s;z-index:60}
   .admin-scrim.open{opacity:1;pointer-events:auto}
   .admin{position:fixed;left:50%;top:50%;transform:translate(-50%,-48%) scale(.98);opacity:0;pointer-events:none;
@@ -208,6 +227,15 @@
   <!-- FLAG chips -->
   <div class="flagrow" id="flagrow"></div>
 
+  <!-- What moved since the previous export. Hidden until there is one to compare against. -->
+  <div class="changecard" id="changecard">
+    <div class="changehead">
+      <h3>Since the last export</h3>
+      <div class="csub" id="changeSub"></div>
+    </div>
+    <div class="chips" id="changeChips"></div>
+  </div>
+
   <div class="kpis" id="kpis"></div>
 
   <div class="grid2">
@@ -267,7 +295,7 @@
 
   <div class="footnote">
     <b>Flag logic</b> (today = <span id="todayTxt"></span>). &nbsp;<b>Live</b> = Completed / Phase 2 / Hyper Care / Moved to Support. &nbsp;<b>Due this month</b> = ETA in Aug 2026, not yet live. &nbsp;<b>Missed</b> = ETA before this month, still not live (excludes Churned). &nbsp;<b>Upcoming</b> = ETA after this month. &nbsp;Months before 2026 are hidden from the filter and month charts; the cumulative line is seeded with pre-2026 live projects so the total stays accurate. Goal fixed at 10/month.
-    <br><br><b>Data source</b>. The weekly Zoho Projects export, published to <code>data/golive.json</code>. Everyone reads that one file, so all viewers see the same numbers &mdash; no API key and no login to Zoho needed. <b>Go-Live ETA</b> is Zoho&rsquo;s <i>Current ETA</i> column and <b>Deal Value</b> is <i>Deal Amount</i>, so wrong figures get fixed in Zoho and re-exported, not edited here. Internal accounts (Golden Account, MVP, RBP Internal Use) are dropped on upload, and rows whose ETA cell is <code>-</code> count as no ETA. The header shows how old the export is and warns when it is over a week old. To refresh it: <b>Ctrl+A</b> &rarr; drop in the new export &rarr; Publish.
+    <br><br><b>Data source</b>. The weekly Zoho Projects export, published to <code>data/golive.json</code>. Everyone reads that one file, so all viewers see the same numbers &mdash; no API key and no login to Zoho needed. <b>Go-Live ETA</b> is Zoho&rsquo;s <i>Current ETA</i> column and <b>Deal Value</b> is <i>Deal Amount</i>, so wrong figures get fixed in Zoho and re-exported, not edited here. Internal accounts (Golden Account, MVP, RBP Internal Use) are dropped on upload, and rows whose ETA cell is <code>-</code> count as no ETA. The header shows how old the export is and warns when it is over a week old, and the panel at the top lists what moved since the previous export.
   </div>
 </div>
 
@@ -579,7 +607,11 @@ function openDetail(d,back){
   if(d.comments)h+='<div class="dcomment"><b>Comments</b><br>'+d.comments.replace(/</g,'&lt;')+'</div>';
   if(d.url)h+='<a class="dlink" href="'+d.url+'" target="_blank" rel="noopener">Open deal &rarr;</a>';
   dB.innerHTML=h;
-  if(back){document.getElementById('bk').onclick=()=>openList(back.title,back.sub,back.rows);}
+  // `back` is either a {title,sub,rows} list to rebuild, or a function that reopens
+  // whatever the caller came from (used by the week-over-week lists).
+  if(back){document.getElementById('bk').onclick=()=>{
+    if(typeof back==='function')back();else openList(back.title,back.sub,back.rows);
+  };}
   openDrawer();
 }
 function openMonth(m,liveOnly){
@@ -630,7 +662,7 @@ function fallbackToSeed(){
 
 function stamp(){
   if(isSeed){
-    setSrc('stale','<b>Built-in snapshot</b> from '+dmy(SEED_STAMP)+' &mdash; nothing published yet. Press <b>Ctrl+A</b> to upload the weekly export.');
+    setSrc('stale','<b>Built-in snapshot</b> from '+dmy(SEED_STAMP)+' &mdash; no export published yet.');
     return;
   }
   const when=meta&&meta.updated_at?new Date(meta.updated_at):null;
@@ -638,8 +670,7 @@ function stamp(){
   const cls=age>10*86400000?'stale':'ok';
   setSrc(cls,'<b>'+(DATA.length)+' roofing projects</b> &middot; export uploaded '
     +(when?dmy(when.toISOString().slice(0,10))+' ('+ago(age)+')':'unknown date')
-    +(cls==='stale'?' &middot; <b>over a week old</b>':'')
-    +' &middot; press Ctrl+A to update');
+    +(cls==='stale'?' &middot; <b>over a week old</b>':''));
 }
 
 async function load(){
@@ -648,7 +679,7 @@ async function load(){
     // Cache-bust: the published JSON sits on the CDN and a weekly upload must win.
     const res=await fetch(DATA_URL+'?t='+Date.now(),{headers:{Accept:'application/json'},cache:'no-store'});
     if(res.status===404){
-      showErr('<b>No export has been published yet.</b> Press <b>Ctrl+A</b>, drop in the weekly Zoho Projects export and publish it. Showing the built-in snapshot meanwhile.');
+      showErr('<b>No export has been published yet.</b> Showing the built-in snapshot from '+dmy(SEED_STAMP)+' meanwhile.');
       setSrc('stale','Built-in snapshot &mdash; nothing published yet');fallbackToSeed();return;
     }
     if(res.status===401){
@@ -664,12 +695,13 @@ async function load(){
       setSrc('err','Could not read the published export');fallbackToSeed();return;
     }
     if(!rows.length){
-      showErr('<b>The published export has no rows.</b> Re-upload it with Ctrl+A.');
+      showErr('<b>The published export has no rows.</b> It needs re-uploading.');
       setSrc('err','Published export is empty');fallbackToSeed();return;
     }
     clearErr();
     DATA=rows;meta=json;isSeed=false;
     rebuildDerived();renderAll();stamp();
+    loadPrev();
   }catch(err){
     showErr('<b>Could not load the data file.</b> '+String(err.message||err).replace(/</g,'&lt;'));
     setSrc('err','Could not load the data file');fallbackToSeed();
@@ -678,6 +710,116 @@ async function load(){
   }
 }
 btn.onclick=load;
+
+// ---- WEEK OVER WEEK -------------------------------------------------------
+// data/golive-prev.json is whatever the last publish replaced, archived server-side.
+// Rows are joined on project name: when the Zoho field mapping was worked out, name
+// matched 1:1 across the whole portal with nothing unmatched.
+const PREV_URL='../data/golive-prev.json';
+let prevRows=null,prevWhen=null;
+
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const isLive=p=>LIVE.has(String(p.status||'').trim());
+const dayGap=(a,b)=>Math.round((Date.parse(a)-Date.parse(b))/86400000);
+
+function diffSnapshots(now,prev){
+  const before=new Map();
+  prev.forEach(p=>before.set(p.name,p));
+  const d={live:[],slip:[],pull:[],etaSet:[],etaCleared:[],status:[],added:[],gone:[]};
+  const seen=new Set();
+
+  now.forEach(c=>{
+    seen.add(c.name);
+    const p=before.get(c.name);
+    if(!p){
+      d.added.push({row:c,note:(c.status||'no status')+(c.etaMonth?' · ETA '+monthLabel(c.etaMonth):' · no ETA')});
+      return;
+    }
+    // Going live is the headline; other status moves are listed separately so the two
+    // do not double-count the same project.
+    if(!isLive(p)&&isLive(c))d.live.push({row:c,note:(p.status||'—')+' → '+c.status});
+    else if(String(p.status||'')!==String(c.status||''))d.status.push({row:c,note:(p.status||'—')+' → '+(c.status||'—')});
+
+    if(c.eta&&p.eta&&c.eta!==p.eta){
+      const n=dayGap(c.eta,p.eta);
+      const note=dmy(p.eta)+' → '+dmy(c.eta)+' ('+(n>0?'+':'')+n+(Math.abs(n)===1?' day':' days')+')';
+      (n>0?d.slip:d.pull).push({row:c,note:note,days:n});
+    }else if(c.eta&&!p.eta)d.etaSet.push({row:c,note:'ETA set to '+dmy(c.eta)});
+    else if(!c.eta&&p.eta)d.etaCleared.push({row:c,note:'was '+dmy(p.eta)});
+  });
+
+  prev.forEach(p=>{if(!seen.has(p.name))d.gone.push({row:p,note:'was '+(p.status||'—')});});
+  d.slip.sort((a,b)=>b.days-a.days);
+  d.pull.sort((a,b)=>a.days-b.days);
+  return d;
+}
+
+const CHANGE_DEFS=[
+  ['live','c-live','went live'],
+  ['slip','c-slip','ETA slipped'],
+  ['pull','c-pull','ETA pulled in'],
+  ['etaSet','c-pull','ETA now set'],
+  ['etaCleared','c-stat','ETA cleared'],
+  ['status','c-stat','status changed'],
+  ['added','c-new','new'],
+  ['gone','c-gone','no longer listed'],
+];
+
+function changeItem(it){
+  const d=it.row,i=DATA.indexOf(d);
+  const f=['live','cur','miss','up'].includes(d.flag)?d.flag:'';
+  return '<div class="di'+(f?' il-'+f:'')+'" data-i="'+i+'">'
+    +'<div class="din">'+esc(d.name)+'</div>'
+    +'<div class="dim"><span class="fbadge fb-'+(f||'none')+'">'+FLAG_LABEL[d.flag||'none']+'</span>'
+    +'<span>'+esc(it.note)+'</span></div></div>';
+}
+
+function openChangeList(title,items){
+  dT.innerHTML=esc(title);
+  dS.textContent=items.length+(items.length===1?' project':' projects')+' vs the previous export';
+  dB.innerHTML=items.length?items.map(changeItem).join(''):'<div class="empty">Nothing here.</div>';
+  dB.querySelectorAll('.di').forEach(el=>el.onclick=()=>{
+    const i=+el.dataset.i;
+    // "No longer listed" rows come from the old snapshot, so they are not in DATA.
+    if(i>=0)openDetail(DATA[i],()=>openChangeList(title,items));
+  });
+  openDrawer();
+}
+
+function refreshChanges(){
+  const card=document.getElementById('changecard');
+  if(!prevRows||!prevRows.length||isSeed){card.classList.remove('show');return;}
+  const d=diffSnapshots(DATA,prevRows);
+  const active=CHANGE_DEFS.filter(def=>d[def[0]].length);
+  document.getElementById('changeSub').textContent=prevWhen
+    ? 'compared with the export from '+dmy(String(prevWhen).slice(0,10))
+    : 'compared with the previous export';
+  const box=document.getElementById('changeChips');
+  if(!active.length){
+    box.innerHTML='<div class="nochange">Nothing moved since the previous export.</div>';
+  }else{
+    box.innerHTML=active.map(def=>'<div class="chip '+def[1]+'" data-k="'+def[0]+'"><b>'
+      +d[def[0]].length+'</b> '+def[2]+'</div>').join('');
+    box.querySelectorAll('.chip').forEach(el=>el.onclick=()=>{
+      const def=CHANGE_DEFS.find(x=>x[0]===el.dataset.k);
+      openChangeList(def[2].charAt(0).toUpperCase()+def[2].slice(1),d[def[0]]);
+    });
+  }
+  card.classList.add('show');
+}
+
+// Best effort: no previous snapshot simply means no panel, never an error on the page.
+async function loadPrev(){
+  try{
+    const res=await fetch(PREV_URL+'?t='+Date.now(),{headers:{Accept:'application/json'},cache:'no-store'});
+    if(!res.ok)return;
+    const json=await res.json();
+    if(!json||!Array.isArray(json.projects)||!json.projects.length)return;
+    json.projects.forEach(p=>{p.flag=flagOf(p);});
+    prevRows=json.projects;prevWhen=json.updated_at||null;
+    refreshChanges();
+  }catch(e){/* leave the panel hidden */}
+}
 
 // ---- EXPORT PARSING -------------------------------------------------------
 // Header names are matched loosely so a renamed or reordered column does not break the
@@ -784,16 +926,39 @@ function openAdm(){admScrim.classList.add('open');adm.classList.add('open');admP
 function closeAdm(){admScrim.classList.remove('open');adm.classList.remove('open');}
 admScrim.onclick=closeAdm;document.getElementById('admX').onclick=closeAdm;
 
-// Ctrl+A (Cmd+A on a Mac) is the way in. Left alone inside text fields so select-all
-// still works where people expect it.
+// The panel is armed per browser: arm this one by loading the page once with ?admin=on
+// (?admin=off removes it). Until then Ctrl+A is left completely alone, so a viewer who
+// presses it gets ordinary select-all and never learns the panel exists.
+//
+// This is concealment, not access control — anyone can read this file. The password
+// checked by /api/golive-data is what actually stops someone writing data.
+const ADMIN_FLAG='golive_admin';
+let isAdmin=false;
+try{
+  const p=new URLSearchParams(location.search),v=p.get('admin');
+  if(v==='on')localStorage.setItem(ADMIN_FLAG,'1');
+  if(v==='off')localStorage.removeItem(ADMIN_FLAG);
+  isAdmin=localStorage.getItem(ADMIN_FLAG)==='1';
+  if(v==='on'||v==='off'){
+    // Drop the parameter so it does not sit in the address bar, history or a screenshot.
+    // Kept in its own try: replaceState throws on some origins, and failing to tidy the
+    // URL must not undo the arming above.
+    try{
+      p.delete('admin');
+      history.replaceState(null,'',location.pathname+(p.toString()?'?'+p.toString():'')+location.hash);
+    }catch(e2){/* leave the URL as it is */}
+  }
+}catch(e){isAdmin=false;}   // private mode, or storage blocked
+
 document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&adm.classList.contains('open')){closeAdm();return;}
+  if(!isAdmin)return;
   if((e.ctrlKey||e.metaKey)&&(e.key==='a'||e.key==='A')){
     const t=e.target,tag=t&&t.tagName;
     if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable))return;
     e.preventDefault();
     adm.classList.contains('open')?closeAdm():openAdm();
   }
-  if(e.key==='Escape'&&adm.classList.contains('open'))closeAdm();
 });
 
 function msg(kind,html){admMsg.className='admmsg show '+kind;admMsg.innerHTML=html;}
@@ -837,7 +1002,7 @@ function readFile(f){
 admPreview.onclick=()=>{
   if(!parsed)return;
   DATA=parsed.projects;meta={updated_at:new Date().toISOString(),preview:true};isSeed=false;
-  rebuildDerived();renderAll();clearErr();
+  rebuildDerived();renderAll();refreshChanges();clearErr();
   setSrc('ok','<b>'+DATA.length+' roofing projects</b> &middot; local preview of <i>'
     +parsed.stats.file.replace(/</g,'&lt;')+'</i> &middot; not published &mdash; only you see this');
   closeAdm();
@@ -857,7 +1022,7 @@ admPublish.onclick=async()=>{
     msg('good','<b>Published '+json.count+' projects.</b> Vercel is redeploying &mdash; everyone sees it in about a minute. '
       +'This page is already showing your upload.');
     DATA=parsed.projects;meta={updated_at:new Date().toISOString()};isSeed=false;
-    rebuildDerived();renderAll();stamp();clearErr();
+    rebuildDerived();renderAll();stamp();refreshChanges();clearErr();
     admPw.value='';
   }catch(err){
     msg('bad','<b>Publish failed.</b> '+String(err.message||err).replace(/</g,'&lt;')
