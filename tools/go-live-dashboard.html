@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Go-Live Dashboard</title>
+<link rel="icon" href="../assets/logos/zuper-favicon.svg">
+<link rel="stylesheet" href="../assets/zuper-brand.css">
+<script>try{if(localStorage.getItem('zuper_tools_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --orange:#FD5000; --orange-d:#E8500A; --navy:#1B2A4A; --navy-2:#26385C;
+    --bg:#F4F6FA; --card:#FFFFFF; --ink:#1B2A4A; --muted:#6B7A90; --line:#E4E9F2;
+    --green:#1FA971; --amber:#E8A33D; --red:#E04F4F; --blue:#2E5AAC; --grey:#8A97AC;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  .wrap{max-width:1340px;margin:0 auto;padding:22px 26px 60px}
+  header.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand .dot{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--orange),var(--orange-d));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;box-shadow:0 4px 12px rgba(253,80,0,.3)}
+  h1{font-size:21px;font-weight:800;letter-spacing:-.3px}
+  .sub{color:var(--muted);font-size:12.5px;margin-top:1px}
+  .controls{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+  select,button{font-family:inherit;font-size:13px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:9px 11px;cursor:pointer;transition:.15s}
+  select:hover,button:hover{border-color:var(--orange)}
+  button.ghost{background:var(--navy);color:#fff;border-color:var(--navy);font-weight:600}
+  button.ghost:hover{background:var(--navy-2)}
+  label.lbl{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-right:1px}
+
+  /* flag chips */
+  .flagrow{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+  .flag{flex:1;min-width:190px;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--grey);border-radius:12px;padding:13px 15px;cursor:pointer;transition:.15s;position:relative}
+  .flag:hover{box-shadow:0 6px 18px rgba(27,42,74,.10);transform:translateY(-1px)}
+  .flag.active{box-shadow:0 0 0 2px var(--orange) inset}
+  .flag .fcap{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .flag .fval{font-size:26px;font-weight:800;margin-top:4px}
+  .flag .ffoot{font-size:11px;color:var(--muted);margin-top:1px}
+  .flag.f-live{border-left-color:var(--green)} .flag.f-cur{border-left-color:var(--blue)}
+  .flag.f-miss{border-left-color:var(--red)} .flag.f-up{border-left-color:var(--orange)}
+  .fdot{width:9px;height:9px;border-radius:50%}
+
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 16px 13px;position:relative;overflow:hidden;cursor:pointer;transition:.15s}
+  .kpi:hover{box-shadow:0 6px 18px rgba(27,42,74,.10);transform:translateY(-1px)}
+  .kpi .cap{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  .kpi .val{font-size:28px;font-weight:800;margin-top:5px;letter-spacing:-1px}
+  .kpi .foot{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .kpi .bar{position:absolute;left:0;top:0;bottom:0;width:5px}
+  .kpi.total .bar{background:var(--navy)} .kpi.val-amt .bar{background:var(--amber)}
+  .kpi.goal .bar{background:var(--green)} .kpi.risk .bar{background:var(--red)}
+
+  .grid2{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .card h3{font-size:14px;font-weight:800;margin-bottom:2px}
+  .card .hint{font-size:11.5px;color:var(--muted);margin-bottom:12px}
+  .card .hint b{color:var(--orange)}
+  .chartbox{position:relative;height:300px;cursor:pointer}
+  .chartbox.sm{height:262px}
+  .goal-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:11px;font-size:11.5px;color:var(--muted)}
+  .goal-legend span{display:inline-flex;align-items:center;gap:6px}
+  .swatch{width:12px;height:12px;border-radius:3px;display:inline-block}
+
+  .tablecard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:0;overflow:hidden}
+  .tablehead{display:flex;justify-content:space-between;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line);gap:12px;flex-wrap:wrap}
+  .tablehead h3{font-size:14px;font-weight:800}
+  .twrap{max-height:540px;overflow:auto}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{position:sticky;top:0;background:#FAFBFD;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:700;padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer;user-select:none;z-index:2}
+  th:hover{color:var(--orange)}
+  td{padding:10px 14px;border-bottom:1px solid #F0F3F8;vertical-align:middle}
+  tbody tr{cursor:pointer}
+  tbody tr:hover td{background:#FBFCFE}
+  tbody tr{border-left:4px solid transparent}
+  tr.r-live{border-left-color:var(--green)} tr.r-cur{border-left-color:var(--blue)}
+  tr.r-miss{border-left-color:var(--red)}
+  .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+  .p-live{background:#E4F7EF;color:#0E7A50} .p-prog{background:#FFF1E8;color:#C6491A}
+  .p-hold{background:#FBF0DA;color:#9A6B12} .p-risk{background:#FCE7E7;color:#B32626}
+  .p-new{background:#EAF0FB;color:#2E5AAC}
+  .fbadge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10.5px;font-weight:800;letter-spacing:.3px}
+  .fb-live{background:var(--green);color:#fff} .fb-cur{background:var(--blue);color:#fff}
+  .fb-miss{background:var(--red);color:#fff} .fb-up{background:#FFE7D8;color:var(--orange-d)}
+  .fb-none{background:#EEF1F6;color:var(--grey)}
+  .amt{font-variant-numeric:tabular-nums;font-weight:600}
+  .nm{font-weight:700}
+  .muted{color:var(--muted)}
+  .searchbox{border:1px solid var(--line);border-radius:9px;padding:8px 12px;font-size:13px;width:210px}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+  .footnote{margin-top:20px;font-size:11.5px;color:var(--muted);line-height:1.6;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .footnote b{color:var(--ink)}
+
+  /* drawer */
+  .scrim{position:fixed;inset:0;background:rgba(20,30,50,.42);opacity:0;pointer-events:none;transition:.2s;z-index:40}
+  .scrim.open{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:min(440px,92vw);background:#fff;box-shadow:-8px 0 30px rgba(20,30,50,.18);transform:translateX(100%);transition:transform .24s cubic-bezier(.4,0,.2,1);z-index:50;display:flex;flex-direction:column}
+  .drawer.open{transform:translateX(0)}
+  .dhead{padding:18px 20px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .dhead .dt{font-size:16px;font-weight:800}
+  .dhead .ds{font-size:12px;color:var(--muted);margin-top:2px}
+  .dclose{border:none;background:#F1F4F9;width:30px;height:30px;border-radius:8px;font-size:17px;cursor:pointer;color:var(--muted);flex:none}
+  .dclose:hover{background:#E4E9F2;color:var(--ink)}
+  .dbody{overflow:auto;padding:14px 20px 30px;flex:1}
+  /* list mode */
+  .di{padding:11px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px;cursor:pointer;border-left:4px solid var(--grey);transition:.12s}
+  .di:hover{background:#FBFCFE;border-color:var(--orange)}
+  .di.il-live{border-left-color:var(--green)} .di.il-cur{border-left-color:var(--blue)} .di.il-miss{border-left-color:var(--red)} .di.il-up{border-left-color:var(--orange)}
+  .di .din{font-weight:700;font-size:13px}
+  .di .dim{font-size:11.5px;color:var(--muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+  /* detail mode */
+  .drow{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid #F0F3F8;font-size:13px}
+  .drow .k{color:var(--muted);font-weight:600;flex:none;width:96px}
+  .drow .v{text-align:right;font-weight:600}
+  .dcomment{margin-top:14px;background:#FAFBFD;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:12.5px;color:#3a4a63;line-height:1.55;white-space:pre-wrap}
+  .dlink{display:inline-block;margin-top:14px;background:var(--orange);color:#fff;text-decoration:none;font-weight:700;font-size:12.5px;padding:9px 14px;border-radius:9px}
+  .dlink:hover{background:var(--orange-d)}
+  .backbtn{background:none;border:none;color:var(--orange);font-weight:700;font-size:12.5px;cursor:pointer;padding:0;margin-bottom:10px}
+  /* live-data chrome */
+  button#refresh{background:var(--orange);color:#fff;border-color:var(--orange);font-weight:700;display:inline-flex;align-items:center;gap:7px}
+  button#refresh:hover{background:var(--orange-d);border-color:var(--orange-d)}
+  button#refresh[disabled]{opacity:.6;cursor:default}
+  #refresh .spin{width:12px;height:12px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;display:none;animation:sp .7s linear infinite}
+  #refresh.busy .spin{display:inline-block}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .srcbar{display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--muted);margin:-8px 0 14px;flex-wrap:wrap}
+  .srcbar .led{width:8px;height:8px;border-radius:50%;background:var(--grey);flex:none}
+  .srcbar.ok .led{background:var(--green)} .srcbar.stale .led{background:var(--amber)} .srcbar.err .led{background:var(--red)}
+  .srcbar b{color:var(--ink);font-weight:700}
+  .errbar{display:none;background:#FCE7E7;border:1px solid #F3C9C9;color:#8E2020;border-radius:10px;padding:11px 14px;font-size:12.5px;margin-bottom:14px;line-height:1.5}
+  .errbar.show{display:block}
+  .errbar code{background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px;font-size:11.5px}
+  @media(max-width:1050px){.kpis{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.flag{min-width:150px}}
+
+  /* Dark theme — the dashboard keeps its own palette, so remap the tokens rather
+     than restyle every rule. Matches the other tools honouring zuper_tools_theme. */
+  html[data-theme="dark"]{
+    --bg:#141414; --card:#1E1E1E; --ink:#F3F3F3; --muted:#9A9A9E; --line:#2E2E2E;
+    --navy:#26385C; --navy-2:#31456E;
+  }
+  html[data-theme="dark"] th{background:#242424}
+  html[data-theme="dark"] td{border-bottom-color:#272727}
+  html[data-theme="dark"] tbody tr:hover td{background:#242424}
+  html[data-theme="dark"] .footnote,html[data-theme="dark"] .dcomment{background:#1E1E1E}
+  html[data-theme="dark"] .drawer{background:#1E1E1E}
+  html[data-theme="dark"] .dclose{background:#2A2A2A}
+  html[data-theme="dark"] .searchbox,html[data-theme="dark"] select,html[data-theme="dark"] button{background:#1E1E1E;color:var(--ink)}
+  html[data-theme="dark"] .errbar{background:#3A1D1D;border-color:#5A2A2A;color:#F3C9C9}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="dot">Z</div>
+      <div>
+        <h1>Go-Live Dashboard</h1>
+        <div class="sub">Roofing implementations &middot; Live from Zoho Projects (zuperinc) &middot; Target: 10 go-lives / month</div>
+      </div>
+    </div>
+    <div class="controls">
+      <label class="lbl">Month</label><select id="monthSel"></select>
+      <label class="lbl">Status</label><select id="statusSel"></select>
+      <label class="lbl">Owner</label><select id="ownerSel"></select>
+      <label class="lbl">BA</label><select id="baSel"></select>
+      <button id="reset" class="ghost">Reset</button>
+      <button id="refresh" title="Re-pull from Zoho Projects"><span class="spin"></span><span class="rtxt">Refresh</span></button>
+    </div>
+  </header>
+
+  <div class="srcbar" id="srcbar"><span class="led"></span><span id="srctext">Loading from Zoho Projects&hellip;</span></div>
+  <div class="errbar" id="errbar"></div>
+
+  <!-- FLAG chips -->
+  <div class="flagrow" id="flagrow"></div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Go-Lives vs Goal &mdash; by Month</h3>
+      <div class="hint">Green = live &middot; Blue = due this month &middot; Red = missed (overdue) &middot; Orange = upcoming. <b>Click a bar</b> to see its projects.</div>
+      <div class="chartbox"><canvas id="goalChart"></canvas></div>
+      <div class="goal-legend">
+        <span><i class="swatch" style="background:var(--green)"></i>Live</span>
+        <span><i class="swatch" style="background:var(--blue)"></i>Due this month</span>
+        <span><i class="swatch" style="background:var(--red)"></i>Missed</span>
+        <span><i class="swatch" style="background:var(--orange)"></i>Upcoming</span>
+        <span><i class="swatch" style="background:var(--red);height:3px;width:16px;border-radius:2px"></i>Goal (10)</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Pipeline by Status</h3>
+      <div class="hint"><b>Click a slice</b> to preview those projects.</div>
+      <div class="chartbox sm"><canvas id="statusChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Cumulative Go-Lives vs Target Run-Rate</h3>
+      <div class="hint">Keeping pace with 10/mo? <b>Click a point</b> for that month's live projects.</div>
+      <div class="chartbox sm"><canvas id="cumChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>BA Workload</h3>
+      <div class="hint">Active projects per Business Analyst. <b>Click a bar</b> to preview.</div>
+      <div class="chartbox sm"><canvas id="baChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="tablecard">
+    <div class="tablehead">
+      <h3>Projects <span class="muted" id="tblCount" style="font-weight:600"></span> <span class="muted" style="font-weight:500;font-size:12px">&mdash; click a row for full detail</span></h3>
+      <input class="searchbox" id="search" placeholder="Search project, owner, SA, BA...">
+    </div>
+    <div class="twrap">
+      <table id="tbl">
+        <thead><tr>
+          <th data-k="flag">Flag</th>
+          <th data-k="name">Project</th>
+          <th data-k="status">Status</th>
+          <th data-k="etaMonth">Go-Live ETA</th>
+          <th data-k="owner">Owner</th>
+          <th data-k="ba">BA</th>
+          <th data-k="sa">SA</th>
+          <th data-k="amount">Deal Value</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footnote">
+    <b>Flag logic</b> (today = <span id="todayTxt"></span>). &nbsp;<b>Live</b> = Completed / Phase 2 / Hyper Care / Moved to Support. &nbsp;<b>Due this month</b> = ETA in Aug 2026, not yet live. &nbsp;<b>Missed</b> = ETA before this month, still not live (excludes Churned). &nbsp;<b>Upcoming</b> = ETA after this month. &nbsp;Months before 2026 are hidden from the filter and month charts; the cumulative line is seeded with pre-2026 live projects so the total stays accurate. Goal fixed at 10/month.
+    <br><br><b>Data source</b>. Live from Zoho Projects via <code>/api/zoho-golive</code> &mdash; active projects where <b>Industry = Roofing</b>, excluding internal accounts tagged <i>InActive User</i> and anything created before 20 Oct 2025. Fields map to Zoho as: Status &rarr; project status, Go-Live ETA &rarr; <i>Current ETA</i>, Deal Value &rarr; <i>ARR in USD</i>, Owner / BA / SA &rarr; project owner / <i>BA-SA</i> / <i>Secondary Owner</i>, Comments &rarr; <i>Project Comments</i> (falling back to <i>Churn Note</i>). Archived projects are not pulled. Blank ETAs are blank in Zoho.
+  </div>
+</div>
+
+<!-- Drawer -->
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer">
+  <div class="dhead">
+    <div><div class="dt" id="drawerT">Details</div><div class="ds" id="drawerS"></div></div>
+    <button class="dclose" id="drawerX">&times;</button>
+  </div>
+  <div class="dbody" id="drawerB"></div>
+</aside>
+
+<script>
+let DATA = [{"name": "Ferguson & Melvin Roofing Co.", "sa": "Madhu Jayakumar", "ba": "", "owner": "Nancy Baird", "status": "Outreach for Discovery", "eta": "", "etaMonth": "", "start": "2026-08-13", "amount": 6960, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/60391622469", "comments": "8/17: Sent welcome email; customer yet to make initial payment."}, {"name": "Strike Roofing Group XT", "sa": "", "ba": "", "owner": "Sundeep A", "status": "New", "eta": "", "etaMonth": "", "start": "2026-08-10", "amount": 3132, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/63442031432", "comments": ""}, {"name": "Safeguard Roofing", "sa": "Rakul Vijayaboopathi", "ba": "Sijin K R", "owner": "Vigneswaran S", "status": "Configuration", "eta": "2026-09-30", "etaMonth": "2026-09", "start": "2026-08-07", "amount": 13440, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/63008749969", "comments": "08/06 KO & discovery done. 08/10 Acculynx migration done; prepping lead intake demo."}, {"name": "Mission Roof", "sa": "", "ba": "", "owner": "Nancy Baird", "status": "New", "eta": "", "etaMonth": "", "start": "2026-07-31", "amount": 5220, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/60845180578", "comments": "8/17: No payment yet. 8/10: No meetings scheduled."}, {"name": "One Oak Exteriors", "sa": "Madhu Jayakumar", "ba": "", "owner": "Balaje N Prasanna", "status": "Configuration", "eta": "2026-10-30", "etaMonth": "2026-10", "start": "2026-07-16", "amount": 16800, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/62448752421", "comments": "08/03 Reviewed lead-qual & inspection workflow; scoping HubSpot/SumoQuote migration. 08/10 Customer on vacation."}, {"name": "Roofing Utah, Inc.", "sa": "Vishali Ashok", "ba": "Atchaya S", "owner": "Vigneswaran S", "status": "Configuration", "eta": "2026-08-31", "etaMonth": "2026-08", "start": "2026-07-30", "amount": 3480, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/58250539905", "comments": "07/30 KO & discovery done; JN migration + lead intake in progress. 08/06 Lead intake walk-through complete; CPQ config in progress."}, {"name": "Mighty Dog Roofing", "sa": "", "ba": "sateesh babu", "owner": "Nancy Baird", "status": "Configuration", "eta": "2027-02-23", "etaMonth": "2027-02", "start": "2026-07-02", "amount": 201600, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/56829005954", "comments": "8/17 On track; pilots by EOD, scope by 8/21. 63 franchisees, go live Feb 2027."}, {"name": "Southern Premier Roofing", "sa": "", "ba": "", "owner": "Sundeep A", "status": "New", "eta": "", "etaMonth": "", "start": "2026-06-19", "amount": 9504, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/53395285528", "comments": ""}, {"name": "Weatherline Re-Roofing & Repairs", "sa": "Sai Kishan T", "ba": "", "owner": "Kari Petzold", "status": "Configuration", "eta": "", "etaMonth": "", "start": "2026-06-12", "amount": 4176, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/61006738071", "comments": "8/3 Trouble getting customer to meet. 7/27 Confused on Connect value; awaiting data."}, {"name": "Fisher Roofing", "sa": "Radhika Srinivasan", "ba": "", "owner": "Kari Petzold", "status": "Configuration", "eta": "", "etaMonth": "", "start": "2026-06-12", "amount": 26094, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/59820095751", "comments": "7/27 Will not use Connect; otherwise engaged. 7/6 Blocked on Connect help."}, {"name": "Hired Guns Roofing & Restoration", "sa": "sateesh babu", "ba": "Sijin K R", "owner": "Balaje N Prasanna", "status": "Phase 2", "eta": "2026-08-31", "etaMonth": "2026-08", "start": "2026-06-11", "amount": 15120, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/60641544097", "comments": "08/10 Live inspections scheduled; lead flow (ActiveProspect/HomeBuddy/Modernize) WIP; invoicing manual."}, {"name": "Roof & Nail", "sa": "Sai Kishan T", "ba": "", "owner": "Vigneswaran S", "status": "Onboarding Slippage", "eta": "", "etaMonth": "", "start": "2026-06-03", "amount": 6240, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/60331681901", "comments": "7/27 Concerns re product bugs; sales to reach out. Leads taken in Zuper; GCal integration done."}, {"name": "Elite Options Contracting", "sa": "Suraj Pillai", "ba": "Vishali Ashok", "owner": "Vigneswaran S", "status": "Hyper Care", "eta": "2026-06-30", "etaMonth": "2026-06", "start": "2026-06-02", "amount": 4176, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/60555582240", "comments": "6/30 12 jobs created; marked LIVE. 7/21 Customer confirmed adoption; positive sentiment."}, {"name": "Brad Smith Roofing Co Inc", "sa": "", "ba": "sateesh babu", "owner": "Balaje N Prasanna", "status": "Onboarding Slippage", "eta": "2026-08-31", "etaMonth": "2026-08", "start": "2026-06-01", "amount": 18420, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/60277444024", "comments": "08/03 Finalized warranty pricing (GAF Golden Pledge $9/sq). Nail formulas & fine print pending; customer validating vs Excel."}, {"name": "Blackfoot Roofing & Construction", "sa": "", "ba": "", "owner": "Sundeep A", "status": "New", "eta": "", "etaMonth": "", "start": "2026-05-21", "amount": 8352, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/60423956664", "comments": ""}, {"name": "CasaBella Roofing", "sa": "Suraj Pillai", "ba": "", "owner": "Ramya Vijaya Ragavan", "status": "On Hold", "eta": "", "etaMonth": "", "start": "2026-05-11", "amount": 7200, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/59947505783", "comments": ""}, {"name": "NKS Contracting LLC", "sa": "", "ba": "sateesh babu", "owner": "Nancy Baird", "status": "Configuration", "eta": "2026-08-13", "etaMonth": "2026-08", "start": "2026-05-11", "amount": 10092, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/59946666830", "comments": "8/17 On track for Lead Intake go live tomorrow. 7/29 E2E training done; go live 8/3."}, {"name": "AC INC. Roofing", "sa": "Rakul Vijayaboopathi", "ba": "Sijin K R", "owner": "Nancy Baird", "status": "Configuration", "eta": "2026-08-25", "etaMonth": "2026-08", "start": "2026-04-29", "amount": 23748, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/58635888978", "comments": "8/17 Tweaking templates & testing ZC; Thumbtack lead issue (Sijin/Rakul notified). 8/13 Go live next Tuesday."}, {"name": "Valley Roofing", "sa": "Sai Kishan T", "ba": "", "owner": "Sundeep A", "status": "On Hold", "eta": "", "etaMonth": "", "start": "2026-04-29", "amount": 12468, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/59481648641", "comments": ""}, {"name": "Consumer First Roofing", "sa": "Rakul Vijayaboopathi", "ba": "Ajit Vincent Joshua", "owner": "Vigneswaran S", "status": "Onboarding Slippage", "eta": "", "etaMonth": "", "start": "2026-04-27", "amount": 3132, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/59680064536", "comments": "Requested ABC supplier + Angi Leads integration; not willing to wait, requested call back when Zuper ready."}, {"name": "Five Star Contractors", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "", "etaMonth": "", "start": "2026-04-24", "amount": 10080, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/59182629379", "comments": ""}, {"name": "TriumphBuilt", "sa": "Ajit Vincent Joshua", "ba": "Vishali Ashok", "owner": "Balaje N Prasanna", "status": "Phase 2", "eta": "2026-06-03", "etaMonth": "2026-06", "start": "2026-04-23", "amount": 6132, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/59034968593", "comments": "08/10 10DLC blocked by Plivo->Twilio; inspection pipeline set; CPQ corrected formula + Good package pending from Ryan."}, {"name": "Queen City Roofing", "sa": "Ajit Vincent Joshua", "ba": "Vishali Ashok", "owner": "Balaje N Prasanna", "status": "Phase 2", "eta": "2026-05-30", "etaMonth": "2026-05", "start": "2026-04-23", "amount": 8808, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/59317626139", "comments": "08/10 Custom workflow: lead->job only at contract signed; categories added; GAF Quick Measure live on web."}, {"name": "MARS Roofing", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "", "etaMonth": "", "start": "2026-04-22", "amount": 28800, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/54639455135", "comments": ""}, {"name": "IronHead Roofing", "sa": "Madhu Jayakumar", "ba": "Radhika Srinivasan", "owner": "Nancy Baird", "status": "Phase 2", "eta": "2026-09-28", "etaMonth": "2026-09", "start": "2026-04-19", "amount": 50748, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/58882920542", "comments": "8/17 Waiting on Tom to grant RBP access; Madhu/Radhika on transition docs. 8/13 Customer transitioning to partner."}, {"name": "C. Pickett Roofing, Inc.", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "", "etaMonth": "", "start": "2026-04-17", "amount": 2892, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/58896826792", "comments": ""}, {"name": "Texas Vets Roofing", "sa": "", "ba": "Sai Kishan T", "owner": "Vigneswaran S", "status": "Onboarding Slippage", "eta": "", "etaMonth": "", "start": "2026-04-14", "amount": 16788, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/58740749996", "comments": "Churn risk: needs Smart Document + email conversation (native in JobNimbus, not in Zuper)."}, {"name": "Dryout Roofing", "sa": "Sai Kishan T", "ba": "", "owner": "Sundeep A", "status": "Phase 2", "eta": "2026-06-12", "etaMonth": "2026-06", "start": "2026-04-14", "amount": 9924, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/59030635093", "comments": "06/02 Fully live with inspection & lead intake; setting up production, profitability, revenue pipelines."}, {"name": "High Impact Roofing & Exteriors", "sa": "Rakul Vijayaboopathi", "ba": "", "owner": "Ramya Vijaya Ragavan", "status": "Phase 2", "eta": "", "etaMonth": "", "start": "2026-04-22", "amount": 13668, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/54350849803", "comments": ""}, {"name": "Monroe Roofing and Siding", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "", "etaMonth": "", "start": "2026-04-08", "amount": 19308, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/58951354919", "comments": ""}, {"name": "Emerson Pros", "sa": "", "ba": "", "owner": "Nancy Baird", "status": "On Hold", "eta": "2026-09-30", "etaMonth": "2026-09", "start": "2026-04-03", "amount": 106788, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/49020657506", "comments": "8/3 On Hold. 7/21 Customer cancelled (illness). Adjuster pipe planned; positive on new UI."}, {"name": "Baja Roofing Inc", "sa": "", "ba": "Sai Kishan T", "owner": "Vigneswaran S", "status": "On Hold", "eta": "2026-11-27", "etaMonth": "2026-11", "start": "2026-04-02", "amount": 37068, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/57956915294", "comments": "5/28 At inspection finish line; customer requested 2-3 month hold for recruiting. Revised contract pending signature."}, {"name": "Bayfront Roofing and Construction", "sa": "Suraj Pillai", "ba": "", "owner": "Vigneswaran S", "status": "Configuration", "eta": "2026-09-04", "etaMonth": "2026-09", "start": "2026-06-01", "amount": 21696, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/58634215986", "comments": "07/06 CPQ config expectations call; fresh start, 4-6 wk target. 07/21 Signed off inspection->PO workflow on GBB."}, {"name": "Vivid Roofs", "sa": "Suraj Pillai", "ba": "", "owner": "Vigneswaran S", "status": "Configuration", "eta": "2026-08-15", "etaMonth": "2026-08", "start": "2026-07-16", "amount": 20388, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/58479657022", "comments": "07/16 Re-kicked off; CPQ feedback being addressed by Suraj."}, {"name": "Preferred Roofing", "sa": "", "ba": "sateesh babu", "owner": "Nancy Baird", "status": "On Hold", "eta": "2026-05-30", "etaMonth": "2026-05", "start": "2026-03-27", "amount": 8808, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/58508204177", "comments": "5/27 Went live, hyper care. Challenges with customer taking calls while driving."}, {"name": "Elevate Roofing Pros", "sa": "sateesh babu", "ba": "Ajit Vincent Joshua", "owner": "Vigneswaran S", "status": "Churned", "eta": "2026-06-29", "etaMonth": "2026-06", "start": "2026-03-26", "amount": 5670, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/56943770760", "comments": "06/17 Customer says WO process too complex; heading toward churn. Product team addressing feedback."}, {"name": "Patriot Roofing and Restoration", "sa": "Rakul Vijayaboopathi", "ba": "Sijin K R", "owner": "Balaje N Prasanna", "status": "Phase 2", "eta": "2026-07-21", "etaMonth": "2026-07", "start": "2026-03-26", "amount": 9876, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/57893161283", "comments": "08/10 UI customized; auto ETA/arrival texts solve ProLine pain. BUG: Inspection Report status missing on mobile. CPQ demoed."}, {"name": "Wilson and Sons Roofing", "sa": "", "ba": "Sai Kishan T", "owner": "Kari Petzold", "status": "Phase 2", "eta": "2026-06-23", "etaMonth": "2026-06", "start": "2026-04-03", "amount": 7780, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/57987003217", "comments": "8/3 Multi-structure demo; 8/31 full golive agreed. Residential roofing live; Phase 2 = trades + commercial."}, {"name": "ROOFING ROCHESTER NY", "sa": "", "ba": "sateesh babu", "owner": "Balaje N Prasanna", "status": "Onboarding Slippage", "eta": "2026-07-31", "etaMonth": "2026-07", "start": "2026-03-26", "amount": 20148, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/56554584492", "comments": "Churn risk: prolonged onboarding, ineffective training for hands-on team, excessive manual estimating input."}, {"name": "Rosebud Roofing", "sa": "", "ba": "Rakul Vijayaboopathi", "owner": "Balaje N Prasanna", "status": "Onboarding Slippage", "eta": "2026-05-07", "etaMonth": "2026-05", "start": "2026-03-26", "amount": 14508, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/58179418275", "comments": "Churn: did not want to continue after 30-min KO; not confident in product/solution."}, {"name": "SC ROOFING", "sa": "Suraj Pillai", "ba": "", "owner": "Vigneswaran S", "status": "Hyper Care", "eta": "2026-06-22", "etaMonth": "2026-06", "start": "2026-03-25", "amount": 16245, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/47746381900", "comments": "6/22 Customer live. 08/03 Hyper care; repair, insurance, pricing-per-square pending."}, {"name": "White Roofing & Contracting", "sa": "Madhu Jayakumar", "ba": "Radhika Srinivasan", "owner": "Kari Petzold", "status": "On Hold", "eta": "2026-06-16", "etaMonth": "2026-06", "start": "2026-03-13", "amount": 12276, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/57961995346", "comments": "8/3 Project pause (Joey's business picked up). Sorting which requested automations are native vs custom-build."}, {"name": "Roof Tec", "sa": "sateesh babu", "ba": "", "owner": "Nancy Baird", "status": "Churned", "eta": "2026-04-24", "etaMonth": "2026-04", "start": "2026-03-12", "amount": 8700, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/57622885679", "comments": "6/22 Customer asked to cancel due to product complexity; proposal edit too time-consuming."}, {"name": "Bergens Roofing", "sa": "Madhu Jayakumar", "ba": "", "owner": "Nancy Baird", "status": "Hyper Care", "eta": "2026-07-17", "etaMonth": "2026-07", "start": "2026-03-07", "amount": 14688, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/55056714537", "comments": "7/21 Plivo porting issues; ProLine won't provide PIN. VJ resubmitting porting form."}, {"name": "Intrawest Seamless Gutters", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "2026-04-30", "etaMonth": "2026-04", "start": "2026-03-06", "amount": 13368, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/57588453158", "comments": ""}, {"name": "Just Roofs and Gutters", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "2026-07-31", "etaMonth": "2026-07", "start": "2026-03-06", "amount": 23748, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/56149768325", "comments": "NXTLVL wants 100+ JN automations rebuilt in Zuper; assessing feasibility."}, {"name": "Strux Roofing", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Phase 2", "eta": "2026-03-31", "etaMonth": "2026-03", "start": "2026-03-03", "amount": 10488, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/57147778425", "comments": ""}, {"name": "High Caliber Exteriors", "sa": "", "ba": "Sai Kishan T", "owner": "Nancy Baird", "status": "Onboarding Slippage", "eta": "2026-04-17", "etaMonth": "2026-04", "start": "2026-02-26", "amount": 18948, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/54223669158", "comments": "Churn: sales declining (sole salesperson issues); customer could not pay."}, {"name": "Happy Roofing", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "2026-04-29", "etaMonth": "2026-04", "start": "2026-03-01", "amount": 11184, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/54214868073", "comments": ""}, {"name": "JAB Exteriors", "sa": "", "ba": "Ajit Vincent Joshua", "owner": "Nancy Baird", "status": "Onboarding Slippage", "eta": "", "etaMonth": "", "start": "2026-02-25", "amount": 4500, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/55632646740", "comments": "Feb 27 discovery kickoff email sent; customer went silent after data share, never returned calls."}, {"name": "Howdy Roofing", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "2026-04-23", "etaMonth": "2026-04", "start": "2026-02-24", "amount": 2820, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/54263748622", "comments": ""}, {"name": "Evans Roofing and Gutters", "sa": "Rakul Vijayaboopathi", "ba": "Ajit Vincent Joshua", "owner": "Balaje N Prasanna", "status": "Churned", "eta": "2026-04-21", "etaMonth": "2026-04", "start": "2026-02-20", "amount": 24408, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/55397681188", "comments": "Churn: prolonged onboarding, rising time commitment, no bandwidth in busy season."}, {"name": "Shield Roofing", "sa": "Sai Kishan T", "ba": "Suraj Pillai", "owner": "Kari Petzold", "status": "At Risk", "eta": "2026-09-05", "etaMonth": "2026-09", "start": "2026-02-11", "amount": 13188, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/55653832823", "comments": "8/3 Sai added; aligning on BDR + insurance workflow. 5/29 Customer disengaged, expected all roofing features prebuilt."}, {"name": "Roof Raiders, LLC", "sa": "Rakul Vijayaboopathi", "ba": "Sai Kishan T", "owner": "Kari Petzold", "status": "Configuration", "eta": "2026-08-28", "etaMonth": "2026-08", "start": "2026-02-06", "amount": 32908, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/55389472004", "comments": "8/10 On track for 8/12 golive. Onsite visit done; reviewing feedback. Delay: customer not committing time."}, {"name": "Green Country Roofing", "sa": "Rakul Vijayaboopathi", "ba": "Sai Kishan T", "owner": "Kari Petzold", "status": "Onboarding Slippage", "eta": "2026-05-30", "etaMonth": "2026-05", "start": "2026-02-05", "amount": 4068, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/55564585908", "comments": "6/22 Project no longer active. Churn: went cold, one person managing business, wants RBP help."}, {"name": "Classic Construction & Consulting", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "2026-04-15", "etaMonth": "2026-04", "start": "2026-02-03", "amount": 42288, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/51631224641", "comments": ""}, {"name": "Elite Roofing", "sa": "Madhu Jayakumar", "ba": "Radhika Srinivasan", "owner": "Ramya Vijaya Ragavan", "status": "Configuration", "eta": "2026-04-29", "etaMonth": "2026-04", "start": "2026-01-31", "amount": 33708, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/48883937656", "comments": ""}, {"name": "STX Roofing", "sa": "", "ba": "Radhika Srinivasan", "owner": "Kari Petzold", "status": "Training Scheduled", "eta": "2026-08-22", "etaMonth": "2026-08", "start": "2026-01-29", "amount": 12708, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/50320090495", "comments": "8/3 QBO setup 8/11, full golive wk of 8/17. SRS + windows parts mapping complete; Russell to test."}, {"name": "Sun Elevated (Wash Me Solar)", "sa": "Madhu Jayakumar", "ba": "", "owner": "Kari Petzold", "status": "Phase 2", "eta": "2026-04-27", "etaMonth": "2026-04", "start": "2026-01-29", "amount": 15528, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/53751740687", "comments": "8/5 Committed 9/1 full golive; already using Zuper for solar + residential. Need CSM assigned."}, {"name": "Rival Roofing", "sa": "Suraj Pillai", "ba": "", "owner": "Balaje N Prasanna", "status": "Onboarding Slippage", "eta": "2026-03-24", "etaMonth": "2026-03", "start": "2026-01-29", "amount": 4320, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/53874114828", "comments": "Actual go live 3/25; referred to sales 8/17. All milestones closed."}, {"name": "Total Roofing St Louis", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Phase 2", "eta": "2026-04-23", "etaMonth": "2026-04", "start": "2026-01-28", "amount": 17508, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/53687272259", "comments": ""}, {"name": "Steadfast Construction and Roofing", "sa": "", "ba": "", "owner": "Nancy Baird", "status": "Hyper Care", "eta": "2026-04-27", "etaMonth": "2026-04", "start": "2026-03-03", "amount": 5760, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/54740317202", "comments": "Implemented by Zuper; Saenz Global shadowing for learning."}, {"name": "Calgary Roofing Restoration", "sa": "", "ba": "", "owner": "Vigneswaran S", "status": "Completed", "eta": "2026-02-23", "etaMonth": "2026-02", "start": "2026-01-26", "amount": 5760, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/53720642624", "comments": "Actual go live 2/27."}, {"name": "Paravel Construction (toitures cossette)", "sa": "sateesh babu", "ba": "", "owner": "Kari Petzold", "status": "Phase 2", "eta": "2026-05-15", "etaMonth": "2026-05", "start": "2026-01-19", "amount": 11700, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/51955444112", "comments": "8/3 Waiting on commercial workflow (blocker); residential live and in informal hyper care."}, {"name": "Mosaic Service Partners", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "2026-06-30", "etaMonth": "2026-06", "start": "2026-01-12", "amount": 160200, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/49776558427", "comments": ""}, {"name": "Legacy Construction", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Completed", "eta": "2026-02-20", "etaMonth": "2026-02", "start": "2026-01-01", "amount": 11880, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/46697359685", "comments": "Actual go live 2/18."}, {"name": "Equity Roofing LLC - Commercial", "sa": "", "ba": "Vishali Ashok", "owner": "Preetha M", "status": "Phase 2", "eta": "2026-08-31", "etaMonth": "2026-08", "start": "2026-12-31", "amount": 11400, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/52391397482", "comments": "Upsell (commercial). Actual go live 5/21."}, {"name": "RoofX", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Phase 2", "eta": "2026-04-30", "etaMonth": "2026-04", "start": "2026-12-31", "amount": 62748, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/51268771388", "comments": "6/2 Forgeworks live with Multi-Trades; positive momentum."}, {"name": "Roof Maxx Spartanburg", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Completed", "eta": "2026-03-30", "etaMonth": "2026-03", "start": "2026-12-31", "amount": 10308, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/51168291627", "comments": "Actual go live 2/26."}, {"name": "Geoghegan Roofing", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Phase 2", "eta": "2026-04-30", "etaMonth": "2026-04", "start": "2025-12-23", "amount": 14460, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/49144426084", "comments": "Actual go live 5/5."}, {"name": "Nest Exteriors", "sa": "", "ba": "sateesh babu", "owner": "Vigneswaran S", "status": "Phase 2", "eta": "2026-07-24", "etaMonth": "2026-07", "start": "2025-12-23", "amount": 14508, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/48828042347", "comments": "Customer repeatedly slow to go live; training done, crew testing mobile app."}, {"name": "Liberty Roofing Pros", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Completed", "eta": "2026-03-23", "etaMonth": "2026-03", "start": "2025-12-20", "amount": 13188, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/42588316976", "comments": "Actual go live 2/27."}, {"name": "Bay Valley Roofing & Solar", "sa": "Radhika Srinivasan", "ba": "", "owner": "Vigneswaran S", "status": "Hyper Care", "eta": "2026-04-23", "etaMonth": "2026-04", "start": "2025-12-16", "amount": 13188, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/46283880257", "comments": "CSM handover; HubSpot->Zuper migration; SumoQuote/CompanyCam migration pending."}, {"name": "Precise Exteriors LLC", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "2026-04-21", "etaMonth": "2026-04", "start": "2025-12-16", "amount": 16068, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/51539895728", "comments": ""}, {"name": "The Roof Medic", "sa": "sateesh babu", "ba": "", "owner": "Vigneswaran S", "status": "Churned", "eta": "2026-02-27", "etaMonth": "2026-02", "start": "2025-12-11", "amount": 28128, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/49665058339", "comments": "23 Dec CPQ demo done, config in progress. Later churned."}, {"name": "Xterior PRO ROOFING & SIDING", "sa": "", "ba": "sateesh babu", "owner": "Nancy Baird", "status": "Moved to Support", "eta": "2026-02-20", "etaMonth": "2026-02", "start": "2025-12-08", "amount": 13608, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/49007104303", "comments": "CPQ demo done; discovery complete. Actual go live 2/18."}, {"name": "Valiant Roofing, LLC", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "2026-04-30", "etaMonth": "2026-04", "start": "2025-12-08", "amount": 57048, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/48157185604", "comments": ""}, {"name": "True Grit Roofing Company", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "2026-04-30", "etaMonth": "2026-04", "start": "2025-11-24", "amount": 12960, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/46576698801", "comments": ""}, {"name": "Equity Roofing LLC", "sa": "", "ba": "Vishali Ashok", "owner": "Vishali Ashok", "status": "Phase 2", "eta": "2026-02-27", "etaMonth": "2026-02", "start": "2025-11-24", "amount": 41148, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/44660984733", "comments": "Actual go live 3/4."}, {"name": "Dreamworx Roofing", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Phase 2", "eta": "2026-04-30", "etaMonth": "2026-04", "start": "2025-11-24", "amount": 20388, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/45466382978", "comments": "Actual go live 5/5."}, {"name": "Roof One", "sa": "Rakul Vijayaboopathi", "ba": "", "owner": "Nancy Baird", "status": "Hyper Care", "eta": "2026-02-05", "etaMonth": "2026-02", "start": "2025-11-20", "amount": 2880, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/44968051075", "comments": "Actual go live 2/4."}, {"name": "Riedl and Son Exterior Specialists", "sa": "Sai Kishan T", "ba": "", "owner": "Nancy Baird", "status": "Onboarding Slippage", "eta": "2026-05-31", "etaMonth": "2026-05", "start": "2025-11-12", "amount": 46308, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/45664128628", "comments": ""}, {"name": "Trust Roofing", "sa": "", "ba": "", "owner": "sateesh babu", "status": "Completed", "eta": "2026-03-14", "etaMonth": "2026-03", "start": "2025-11-17", "amount": 72000, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/45332214281", "comments": "Actual go live 2/27."}, {"name": "Action Roofing Ltd", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Phase 2", "eta": "2026-03-14", "etaMonth": "2026-03", "start": "2025-11-06", "amount": 2880, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/45690819402", "comments": "Actual go live 4/1."}, {"name": "Skyland Roofing LLC", "sa": "", "ba": "", "owner": "sateesh babu", "status": "Onboarding Slippage", "eta": "2026-01-09", "etaMonth": "2026-01", "start": "2025-10-31", "amount": 20388, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/46314491030", "comments": "Churn: small startup team found Zuper complex, moved to Roofr."}, {"name": "Total Exteriors", "sa": "Madhu Jayakumar", "ba": "", "owner": "Nancy Baird", "status": "Hyper Care", "eta": "2026-02-27", "etaMonth": "2026-02", "start": "2025-10-29", "amount": 14400, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/43633951517", "comments": "Actual go live 2/27; payment collected."}, {"name": "Florida Southern Roofing", "sa": "Suraj Pillai", "ba": "Suraj Pillai", "owner": "Nancy Baird", "status": "Hyper Care", "eta": "2026-03-10", "etaMonth": "2026-03", "start": "2025-10-28", "amount": 46308, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/43649180196", "comments": "6/8 Live in commercial. Actual go live 3/9."}, {"name": "Vista Roofing, Inc.", "sa": "", "ba": "", "owner": "Sundeep A", "status": "Configuration", "eta": "2026-04-23", "etaMonth": "2026-04", "start": "2025-10-27", "amount": 33948, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/45997519965", "comments": ""}, {"name": "JDH Remodeling", "sa": "Sai Kishan T", "ba": "Sai Kishan T", "owner": "Nancy Baird", "status": "Churned", "eta": "", "etaMonth": "", "start": "2025-10-24", "amount": 21828, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/44576814432", "comments": "Churn: wrong sales commitment."}, {"name": "Brothers Metal Roofing", "sa": "", "ba": "", "owner": "Nancy Baird", "status": "Churned", "eta": "2026-02-19", "etaMonth": "2026-02", "start": "2025-10-21", "amount": 11748, "url": "https://app.hubspot.com/contacts/8599304/record/0-3/45968584499", "comments": "Churn: technical POC changed; customer not tech-savvy, declined managed onboarding."}];
+// The array above is a snapshot, kept only so the page renders something if Zoho is
+// unreachable. load() replaces it with live data on every visit and every Refresh.
+const SEED_STAMP = '2026-08-18';
+const TODAY = new Date();
+const TODAY_M = TODAY.getFullYear()+'-'+String(TODAY.getMonth()+1).padStart(2,'0');
+const LIVE = new Set(['Completed','Hyper Care','Moved to Support','Phase 2']);
+const DEAD = new Set(['Churned']);
+const fmt = n => '$'+Math.round(n).toLocaleString();
+const fmtK = n => n>=1000 ? '$'+(n/1000).toFixed(n>=10000?0:1)+'k' : '$'+n;
+
+// ---- flag each project
+function flagOf(d){
+  if(LIVE.has(d.status)) return 'live';
+  if(d.etaMonth===TODAY_M) return 'cur';
+  if(d.etaMonth && d.etaMonth<TODAY_M && !DEAD.has(d.status)) return 'miss';
+  if(d.etaMonth && d.etaMonth>TODAY_M) return 'up';
+  if(DEAD.has(d.status)) return 'churn';
+  return 'none';
+}
+const FLAG_LABEL={live:'LIVE',cur:'THIS MONTH',miss:'MISSED',up:'UPCOMING',churn:'CHURNED',none:'NO ETA'};
+const FLAG_ORDER={cur:0,miss:1,live:2,up:3,none:4,churn:5};
+
+// ---- month axis: 2026-01 onward only
+function monthList(){
+  const ms=DATA.filter(d=>d.etaMonth && d.etaMonth>='2026-01').map(d=>d.etaMonth).sort();
+  if(!ms.length) return [];
+  const [y1,m1]=ms[ms.length-1].split('-').map(Number);
+  const out=[]; let y=2026,m=1;
+  while(y<y1||(y===y1&&m<=m1)){ out.push(y+'-'+String(m).padStart(2,'0')); m++; if(m>12){m=1;y++;} }
+  return out;
+}
+// Recomputed on every load — the month axis, the pre-2026 seed and the filter options
+// all follow whatever Zoho just returned.
+let MONTHS=[];
+const monthLabel=m=>{const[y,mm]=m.split('-');return new Date(y,mm-1).toLocaleString('en',{month:'short'})+" '"+String(y).slice(2);};
+let PRE_LIVE=0;
+
+// ---- selects
+const monthSel=document.getElementById('monthSel'),statusSel=document.getElementById('statusSel'),
+      ownerSel=document.getElementById('ownerSel'),baSel=document.getElementById('baSel');
+function fillSel(sel,items,all){sel.innerHTML='<option value="">'+all+'</option>'+items.map(i=>'<option value="'+i+'">'+i+'</option>').join('');}
+
+// Re-derive everything that depends on DATA. Keeps the user's current filter picks if
+// the new data still contains them, so a Refresh does not silently reset the view.
+function rebuildDerived(){
+  DATA.forEach(d=>d.flag=flagOf(d));
+  MONTHS=monthList();
+  PRE_LIVE=DATA.filter(d=>LIVE.has(d.status) && d.etaMonth && d.etaMonth<'2026-01').length;
+  fillSel(monthSel,MONTHS,'All months');[...monthSel.options].forEach(o=>{if(o.value)o.textContent=monthLabel(o.value);});
+  fillSel(statusSel,[...new Set(DATA.map(d=>d.status).filter(Boolean))].sort(),'All statuses');
+  fillSel(ownerSel,[...new Set(DATA.map(d=>d.owner).filter(Boolean))].sort(),'All owners');
+  fillSel(baSel,[...new Set(DATA.map(d=>d.ba).filter(Boolean))].sort(),'All BAs');
+  if(typeof state==='object'){
+    [['month',monthSel],['status',statusSel],['owner',ownerSel],['ba',baSel]].forEach(([k,sel])=>{
+      const keep=state[k] && [...sel.options].some(o=>o.value===state[k]);
+      if(!keep) state[k]='';
+      sel.value=state[k];
+    });
+  }
+}
+
+let state={month:'',status:'',owner:'',ba:'',flag:'',q:'',sortK:'flag',sortDir:1};
+function filtered(){
+  return DATA.filter(d=>{
+    if(state.month && d.etaMonth!==state.month) return false;
+    if(state.status && d.status!==state.status) return false;
+    if(state.owner && d.owner!==state.owner) return false;
+    if(state.ba && d.ba!==state.ba) return false;
+    if(state.flag && d.flag!==state.flag) return false;
+    if(state.q){const s=(d.name+' '+d.owner+' '+d.sa+' '+d.ba+' '+d.status).toLowerCase();if(!s.includes(state.q))return false;}
+    return true;
+  });
+}
+
+// ---- flag chips
+function renderFlags(){
+  const rows=filtered();
+  const c={live:0,cur:0,miss:0,up:0};
+  DATA.forEach(d=>{if(c[d.flag]!==undefined)c[d.flag]++;});
+  const defs=[
+    ['cur','f-cur','Due This Month','Aug 2026 target'],
+    ['live','f-live','Gone Live','incl. Phase 2 + support'],
+    ['miss','f-miss','Missed Go-Live','overdue, not live'],
+    ['up','f-up','Upcoming','future ETA'],
+  ];
+  document.getElementById('flagrow').innerHTML=defs.map(f=>
+    '<div class="flag '+f[1]+(state.flag===f[0]?' active':'')+'" data-flag="'+f[0]+'">'+
+    '<div class="fcap">'+f[2]+'</div><div class="fval">'+c[f[0]]+'</div><div class="ffoot">'+f[3]+' &middot; click to filter</div></div>'
+  ).join('');
+  document.querySelectorAll('.flag').forEach(el=>el.onclick=()=>{
+    state.flag = state.flag===el.dataset.flag ? '' : el.dataset.flag; renderAll();
+  });
+}
+
+// ---- KPIs
+function renderKpis(){
+  const rows=filtered();
+  const live=rows.filter(d=>d.flag==='live').length;
+  const total=rows.length;
+  const risk=rows.filter(d=>['At Risk','On Hold','Onboarding Slippage'].includes(d.status)).length;
+  const val=rows.reduce((a,d)=>a+d.amount,0);
+  const scope=state.month?monthLabel(state.month):'current view';
+  const goalTxt=state.month?(live>=10?'goal met &#10003;':(10-live)+' short of 10'):'across pipeline';
+  const k=[
+    ['goal','Gone Live',live,goalTxt,'live'],
+    ['total','Total Projects',total,scope,''],
+    ['risk','At Risk / Slipping',risk,'need attention','risk'],
+    ['val-amt','Deal Value',fmtK(val),'in current view','val'],
+  ];
+  document.getElementById('kpis').innerHTML=k.map(x=>
+    '<div class="kpi '+x[0]+'" data-kpi="'+x[4]+'"><div class="bar"></div><div class="cap">'+x[1]+'</div><div class="val">'+x[2]+'</div><div class="foot">'+x[3]+'</div></div>'
+  ).join('');
+  document.querySelectorAll('.kpi').forEach(el=>el.onclick=()=>{
+    const kind=el.dataset.kpi; let rows2=filtered(),title,sub;
+    if(kind==='live'){rows2=rows2.filter(d=>d.flag==='live');title='Gone Live';sub=rows2.length+' projects';}
+    else if(kind==='risk'){rows2=rows2.filter(d=>['At Risk','On Hold','Onboarding Slippage'].includes(d.status));title='At Risk / Slipping';sub=rows2.length+' projects';}
+    else if(kind==='val'){rows2=[...rows2].sort((a,b)=>b.amount-a.amount);title='Deal Value';sub=fmt(rows2.reduce((a,d)=>a+d.amount,0))+' total';}
+    else{title='All projects';sub=rows2.length+' in view';}
+    openList(title,sub,rows2);
+  });
+}
+
+// ---- charts
+let goalChart,statusChart,cumChart,baChart;
+function chartBase(){ // apply non-month filters to keep trend visible
+  return DATA.filter(d=>{
+    if(state.status && d.status!==state.status) return false;
+    if(state.owner && d.owner!==state.owner) return false;
+    if(state.ba && d.ba!==state.ba) return false;
+    if(state.flag && d.flag!==state.flag) return false;
+    if(state.q){const s=(d.name+' '+d.owner+' '+d.sa+' '+d.ba+' '+d.status).toLowerCase();if(!s.includes(state.q))return false;}
+    return true;
+  });
+}
+function buildCharts(){
+  const base=chartBase();
+  const byM={}; MONTHS.forEach(m=>byM[m]={live:0,cur:0,miss:0,up:0,val:0});
+  base.forEach(d=>{ if(!d.etaMonth||!(d.etaMonth in byM))return;
+    if(d.flag in byM[d.etaMonth]) byM[d.etaMonth][d.flag]++;
+    if(!DEAD.has(d.status)) byM[d.etaMonth].val+=d.amount;
+  });
+  const labels=MONTHS.map(monthLabel);
+  const hl=MONTHS.map(m=>m===state.month?1:0);
+  const liveA=MONTHS.map(m=>byM[m].live),curA=MONTHS.map(m=>byM[m].cur),
+        missA=MONTHS.map(m=>byM[m].miss),upA=MONTHS.map(m=>byM[m].up),
+        valA=MONTHS.map(m=>Math.round(byM[m].val));
+
+  const stackOpts={responsive:true,maintainAspectRatio:false,onClick:(e,els)=>{if(els.length)openMonth(MONTHS[els[0].index]);},
+    plugins:{legend:{display:false},tooltip:{callbacks:{footer:it=>{const i=it[0].dataIndex;return 'Total: '+(liveA[i]+curA[i]+missA[i]+upA[i]);}}}},
+    scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{beginAtZero:true,stacked:true,grid:{color:'#EEF2F7'},ticks:{stepSize:5,font:{size:10}}},x2:{display:false}}};
+  const bd=(c)=>({borderColor:hl.map(h=>h?'#1B2A4A':'transparent'),borderWidth:hl.map(h=>h?2:0)});
+
+  if(goalChart)goalChart.destroy();
+  goalChart=new Chart(document.getElementById('goalChart'),{
+    data:{labels,datasets:[
+      {type:'bar',label:'Live',data:liveA,backgroundColor:'#1FA971',stack:'g',borderRadius:2,...bd()},
+      {type:'bar',label:'Due this month',data:curA,backgroundColor:'#2E5AAC',stack:'g',borderRadius:2,...bd()},
+      {type:'bar',label:'Missed',data:missA,backgroundColor:'#E04F4F',stack:'g',borderRadius:2,...bd()},
+      {type:'bar',label:'Upcoming',data:upA,backgroundColor:'#FD5000',stack:'g',borderRadius:2,...bd()},
+      {type:'line',label:'Goal',data:MONTHS.map(()=>10),borderColor:'#E04F4F',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false}
+    ]},options:{...stackOpts,scales:{...stackOpts.scales,x:{stacked:true,grid:{display:false},ticks:{font:{size:10}}}}}
+  });
+
+  // status doughnut
+  const rows=filtered();const sc={};rows.forEach(d=>sc[d.status]=(sc[d.status]||0)+1);
+  const order=Object.entries(sc).sort((a,b)=>b[1]-a[1]);
+  const pal={'Completed':'#1FA971','Hyper Care':'#3FC08A','Moved to Support':'#7AD3AE','Phase 2':'#56C795','Configuration':'#FD5000','New':'#2E5AAC','Onboarding Slippage':'#E8A33D','On Hold':'#C9A24B','At Risk':'#E04F4F','Churned':'#8A97AC','Training Scheduled':'#6C8AD6','Outreach for Discovery':'#B8C2D4'};
+  if(statusChart)statusChart.destroy();
+  statusChart=new Chart(document.getElementById('statusChart'),{type:'doughnut',
+    data:{labels:order.map(o=>o[0]),datasets:[{data:order.map(o=>o[1]),backgroundColor:order.map(o=>pal[o[0]]||'#B8C2D4'),borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'58%',onClick:(e,els)=>{if(els.length)openStatus(order[els[0].index][0]);},plugins:{legend:{position:'right',labels:{font:{size:10.5},boxWidth:12,padding:6}}}}});
+
+  // cumulative
+  let cum=PRE_LIVE;const cumLive=MONTHS.map(m=>{cum+=byM[m].live;return cum;});
+  const target=MONTHS.map((_,i)=>10*(i+1));
+  if(cumChart)cumChart.destroy();
+  cumChart=new Chart(document.getElementById('cumChart'),{type:'line',
+    data:{labels,datasets:[
+      {label:'Cumulative live',data:cumLive,borderColor:'#1FA971',backgroundColor:'rgba(31,169,113,.12)',fill:true,tension:.3,pointRadius:3,pointHoverRadius:6,pointBackgroundColor:'#1FA971'},
+      {label:'Target (10/mo)',data:target,borderColor:'#E04F4F',borderDash:[6,4],borderWidth:2,pointRadius:0,fill:false}
+    ]},options:{responsive:true,maintainAspectRatio:false,onClick:(e,els)=>{if(els.length)openMonth(MONTHS[els[0].index],true);},plugins:{legend:{position:'top',labels:{font:{size:10.5},boxWidth:12}}},scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{beginAtZero:true,grid:{color:'#EEF2F7'},ticks:{font:{size:10}}}}}});
+
+  // BA workload (active only: exclude churned + already live? show active pipeline)
+  const bac={};rows.filter(d=>d.ba && !DEAD.has(d.status)).forEach(d=>bac[d.ba]=(bac[d.ba]||0)+1);
+  const bo=Object.entries(bac).sort((a,b)=>b[1]-a[1]);
+  if(baChart)baChart.destroy();
+  baChart=new Chart(document.getElementById('baChart'),{type:'bar',
+    data:{labels:bo.map(o=>o[0]),datasets:[{label:'Projects',data:bo.map(o=>o[1]),backgroundColor:'#26385C',borderRadius:3}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,onClick:(e,els)=>{if(els.length)openBA(bo[els[0].index][0]);},plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,grid:{color:'#EEF2F7'},ticks:{stepSize:2,font:{size:10}}},y:{grid:{display:false},ticks:{font:{size:10.5}}}}}});
+}
+
+// ---- table
+function pillClass(s){if(s==='Phase 2')return'p-live';if(LIVE.has(s))return'p-live';if(s==='At Risk')return'p-risk';if(['On Hold','Onboarding Slippage','Churned'].includes(s))return'p-hold';if(['New','Outreach for Discovery','Training Scheduled'].includes(s))return'p-new';return'p-prog';}
+function renderTable(){
+  let rows=filtered();const k=state.sortK,dir=state.sortDir;
+  rows.sort((a,b)=>{
+    if(k==='amount')return(a.amount-b.amount)*dir;
+    if(k==='flag')return((FLAG_ORDER[a.flag]??9)-(FLAG_ORDER[b.flag]??9))*dir || a.name.localeCompare(b.name);
+    return((a[k]||'').toString()).localeCompare((b[k]||'').toString())*dir;
+  });
+  document.getElementById('tblCount').textContent='('+rows.length+')';
+  const tb=document.getElementById('tbody');
+  if(!rows.length){tb.innerHTML='<tr><td colspan="8" class="empty">No projects match these filters.</td></tr>';return;}
+  tb.innerHTML=rows.map((d,i)=>{
+    const eta=d.etaMonth?monthLabel(d.etaMonth):'<span class="muted">&mdash;</span>';
+    const rc=(d.flag==='live')?'r-live':(d.flag==='cur')?'r-cur':(d.flag==='miss')?'r-miss':'';
+    const fb='fb-'+(['live','cur','miss','up'].includes(d.flag)?d.flag:'none');
+    return '<tr class="'+rc+'" data-i="'+DATA.indexOf(d)+'">'+
+      '<td><span class="fbadge '+fb+'">'+FLAG_LABEL[d.flag]+'</span></td>'+
+      '<td class="nm">'+(d.name||'&mdash;')+'</td>'+
+      '<td><span class="pill '+pillClass(d.status)+'">'+(d.status||'&mdash;')+'</span></td>'+
+      '<td>'+eta+'</td>'+
+      '<td>'+(d.owner||'<span class="muted">&mdash;</span>')+'</td>'+
+      '<td>'+(d.ba||'<span class="muted">&mdash;</span>')+'</td>'+
+      '<td>'+(d.sa||'<span class="muted">&mdash;</span>')+'</td>'+
+      '<td class="amt">'+(d.amount?fmt(d.amount):'<span class="muted">&mdash;</span>')+'</td>'+
+    '</tr>';
+  }).join('');
+  tb.querySelectorAll('tr[data-i]').forEach(tr=>tr.onclick=()=>openDetail(DATA[+tr.dataset.i]));
+}
+
+// ---- DRAWER
+const scrim=document.getElementById('scrim'),drawer=document.getElementById('drawer'),
+      dT=document.getElementById('drawerT'),dS=document.getElementById('drawerS'),dB=document.getElementById('drawerB');
+function openDrawer(){scrim.classList.add('open');drawer.classList.add('open');}
+function closeDrawer(){scrim.classList.remove('open');drawer.classList.remove('open');}
+scrim.onclick=closeDrawer;document.getElementById('drawerX').onclick=closeDrawer;
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
+
+function listItem(d){
+  const fb='il-'+(['live','cur','miss','up'].includes(d.flag)?d.flag:'');
+  const badge='<span class="fbadge fb-'+(['live','cur','miss','up'].includes(d.flag)?d.flag:'none')+'">'+FLAG_LABEL[d.flag]+'</span>';
+  return '<div class="di '+fb+'" data-i="'+DATA.indexOf(d)+'">'+
+    '<div class="din">'+(d.name||'&mdash;')+'</div>'+
+    '<div class="dim">'+badge+'<span>'+(d.status||'')+'</span>'+
+    (d.etaMonth?'<span>ETA '+monthLabel(d.etaMonth)+'</span>':'')+
+    (d.amount?'<span>'+fmt(d.amount)+'</span>':'')+
+    (d.ba?'<span>BA: '+d.ba+'</span>':'')+'</div></div>';
+}
+function openList(title,sub,rows){
+  dT.innerHTML=title;dS.textContent=sub;
+  if(!rows.length){dB.innerHTML='<div class="empty">No projects.</div>';openDrawer();return;}
+  rows=[...rows].sort((a,b)=>(FLAG_ORDER[a.flag]??9)-(FLAG_ORDER[b.flag]??9));
+  dB.innerHTML=rows.map(listItem).join('');
+  dB.querySelectorAll('.di').forEach(el=>el.onclick=()=>openDetail(DATA[+el.dataset.i],{title,sub,rows}));
+  openDrawer();
+}
+function openDetail(d,back){
+  dT.innerHTML=d.name||'Project';
+  dS.innerHTML='<span class="fbadge fb-'+(['live','cur','miss','up'].includes(d.flag)?d.flag:'none')+'">'+FLAG_LABEL[d.flag]+'</span>';
+  const row=(k,v)=>'<div class="drow"><span class="k">'+k+'</span><span class="v">'+(v||'&mdash;')+'</span></div>';
+  let h='';
+  if(back)h+='<button class="backbtn" id="bk">&larr; Back to list</button>';
+  h+=row('Status','<span class="pill '+pillClass(d.status)+'">'+(d.status||'')+'</span>');
+  h+=row('Go-Live ETA',d.eta?new Date(d.eta).toLocaleDateString('en',{day:'numeric',month:'short',year:'numeric'}):'&mdash;');
+  h+=row('Started',d.start?new Date(d.start).toLocaleDateString('en',{day:'numeric',month:'short',year:'numeric'}):'&mdash;');
+  h+=row('Owner',d.owner);h+=row('BA',d.ba);h+=row('SA',d.sa);
+  h+=row('Deal Value',d.amount?fmt(d.amount):'&mdash;');
+  if(d.comments)h+='<div class="dcomment"><b>Comments</b><br>'+d.comments.replace(/</g,'&lt;')+'</div>';
+  if(d.url)h+='<a class="dlink" href="'+d.url+'" target="_blank" rel="noopener">Open deal &rarr;</a>';
+  dB.innerHTML=h;
+  if(back){document.getElementById('bk').onclick=()=>openList(back.title,back.sub,back.rows);}
+  openDrawer();
+}
+function openMonth(m,liveOnly){
+  let rows=chartBase().filter(d=>d.etaMonth===m);
+  if(liveOnly)rows=rows.filter(d=>d.flag==='live');
+  const live=rows.filter(d=>d.flag==='live').length;
+  openList('Go-lives &mdash; '+monthLabel(m), (liveOnly?live+' live':rows.length+' projects')+' &middot; goal 10', rows);
+}
+function openStatus(s){openList('Status: '+s, filtered().filter(d=>d.status===s).length+' projects', filtered().filter(d=>d.status===s));}
+function openBA(ba){const rows=filtered().filter(d=>d.ba===ba && !DEAD.has(d.status));openList('BA: '+ba, rows.length+' active projects', rows);}
+
+// ---- wire
+function renderAll(){renderFlags();renderKpis();buildCharts();renderTable();}
+monthSel.onchange=e=>{state.month=e.target.value;renderAll();};
+statusSel.onchange=e=>{state.status=e.target.value;renderAll();};
+ownerSel.onchange=e=>{state.owner=e.target.value;renderAll();};
+baSel.onchange=e=>{state.ba=e.target.value;renderAll();};
+document.getElementById('search').oninput=e=>{state.q=e.target.value.toLowerCase().trim();renderAll();};
+document.getElementById('reset').onclick=()=>{state={month:'',status:'',owner:'',ba:'',flag:'',q:'',sortK:'flag',sortDir:1};monthSel.value='';statusSel.value='';ownerSel.value='';baSel.value='';document.getElementById('search').value='';renderAll();};
+document.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{const k=th.dataset.k;state.sortDir=(state.sortK===k)?-state.sortDir:1;state.sortK=k;renderTable();});
+
+// ---- LIVE DATA -------------------------------------------------------------
+// /api/zoho-golive refreshes the OAuth token, pages the whole portal and returns the
+// rows already normalized to the shape above. Zoho cannot be called from the browser
+// directly: it sends no CORS headers and rejects session-cookie auth.
+const API='/api/zoho-golive';
+const btn=document.getElementById('refresh'),srcbar=document.getElementById('srcbar'),
+      srctext=document.getElementById('srctext'),errbar=document.getElementById('errbar');
+let lastLoad=null,liveCount=null,isSeed=true,seedRendered=false;
+
+// Only paint the baked snapshot if the live pull actually fails — otherwise the page
+// would show stale numbers for a moment and then silently swap them.
+function fallbackToSeed(){
+  if(!isSeed||seedRendered)return;
+  seedRendered=true;rebuildDerived();renderAll();
+}
+
+document.getElementById('todayTxt').textContent=TODAY.toLocaleDateString('en',{day:'numeric',month:'short',year:'numeric'});
+
+const ago=ms=>{const s=Math.round(ms/1000);if(s<60)return'just now';const m=Math.round(s/60);
+  if(m<60)return m+(m===1?' min ago':' mins ago');const h=Math.round(m/60);
+  if(h<24)return h+(h===1?' hour ago':' hours ago');const d=Math.round(h/24);return d+(d===1?' day ago':' days ago');};
+
+function setSrc(cls,html){srcbar.className='srcbar '+cls;srctext.innerHTML=html;}
+function showErr(msg){errbar.innerHTML=msg;errbar.classList.add('show');}
+function clearErr(){errbar.classList.remove('show');errbar.innerHTML='';}
+
+function stamp(){
+  if(isSeed){
+    setSrc('stale','<b>Showing the built-in snapshot</b> from '+new Date(SEED_STAMP).toLocaleDateString('en',{day:'numeric',month:'short',year:'numeric'})+' &mdash; not live. Hit Refresh once Zoho is configured.');
+    return;
+  }
+  setSrc('ok','<b>Live from Zoho Projects</b> (zuperinc) &middot; '+liveCount+' roofing projects &middot; updated '+ago(Date.now()-lastLoad));
+}
+
+// The page forwards ?since= / ?industry= straight through, so the cohort can be widened
+// from the URL (e.g. ?since=all) without redeploying.
+function apiUrl(){
+  const p=new URLSearchParams(location.search),out=new URLSearchParams();
+  ['since','industry','debug'].forEach(k=>{if(p.get(k))out.set(k,p.get(k));});
+  const qs=out.toString();
+  return API+(qs?'?'+qs:'');
+}
+
+async function load(){
+  btn.disabled=true;btn.classList.add('busy');
+  btn.querySelector('.rtxt').textContent='Refreshing';
+  if(isSeed)setSrc('','Loading from Zoho Projects&hellip;');
+  try{
+    const res=await fetch(apiUrl(),{headers:{Accept:'application/json'},cache:'no-store'});
+    let json=null;
+    try{json=await res.json();}catch(e){/* non-JSON body handled below */}
+
+    if(res.status===401){
+      showErr('<b>Your dashboard session expired.</b> <a href="/login.html?next=/tools/go-live-dashboard.html">Log in again</a>, then hit Refresh.');
+      setSrc('err','Not authenticated &mdash; '+(isSeed?'showing the built-in snapshot':'showing the last good data'));fallbackToSeed();return;
+    }
+    if(!res.ok||!json||json.error){
+      const detail=(json&&json.error)||('HTTP '+res.status);
+      showErr('<b>Could not reach Zoho Projects.</b> '+String(detail).replace(/</g,'&lt;')
+        +'<br>If this says Zoho is not configured, add <code>ZOHO_CLIENT_ID</code>, <code>ZOHO_CLIENT_SECRET</code> and <code>ZOHO_REFRESH_TOKEN</code> in Vercel and redeploy.');
+      setSrc(isSeed?'stale':'err',isSeed?'Snapshot only &mdash; the live pull failed':'Live pull failed &mdash; showing the last good data');
+      fallbackToSeed();return;
+    }
+
+    const rows=Array.isArray(json.projects)?json.projects:[];
+    // A zero-row pull is almost always a filter or permission problem, not reality.
+    // Keep what is on screen rather than blanking the dashboard, and say so.
+    if(!rows.length&&!isSeed){
+      showErr('<b>Zoho returned 0 matching projects</b> (searched '+(json.total_active_projects||0)
+        +' active projects for Industry = '+(json.filters&&json.filters.industry)+'). Keeping the previous data on screen.');
+      setSrc('err','Live pull returned nothing &mdash; showing the last good data');
+      return;
+    }
+
+    clearErr();
+    DATA=rows;isSeed=false;liveCount=rows.length;lastLoad=Date.parse(json.generated_at)||Date.now();
+    rebuildDerived();renderAll();stamp();
+    if(!rows.length)showErr('<b>Zoho returned 0 matching projects.</b> Check the Industry field and the created-after cutoff.');
+  }catch(err){
+    showErr('<b>Could not reach the data service.</b> '+String(err.message||err).replace(/</g,'&lt;'));
+    setSrc(isSeed?'stale':'err',isSeed?'Snapshot only &mdash; the live pull failed':'Live pull failed &mdash; showing the last good data');
+    fallbackToSeed();
+  }finally{
+    btn.disabled=false;btn.classList.remove('busy');
+    btn.querySelector('.rtxt').textContent='Refresh';
+  }
+}
+
+btn.onclick=load;
+setInterval(()=>{if(!isSeed&&lastLoad)stamp();},30000);   // keep "updated N mins ago" honest
+
+setSrc('','Loading from Zoho Projects&hellip;');
+load();
+</script>
+<script src="../assets/back-link.js"></script>
+</body>
+</html>

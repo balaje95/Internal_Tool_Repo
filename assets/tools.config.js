@@ -104,5 +104,13 @@ const TOOLS = [
     "icon": "📝",
     "updated": "2026-07-27",
     "help": "Connect with a Zuper API key (region auto-detected), then choose what to build. Process Doc: a polished, editable document built from the account's job categories, statuses, checklists and CPQ — with a lifecycle flow diagram and a required-items checkpoint table; export to Word, PDF, HTML or JSON. Handover Document: a Support Handover Checklist (Questionnaire) that starts as a blank template pre-filled with the account name/region, with sections for overview, environment, integrations, automations, config, promises, risks, an acceptance checklist and Fathom meeting findings — edit each section inline, add meeting blocks, or import a prepared JSON (round-trips with JSON export), then export a branded PowerPoint (.pptx). The API key is never written into any export."
+  },
+  {
+    "name": "Go-Live Dashboard",
+    "description": "Live roofing implementation pipeline and go-lives vs the 10/month goal",
+    "file": "tools/go-live-dashboard.html",
+    "icon": "🚀",
+    "updated": "2026-08-19",
+    "help": "Reads the zuperinc Zoho Projects portal live through the /api/zoho-golive serverless proxy — no API key to paste, and the Zoho credentials never reach the browser. Shows every active project where Industry = Roofing (excluding internal accounts tagged InActive User) flagged as Gone Live / Due This Month / Missed / Upcoming against a fixed goal of 10 go-lives a month, with go-lives vs goal by month, pipeline by status, cumulative run-rate, and BA workload. Every chip, KPI, bar and slice is clickable and opens a drawer drilling down to the project, its comments and its HubSpot deal. Filter by month, status, owner or BA, search, and sort any column. Hit Refresh for a fresh pull; the header shows how old the data is. Go-Live ETA is Zoho's Current ETA field and Deal Value is ARR in USD, so fix wrong numbers in Zoho, not here. Widen the cohort from the URL with ?since=all or ?industry=all."
   }
 ];
