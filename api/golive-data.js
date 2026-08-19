@@ -15,6 +15,15 @@
 //   GITHUB_BRANCH   - optional, defaults to "main"
 //   ADMIN_PASSWORD  - same shared password the Add Tool form uses
 
+// A second accepted password, requested so the upload panel is usable without looking
+// up ADMIN_PASSWORD in Vercel. It is additive: the configured ADMIN_PASSWORD keeps
+// working. Because it is committed here it is public knowledge, and this endpoint
+// overwrites the data every viewer of the dashboard sees, so it is worth retiring once
+// ADMIN_PASSWORD is to hand — set ADMIN_PASSWORD to whatever you want and delete this.
+// Scoped deliberately to this endpoint only: add-tool/delete-tool/reorder-tools still
+// require ADMIN_PASSWORD alone, so this cannot be used to publish new tool HTML.
+const FALLBACK_PASSWORD = 'Admin@123';
+
 const GITHUB_API = 'https://api.github.com';
 const DATA_PATH = 'data/golive.json';
 const MAX_PROJECTS = 5000;
@@ -91,7 +100,7 @@ module.exports = async (req, res) => {
   const branch = GITHUB_BRANCH || 'main';
   const { password, projects, source } = req.body || {};
 
-  if (password !== ADMIN_PASSWORD) {
+  if (password !== ADMIN_PASSWORD && password !== FALLBACK_PASSWORD) {
     res.status(401).json({ error: 'Incorrect password.' });
     return;
   }
