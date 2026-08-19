@@ -107,10 +107,10 @@ const TOOLS = [
   },
   {
     "name": "Go-Live Dashboard",
-    "description": "Live roofing implementation pipeline and go-lives vs the 10/month goal",
+    "description": "Roofing implementation pipeline and go-lives vs the 10/month goal",
     "file": "tools/go-live-dashboard.html",
     "icon": "🚀",
     "updated": "2026-08-19",
-    "help": "Reads the zuperinc Zoho Projects portal live through the /api/zoho-golive serverless proxy — no API key to paste, and the Zoho credentials never reach the browser. Shows every active project where Industry = Roofing (excluding internal accounts tagged InActive User) flagged as Gone Live / Due This Month / Missed / Upcoming against a fixed goal of 10 go-lives a month, with go-lives vs goal by month, pipeline by status, cumulative run-rate, and BA workload. Every chip, KPI, bar and slice is clickable and opens a drawer drilling down to the project, its comments and its HubSpot deal. Filter by month, status, owner or BA, search, and sort any column. Hit Refresh for a fresh pull; the header shows how old the data is. Go-Live ETA is Zoho's Current ETA field and Deal Value is ARR in USD, so fix wrong numbers in Zoho, not here. Widen the cohort from the URL with ?since=all or ?industry=all."
+    "help": "Open it and you see the current roofing pipeline — no API key, no login to Zoho. Projects are flagged Gone Live / Due This Month / Missed / Upcoming against a fixed goal of 10 go-lives a month, with go-lives vs goal by month, pipeline by status, cumulative run-rate and BA workload. Every chip, KPI, bar and slice is clickable and opens a drawer drilling down to the project, its comments and its HubSpot deal. Filter by month, status, owner or BA, search, and sort any column. TO UPDATE THE DATA (admins): press Ctrl+A for the hidden upload panel, drop in the weekly Zoho Projects Excel export, and either Preview here only (just your browser) or Publish for everyone — which needs the same admin password as Add Tool and commits the file so every viewer gets it after Vercel redeploys. Internal accounts (Golden Account, MVP, RBP Internal Use) are dropped automatically, and the header warns when the export is over a week old. Go-Live ETA comes from the Current ETA column and Deal Value from Deal Amount, so wrong numbers get fixed in Zoho and re-exported."
   }
 ];

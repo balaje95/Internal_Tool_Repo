@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="../assets/zuper-brand.css">
 <script>try{if(localStorage.getItem('zuper_tools_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --orange:#FD5000; --orange-d:#E8500A; --navy:#1B2A4A; --navy-2:#26385C;
@@ -132,7 +133,40 @@
   .errbar code{background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px;font-size:11.5px}
   @media(max-width:1050px){.kpis{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.flag{min-width:150px}}
 
-  /* Dark theme — the dashboard keeps its own palette, so remap the tokens rather
+  /* hidden admin panel (Ctrl+A) */
+  .admin-scrim{position:fixed;inset:0;background:rgba(20,30,50,.5);opacity:0;pointer-events:none;transition:.2s;z-index:60}
+  .admin-scrim.open{opacity:1;pointer-events:auto}
+  .admin{position:fixed;left:50%;top:50%;transform:translate(-50%,-48%) scale(.98);opacity:0;pointer-events:none;
+    width:min(560px,94vw);max-height:88vh;overflow:auto;background:var(--card);border:1px solid var(--line);
+    border-radius:16px;box-shadow:0 24px 60px rgba(20,30,50,.28);z-index:70;transition:.18s}
+  .admin.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+  .admhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:18px 20px 14px;border-bottom:1px solid var(--line)}
+  .admt{font-size:16px;font-weight:800}
+  .admn{font-size:12px;color:var(--muted);margin-top:2px}
+  .admbody{padding:16px 20px 20px}
+  .admlbl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 6px}
+  .admlbl:first-child{margin-top:0}
+  .admfull{width:100%}
+  .drop{border:2px dashed var(--line);border-radius:12px;padding:22px 16px;text-align:center;font-size:13px;color:var(--muted);cursor:pointer;transition:.15s}
+  .drop:hover,.drop.over{border-color:var(--orange);background:#FFF8F4;color:var(--ink)}
+  .drop .lnk{color:var(--orange);font-weight:700;text-decoration:underline}
+  .parseout{margin-top:12px;font-size:12.5px;line-height:1.6;display:none}
+  .parseout.show{display:block}
+  .parseout .pl{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid #F0F3F8}
+  .parseout .pl b{font-variant-numeric:tabular-nums}
+  .warn{background:#FBF0DA;border:1px solid #EEDCAF;color:#7A5410;border-radius:9px;padding:9px 11px;margin-top:10px;font-size:12px;line-height:1.5}
+  .admbtns{display:flex;gap:9px;margin-top:18px;flex-wrap:wrap}
+  .admbtns button{font-weight:700}
+  .admbtns #admPublish{background:var(--orange);color:#fff;border-color:var(--orange)}
+  .admbtns #admPublish:hover{background:var(--orange-d)}
+  .admbtns button[disabled]{opacity:.55;cursor:default}
+  .admmsg{margin-top:12px;font-size:12.5px;line-height:1.55;display:none;border-radius:9px;padding:10px 12px}
+  .admmsg.show{display:block}
+  .admmsg.good{background:#E4F7EF;color:#0E7A50}
+  .admmsg.bad{background:#FCE7E7;color:#B32626}
+  .admhint{margin-top:14px;font-size:11.5px;color:var(--muted);line-height:1.55;border-top:1px solid var(--line);padding-top:12px}
+
+  /* Dark theme â€” the dashboard keeps its own palette, so remap the tokens rather
      than restyle every rule. Matches the other tools honouring zuper_tools_theme. */
   html[data-theme="dark"]{
     --bg:#141414; --card:#1E1E1E; --ink:#F3F3F3; --muted:#9A9A9E; --line:#2E2E2E;
@@ -155,7 +189,7 @@
       <div class="dot">Z</div>
       <div>
         <h1>Go-Live Dashboard</h1>
-        <div class="sub">Roofing implementations &middot; Live from Zoho Projects (zuperinc) &middot; Target: 10 go-lives / month</div>
+        <div class="sub">Roofing implementations &middot; From the weekly Zoho Projects export &middot; Target: 10 go-lives / month</div>
       </div>
     </div>
     <div class="controls">
@@ -233,9 +267,44 @@
 
   <div class="footnote">
     <b>Flag logic</b> (today = <span id="todayTxt"></span>). &nbsp;<b>Live</b> = Completed / Phase 2 / Hyper Care / Moved to Support. &nbsp;<b>Due this month</b> = ETA in Aug 2026, not yet live. &nbsp;<b>Missed</b> = ETA before this month, still not live (excludes Churned). &nbsp;<b>Upcoming</b> = ETA after this month. &nbsp;Months before 2026 are hidden from the filter and month charts; the cumulative line is seeded with pre-2026 live projects so the total stays accurate. Goal fixed at 10/month.
-    <br><br><b>Data source</b>. Live from Zoho Projects via <code>/api/zoho-golive</code> &mdash; active projects where <b>Industry = Roofing</b>, excluding internal accounts tagged <i>InActive User</i> and anything created before 20 Oct 2025. Fields map to Zoho as: Status &rarr; project status, Go-Live ETA &rarr; <i>Current ETA</i>, Deal Value &rarr; <i>ARR in USD</i>, Owner / BA / SA &rarr; project owner / <i>BA-SA</i> / <i>Secondary Owner</i>, Comments &rarr; <i>Project Comments</i> (falling back to <i>Churn Note</i>). Archived projects are not pulled. Blank ETAs are blank in Zoho.
+    <br><br><b>Data source</b>. The weekly Zoho Projects export, published to <code>data/golive.json</code>. Everyone reads that one file, so all viewers see the same numbers &mdash; no API key and no login to Zoho needed. <b>Go-Live ETA</b> is Zoho&rsquo;s <i>Current ETA</i> column and <b>Deal Value</b> is <i>Deal Amount</i>, so wrong figures get fixed in Zoho and re-exported, not edited here. Internal accounts (Golden Account, MVP, RBP Internal Use) are dropped on upload, and rows whose ETA cell is <code>-</code> count as no ETA. The header shows how old the export is and warns when it is over a week old. To refresh it: <b>Ctrl+A</b> &rarr; drop in the new export &rarr; Publish.
   </div>
 </div>
+
+<!-- Hidden admin panel â€” opened with Ctrl+A (Cmd+A on a Mac) -->
+<div class="admin-scrim" id="admScrim"></div>
+<aside class="admin" id="adm" role="dialog" aria-modal="true" aria-label="Upload weekly export">
+  <div class="admhead">
+    <div>
+      <div class="admt">Upload the weekly export</div>
+      <div class="admn">Zoho Projects &rarr; Projects &rarr; Export. Publishing replaces what everyone sees.</div>
+    </div>
+    <button class="dclose" id="admX" title="Close">&times;</button>
+  </div>
+  <div class="admbody">
+    <label class="admlbl">Export file</label>
+    <div class="drop" id="drop">Drop the .xlsx here, or <span class="lnk">choose a file</span>
+      <input type="file" id="file" accept=".xlsx,.xls,.csv" hidden>
+    </div>
+    <div class="parseout" id="parseOut"></div>
+
+    <label class="admlbl">Admin password</label>
+    <input type="password" id="admPw" class="searchbox admfull" placeholder="dashboard admin password" autocomplete="off">
+
+    <div class="admbtns">
+      <button id="admPreview" class="ghost" disabled>Preview here only</button>
+      <button id="admPublish" disabled>Publish for everyone</button>
+    </div>
+    <div class="admmsg" id="admMsg"></div>
+
+    <div class="admhint">
+      <b>Preview here only</b> renders the file in this browser and changes nothing for anyone else.
+      <b>Publish</b> commits it to the repo, so every viewer gets it after Vercel redeploys (about a minute).
+      Expected columns: PROJECT NAME, DEAL URL, SA, BA, OWNER, CURRENT ETA, STATUS, START DATE, DEAL AMOUNT, INDUSTRY, PROJECT COMMENTS.
+      Blank cells may be <code>-</code>. Internal accounts are dropped automatically.
+    </div>
+  </div>
+</aside>
 
 <!-- Drawer -->
 <div class="scrim" id="scrim"></div>
@@ -280,7 +349,7 @@ function monthList(){
   while(y<y1||(y===y1&&m<=m1)){ out.push(y+'-'+String(m).padStart(2,'0')); m++; if(m>12){m=1;y++;} }
   return out;
 }
-// Recomputed on every load — the month axis, the pre-2026 seed and the filter options
+// Recomputed on every load â€” the month axis, the pre-2026 seed and the filter options
 // all follow whatever Zoho just returned.
 let MONTHS=[];
 const monthLabel=m=>{const[y,mm]=m.split('-');return new Date(y,mm-1).toLocaleString('en',{month:'short'})+" '"+String(y).slice(2);};
@@ -532,98 +601,273 @@ document.getElementById('search').oninput=e=>{state.q=e.target.value.toLowerCase
 document.getElementById('reset').onclick=()=>{state={month:'',status:'',owner:'',ba:'',flag:'',q:'',sortK:'flag',sortDir:1};monthSel.value='';statusSel.value='';ownerSel.value='';baSel.value='';document.getElementById('search').value='';renderAll();};
 document.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{const k=th.dataset.k;state.sortDir=(state.sortK===k)?-state.sortDir:1;state.sortK=k;renderTable();});
 
-// ---- LIVE DATA -------------------------------------------------------------
-// /api/zoho-golive refreshes the OAuth token, pages the whole portal and returns the
-// rows already normalized to the shape above. Zoho cannot be called from the browser
-// directly: it sends no CORS headers and rejects session-cookie auth.
-const API='/api/zoho-golive';
+// ---- DATA SOURCE ----------------------------------------------------------
+// Viewers read a snapshot committed at data/golive.json â€” no credentials, no API keys,
+// just a static file. An admin presses Ctrl+A, drops in the weekly Zoho Projects export,
+// and the browser parses it and commits the result through /api/golive-data. That keeps
+// the page fully static while everyone still sees the same current numbers.
+const DATA_URL='../data/golive.json';
 const btn=document.getElementById('refresh'),srcbar=document.getElementById('srcbar'),
       srctext=document.getElementById('srctext'),errbar=document.getElementById('errbar');
-let lastLoad=null,liveCount=null,isSeed=true,seedRendered=false;
-
-// Only paint the baked snapshot if the live pull actually fails — otherwise the page
-// would show stale numbers for a moment and then silently swap them.
-function fallbackToSeed(){
-  if(!isSeed||seedRendered)return;
-  seedRendered=true;rebuildDerived();renderAll();
-}
+let meta=null,isSeed=true,seedRendered=false;
 
 document.getElementById('todayTxt').textContent=TODAY.toLocaleDateString('en',{day:'numeric',month:'short',year:'numeric'});
 
-const ago=ms=>{const s=Math.round(ms/1000);if(s<60)return'just now';const m=Math.round(s/60);
-  if(m<60)return m+(m===1?' min ago':' mins ago');const h=Math.round(m/60);
-  if(h<24)return h+(h===1?' hour ago':' hours ago');const d=Math.round(h/24);return d+(d===1?' day ago':' days ago');};
+const dmy=s=>s?new Date(s+'T00:00:00').toLocaleDateString('en',{day:'numeric',month:'short',year:'numeric'}):'';
+const ago=ms=>{const d=Math.round(ms/86400000);if(d<=0)return'today';if(d===1)return'yesterday';
+  if(d<7)return d+' days ago';const w=Math.round(d/7);return w===1?'a week ago':w+' weeks ago';};
 
 function setSrc(cls,html){srcbar.className='srcbar '+cls;srctext.innerHTML=html;}
 function showErr(msg){errbar.innerHTML=msg;errbar.classList.add('show');}
 function clearErr(){errbar.classList.remove('show');errbar.innerHTML='';}
 
-function stamp(){
-  if(isSeed){
-    setSrc('stale','<b>Showing the built-in snapshot</b> from '+new Date(SEED_STAMP).toLocaleDateString('en',{day:'numeric',month:'short',year:'numeric'})+' &mdash; not live. Hit Refresh once Zoho is configured.');
-    return;
-  }
-  setSrc('ok','<b>Live from Zoho Projects</b> (zuperinc) &middot; '+liveCount+' roofing projects &middot; updated '+ago(Date.now()-lastLoad));
+// Only paint the built-in snapshot if the published one cannot be read â€” otherwise the
+// page would show stale numbers for a moment and then silently swap them.
+function fallbackToSeed(){
+  if(!isSeed||seedRendered)return;
+  seedRendered=true;rebuildDerived();renderAll();
 }
 
-// The page forwards ?since= / ?industry= straight through, so the cohort can be widened
-// from the URL (e.g. ?since=all) without redeploying.
-function apiUrl(){
-  const p=new URLSearchParams(location.search),out=new URLSearchParams();
-  ['since','industry','debug'].forEach(k=>{if(p.get(k))out.set(k,p.get(k));});
-  const qs=out.toString();
-  return API+(qs?'?'+qs:'');
+function stamp(){
+  if(isSeed){
+    setSrc('stale','<b>Built-in snapshot</b> from '+dmy(SEED_STAMP)+' &mdash; nothing published yet. Press <b>Ctrl+A</b> to upload the weekly export.');
+    return;
+  }
+  const when=meta&&meta.updated_at?new Date(meta.updated_at):null;
+  const age=when?Date.now()-when.getTime():0;
+  const cls=age>10*86400000?'stale':'ok';
+  setSrc(cls,'<b>'+(DATA.length)+' roofing projects</b> &middot; export uploaded '
+    +(when?dmy(when.toISOString().slice(0,10))+' ('+ago(age)+')':'unknown date')
+    +(cls==='stale'?' &middot; <b>over a week old</b>':'')
+    +' &middot; press Ctrl+A to update');
 }
 
 async function load(){
-  btn.disabled=true;btn.classList.add('busy');
-  btn.querySelector('.rtxt').textContent='Refreshing';
-  if(isSeed)setSrc('','Loading from Zoho Projects&hellip;');
+  btn.disabled=true;btn.classList.add('busy');btn.querySelector('.rtxt').textContent='Loading';
   try{
-    const res=await fetch(apiUrl(),{headers:{Accept:'application/json'},cache:'no-store'});
-    let json=null;
-    try{json=await res.json();}catch(e){/* non-JSON body handled below */}
-
+    // Cache-bust: the published JSON sits on the CDN and a weekly upload must win.
+    const res=await fetch(DATA_URL+'?t='+Date.now(),{headers:{Accept:'application/json'},cache:'no-store'});
+    if(res.status===404){
+      showErr('<b>No export has been published yet.</b> Press <b>Ctrl+A</b>, drop in the weekly Zoho Projects export and publish it. Showing the built-in snapshot meanwhile.');
+      setSrc('stale','Built-in snapshot &mdash; nothing published yet');fallbackToSeed();return;
+    }
     if(res.status===401){
       showErr('<b>Your dashboard session expired.</b> <a href="/login.html?next=/tools/go-live-dashboard.html">Log in again</a>, then hit Refresh.');
-      setSrc('err','Not authenticated &mdash; '+(isSeed?'showing the built-in snapshot':'showing the last good data'));fallbackToSeed();return;
+      setSrc('err','Not authenticated');fallbackToSeed();return;
     }
-    if(!res.ok||!json||json.error){
-      const detail=(json&&json.error)||('HTTP '+res.status);
-      showErr('<b>Could not reach Zoho Projects.</b> '+String(detail).replace(/</g,'&lt;')
-        +'<br>If this says Zoho is not configured, add <code>ZOHO_CLIENT_ID</code>, <code>ZOHO_CLIENT_SECRET</code> and <code>ZOHO_REFRESH_TOKEN</code> in Vercel and redeploy.');
-      setSrc(isSeed?'stale':'err',isSeed?'Snapshot only &mdash; the live pull failed':'Live pull failed &mdash; showing the last good data');
-      fallbackToSeed();return;
+    let json=null;
+    try{json=await res.json();}catch(e){/* handled below */}
+    const rows=json&&Array.isArray(json.projects)?json.projects:null;
+    if(!res.ok||!rows){
+      showErr('<b>Could not read the published export.</b> '+((json&&json.error)||('HTTP '+res.status))
+        +' Showing the built-in snapshot instead.');
+      setSrc('err','Could not read the published export');fallbackToSeed();return;
     }
-
-    const rows=Array.isArray(json.projects)?json.projects:[];
-    // A zero-row pull is almost always a filter or permission problem, not reality.
-    // Keep what is on screen rather than blanking the dashboard, and say so.
-    if(!rows.length&&!isSeed){
-      showErr('<b>Zoho returned 0 matching projects</b> (searched '+(json.total_active_projects||0)
-        +' active projects for Industry = '+(json.filters&&json.filters.industry)+'). Keeping the previous data on screen.');
-      setSrc('err','Live pull returned nothing &mdash; showing the last good data');
-      return;
+    if(!rows.length){
+      showErr('<b>The published export has no rows.</b> Re-upload it with Ctrl+A.');
+      setSrc('err','Published export is empty');fallbackToSeed();return;
     }
-
     clearErr();
-    DATA=rows;isSeed=false;liveCount=rows.length;lastLoad=Date.parse(json.generated_at)||Date.now();
+    DATA=rows;meta=json;isSeed=false;
     rebuildDerived();renderAll();stamp();
-    if(!rows.length)showErr('<b>Zoho returned 0 matching projects.</b> Check the Industry field and the created-after cutoff.');
   }catch(err){
-    showErr('<b>Could not reach the data service.</b> '+String(err.message||err).replace(/</g,'&lt;'));
-    setSrc(isSeed?'stale':'err',isSeed?'Snapshot only &mdash; the live pull failed':'Live pull failed &mdash; showing the last good data');
-    fallbackToSeed();
+    showErr('<b>Could not load the data file.</b> '+String(err.message||err).replace(/</g,'&lt;'));
+    setSrc('err','Could not load the data file');fallbackToSeed();
   }finally{
-    btn.disabled=false;btn.classList.remove('busy');
-    btn.querySelector('.rtxt').textContent='Refresh';
+    btn.disabled=false;btn.classList.remove('busy');btn.querySelector('.rtxt').textContent='Refresh';
   }
 }
-
 btn.onclick=load;
-setInterval(()=>{if(!isSeed&&lastLoad)stamp();},30000);   // keep "updated N mins ago" honest
 
-setSrc('','Loading from Zoho Projects&hellip;');
+// ---- EXPORT PARSING -------------------------------------------------------
+// Header names are matched loosely so a renamed or reordered column does not break the
+// upload; anything genuinely missing is reported rather than silently emptied.
+const COLS={
+  name:['project name','name','project'],
+  url:['deal url','deal link','hubspot url','hubspot'],
+  sa:['sa','solution architect','secondary owner'],
+  ba:['ba','business analyst','ba/sa','ba sa','ba-sa'],
+  owner:['owner','project owner'],
+  eta:['current eta','go-live eta','go live eta','eta','targeted go live date'],
+  status:['status','project status'],
+  start:['start date','started','start'],
+  amount:['deal amount','arr in usd','arr','deal value','amount'],
+  industry:['industry'],
+  comments:['project comments','comments','notes','remarks'],
+};
+// Internal / demo accounts that must never count toward the go-live goal.
+const EXCLUDE=[/golden account/i,/\bmvp\b/i,/internal use/i];
+// Zoho writes "-" for an unset field, which would otherwise become a literal value.
+const EMPTY=new Set(['','-','--','n/a','na','null','none','nil']);
+
+const cell=v=>{const s=String(v==null?'':v).trim();return EMPTY.has(s.toLowerCase())?'':s;};
+
+// The export is US-formatted (MM/DD/YYYY). If the first part is over 12 it can only be a
+// day, so swap rather than silently produce an invalid month.
+function toISO(v){
+  const s=cell(v);if(!s)return'';
+  let m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if(m){let a=+m[1],b=+m[2];if(a>12&&b<=12){const t=a;a=b;b=t;}
+    return m[3]+'-'+String(a).padStart(2,'0')+'-'+String(b).padStart(2,'0');}
+  m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m)return m[1]+'-'+String(m[2]).padStart(2,'0')+'-'+String(m[3]).padStart(2,'0');
+  const d=new Date(s);return isNaN(d.getTime())?'':d.toISOString().slice(0,10);
+}
+const money=v=>{const s=cell(v).replace(/[$,\s]/g,'');const n=Number(s);return isFinite(n)?n:0;};
+
+function parseWorkbook(buf,filename){
+  const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const grid=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+  if(!grid.length)throw new Error('That sheet is empty.');
+
+  const head=grid[0].map(h=>String(h||'').trim().toLowerCase());
+  const idx={};
+  Object.keys(COLS).forEach(k=>{
+    idx[k]=-1;
+    for(const alias of COLS[k]){const i=head.indexOf(alias);if(i>=0){idx[k]=i;break;}}
+  });
+
+  const warnings=[];
+  if(idx.name<0)throw new Error('No PROJECT NAME column found. Found: '+grid[0].join(', '));
+  ['status','eta','amount','owner'].forEach(k=>{
+    if(idx[k]<0)warnings.push('No column matched <b>'+k.toUpperCase()+'</b> â€” that field will be blank for every row.');
+  });
+
+  const projects=[],excluded=[],unparsedEta=[];
+  let noName=0,nonRoofing=0;
+  for(let r=1;r<grid.length;r++){
+    const row=grid[r];
+    const get=k=>idx[k]>=0?row[idx[k]]:'';
+    const name=cell(get('name'));
+    if(!name){noName++;continue;}
+    if(EXCLUDE.some(re=>re.test(name))){excluded.push(name);continue;}
+    const ind=cell(get('industry'));
+    if(idx.industry>=0&&ind&&ind.toLowerCase()!=='roofing'){nonRoofing++;continue;}
+    const rawEta=cell(get('eta')),eta=toISO(get('eta'));
+    if(rawEta&&!eta)unparsedEta.push(name+' ("'+rawEta+'")');
+    projects.push({
+      name:name,
+      sa:cell(get('sa')),
+      ba:cell(get('ba')),
+      owner:cell(get('owner')),
+      status:cell(get('status')),
+      eta:eta,
+      etaMonth:eta?eta.slice(0,7):'',
+      start:toISO(get('start')),
+      amount:money(get('amount')),
+      url:cell(get('url')),
+      comments:cell(get('comments')),
+    });
+  }
+  if(!projects.length)throw new Error('No usable rows found in that file.');
+  if(unparsedEta.length)warnings.push('Could not read the ETA on '+unparsedEta.length+' row(s): '+unparsedEta.slice(0,3).join(', ')+(unparsedEta.length>3?'â€¦':'')+'. Those show as no ETA.');
+
+  const live=projects.filter(p=>LIVE.has(p.status)).length;
+  return {projects:projects,warnings:warnings,
+    stats:{file:filename||'',rows:grid.length-1,kept:projects.length,excluded:excluded,
+      noName:noName,nonRoofing:nonRoofing,noEta:projects.filter(p=>!p.eta).length,live:live,
+      value:projects.reduce((a,p)=>a+p.amount,0),
+      statuses:[...new Set(projects.map(p=>p.status).filter(Boolean))].length}};
+}
+window.__parseWorkbook=parseWorkbook;   // used by the headless test harness
+
+// ---- ADMIN PANEL (Ctrl+A) -------------------------------------------------
+const admScrim=document.getElementById('admScrim'),adm=document.getElementById('adm'),
+      drop=document.getElementById('drop'),fileIn=document.getElementById('file'),
+      parseOut=document.getElementById('parseOut'),admMsg=document.getElementById('admMsg'),
+      admPw=document.getElementById('admPw'),admPreview=document.getElementById('admPreview'),
+      admPublish=document.getElementById('admPublish');
+let parsed=null;
+
+function openAdm(){admScrim.classList.add('open');adm.classList.add('open');admPw.focus();}
+function closeAdm(){admScrim.classList.remove('open');adm.classList.remove('open');}
+admScrim.onclick=closeAdm;document.getElementById('admX').onclick=closeAdm;
+
+// Ctrl+A (Cmd+A on a Mac) is the way in. Left alone inside text fields so select-all
+// still works where people expect it.
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&(e.key==='a'||e.key==='A')){
+    const t=e.target,tag=t&&t.tagName;
+    if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable))return;
+    e.preventDefault();
+    adm.classList.contains('open')?closeAdm():openAdm();
+  }
+  if(e.key==='Escape'&&adm.classList.contains('open'))closeAdm();
+});
+
+function msg(kind,html){admMsg.className='admmsg show '+kind;admMsg.innerHTML=html;}
+function clearMsg(){admMsg.className='admmsg';admMsg.innerHTML='';}
+
+drop.onclick=()=>fileIn.click();
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('over');};
+drop.ondragleave=()=>drop.classList.remove('over');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');
+  if(e.dataTransfer.files&&e.dataTransfer.files[0])readFile(e.dataTransfer.files[0]);};
+fileIn.onchange=e=>{if(e.target.files[0])readFile(e.target.files[0]);};
+
+function readFile(f){
+  clearMsg();parsed=null;admPreview.disabled=true;admPublish.disabled=true;
+  const fr=new FileReader();
+  fr.onload=()=>{
+    try{
+      parsed=parseWorkbook(fr.result,f.name);
+      const s=parsed.stats;
+      let h='<div class="pl"><span>Rows in file</span><b>'+s.rows+'</b></div>'
+        +'<div class="pl"><span>Projects loaded</span><b>'+s.kept+'</b></div>'
+        +'<div class="pl"><span>Gone live</span><b>'+s.live+'</b></div>'
+        +'<div class="pl"><span>No ETA set</span><b>'+s.noEta+'</b></div>'
+        +'<div class="pl"><span>Total deal value</span><b>'+fmt(s.value)+'</b></div>';
+      if(s.excluded.length)h+='<div class="pl"><span>Internal accounts dropped</span><b>'+s.excluded.length+'</b></div>';
+      if(s.nonRoofing)h+='<div class="pl"><span>Non-roofing rows skipped</span><b>'+s.nonRoofing+'</b></div>';
+      if(s.noName)h+='<div class="pl"><span>Rows with no name skipped</span><b>'+s.noName+'</b></div>';
+      if(s.excluded.length)h+='<div class="warn">Dropped as internal: '+s.excluded.map(n=>n.replace(/</g,'&lt;')).join(', ')+'</div>';
+      parsed.warnings.forEach(w=>{h+='<div class="warn">'+w+'</div>';});
+      parseOut.innerHTML=h;parseOut.classList.add('show');
+      admPreview.disabled=false;admPublish.disabled=false;
+    }catch(err){
+      parseOut.classList.remove('show');
+      msg('bad','<b>Could not read that file.</b> '+String(err.message||err).replace(/</g,'&lt;'));
+    }
+  };
+  fr.onerror=()=>msg('bad','Could not read that file off disk.');
+  fr.readAsArrayBuffer(f);
+}
+
+admPreview.onclick=()=>{
+  if(!parsed)return;
+  DATA=parsed.projects;meta={updated_at:new Date().toISOString(),preview:true};isSeed=false;
+  rebuildDerived();renderAll();clearErr();
+  setSrc('ok','<b>'+DATA.length+' roofing projects</b> &middot; local preview of <i>'
+    +parsed.stats.file.replace(/</g,'&lt;')+'</i> &middot; not published &mdash; only you see this');
+  closeAdm();
+};
+
+admPublish.onclick=async()=>{
+  if(!parsed)return;
+  const pw=admPw.value;
+  if(!pw){msg('bad','Enter the admin password first.');admPw.focus();return;}
+  admPublish.disabled=true;admPreview.disabled=true;
+  msg('good','Publishing&hellip;');
+  try{
+    const res=await fetch('/api/golive-data',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password:pw,projects:parsed.projects,source:{filename:parsed.stats.file,rows:parsed.stats.rows}})});
+    const json=await res.json().catch(()=>null);
+    if(!res.ok||!json||json.error)throw new Error((json&&json.error)||('HTTP '+res.status));
+    msg('good','<b>Published '+json.count+' projects.</b> Vercel is redeploying &mdash; everyone sees it in about a minute. '
+      +'This page is already showing your upload.');
+    DATA=parsed.projects;meta={updated_at:new Date().toISOString()};isSeed=false;
+    rebuildDerived();renderAll();stamp();clearErr();
+    admPw.value='';
+  }catch(err){
+    msg('bad','<b>Publish failed.</b> '+String(err.message||err).replace(/</g,'&lt;')
+      +'<br>If it says Incorrect password, it is the same one the dashboard&rsquo;s Add Tool form uses.');
+  }finally{
+    admPublish.disabled=false;admPreview.disabled=false;
+  }
+};
+
+setSrc('','Loading the published export&hellip;');
 load();
 </script>
 <script src="../assets/back-link.js"></script>
