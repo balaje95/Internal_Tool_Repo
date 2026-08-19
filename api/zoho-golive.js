@@ -67,6 +67,44 @@ async function readErr(res) {
   return body.slice(0, 400).replace(/\s+/g, ' ').trim();
 }
 
+// Zoho mints a refresh token in one data centre and every other one rejects it with a
+// flat "invalid_code" — the same error as a genuinely wrong token. Keyed accounts host
+// -> matching projects API host, so diag can name both replacements.
+const DATA_CENTRES = {
+  'accounts.zoho.com': 'projectsapi.zoho.com',
+  'accounts.zoho.eu': 'projectsapi.zoho.eu',
+  'accounts.zoho.in': 'projectsapi.zoho.in',
+  'accounts.zoho.com.au': 'projectsapi.zoho.com.au',
+  'accounts.zoho.jp': 'projectsapi.zoho.jp',
+  'accounts.zohocloud.ca': 'projectsapi.zohocloud.ca',
+  'accounts.zoho.sa': 'projectsapi.zoho.sa',
+};
+
+function refreshParams() {
+  return new URLSearchParams({
+    refresh_token: env('ZOHO_REFRESH_TOKEN'),
+    client_id: env('ZOHO_CLIENT_ID'),
+    client_secret: env('ZOHO_CLIENT_SECRET'),
+    grant_type: 'refresh_token',
+  });
+}
+
+// Used only by diag. Never caches, so a probe cannot poison the real token.
+async function probeDataCentre(host) {
+  try {
+    const res = await fetch('https://' + host + '/oauth/v2/token?' + refreshParams().toString(),
+      { method: 'POST' });
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch (e) { /* fall through to raw text */ }
+    if (json && json.access_token) return 'WORKS - this is your data centre';
+    if (json && json.error) return json.error;
+    return 'HTTP ' + res.status + ' ' + text.slice(0, 120);
+  } catch (err) {
+    return 'unreachable: ' + (err.message || String(err));
+  }
+}
+
 async function getAccessToken() {
   if (tokenCache.token && Date.now() < tokenCache.expiresAt) return tokenCache.token;
 
@@ -199,7 +237,28 @@ module.exports = async (req, res) => {
   if (q.diag) {
     let tokenResult = 'ok';
     try { await getAccessToken(); } catch (e) { tokenResult = e.message; }
+
+    // Only probe when the configured host already failed — otherwise this would fire
+    // seven pointless token requests on a healthy deployment.
+    let dcProbe = 'skipped (the configured data centre works)';
+    let dcAdvice = null;
+    if (tokenResult !== 'ok') {
+      const hosts = Object.keys(DATA_CENTRES);
+      const results = await Promise.all(hosts.map(probeDataCentre));
+      dcProbe = {};
+      hosts.forEach((h, i) => { dcProbe[h] = results[i]; });
+      const winner = hosts.find((h, i) => results[i].indexOf('WORKS') === 0);
+      dcAdvice = winner
+        ? 'Set ZOHO_ACCOUNTS_HOST=' + winner + ' and ZOHO_API_HOST=' + DATA_CENTRES[winner]
+          + ' in Vercel, then redeploy.'
+        : 'Every data centre rejected this refresh token, so the value itself is wrong or '
+          + 'revoked - most likely the Generate Code value was saved instead of the '
+          + 'refresh_token from the token exchange. Generate a new code and exchange it.';
+    }
+
     res.status(200).json({
+      data_centre_probe: dcProbe,
+      what_to_do: dcAdvice,
       accounts_host: accountsHost(),
       api_host: apiHost(),
       portal_id: portalId,
