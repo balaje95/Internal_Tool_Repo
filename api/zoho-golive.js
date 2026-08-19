@@ -24,6 +24,9 @@
 //   ?industry=Roofing   - industry custom field to match; industry=all disables.
 //   ?debug=1            - adds page_info plus one raw project so field drift shows.
 //   ?portals=1          - lists the portals this token can see (to find a portal id).
+//   ?diag=1             - reports which credential Zoho is unhappy with, without
+//                         printing any secret (lengths and the shared 1000. prefix
+//                         only). Use this first when the dashboard says invalid_code.
 
 const DEFAULT_PORTAL_ID = '756086486';        // zuperinc
 const DEFAULT_SINCE = '2025-10-20';           // start of the tracked roofing cohort
@@ -36,8 +39,27 @@ const MAX_PAGES = 20;                         // backstop against a paging loop
 // Cached across warm invocations so a burst of Refresh clicks costs one token call.
 let tokenCache = { token: null, expiresAt: 0 };
 
-function accountsHost() { return process.env.ZOHO_ACCOUNTS_HOST || 'accounts.zoho.com'; }
-function apiHost() { return process.env.ZOHO_API_HOST || 'projectsapi.zoho.com'; }
+function accountsHost() { return (process.env.ZOHO_ACCOUNTS_HOST || 'accounts.zoho.com').trim(); }
+function apiHost() { return (process.env.ZOHO_API_HOST || 'projectsapi.zoho.com').trim(); }
+
+// Pasting a credential into the Vercel UI very easily carries a trailing newline or
+// space, and Zoho answers that with a flat "invalid_code" — indistinguishable from a
+// genuinely wrong token. Trim before use so that failure mode cannot happen.
+function env(name) { return String(process.env[name] || '').trim(); }
+
+// Enough to tell a wrong value from a whitespace problem, without printing a secret.
+// Every Zoho id/code/token shares the "1000." prefix, so showing it reveals nothing.
+function inspect(name) {
+  const raw = String(process.env[name] || '');
+  return {
+    present: raw.length > 0,
+    length: raw.length,
+    length_trimmed: raw.trim().length,
+    had_surrounding_whitespace: raw !== raw.trim(),
+    has_inner_whitespace: /\s/.test(raw.trim()),
+    prefix: raw.trim().slice(0, 5),
+  };
+}
 
 // Keep the Zoho error text (it is specific and useful) but never echo secrets.
 async function readErr(res) {
@@ -48,11 +70,10 @@ async function readErr(res) {
 async function getAccessToken() {
   if (tokenCache.token && Date.now() < tokenCache.expiresAt) return tokenCache.token;
 
-  const { ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN } = process.env;
   const params = new URLSearchParams({
-    refresh_token: ZOHO_REFRESH_TOKEN,
-    client_id: ZOHO_CLIENT_ID,
-    client_secret: ZOHO_CLIENT_SECRET,
+    refresh_token: env('ZOHO_REFRESH_TOKEN'),
+    client_id: env('ZOHO_CLIENT_ID'),
+    client_secret: env('ZOHO_CLIENT_SECRET'),
     grant_type: 'refresh_token',
   });
 
@@ -161,8 +182,7 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const { ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN } = process.env;
-  if (!ZOHO_CLIENT_ID || !ZOHO_CLIENT_SECRET || !ZOHO_REFRESH_TOKEN) {
+  if (!env('ZOHO_CLIENT_ID') || !env('ZOHO_CLIENT_SECRET') || !env('ZOHO_REFRESH_TOKEN')) {
     res.status(500).json({
       error: 'Zoho is not configured on the server. Set ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET '
         + 'and ZOHO_REFRESH_TOKEN in the Vercel environment variables, then redeploy.',
@@ -175,6 +195,27 @@ module.exports = async (req, res) => {
 
   // Always live — a cached CDN copy would defeat the Refresh button.
   res.setHeader('Cache-Control', 'no-store, max-age=0');
+
+  if (q.diag) {
+    let tokenResult = 'ok';
+    try { await getAccessToken(); } catch (e) { tokenResult = e.message; }
+    res.status(200).json({
+      accounts_host: accountsHost(),
+      api_host: apiHost(),
+      portal_id: portalId,
+      token_refresh: tokenResult,
+      credentials: {
+        ZOHO_CLIENT_ID: inspect('ZOHO_CLIENT_ID'),
+        ZOHO_CLIENT_SECRET: inspect('ZOHO_CLIENT_SECRET'),
+        ZOHO_REFRESH_TOKEN: inspect('ZOHO_REFRESH_TOKEN'),
+      },
+      hint: 'A Zoho refresh token is typically 70+ chars and starts with 1000. '
+        + 'If ZOHO_REFRESH_TOKEN is much shorter, or had_surrounding_whitespace is true, '
+        + 'or you pasted the Generate Code value instead of the exchanged refresh_token, '
+        + 'Zoho answers invalid_code. Remember to redeploy after changing an env var.',
+    });
+    return;
+  }
 
   try {
     const token = await getAccessToken();
