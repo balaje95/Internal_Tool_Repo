@@ -1606,8 +1606,38 @@ const MODULES={
     })},
   // Checklist: special module — needs category_uid + job_status_uid params
   checklist:{label:'Checklists',uid:['checklist_uid','_id'],del:null,noDelete:true,endpoint:'settings/checklist',customParams:true,cols:[{h:'Field Name',f:'field_name'},{h:'Type',f:'field_type'},{h:'Required',f:'is_required'},{h:'Display Order',f:'display_order'},{h:'Internal Key',f:'internal_key'}]},
-  // Custom Fields: special module — needs module_name param
-  custom_fields:{label:'Custom Fields',uid:['custom_field_uid','_id'],del:null,noDelete:true,endpoint:'settings/custom_fields',customParams:true,cols:[{h:'Field Name',f:'field_name'},{h:'Type',f:'field_type'},{h:'Required',f:'is_required'},{h:'Options',f:'_option_count'},{h:'Display Order',f:'display_order'}],transform:(recs)=>recs.map(r=>({...r,_option_count:(r.field_options||[]).length}))},
+  // Custom Fields: special module — needs module_name param.
+  //
+  // Delete is DELETE settings/custom_fields/{custom_field_uid}, confirmed from the
+  // request Zuper's own settings UI sends. The same path serves every module_name
+  // (JOB, CUSTOMER, ASSET, CONTACT, PROPERTY, PURCHASE_ORDER, INVOICE, ESTIMATE) —
+  // the uid identifies the field, so nothing here is module-specific.
+  //
+  // This is the most destructive module in the tool: removing a field definition also
+  // removes the value stored in it on every record of that module, and the undo buffer
+  // cannot put values back that were never read. Hence deleteWarning, which names the
+  // fields and the affected module before anything is sent.
+  //
+  // Listing is a filtered collection (?module_name=…), not a by-uid resource, so
+  // whether GET settings/custom_fields/{uid} exists is unknown — a PUT to that path
+  // does, which is suggestive but not proof. readPaths probes it once per session
+  // (read-only probing is fine; only DELETE paths are never guessed at). If the probe
+  // fails, dryRunFromList checks the uid against the records already fetched instead
+  // of reporting every field as missing.
+  custom_fields:{label:'Custom Fields',uid:['custom_field_uid','_id'],
+    del:'settings/custom_fields',endpoint:'settings/custom_fields',customParams:true,
+    readPaths:['settings/custom_fields'],dryRunFromList:true,
+    deleteWarning:(recs)=>{
+      const modSel=document.getElementById('cf-module');
+      const scope=(modSel&&modSel.options[modSel.selectedIndex]?modSel.options[modSel.selectedIndex].text:'')||'that module';
+      const names=recs.map(r=>r.field_name||r.custom_field_uid).filter(Boolean);
+      const shown=names.slice(0,8).join(', ')+(names.length>8?', … and '+(names.length-8)+' more':'');
+      return 'Deleting a custom field also deletes every value stored in it, on every '
+        +scope+' record in this account. That data cannot be restored from here — the '
+        +'undo buffer only holds the field definitions, not the values.\n\n'
+        +recs.length+' field(s): '+shown;
+    },
+    cols:[{h:'Field Name',f:'field_name'},{h:'Type',f:'field_type'},{h:'Required',f:'is_required'},{h:'Options',f:'_option_count'},{h:'Display Order',f:'display_order'}],transform:(recs)=>recs.map(r=>({...r,_option_count:(r.field_options||[]).length}))},
   // Email / SMS Templates
   email_template:{label:'Email / SMS Templates',uid:['template_uid','uid','_id'],del:'misc/email_template',endpoint:'misc/email_template',fetchParams:'sort=DESC&sort_by=created_at&filter.keyword=',cols:[{h:'Name',f:'template_name'},{h:'Type',f:'type'},{h:'Module',f:'template_module'},{h:'Subject',f:'_subject'},{h:'Description',f:'template_description'}],transform:(recs)=>recs.map(r=>({...r,_subject:r.template_subject||r.template?.template_subject||'—'}))},
   // Formulas (CPQ)
@@ -2488,6 +2518,16 @@ async function hitOne(uid,dry){
   if(dry&&!cfg.getUrl&&cfg.readPaths){
     const r=await resolveReadPath(modKey(),cfg,uid);
     if(r.path) getPath=r.path+'/'+encodeURIComponent(uid);
+    // No by-uid read on this module. Falling through would GET the collection path
+    // and report every single record as "not found", which reads as "nothing exists"
+    // when the truth is "this module cannot be read that way". Confirm against the
+    // records already fetched instead, and say that is what happened.
+    else if(cfg.dryRunFromList){
+      const known=allRecs.some(x=>String(x[uidField]||'')===String(uid));
+      return known
+        ? {ok:true,msg:'in the fetched list — this module has no GET-by-uid, so the dry run could not re-read it from the server'}
+        : {ok:false,msg:'not in the fetched list for this module'};
+    }
   }
   const getUrl=useBase+getPath;
   const url=dry?getUrl:delUrl;
