@@ -1498,6 +1498,10 @@ input[type=checkbox]{accent-color:var(--primary)}
 
 <script>
 'use strict';
+// The service task list endpoint wants the caller's timezone — it decides how due dates
+// are bucketed. Resolved once at load; falls back to UTC where Intl is unavailable.
+const _ZTZ=(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';}catch(e){return 'UTC';}})();
+
 const MODULES={
   purchase_orders:{label:'Purchase Orders',uid:['purchase_order_uid','uid','_id'],del:'purchase_orders',cols:[{h:'Order #',f:'_po_no'},{h:'Type',f:'purchase_order_type'},{h:'Status',f:'purchase_order_status'},{h:'Items',f:'number_of_line_items'},{h:'Total',f:'_total'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_po_no:r.reference_number||r.purchase_order_number||'—',_total:r.total_price||r.purchase_order_total||'—'}))},
   material_requests:{label:'Material Orders',uid:['material_request_uid','uid','_id'],del:'material_requests',cols:[{h:'MO #',f:'material_request_number'},{h:'Title',f:'material_request_title'},{h:'Status',f:'material_request_status'},{h:'Created',f:'created_at'}]},
@@ -1555,8 +1559,51 @@ const MODULES={
   job_category:{label:'Job Categories',uid:['category_uid','uid','_id'],del:'jobs/category',endpoint:'jobs/category',fetchParams:'populate_statuses=true',noPageLimit:true,cols:[{h:'Name',f:'category_name'},{h:'Color',f:'category_color'},{h:'Statuses',f:'_status_count'},{h:'Display Order',f:'display_order'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(c=>({...c,_status_count:(c.job_statuses||[]).length}))},
   // Asset Inspection Forms
   asset_form:{label:'Asset Inspection Forms',uid:['asset_form_uid','uid','_id'],del:'assets/inspection_form/master',endpoint:'assets/inspection_form/master',fetchParams:'sort=DESC&sort_by=created_at&filter.keyword=',cols:[{h:'Name',f:'asset_form_name'},{h:'Description',f:'asset_form_description'},{h:'Fields',f:'_field_count'},{h:'Active',f:'is_active'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_field_count:(r.asset_form_fields||[]).length}))},
-  // Service Tasks (placeholder — UID field TBC once user shares response)
-  service_task:{label:'Service Tasks',uid:['service_task_master_uid','service_task_uid','uid','_id'],del:'service_tasks/master',endpoint:'service_tasks/master',cols:[{h:'Name',f:'service_task_title'},{h:'Type',f:'task_type'},{h:'Active',f:'is_active'},{h:'Created',f:'created_at'}]},
+  // Service Tasks — the task instances sitting on jobs, not the master templates.
+  // Confirmed against a real response: list is GET service_tasks (paginated, "limit"
+  // not "count") and a single task is GET service_tasks/{service_task_uid}, so the
+  // dry run can read each record back properly rather than being simulated.
+  //
+  // The status filter is the one the Zuper web app itself sends. It deliberately
+  // leaves out completed/cancelled tasks, so those will not appear in the grid and
+  // therefore cannot be deleted from here — widen this string once the full status
+  // enum is confirmed, rather than guessing values the API may reject.
+  //
+  // Not every task belongs to a job: standalone tasks come back with no `module` /
+  // `module_uid` and an empty `module_details`. They are kept and labelled rather
+  // than hidden, so a "delete everything listed" never silently includes rows the
+  // operator did not realise were there. Group or filter on "Linked To" to separate.
+  service_task:{label:'Service Tasks',uid:['service_task_uid','uid','_id'],
+    del:'service_tasks',endpoint:'service_tasks',paginationParam:'limit',
+    fetchParams:'sort=ASC&sort_by=due_date&show_all_tasks=true'
+      +'&filter.service_task_status=OPEN,IN_PROGRESS,ON_HOLD,INCOMPLETE'
+      +'&user_timezone='+encodeURIComponent(_ZTZ),
+    cols:[{h:'Task',f:'service_task_title'},{h:'Job',f:'_job'},{h:'WO #',f:'_wo'},
+      {h:'Status',f:'service_task_status'},{h:'Due',f:'_due'},{h:'Priority',f:'priority'},
+      {h:'Linked To',f:'_linked'},{h:'Assigned To',f:'_assigned'},
+      {h:'Inspection Form',f:'_form'},{h:'Job Status',f:'_jobStatus'},
+      {h:'Business Unit',f:'_bu'},{h:'Seq',f:'sequence_no'}],
+    // getF reads flat keys only, so anything nested is flattened here first.
+    transform:(recs)=>recs.map(r=>{
+      const md=r.module_details||{};
+      const jobUid=r.module_uid||md.job_uid||'';
+      const js=md.current_job_status||{};
+      return {...r,
+        _job:md.job_title||'— standalone —',
+        _wo:md.work_order_number??'',
+        _jobUid:jobUid,
+        _linked:(r.module==='JOB'&&jobUid)?'Job':'Standalone',
+        _jobStatus:js.status_name||'',
+        _jobCategory:(js.category&&js.category.category_name)||'',
+        _due:r.due_date?String(r.due_date).slice(0,10):'',
+        // assigned_to is empty in every sample seen, so tolerate both a list of user
+        // objects and a list of plain ids rather than rendering blanks.
+        _assigned:(r.assigned_to||[]).map(u=>typeof u==='string'?u
+          :([u.first_name,u.last_name].filter(Boolean).join(' ')||u.email||u.user_uid||'')).filter(Boolean).join(', '),
+        _form:(r.inspection_form&&r.inspection_form.asset_form_name)||'',
+        _bu:(r.business_unit&&r.business_unit.bu_name)||'',
+      };
+    })},
   // Checklist: special module — needs category_uid + job_status_uid params
   checklist:{label:'Checklists',uid:['checklist_uid','_id'],del:null,noDelete:true,endpoint:'settings/checklist',customParams:true,cols:[{h:'Field Name',f:'field_name'},{h:'Type',f:'field_type'},{h:'Required',f:'is_required'},{h:'Display Order',f:'display_order'},{h:'Internal Key',f:'internal_key'}]},
   // Custom Fields: special module — needs module_name param
