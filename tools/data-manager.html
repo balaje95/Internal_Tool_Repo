@@ -464,6 +464,7 @@ input[type=checkbox]{accent-color:var(--primary)}
     <select id="cf-module" class="inp" style="max-width:280px;font-size:.82rem">
       <option value="JOB">Job</option>
       <option value="CUSTOMER">Customer</option>
+      <option value="PRODUCT">Product</option>
       <option value="ASSET">Asset</option>
       <option value="CONTACT">Contact</option>
       <option value="PROPERTY">Property</option>
@@ -1637,7 +1638,43 @@ const MODULES={
         +'undo buffer only holds the field definitions, not the values.\n\n'
         +recs.length+' field(s): '+shown;
     },
-    cols:[{h:'Field Name',f:'field_name'},{h:'Type',f:'field_type'},{h:'Required',f:'is_required'},{h:'Options',f:'_option_count'},{h:'Display Order',f:'display_order'}],transform:(recs)=>recs.map(r=>({...r,_option_count:(r.field_options||[]).length}))},
+    // Two response shapes exist. A flat list comes back from
+    //   settings/custom_fields?module_name=X
+    // and a grouped one from
+    //   settings/custom_fields/group?filter.module_name=X
+    // which is what the Zuper settings UI uses for products. The flat call answers 200
+    // with an empty list for a module whose fields all live in groups, which is why
+    // Customer looked like a broken fetch rather than an error. The fetch tries flat
+    // first and falls back to grouped when it comes back empty.
+    groupUrl:(mod)=>'settings/custom_fields/group?filter.module_name='+encodeURIComponent(mod),
+    // A grouped payload nests the fields one level down. The container key is not
+    // assumed: any array whose entries carry a custom_field_uid is treated as the
+    // fields of that group, so this survives custom_fields / fields / another name.
+    transform:(recs)=>{
+      const flat=[];
+      (recs||[]).forEach(r=>{
+        if(!r) return;
+        if(r.custom_field_uid){flat.push(r);return;}
+        const label=r.group_name||r.custom_field_group_name||r.name||r.label||'';
+        let expanded=false;
+        Object.keys(r).forEach(k=>{
+          const v=r[k];
+          if(Array.isArray(v)&&v.some(x=>x&&x.custom_field_uid)){
+            v.forEach(x=>{if(x&&x.custom_field_uid)flat.push({...x,_group:label});});
+            expanded=true;
+          }
+        });
+        // Kept rather than dropped: a row that cannot be recognised should be visible
+        // and obviously odd, not silently missing from a count someone is trusting.
+        if(!expanded)flat.push(r);
+      });
+      return flat.map(r=>({...r,_group:r._group||'',_option_count:(r.field_options||[]).length}));
+    },
+    // Belt and braces for the shapes above: if a container row ever reaches the grid,
+    // its uid is a group uid, and deleting by it could take the whole group with it.
+    canDelete:(rec)=>rec&&rec.custom_field_uid?null
+      :'not a custom field (no custom_field_uid) — looks like a group or header row',
+    cols:[{h:'Field Name',f:'field_name'},{h:'Type',f:'field_type'},{h:'Group',f:'_group'},{h:'Required',f:'is_required'},{h:'Options',f:'_option_count'},{h:'Display Order',f:'display_order'}]},
   // Email / SMS Templates
   email_template:{label:'Email / SMS Templates',uid:['template_uid','uid','_id'],del:'misc/email_template',endpoint:'misc/email_template',fetchParams:'sort=DESC&sort_by=created_at&filter.keyword=',cols:[{h:'Name',f:'template_name'},{h:'Type',f:'type'},{h:'Module',f:'template_module'},{h:'Subject',f:'_subject'},{h:'Description',f:'template_description'}],transform:(recs)=>recs.map(r=>({...r,_subject:r.template_subject||r.template?.template_subject||'—'}))},
   // Formulas (CPQ)
@@ -1905,7 +1942,23 @@ async function doFetch(){
       const res=await fetch(url,{method:'GET',headers:getHdrs()});
       if(!res.ok){const b=await res.text().catch(()=>'');throw new Error(res.status+' — '+b.slice(0,300)+'\n\nURL: '+url);}
       const data=await res.json();
-      const recs=extractRecords(data,endpoint);
+      let recs=extractRecords(data,endpoint);
+      // An empty 200 from the flat custom-fields list does not mean the module has no
+      // fields — it can mean they all live in groups, which is a different endpoint.
+      // Try that before reporting nothing, otherwise a populated module reads as empty.
+      if(!recs.length && typeof cfg.groupUrl==='function'){
+        const gurl=fetchBase+cfg.groupUrl(($('cf-module').value||'JOB').trim());
+        console.log('[ZDM] Flat list returned 0 — trying the grouped endpoint:', gurl);
+        try{
+          const gres=await fetch(gurl,{method:'GET',headers:getHdrs()});
+          if(gres.ok){
+            const grecs=extractRecords(await gres.json(),endpoint);
+            if(grecs.length){recs=grecs;console.log('[ZDM] Grouped endpoint returned '+grecs.length+' row(s)');}
+          }else{
+            console.warn('[ZDM] Grouped endpoint returned HTTP '+gres.status);
+          }
+        }catch(e){ console.warn('[ZDM] Grouped endpoint failed: '+e.message); }
+      }
       allRecs.push(...recs);
     }
     // Modules with noPageLimit fetch once without pagination params.
