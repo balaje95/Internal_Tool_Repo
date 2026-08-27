@@ -99,6 +99,19 @@
   .log .l-head{color:var(--accent2);font-weight:700}.log .l-dim{color:var(--muted)}
   .docs{margin:0;padding-left:16px}
   .docs li{margin:1px 0}
+
+  .prog{display:flex;align-items:center;gap:10px;margin-top:12px}
+  .prog.hidden{display:none}
+  .prog-bar{flex:1;height:7px;background:var(--panel2);border:1px solid var(--line);border-radius:99px;overflow:hidden}
+  .prog-bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+
+  .pager{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:.8rem}
+  .pager button{background:var(--panel2);color:var(--txt);border:1px solid var(--line);padding:5px 11px;font-size:.78rem}
+  .pager button:hover:not(:disabled){border-color:var(--accent)}
+  .pager button:disabled{opacity:.4;cursor:not-allowed}
+  .pager .pinfo{color:var(--muted)}
+  .docbtn{background:none;border:1px solid var(--line);color:var(--txt);padding:2px 8px;font-size:.72rem;border-radius:6px}
+  .docbtn:hover{border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -141,12 +154,22 @@
 
     <div id="ccTabFetch">
       <div class="flex">
-        <button class="btn" id="ccFetchBtn" onclick="ccFetch()">⬇ Fetch projects &amp; documents</button>
+        <button class="btn" id="ccFetchBtn" onclick="ccFetch()">⬇ Fetch all projects &amp; documents</button>
+        <button class="btn sec small hidden" id="ccStopBtn" onclick="ccStop()">■ Stop</button>
         <label class="flex small" style="margin:0;cursor:pointer">
-          <input type="checkbox" id="ccSkipEmpty" checked> only keep projects that have documents
+          <input type="checkbox" id="ccSkipEmpty" checked onchange="applySkipEmpty()"> only map projects that have documents
         </label>
         <span id="ccStatus" class="muted small"></span>
       </div>
+      <div class="prog hidden" id="ccProgWrap">
+        <div class="prog-bar"><i id="ccProgBar"></i></div>
+        <span class="mono" id="ccProgLbl"></span>
+      </div>
+      <p class="small muted" style="margin:10px 0 0">
+        Every project is fetched, then one document call per project — paced under CompanyCam's documented 240 GET/minute
+        budget, so a large account takes a few minutes. Projects appear as soon as they're listed; document counts fill in
+        as they arrive, and Stop keeps whatever has loaded.
+      </p>
     </div>
 
     <div id="ccTabPaste" class="hidden">
@@ -169,16 +192,44 @@
       <div class="stats" style="margin-top:14px">
         <div class="stat"><b id="ccStatProjects">0</b><span>projects</span></div>
         <div class="stat"><b id="ccStatDocs">0</b><span>documents</span></div>
+        <div class="stat"><b id="ccStatWith">0</b><span>with documents</span></div>
+        <div class="stat"><b id="ccStatWithout">0</b><span>without</span></div>
         <div class="stat"><b id="ccStatBytes">—</b><span>total size</span></div>
         <div class="stat"><b id="ccStatExpiring">0</b><span>expiring urls</span></div>
       </div>
       <div class="msg msg-warn" id="ccExpiryWarn"></div>
+
+      <div class="row" style="margin-top:6px">
+        <div style="flex:1">
+          <label>Search projects</label>
+          <input class="inp" id="ccSearch" placeholder="filter by project name, address or document name…" oninput="ccPage=1;renderCC()">
+        </div>
+        <div style="flex:0 0 150px">
+          <label>Rows per page</label>
+          <select class="inp" id="ccPageSize" onchange="ccPage=1;renderCC()">
+            <option value="100">100</option>
+            <option value="250" selected>250</option>
+            <option value="500">500</option>
+            <option value="1000">1000</option>
+            <option value="0">all</option>
+          </select>
+        </div>
+        <div style="flex:0 0 auto"><button class="btn sec small" onclick="exportProjectsCsv()">⬇ Export projects CSV</button></div>
+      </div>
+
       <div class="tblwrap">
         <table>
-          <thead><tr><th style="width:34%">Project</th><th style="width:26%">Address</th><th>Documents</th></tr></thead>
+          <thead><tr>
+            <th style="width:32%">Project</th>
+            <th style="width:26%">Address</th>
+            <th style="width:90px">Docs</th>
+            <th>Documents</th>
+          </tr></thead>
           <tbody id="ccBody"></tbody>
         </table>
       </div>
+
+      <div class="pager" id="ccPager"></div>
     </div>
   </div>
 
@@ -233,7 +284,25 @@
       </div>
       <div style="flex:1">
         <label>Filter</label>
-        <input class="inp" id="mapFilter" placeholder="filter by project or property name…" oninput="renderMap()">
+        <input class="inp" id="mapFilter" placeholder="filter by project or property name…" oninput="mapPage=1;renderMap()">
+      </div>
+      <div style="flex:0 0 160px">
+        <label>Show</label>
+        <select class="inp" id="mapStateFilter" onchange="mapPage=1;renderMap()">
+          <option value="">all rows</option>
+          <option value="ready">will sync</option>
+          <option value="review">needs review</option>
+          <option value="skip">skipped</option>
+        </select>
+      </div>
+      <div style="flex:0 0 130px">
+        <label>Rows per page</label>
+        <select class="inp" id="mapPageSize" onchange="mapPage=1;renderMap()">
+          <option value="100">100</option>
+          <option value="250" selected>250</option>
+          <option value="500">500</option>
+          <option value="0">all</option>
+        </select>
       </div>
       <div style="flex:0 0 auto">
         <button class="btn sec small" onclick="exportMappingCsv()">⬇ Export mapping CSV</button>
@@ -246,6 +315,7 @@
       <div class="stat"><b id="mStatSkipped">0</b><span>skipped</span></div>
       <div class="stat"><b id="mStatDocs">0</b><span>docs queued</span></div>
     </div>
+    <div class="small muted" id="mapStatus" style="margin-bottom:4px"></div>
 
     <div class="tblwrap">
       <table>
@@ -258,6 +328,7 @@
         <tbody id="mapBody"></tbody>
       </table>
     </div>
+    <div class="pager" id="mapPager"></div>
   </div>
 
   <!-- 4. SYNC -->
@@ -313,13 +384,23 @@
 const $=id=>document.getElementById(id);
 
 const CC_BASE='https://api.companycam.com/v2';
+// We ASK for 100 but CompanyCam silently caps per_page (it defaults to 25), so the
+// real page size is whatever page 1 hands back — never assume it. Terminating on
+// "returned fewer than requested" is what capped an earlier build at 50 projects.
 const CC_PER_PAGE=100;
+const CC_MAX_PAGES=2000;
+const CC_GET_PER_MIN=200;  // documented budget is 240 GET/min; leave headroom
 const DOC_CONCURRENCY=6;   // parallel document fetches, mirrors the batched fetch in the other tools
 const PROP_CONCURRENCY=5;  // parallel fresh property reads at sync time
 
-let ccProjects=[];                       // [{id,name,address,addrStr,docs:[...]}]
+let ccAll=[];                            // every project fetched, unfiltered
+let ccProjects=[];                       // the subset fed to mapping (see applySkipEmpty)
+let ccPage=1;                            // preview page
+let _ccStop=false;
+let _ccPageCap=0;                        // proven CompanyCam page size; 0 = not yet known
 let properties=[], customers=[], custByUid={};
 let mapping=[];                          // [{project,candidate,score,reason,override}]
+let mapPage=1;                           // mapping-table page
 let _base='', _account='', _region='';
 let _cancel=false, _results=[];
 let _propCache={};                       // property_uid -> fresh property object
@@ -364,29 +445,79 @@ function viaRelay(url){
   return p.endsWith('=')?p+encodeURIComponent(url):p+url;
 }
 
-async function ccGet(path){
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+// Pace every CompanyCam GET so a full-account fetch stays inside the 240/min
+// budget. Sliding window over the last minute, shared by all in-flight workers.
+let _ccHits=[];
+async function ccThrottle(){
+  while(true){
+    const now=Date.now();
+    _ccHits=_ccHits.filter(t=>now-t<60000);
+    if(_ccHits.length<CC_GET_PER_MIN){_ccHits.push(now);return;}
+    await sleep(60000-(now-_ccHits[0])+60);
+  }
+}
+
+async function ccGet(path,attempt){
+  attempt=attempt||0;
+  await ccThrottle();
   const r=await fetch(viaRelay(CC_BASE+path),{
     headers:{Authorization:'Bearer '+ccTok(),Accept:'application/json'}
   });
+  if(r.status===429&&attempt<4){
+    // Honour Retry-After when CompanyCam sends it, else back off progressively.
+    const ra=+(r.headers.get('retry-after')||0);
+    await sleep(ra>0?ra*1000+250:(attempt+1)*5000);
+    return ccGet(path,attempt+1);
+  }
   if(!r.ok){
     let hint='';
     if(r.status===401)hint=' — the token was rejected. Check that it came from app.companycam.com/access_tokens, has no stray spaces or quotes, and that the relay forwards the Authorization header.';
     else if(r.status===403)hint=' — authenticated but forbidden. CompanyCam API access requires a Pro, Premium or Elite plan.';
-    else if(r.status===429)hint=' — rate limited by CompanyCam. Wait a minute and retry.';
+    else if(r.status===429)hint=' — still rate limited after several backoffs. Wait a minute and retry.';
     throw new Error('CompanyCam '+r.status+' on '+path+hint);
   }
   return r.json();
 }
 
 // /v2 list endpoints return a bare array and page with page/per_page.
-async function ccPaginate(path){
+//
+// Termination is deliberately NOT "fewer than I asked for" — CompanyCam caps
+// per_page below the requested value, which made that test fire on page 1 and
+// silently truncate the account. Instead: learn the server's real page size from
+// page 1, stop on an empty page or a genuinely short one, and bail out if a page
+// repeats the previous one (an endpoint ignoring `page` would otherwise spin).
+async function ccPaginate(path,onProgress){
   const out=[];
-  for(let page=1;page<=200;page++){
+  let lastFirstId=null,prevLen=0;
+  for(let page=1;page<=CC_MAX_PAGES;page++){
+    if(_ccStop)break;
     const sep=path.includes('?')?'&':'?';
     const body=await ccGet(path+sep+'page='+page+'&per_page='+CC_PER_PAGE);
     const arr=Array.isArray(body)?body:(body&&body.data)||[];
+    if(!arr.length)break;
+
+    // A second non-empty page proves the previous page was FULL, which is the
+    // server's real cap. Learned once (from the projects list) and reused for
+    // every later call, so document fetches cost one request instead of two.
+    if(page>1&&prevLen)_ccPageCap=Math.max(_ccPageCap,prevLen);
+
+    const firstId=arr[0]&&arr[0].id!=null?String(arr[0].id):null;
+    if(firstId!==null&&firstId===lastFirstId){
+      throw new Error('pagination is not advancing on '+path+' (page '+page+' repeated page '+(page-1)+
+                      ') — stopped to avoid an endless loop.');
+    }
+    lastFirstId=firstId;
+
     out.push(...arr);
-    if(arr.length<CC_PER_PAGE)break;
+    prevLen=arr.length;
+    if(onProgress)onProgress(out.length,page);
+
+    // With a proven cap, a short page is the last page. Without one, only an
+    // empty page proves the end — never break on "fewer than I requested",
+    // which is what silently truncated the account at 50.
+    if(_ccPageCap&&arr.length<_ccPageCap)break;
   }
   return out;
 }
@@ -409,35 +540,68 @@ function urlExpires(u){
   return false;
 }
 
+function ccStop(){_ccStop=true;$('ccStatus').textContent='Stopping…';}
+function ccProg(done,total,label){
+  $('ccProgWrap').classList.remove('hidden');
+  const pct=total?Math.round(done/total*100):0;
+  $('ccProgBar').style.width=pct+'%';
+  $('ccProgLbl').textContent=label||(done+' / '+total+'  ('+pct+'%)');
+}
+
 async function ccFetch(){
   hideMsg('cc-msg');
+  _ccStop=false;
   const btn=$('ccFetchBtn');btn.disabled=true;
+  $('ccStopBtn').classList.remove('hidden');
   try{
     if(!ccTok())throw new Error('Enter a CompanyCam access token first.');
     $('ccStatus').textContent='Authenticating…';
     await ccGet('/company');                              // cheapest call that proves the token
-    $('ccStatus').textContent='Fetching projects…';
-    const projects=await ccPaginate('/projects');
-    if(!projects.length)throw new Error('The token works but the account returned no projects.');
 
-    let done=0;
-    const withDocs=await pMap(projects,async p=>{
-      let docs=[],err=null;
-      try{docs=await ccPaginate('/projects/'+p.id+'/documents');}
-      catch(e){err=e.message;}
-      $('ccStatus').textContent='Documents '+(++done)+' / '+projects.length+'…';
+    // Phase 1 — every project. Fast: one call per page.
+    $('ccStatus').textContent='Listing projects…';
+    ccProg(0,1,'listing projects…');
+    const projects=await ccPaginate('/projects',(n,page)=>{
+      ccProg(0,1,n+' projects listed (page '+page+')…');
+      $('ccStatus').textContent=n+' projects…';
+    });
+    if(!projects.length)throw new Error('The token works, but the account returned no projects.');
+
+    // Show them straight away — document counts fill in underneath.
+    ccAll=projects.map(p=>{
       const addr=p.address||{};
       return {id:String(p.id),name:p.name||'(unnamed)',address:addr,addrStr:ccAddrStr(addr),
-              docs:docs.map(mapDoc),docError:err};
+              docs:[],docError:null,docsLoaded:false};
+    });
+    ccPage=1;
+    applySkipEmpty(false);
+
+    // Phase 2 — one document call per project, paced and bounded.
+    let done=0;
+    const t0=Date.now();
+    await pMap(ccAll,async p=>{
+      if(_ccStop)return;
+      try{p.docs=(await ccPaginate('/projects/'+p.id+'/documents')).map(mapDoc);}
+      catch(e){p.docError=e.message;}
+      p.docsLoaded=true;
+      done++;
+      const rate=done/Math.max(1,(Date.now()-t0)/1000);
+      const left=Math.round((ccAll.length-done)/Math.max(rate,0.01));
+      ccProg(done,ccAll.length,'documents '+done+' / '+ccAll.length+
+        (done<ccAll.length?'  ·  ~'+fmtDur(left)+' left':''));
+      $('ccStatus').textContent='Documents '+done+' / '+ccAll.length+'…';
+      if(done%25===0||done===ccAll.length)applySkipEmpty(false);  // refresh counts, don't re-map
     },DOC_CONCURRENCY);
 
-    const failed=withDocs.filter(p=>p.docError);
-    ccProjects=$('ccSkipEmpty').checked?withDocs.filter(p=>p.docs.length):withDocs;
-    renderCC();
-    let m='✓ Loaded '+withDocs.length+' project(s) from CompanyCam.';
-    if($('ccSkipEmpty').checked)m+=' Showing the '+ccProjects.length+' with at least one document.';
-    if(failed.length)m+=' '+failed.length+' project(s) failed their document call — see the table.';
-    showMsg('cc-msg',m,failed.length?'warn':'ok');
+    applySkipEmpty();
+    const failed=ccAll.filter(p=>p.docError);
+    const loaded=ccAll.filter(p=>p.docsLoaded).length;
+    const totalDocs=ccAll.reduce((n,p)=>n+p.docs.length,0);
+
+    let m='✓ Loaded <b>'+ccAll.length+'</b> project(s) and <b>'+totalDocs+'</b> document(s) from CompanyCam.';
+    if(_ccStop)m='⏹ Stopped. Kept '+ccAll.length+' project(s); documents were read for '+loaded+' of them ('+totalDocs+' document(s)).';
+    if(failed.length)m+=' '+failed.length+' project(s) failed their document call — flagged in the table.';
+    showMsg('cc-msg',m,(_ccStop||failed.length)?'warn':'ok');
     $('ccStatus').textContent='';
   }catch(e){
     let extra='';
@@ -447,7 +611,28 @@ async function ccFetch(){
     }
     showMsg('cc-msg','✗ '+esc(e.message)+extra,'err');
     $('ccStatus').textContent='';
-  }finally{btn.disabled=false;}
+  }finally{
+    btn.disabled=false;
+    $('ccStopBtn').classList.add('hidden');
+    _ccStop=false;
+  }
+}
+function fmtDur(s){
+  if(!isFinite(s)||s<0)return'?';
+  if(s<60)return Math.round(s)+'s';
+  const m=Math.floor(s/60);
+  return m<60?m+'m '+Math.round(s%60)+'s':Math.floor(m/60)+'h '+(m%60)+'m';
+}
+
+// Projects with no documents have nothing to sync, so they are kept out of the
+// mapping set — but they stay in the preview so the totals are honest.
+// rebuild=false is used for the periodic refresh mid-fetch: re-mapping thousands
+// of projects every 25 documents would be pure waste.
+function applySkipEmpty(rebuild){
+  if(!ccAll.length)return;      // toggling before any fetch shouldn't reveal an empty table
+  ccProjects=$('ccSkipEmpty').checked?ccAll.filter(p=>p.docs.length):ccAll.slice();
+  renderCC();
+  if(rebuild!==false)maybeBuildMapping();
 }
 
 function ccPaste(){
@@ -456,23 +641,36 @@ function ccPaste(){
     const projects=JSON.parse($('ccProjectsJson').value||'[]');
     const docMap=JSON.parse($('ccDocsJson').value||'{}');
     if(!Array.isArray(projects))throw new Error('Projects JSON must be an array.');
-    ccProjects=projects.map(p=>{
+    ccAll=projects.map(p=>{
       const addr=p.address||{};
       const raw=docMap[p.id]||docMap[String(p.id)]||[];
       return {id:String(p.id),name:p.name||'(unnamed)',address:addr,addrStr:ccAddrStr(addr),
-              docs:(Array.isArray(raw)?raw:[]).map(mapDoc),docError:null};
+              docs:(Array.isArray(raw)?raw:[]).map(mapDoc),docError:null,docsLoaded:true};
     });
-    renderCC();
-    showMsg('cc-msg','✓ Loaded '+ccProjects.length+' project(s) from pasted JSON.','ok');
+    ccPage=1;
+    applySkipEmpty();
+    showMsg('cc-msg','✓ Loaded '+ccAll.length+' project(s) and '+
+      ccAll.reduce((n,p)=>n+p.docs.length,0)+' document(s) from pasted JSON.','ok');
   }catch(e){showMsg('cc-msg','✗ Invalid JSON: '+esc(e.message),'err');}
 }
 
+// Which projects have their document list expanded in the preview.
+const _ccOpen=new Set();
+function ccToggleDocs(id){
+  if(_ccOpen.has(id))_ccOpen.delete(id);else _ccOpen.add(id);
+  renderCC();
+}
+
 function renderCC(){
-  const totalDocs=ccProjects.reduce((n,p)=>n+p.docs.length,0);
-  const totalBytes=ccProjects.reduce((n,p)=>n+p.docs.reduce((m,d)=>m+(d.size||0),0),0);
-  const expiring=ccProjects.reduce((n,p)=>n+p.docs.filter(d=>urlExpires(d.url)).length,0);
-  $('ccStatProjects').textContent=ccProjects.length;
+  // Stats always describe the WHOLE account, never just the visible page.
+  const totalDocs=ccAll.reduce((n,p)=>n+p.docs.length,0);
+  const totalBytes=ccAll.reduce((n,p)=>n+p.docs.reduce((m,d)=>m+(d.size||0),0),0);
+  const expiring=ccAll.reduce((n,p)=>n+p.docs.filter(d=>urlExpires(d.url)).length,0);
+  const withDocs=ccAll.filter(p=>p.docs.length).length;
+  $('ccStatProjects').textContent=ccAll.length;
   $('ccStatDocs').textContent=totalDocs;
+  $('ccStatWith').textContent=withDocs;
+  $('ccStatWithout').textContent=ccAll.length-withDocs;
   $('ccStatBytes').textContent=totalBytes?fmtBytes(totalBytes):'—';
   $('ccStatExpiring').textContent=expiring;
 
@@ -484,27 +682,85 @@ function renderCC(){
     hideMsg('ccExpiryWarn');
   }
 
-  const rows=ccProjects.map(p=>{
-    let docCell;
+  // Filter, then page. Searching matches document names too.
+  const q=($('ccSearch')?$('ccSearch').value:'').trim().toLowerCase();
+  const shown=q?ccAll.filter(p=>
+      p.name.toLowerCase().includes(q)||
+      p.addrStr.toLowerCase().includes(q)||
+      p.id.toLowerCase().includes(q)||
+      p.docs.some(d=>(d.name||'').toLowerCase().includes(q))
+    ):ccAll;
+
+  const sizeSel=$('ccPageSize')?+$('ccPageSize').value:250;
+  const size=sizeSel||shown.length||1;
+  const pages=Math.max(1,Math.ceil(shown.length/size));
+  if(ccPage>pages)ccPage=pages;
+  if(ccPage<1)ccPage=1;
+  const start=(ccPage-1)*size;
+  const slice=shown.slice(start,start+size);
+
+  const rows=slice.map(p=>{
+    let countCell,docCell='';
     if(p.docError){
-      docCell='<span class="pill nocust">DOC FETCH FAILED</span> <span class="small muted">'+esc(p.docError)+'</span>';
+      countCell='<span class="pill nocust">FAILED</span>';
+      docCell='<span class="small muted">'+esc(p.docError)+'</span>';
+    }else if(!p.docsLoaded){
+      countCell='<span class="mono">…</span>';
+      docCell='<span class="small muted">loading…</span>';
     }else if(!p.docs.length){
+      countCell='0';
       docCell='<span class="muted small">none</span>';
     }else{
-      docCell='<ul class="docs">'+p.docs.map(d=>'<li>'+esc(d.name)+
-        ' <span class="mono">('+esc(d.contentType||'?')+', '+fmtBytes(d.size)+')</span>'+
-        (urlExpires(d.url)?' <span class="pill review">EXPIRING URL</span>':'')+
-        (!d.url?' <span class="pill nocust">NO URL</span>':'')+'</li>').join('')+'</ul>';
+      const exp=p.docs.filter(d=>urlExpires(d.url)).length;
+      const nourl=p.docs.filter(d=>!d.url).length;
+      countCell='<b>'+p.docs.length+'</b>'+
+        (exp?'<br><span class="pill review" title="expiring url(s)">'+exp+' exp</span>':'')+
+        (nourl?'<br><span class="pill nocust">'+nourl+' no url</span>':'');
+      const open=_ccOpen.has(p.id);
+      // Only render the file list for expanded rows — with 1000 rows a page,
+      // rendering every document name is what makes the table crawl.
+      docCell='<button class="docbtn" onclick="ccToggleDocs(\''+esc(p.id)+'\')">'+
+                (open?'▾ hide':'▸ show')+' '+p.docs.length+' file'+(p.docs.length===1?'':'s')+'</button>';
+      if(open){
+        docCell+='<ul class="docs" style="margin-top:5px">'+p.docs.map(d=>'<li>'+esc(d.name)+
+          ' <span class="mono">('+esc(d.contentType||'?')+', '+fmtBytes(d.size)+')</span>'+
+          (urlExpires(d.url)?' <span class="pill review">EXPIRING URL</span>':'')+
+          (!d.url?' <span class="pill nocust">NO URL</span>':'')+'</li>').join('')+'</ul>';
+      }
     }
     return '<tr><td><b>'+esc(p.name)+'</b><br><span class="mono">'+esc(p.id)+'</span></td>'+
-           '<td class="small muted">'+(esc(p.addrStr)||'—')+'</td><td>'+docCell+'</td></tr>';
+           '<td class="small muted">'+(esc(p.addrStr)||'—')+'</td>'+
+           '<td>'+countCell+'</td><td>'+docCell+'</td></tr>';
   });
-  $('ccBody').innerHTML=rows.join('');
+
+  $('ccBody').innerHTML=rows.join('')||
+    '<tr><td colspan="4" class="muted small">No projects match that search.</td></tr>';
+
+  const from=shown.length?start+1:0, to=Math.min(start+size,shown.length);
+  $('ccPager').innerHTML=
+    '<button onclick="ccGo(1)"'+(ccPage===1?' disabled':'')+'>« first</button>'+
+    '<button onclick="ccGo('+(ccPage-1)+')"'+(ccPage===1?' disabled':'')+'>‹ prev</button>'+
+    '<span class="pinfo">showing <b>'+from+'–'+to+'</b> of <b>'+shown.length+'</b>'+
+      (q?' matching (of '+ccAll.length+' total)':' project(s)')+
+      ' · page '+ccPage+' of '+pages+'</span>'+
+    '<button onclick="ccGo('+(ccPage+1)+')"'+(ccPage>=pages?' disabled':'')+'>next ›</button>'+
+    '<button onclick="ccGo('+pages+')"'+(ccPage>=pages?' disabled':'')+'>last »</button>';
+
   $('ccResult').classList.remove('hidden');
-  $('ccbadge').textContent='📷 '+ccProjects.length+' project(s) · '+totalDocs+' doc(s)';
+  $('ccbadge').textContent='📷 '+ccAll.length+' project(s) · '+totalDocs+' doc(s)';
   $('ccbadge').style.display='inline-block';
   markDone('s1');
-  maybeBuildMapping();
+}
+function ccGo(p){ccPage=p;renderCC();}
+
+function exportProjectsCsv(){
+  const head=['project','project_id','address','doc_count','total_bytes','expiring_urls','documents'];
+  downloadCsv('companycam-projects.csv',head,ccAll.map(p=>[
+    p.name,p.id,p.addrStr,p.docs.length,
+    p.docs.reduce((m,d)=>m+(d.size||0),0),
+    p.docs.filter(d=>urlExpires(d.url)).length,
+    p.docs.map(d=>d.name).join(' | ')
+  ]));
 }
 
 /* ================= STEP 2: Zuper ================= */
@@ -532,6 +788,7 @@ async function connect(){
 function disconnect(){
   _base='';_account='';_region='';
   properties=[];customers=[];custByUid={};mapping=[];_results=[];_propCache={};_cancel=false;
+  _propOptsHtml=null;_propIdx=null;
   $('apikey').value='';
   const sv=$('saved');if(sv)sv.value='';
   $('badge').style.display='none';$('badge').textContent='';
@@ -546,9 +803,13 @@ function disconnect(){
 }
 
 // Generic paginated GET — matches the Data Manager / Customer↔Property Mapper standard.
+// Same termination rule as ccPaginate: derive the real page size from page 1
+// rather than assuming the server honoured `count`. Zuper does honour 100 today,
+// but assuming it is exactly the bug that capped the CompanyCam side at 50.
 async function fetchPaged(endpoint,recordKeys,onPage){
   const out=[];const count=100;
-  for(let page=1;page<=500;page++){
+  let pageSize=0;
+  for(let page=1;page<=1000;page++){
     const r=await fetch(_base+endpoint+'?page='+page+'&count='+count,{headers:getHdrs()});
     if(!r.ok)throw new Error(endpoint+' fetch failed (HTTP '+r.status+')');
     const d=await r.json().catch(()=>({}));
@@ -556,9 +817,10 @@ async function fetchPaged(endpoint,recordKeys,onPage){
     if(!recs){for(const k of recordKeys){if(Array.isArray(d[k])){recs=d[k];break;}}}
     if(!recs)recs=d.data||[];
     if(!recs.length)break;
+    if(!pageSize)pageSize=recs.length;
     out.push(...recs);
     if(onPage)onPage(out.length);
-    if(recs.length<count)break;
+    if(recs.length<pageSize)break;
   }
   return out;
 }
@@ -597,7 +859,7 @@ async function zuFetch(){
     $('zuStatus').textContent='Loading customers…';
     customers=await fetchPaged('customers',['customers'],n=>{$('zuStatus').textContent='Loading customers… '+n;});
     custByUid={};customers.forEach(c=>{const u=custUid(c);if(u)custByUid[u]=c;});
-    _propCache={};
+    _propCache={};_propOptsHtml=null;_propIdx=null;   // property set changed — drop derived caches
 
     const linked=properties.filter(p=>linkedCustomerUid(p)).length;
     $('zuStatProps').textContent=properties.length;
@@ -643,8 +905,9 @@ function lev(a,b){
   }
   return prev[n];
 }
-function sim(a,b){
-  const A=normalize(a),B=normalize(b);
+// simN takes ALREADY-normalised strings — the hot path calls it with values
+// normalised once up front. sim() is the convenience wrapper.
+function simN(A,B){
   if(!A||!B)return 0;
   if(A===B)return 1;
   const ta=new Set(A.split(' ').filter(Boolean)),tb=new Set(B.split(' ').filter(Boolean));
@@ -656,45 +919,116 @@ function sim(a,b){
   const dist=1-lev(A,B)/Math.max(A.length,B.length);
   return Math.max(jacc,0.6*cont+0.4*dist,0.5*jacc+0.5*dist);
 }
+function sim(a,b){return simN(normalize(a),normalize(b));}
 
 // Score one project against one property across every signal we have, and say which won.
-function scorePair(proj,prop){
+// `pm` is the precomputed property metadata from buildPropIndex (normalising each
+// property's name/address once instead of once per project — the difference between
+// a snappy map and a hung tab on a large account).
+function scorePair(proj,prop,pm){
   const pa=prop.property_address||{};
-  const propAddr=zuAddrStr(pa);
+  pm=pm||propMeta(prop);
   const ca=proj.address||{};
 
   // Strongest possible signal: same street line and same postcode.
-  if(ca.street_address_1&&pa.street&&tight(ca.street_address_1)===tight(pa.street)){
-    if(ca.postal_code&&pa.zip_code&&tight(ca.postal_code)===tight(pa.zip_code))return {score:1,reason:'street + zip'};
-    if(ca.city&&pa.city&&tight(ca.city)===tight(pa.city))return {score:0.98,reason:'street + city'};
+  if(ca.street_address_1&&pa.street&&tight(ca.street_address_1)===pm.tStreet){
+    if(ca.postal_code&&pa.zip_code&&tight(ca.postal_code)===pm.tZip)return {score:1,reason:'street + zip'};
+    if(ca.city&&pa.city&&tight(ca.city)===pm.tCity)return {score:0.98,reason:'street + city'};
     return {score:0.9,reason:'street'};
   }
 
   const cands=[
-    [sim(proj.name,propName(prop)),'name ↔ name'],
-    [sim(proj.addrStr,propAddr),'address ↔ address'],
-    [sim(proj.name,propAddr),'project name ↔ address'],
-    [sim(proj.addrStr,propName(prop)),'address ↔ property name'],
+    [simN(proj.nName,pm.nName),'name ↔ name'],
+    [simN(proj.nAddr,pm.nAddr),'address ↔ address'],
+    [simN(proj.nName,pm.nAddr),'project name ↔ address'],
+    [simN(proj.nAddr,pm.nName),'address ↔ property name'],
   ];
   cands.sort((x,y)=>y[0]-x[0]);
   return {score:cands[0][0],reason:cands[0][1]};
+}
+function propMeta(prop){
+  const pa=prop.property_address||{};
+  const nm=propName(prop),addr=zuAddrStr(pa);
+  return {prop,nName:normalize(nm),nAddr:normalize(addr),
+          tStreet:tight(pa.street),tZip:tight(pa.zip_code),tCity:tight(pa.city)};
+}
+
+/* ---- candidate index: avoids comparing every project to every property ---- */
+let _propIdx=null;
+const MAX_CANDIDATES=60;      // properties actually scored per project
+const COMMON_TOKEN_CAP=1500;  // don't walk "st"/"rd" postings lists forever
+
+function buildPropIndex(){
+  const meta=[],byStreet=new Map(),byToken=new Map();
+  for(const prop of properties){
+    const m=propMeta(prop);
+    m.tokens=new Set((m.nName+' '+m.nAddr).split(' ').filter(Boolean));
+    meta.push(m);
+    if(m.tStreet){
+      if(!byStreet.has(m.tStreet))byStreet.set(m.tStreet,[]);
+      byStreet.get(m.tStreet).push(m);
+    }
+    for(const t of m.tokens){
+      if(!byToken.has(t))byToken.set(t,[]);
+      byToken.get(t).push(m);
+    }
+  }
+  _propIdx={meta,byStreet,byToken};
+}
+
+// Plausible properties for one project: an exact street hit wins outright,
+// otherwise rank by shared-token count and score only the top slice.
+function candidatesFor(proj){
+  const ts=tight((proj.address||{}).street_address_1);
+  if(ts&&_propIdx.byStreet.has(ts))return _propIdx.byStreet.get(ts);
+
+  const toks=new Set((proj.nName+' '+proj.nAddr).split(' ').filter(Boolean));
+  const hits=new Map();
+  for(const t of toks){
+    const list=_propIdx.byToken.get(t);
+    if(!list||list.length>COMMON_TOKEN_CAP)continue;
+    for(const m of list)hits.set(m,(hits.get(m)||0)+1);
+  }
+  if(!hits.size)return [];
+  if(hits.size<=MAX_CANDIDATES)return [...hits.keys()];
+  return [...hits.entries()].sort((a,b)=>b[1]-a[1]).slice(0,MAX_CANDIDATES).map(e=>e[0]);
 }
 
 function maybeBuildMapping(){
   if(!ccProjects.length||!properties.length)return;
   buildMapping();
 }
-function buildMapping(){
-  mapping=ccProjects.map(proj=>{
-    let best=null,score=0,reason='';
-    for(const prop of properties){
-      const s=scorePair(proj,prop);
-      if(s.score>score){score=s.score;best=prop;reason=s.reason;}
-    }
-    return {project:proj,candidate:best,score,reason,override:null};
-  });
+
+let _mapping_run=0;
+async function buildMapping(){
+  const run=++_mapping_run;          // a newer build supersedes one in flight
+  buildPropIndex();
   $('mapCard').classList.remove('hidden');
   $('syncCard').classList.remove('hidden');
+  $('mapStatus').textContent='Matching '+ccProjects.length+' project(s) against '+properties.length+' property(ies)…';
+
+  const out=[];
+  for(let i=0;i<ccProjects.length;i++){
+    const proj=ccProjects[i];
+    // Normalise each project once, not once per property.
+    if(proj.nName===undefined){proj.nName=normalize(proj.name);proj.nAddr=normalize(proj.addrStr);}
+    let best=null,score=0,reason='';
+    for(const pm of candidatesFor(proj)){
+      const s=scorePair(proj,pm.prop,pm);
+      if(s.score>score){score=s.score;best=pm.prop;reason=s.reason;}
+      if(score===1)break;            // nothing can beat street + zip
+    }
+    out.push({project:proj,candidate:best,score,reason,override:null});
+    // Yield so a big account doesn't freeze the tab mid-match.
+    if(i%250===249){
+      $('mapStatus').textContent='Matching… '+(i+1)+' / '+ccProjects.length;
+      await sleep(0);
+      if(run!==_mapping_run)return;   // superseded
+    }
+  }
+  if(run!==_mapping_run)return;
+  mapping=out;
+  mapPage=1;
   markDone('s3');
   renderMap();
 }
@@ -714,62 +1048,108 @@ function rowState(r){
   return r.score>=0.95?'exact':'auto';
 }
 
+// The full property <option> list, built once. Injected into a row's <select>
+// only when that select is focused — pre-rendering thousands of options into
+// every row of a thousand-row table is what would lock the tab up.
+let _propOptsHtml=null;
+function propOptsHtml(){
+  if(_propOptsHtml===null){
+    _propOptsHtml=properties.map(p=>{
+      const a=zuAddrStr(p.property_address);
+      return '<option value="'+esc(propUid(p))+'">'+esc(propName(p))+(a?' — '+esc(a):'')+'</option>';
+    }).join('');
+  }
+  return _propOptsHtml;
+}
+function fillProps(sel){
+  if(sel.dataset.filled)return;
+  sel.dataset.filled='1';
+  const cur=sel.value;
+  sel.insertAdjacentHTML('beforeend',propOptsHtml());
+  sel.value=cur;
+}
+
 function renderMap(){
-  const th=+$('threshold').value;
-  const q=normalize($('mapFilter').value);
   let matched=0,review=0,skipped=0,docs=0;
-  const rows=[];
 
-  // Property <option> list is identical for every row — build the markup once.
-  const propOpts=properties.map(p=>{
-    const a=zuAddrStr(p.property_address);
-    return '<option value="'+esc(propUid(p))+'">'+esc(propName(p))+(a?' — '+esc(a):'')+'</option>';
-  }).join('');
-
+  // Stats describe every row; the table shows a filtered page of them.
+  const stateOf=new Array(mapping.length);
   mapping.forEach((r,i)=>{
-    const state=rowState(r);
-    if(state==='skip')skipped++;
-    else if(state==='review')review++;
+    const s=rowState(r);stateOf[i]=s;
+    if(s==='skip')skipped++;
+    else if(s==='review')review++;
     else{matched++;docs+=r.project.docs.length;}
-
-    if(q){
-      const hay=normalize(r.project.name+' '+r.project.addrStr+' '+(r.candidate?propName(r.candidate):''));
-      if(!hay.includes(q))return;
-    }
-
-    const pick=chosen(r);
-    const autoLabel=r.candidate?'auto: '+propName(r.candidate)+' ('+Math.round(r.score*100)+'%)':'— no candidate —';
-    let opts='<option value=""'+(!r.override?' selected':'')+'>'+esc(autoLabel)+'</option>'+
-             '<option value="__skip"'+(r.override==='__skip'?' selected':'')+'>— skip this project —</option>'+
-             propOpts;
-    if(r.override&&r.override!=='__skip'){
-      // Re-mark the selected option, since propOpts is shared and carries no selection.
-      opts=opts.replace('<option value="'+esc(r.override)+'">','<option value="'+esc(r.override)+'" selected>');
-    }
-
-    const expiring=r.project.docs.filter(d=>urlExpires(d.url)).length;
-    const nourl=r.project.docs.filter(d=>!d.url).length;
-
-    rows.push('<tr>'+
-      '<td><span class="pill '+state+'">'+state.toUpperCase()+'</span><br>'+
-        '<span class="mono">'+Math.round(r.score*100)+'%</span>'+
-        (r.reason?'<br><span class="mono" title="matched on">'+esc(r.reason)+'</span>':'')+'</td>'+
-      '<td><b>'+esc(r.project.name)+'</b>'+(r.project.addrStr?'<br><span class="small muted">'+esc(r.project.addrStr)+'</span>':'')+'</td>'+
-      '<td><select class="inp" onchange="setOverride('+i+',this.value)">'+opts+'</select>'+
-        (pick?'<div class="mono" style="margin-top:4px">'+esc(propUid(pick))+'</div>':'')+'</td>'+
-      '<td>'+r.project.docs.length+
-        (expiring?'<br><span class="pill review" title="'+expiring+' expiring URL(s)">'+expiring+' exp</span>':'')+
-        (nourl?'<br><span class="pill nocust">'+nourl+' no url</span>':'')+'</td>'+
-    '</tr>');
   });
-
-  $('mapBody').innerHTML=rows.join('')||'<tr><td colspan="4" class="muted small">No rows match that filter.</td></tr>';
   $('mStatMatched').textContent=matched;
   $('mStatReview').textContent=review;
   $('mStatSkipped').textContent=skipped;
   $('mStatDocs').textContent=docs;
   $('syncBtn').disabled=docs===0;
+
+  const q=normalize($('mapFilter').value);
+  const want=$('mapStateFilter')?$('mapStateFilter').value:'';
+  const idxs=[];
+  for(let i=0;i<mapping.length;i++){
+    const r=mapping[i],s=stateOf[i];
+    if(want==='ready'&&(s==='review'||s==='skip'))continue;
+    if(want==='review'&&s!=='review')continue;
+    if(want==='skip'&&s!=='skip')continue;
+    if(q){
+      const hay=normalize(r.project.name+' '+r.project.addrStr+' '+(r.candidate?propName(r.candidate):''));
+      if(!hay.includes(q))continue;
+    }
+    idxs.push(i);
+  }
+
+  const sizeSel=$('mapPageSize')?+$('mapPageSize').value:250;
+  const size=sizeSel||idxs.length||1;
+  const pages=Math.max(1,Math.ceil(idxs.length/size));
+  if(mapPage>pages)mapPage=pages;
+  if(mapPage<1)mapPage=1;
+  const start=(mapPage-1)*size;
+  const pageIdxs=idxs.slice(start,start+size);
+
+  const rows=pageIdxs.map(i=>{
+    const r=mapping[i],state=stateOf[i],pick=chosen(r);
+    const autoLabel=r.candidate?'auto: '+propName(r.candidate)+' ('+Math.round(r.score*100)+'%)':'— no candidate —';
+    const ov=r.override&&r.override!=='__skip'?r.override:'';
+    const opts='<option value=""'+(!r.override?' selected':'')+'>'+esc(autoLabel)+'</option>'+
+               '<option value="__skip"'+(r.override==='__skip'?' selected':'')+'>— skip this project —</option>';
+    const expiring=r.project.docs.filter(d=>urlExpires(d.url)).length;
+    const nourl=r.project.docs.filter(d=>!d.url).length;
+
+    return '<tr>'+
+      '<td><span class="pill '+state+'">'+state.toUpperCase()+'</span><br>'+
+        '<span class="mono">'+Math.round(r.score*100)+'%</span>'+
+        (r.reason?'<br><span class="mono" title="matched on">'+esc(r.reason)+'</span>':'')+'</td>'+
+      '<td><b>'+esc(r.project.name)+'</b>'+(r.project.addrStr?'<br><span class="small muted">'+esc(r.project.addrStr)+'</span>':'')+'</td>'+
+      '<td><select class="inp" onfocus="fillProps(this)" onchange="setOverride('+i+',this.value)"'+
+          (ov?' data-fill="1" data-val="'+esc(ov)+'"':'')+'>'+opts+'</select>'+
+        (pick?'<div class="mono" style="margin-top:4px">'+esc(propUid(pick))+'</div>':'')+'</td>'+
+      '<td>'+r.project.docs.length+
+        (expiring?'<br><span class="pill review" title="'+expiring+' expiring URL(s)">'+expiring+' exp</span>':'')+
+        (nourl?'<br><span class="pill nocust">'+nourl+' no url</span>':'')+'</td>'+
+    '</tr>';
+  });
+
+  const body=$('mapBody');
+  body.innerHTML=rows.join('')||'<tr><td colspan="4" class="muted small">No rows match that filter.</td></tr>';
+  // Rows carrying a manual override need their real option present right away.
+  body.querySelectorAll('select[data-fill="1"]').forEach(s=>{fillProps(s);s.value=s.dataset.val;});
+
+  const from=idxs.length?start+1:0, to=Math.min(start+size,idxs.length);
+  $('mapPager').innerHTML=
+    '<button onclick="mapGo(1)"'+(mapPage===1?' disabled':'')+'>« first</button>'+
+    '<button onclick="mapGo('+(mapPage-1)+')"'+(mapPage===1?' disabled':'')+'>‹ prev</button>'+
+    '<span class="pinfo">showing <b>'+from+'–'+to+'</b> of <b>'+idxs.length+'</b> row(s)'+
+      (idxs.length!==mapping.length?' (filtered from '+mapping.length+')':'')+
+      ' · page '+mapPage+' of '+pages+'</span>'+
+    '<button onclick="mapGo('+(mapPage+1)+')"'+(mapPage>=pages?' disabled':'')+'>next ›</button>'+
+    '<button onclick="mapGo('+pages+')"'+(mapPage>=pages?' disabled':'')+'>last »</button>';
+
+  $('mapStatus').innerHTML='<b>'+matched+'</b> of '+mapping.length+' project(s) will sync · <b>'+docs+'</b> document(s) queued';
 }
+function mapGo(p){mapPage=p;renderMap();}
 function setOverride(i,v){mapping[i].override=v||null;renderMap();}
 
 function exportMappingCsv(){
@@ -843,6 +1223,21 @@ async function runSync(){
   log((dry?'DRY RUN':'LIVE')+' · '+_account+' ('+_region+') · '+rows.length+' project(s) · attachments '+
       (visible?'visible':'not visible')+' to customer','head');
   if(!dry)log('Writing to Zuper. Attachments reference the CompanyCam URL — no file is copied.','dim');
+
+  // Resolve every target property up front, in parallel. The write loop below
+  // stays serial (readable log, no concurrent writes) but no longer waits on a
+  // round-trip per project.
+  const uids=[...new Set(rows.map(r=>propUid(chosen(r))))].filter(u=>!_propCache[u]);
+  if(uids.length){
+    $('syncStatus').textContent='Resolving '+uids.length+' property(ies)…';
+    log('Reading '+uids.length+' property(ies) to resolve their linked customers…','dim');
+    let n=0;
+    await pMap(uids,async u=>{
+      try{await freshProperty(u);}catch(e){}   // the write loop reports the failure per row
+      $('syncStatus').textContent='Resolving properties… '+(++n)+' / '+uids.length;
+    },PROP_CONCURRENCY);
+    $('syncStatus').textContent='';
+  }
 
   let ok=0,failed=0,skipped=0;
 
