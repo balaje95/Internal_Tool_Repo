@@ -112,5 +112,13 @@ const TOOLS = [
     "icon": "🚀",
     "updated": "2026-08-19",
     "help": "Open it and you see the current roofing pipeline — no API key, no login to Zoho. Projects are flagged Gone Live / Due This Month / Missed / Upcoming against a fixed goal of 10 go-lives a month, with go-lives vs goal by month, pipeline by status, cumulative run-rate and BA workload. A panel at the top lists what moved since the previous export — went live, ETAs slipped or pulled in, status changes, new projects — and every chip, KPI, bar and slice is clickable, opening a drawer that drills down to the project, its comments and its HubSpot deal. Filter by month, status, owner or BA, search, and sort any column. The data comes from a Zoho Projects export refreshed weekly; the header states how old it is and warns when it is over a week old. Go-Live ETA comes from the Current ETA column and Deal Value from Deal Amount, so wrong numbers get fixed in Zoho and re-exported rather than edited here."
+  },
+  {
+    "name": "CompanyCam → Zuper Sync",
+    "description": "Map CompanyCam projects to Zuper properties and sync their documents",
+    "file": "tools/companycam-sync.html",
+    "icon": "📷",
+    "updated": "2026-08-27",
+    "help": "Paste a CompanyCam access token (from app.companycam.com/access_tokens — needs a Pro/Premium/Elite plan) and it lists every project with its documents, relayed through this site's own /api/companycam function because CompanyCam sends no CORS headers. Then connect a Zuper account with an API key (region auto-detected) and fetch its properties and customers. Each CompanyCam project is auto-matched to a Zuper property on project name, project address and property address — noise words like LLC/Roofing/Construction are stripped and an exact street + zip match scores 100% — with a threshold slider and a per-row override dropdown. Documents are then attached to the customer linked to the matched property via POST customers/{customer_uid}/attachments; Zuper has no property-level attachment endpoint, so that is the real target, and a property with no linked customer is reported and skipped. Zuper stores the CompanyCam document URL rather than a copy of the file, so nothing is downloaded or re-uploaded — the tool flags any document URL carrying a signature or expiry, because those attachments would stop resolving later. Dry run is on by default; results export to CSV. Re-runs are deduped only against a record kept in the local browser, since Zuper exposes no way to list a customer's existing attachments."
   }
 ];

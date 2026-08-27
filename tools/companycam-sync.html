@@ -1,0 +1,992 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CompanyCam → Zuper Document Sync</title>
+<link rel="icon" href="../assets/logos/zuper-favicon.svg">
+<link rel="stylesheet" href="../assets/zuper-brand.css">
+<script>try{if(localStorage.getItem('zuper_tools_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+<style>
+  /* Light is the default theme; dark is opt-in via [data-theme="dark"]. */
+  /* Palette maps onto the Zuper DLS tokens in ../assets/zuper-brand.css */
+  :root{
+    --bg:var(--zb-warm); --panel:var(--zb-white); --panel2:var(--zb-peach);
+    --line:var(--zb-border); --line2:var(--zb-border-strong);
+    --txt:var(--zb-ink); --muted:var(--zb-text-2); --accent:var(--zb-primary); --accent2:var(--zb-primary-hover);
+    --ok:var(--zb-success); --okbg:var(--zb-success-bg); --err:var(--zb-error); --errbg:var(--zb-error-bg);
+    --warn:var(--zb-warning); --warnbg:var(--zb-warning-bg);
+    --chip:var(--zb-banner); --code:var(--zb-gray-50);
+    --headbg:linear-gradient(180deg,var(--zb-white),var(--zb-warm)); --rowhover:var(--zb-hover);
+  }
+  :root[data-theme="dark"]{
+    --bg:#09090B; --panel:#141417; --panel2:#1C1C21; --line:#27272A; --line2:#3F3F46;
+    --txt:#FAFAFA; --muted:#A1A1AA; --accent:#FF8B5A; --accent2:#F2864F;
+    --ok:#4ADE80; --okbg:#0F2A1B; --err:#F87171; --errbg:#3A1A1E; --warn:#FBBF24; --warnbg:#3A2F12;
+    --chip:#27272A; --code:#09090B; --headbg:linear-gradient(180deg,#141417,#09090B); --rowhover:#1C1C21;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--zb-font-body);background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
+  a{color:var(--accent)}
+  header{padding:18px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;background:var(--headbg)}
+  header h1{font-size:1.15rem;margin:0;font-weight:600;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:.8rem}
+  .theme-btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:.8rem;font-weight:600;cursor:pointer}
+  .theme-btn:hover{border-color:var(--accent)}
+  #badge{font-size:.8rem;color:var(--ok);background:var(--okbg);padding:6px 12px;border-radius:20px;display:none}
+  #ccbadge{font-size:.8rem;color:var(--accent2);background:var(--chip);padding:6px 12px;border-radius:20px;display:none}
+  .head-spacer{flex:1}
+  .wrap{max-width:1240px;margin:0 auto;padding:22px 26px 80px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-bottom:18px}
+  .card h2{font-size:.95rem;margin:0 0 4px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .card .desc{color:var(--muted);font-size:.82rem;margin:0 0 16px}
+  .step{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:.75rem;font-weight:700}
+  .step.done{background:var(--ok)}
+  label{display:block;font-size:.78rem;color:var(--muted);margin:0 0 5px;font-weight:500}
+  .inp{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:9px 12px;font-size:.9rem;outline:none;font-family:inherit}
+  .inp:focus{border-color:var(--accent)}
+  textarea.inp{font-family:var(--zb-font-mono,ui-monospace,Menlo,Consolas,monospace);font-size:.78rem;resize:vertical}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:end}
+  .row>div{flex:1;min-width:180px}
+  .flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  button{cursor:pointer;font-family:inherit;font-size:.87rem;font-weight:600;border:none;border-radius:8px;padding:9px 18px;transition:.15s}
+  .btn{background:var(--accent);color:#fff}
+  .btn:hover{background:var(--accent2)}
+  .btn.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+  .btn.sec:hover{border-color:var(--accent)}
+  .btn.small{font-size:.78rem;padding:6px 12px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .msg{display:none;margin-top:12px;padding:9px 13px;border-radius:8px;font-size:.83rem}
+  .msg-ok{background:var(--okbg);color:var(--ok)}
+  .msg-err{background:var(--errbg);color:var(--err)}
+  .msg-info{background:var(--chip);color:var(--accent2)}
+  .msg-warn{background:var(--warnbg);color:var(--warn)}
+  .msg.show{display:block}
+  .hidden{display:none!important}
+  .muted{color:var(--muted)}
+  .small{font-size:.78rem}
+  .mono{font-family:var(--zb-font-mono,ui-monospace,Menlo,Consolas,monospace);font-size:.72rem;color:var(--muted)}
+  code{background:var(--code);border:1px solid var(--line);padding:1px 5px;border-radius:4px;font-size:.76rem}
+
+  .tabs{display:flex;gap:6px;margin:0 0 14px}
+  .tabs button{background:var(--panel2);color:var(--muted);border:1px solid var(--line);font-size:.78rem;padding:6px 13px}
+  .tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+  .tblwrap{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:12px}
+  table{width:100%;border-collapse:collapse;font-size:.8rem}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{position:sticky;top:0;background:var(--panel2);z-index:1;font-size:.72rem;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600}
+  tbody tr:hover{background:var(--rowhover)}
+  td select.inp{padding:5px 8px;font-size:.78rem}
+
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.68rem;font-weight:700;letter-spacing:.3px}
+  .pill.exact{background:var(--okbg);color:var(--ok)}
+  .pill.auto{background:var(--chip);color:var(--accent2)}
+  .pill.review{background:var(--warnbg);color:var(--warn)}
+  .pill.skip{background:var(--panel2);color:var(--muted)}
+  .pill.nocust{background:var(--errbg);color:var(--err)}
+
+  .stats{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 14px;min-width:96px}
+  .stat b{display:block;font-size:1.05rem;font-weight:700}
+  .stat span{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+
+  .log{display:none;margin-top:12px;background:var(--code);border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px;font-family:var(--zb-font-mono,ui-monospace,Menlo,Consolas,monospace);font-size:.74rem;
+    max-height:380px;overflow:auto;white-space:pre-wrap}
+  .log.show{display:block}
+  .log .l-ok{color:var(--ok)}.log .l-err{color:var(--err)}.log .l-warn{color:var(--warn)}
+  .log .l-head{color:var(--accent2);font-weight:700}.log .l-dim{color:var(--muted)}
+  .docs{margin:0;padding-left:16px}
+  .docs li{margin:1px 0}
+</style>
+</head>
+<body>
+<header>
+  <img class="zb-logo" src="../assets/logos/zuper-horizontal.svg" alt="Zuper">
+  <h1>CompanyCam → Zuper Document Sync</h1>
+  <span class="sub">List CompanyCam projects &amp; documents → fetch Zuper properties → auto-map by name → sync</span>
+  <span class="head-spacer"></span>
+  <span id="ccbadge"></span>
+  <span id="badge"></span>
+  <button class="theme-btn hidden" id="disconnectBtn" onclick="disconnect()" title="Disconnect this Zuper account and start over">⏻ Disconnect</button>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light / dark">🌙 Dark</button>
+</header>
+
+<div class="wrap">
+
+  <!-- 1. COMPANYCAM -->
+  <div class="card">
+    <h2><span class="step" id="s1">1</span> CompanyCam — projects &amp; documents</h2>
+    <p class="desc">
+      Create an access token at <b>app.companycam.com/access_tokens</b> (needs a Pro / Premium / Elite plan) and paste the raw
+      token — don't type "Bearer". CompanyCam's API sends no CORS headers, so calls are relayed through this site's own
+      <code>/api/companycam</code> function, which forwards the Authorization header. The token is used from your browser only and is never stored.
+    </p>
+    <div class="row">
+      <div style="flex:2">
+        <label>Access token</label>
+        <input class="inp" id="ccToken" type="password" placeholder="paste the token from app.companycam.com/access_tokens" autocomplete="off">
+      </div>
+      <div style="flex:1">
+        <label>Relay <span class="muted">(leave as-is unless self-hosting)</span></label>
+        <input class="inp" id="ccProxy" value="/api/companycam?url=">
+      </div>
+    </div>
+
+    <div class="tabs" style="margin-top:16px">
+      <button class="on" id="tabFetchBtn" onclick="ccTab('fetch')">Fetch via API</button>
+      <button id="tabPasteBtn" onclick="ccTab('paste')">Paste JSON</button>
+    </div>
+
+    <div id="ccTabFetch">
+      <div class="flex">
+        <button class="btn" id="ccFetchBtn" onclick="ccFetch()">⬇ Fetch projects &amp; documents</button>
+        <label class="flex small" style="margin:0;cursor:pointer">
+          <input type="checkbox" id="ccSkipEmpty" checked> only keep projects that have documents
+        </label>
+        <span id="ccStatus" class="muted small"></span>
+      </div>
+    </div>
+
+    <div id="ccTabPaste" class="hidden">
+      <p class="desc" style="margin-top:0">
+        Offline fallback for when you'd rather not put a token in the browser — run the two calls in Postman/curl and paste the
+        results. Mapping works exactly the same; sync works too, because Zuper is handed the document URL rather than the file.
+      </p>
+      <label>Projects JSON <span class="muted">— response of <code>GET /v2/projects</code> (an array)</span></label>
+      <textarea class="inp" id="ccProjectsJson" rows="4" placeholder='[{"id":"123","name":"12 Elm St","address":{"street_address_1":"12 Elm St","city":"Austin","state":"TX","postal_code":"78701"}}]'></textarea>
+      <label style="margin-top:10px">Documents JSON <span class="muted">— an object keyed by project id → the <code>GET /v2/projects/{id}/documents</code> array</span></label>
+      <textarea class="inp" id="ccDocsJson" rows="4" placeholder='{"123":[{"id":"1","name":"measurements.pdf","url":"https://static.companycam.com/...","content_type":"application/pdf","byte_size":34567}]}'></textarea>
+      <div class="flex" style="margin-top:10px">
+        <button class="btn sec" onclick="ccPaste()">Load pasted data</button>
+      </div>
+    </div>
+
+    <div class="msg" id="cc-msg"></div>
+
+    <div id="ccResult" class="hidden">
+      <div class="stats" style="margin-top:14px">
+        <div class="stat"><b id="ccStatProjects">0</b><span>projects</span></div>
+        <div class="stat"><b id="ccStatDocs">0</b><span>documents</span></div>
+        <div class="stat"><b id="ccStatBytes">—</b><span>total size</span></div>
+        <div class="stat"><b id="ccStatExpiring">0</b><span>expiring urls</span></div>
+      </div>
+      <div class="msg msg-warn" id="ccExpiryWarn"></div>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th style="width:34%">Project</th><th style="width:26%">Address</th><th>Documents</th></tr></thead>
+          <tbody id="ccBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. ZUPER -->
+  <div class="card">
+    <h2><span class="step" id="s2">2</span> Connect to Zuper &amp; fetch properties</h2>
+    <p class="desc">Enter the account's API key — the data-center region is detected automatically, the same way the other tools do it. Use a dedicated non-active user's key.</p>
+    <div class="row">
+      <div style="flex:2"><label>API Key</label><input class="inp" id="apikey" type="password" placeholder="x-api-key" autocomplete="off"></div>
+      <div style="flex:0 0 auto"><button class="btn" id="connectBtn" onclick="connect()">Connect</button></div>
+    </div>
+    <div class="msg" id="conn-msg"></div>
+    <div style="margin-top:10px">
+      <label style="display:inline">Saved connections</label>
+      <select class="inp" id="saved" style="max-width:340px;display:inline-block;width:auto" onchange="loadSaved()"><option value="">— pick a saved account —</option></select>
+      <button class="btn sec small" onclick="saveConn()">💾 Save current</button>
+      <button class="btn sec small" onclick="delSaved()">🗑 Delete</button>
+    </div>
+
+    <div id="zuFetchRow" class="hidden" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
+      <div class="flex">
+        <button class="btn" id="zuFetchBtn" onclick="zuFetch()">⬇ Fetch properties &amp; customers</button>
+        <span id="zuStatus" class="muted small"></span>
+      </div>
+      <div class="msg" id="zu-msg"></div>
+      <div id="zuResult" class="hidden">
+        <div class="stats" style="margin-top:14px">
+          <div class="stat"><b id="zuStatProps">0</b><span>properties</span></div>
+          <div class="stat"><b id="zuStatCusts">0</b><span>customers</span></div>
+          <div class="stat"><b id="zuStatLinked">0</b><span>with a customer</span></div>
+        </div>
+        <p class="small muted" style="margin:0">
+          The property list returns customer links sparsely, so each property you actually sync to is re-read individually
+          (<code>GET property/{uid}</code>) at sync time to resolve its customer reliably. The count above is a lower bound.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. MAP -->
+  <div class="card hidden" id="mapCard">
+    <h2><span class="step" id="s3">3</span> Map CompanyCam projects → Zuper properties</h2>
+    <p class="desc">
+      Matched on project name, project address, and property address — company/roofing noise words are stripped, and an exact
+      street + zip match scores 100%. Override any row with its dropdown. <b>REVIEW</b> rows are below the threshold and won't sync until you pick a property.
+    </p>
+    <div class="row">
+      <div style="flex:0 0 240px">
+        <label>Auto-match threshold: <span id="thVal" class="mono">0.60</span></label>
+        <input type="range" id="threshold" class="inp" min="0.30" max="0.95" step="0.05" value="0.60"
+               oninput="document.getElementById('thVal').textContent=(+this.value).toFixed(2);renderMap()">
+      </div>
+      <div style="flex:1">
+        <label>Filter</label>
+        <input class="inp" id="mapFilter" placeholder="filter by project or property name…" oninput="renderMap()">
+      </div>
+      <div style="flex:0 0 auto">
+        <button class="btn sec small" onclick="exportMappingCsv()">⬇ Export mapping CSV</button>
+      </div>
+    </div>
+
+    <div class="stats" style="margin-top:14px">
+      <div class="stat"><b id="mStatMatched">0</b><span>will sync</span></div>
+      <div class="stat"><b id="mStatReview">0</b><span>needs review</span></div>
+      <div class="stat"><b id="mStatSkipped">0</b><span>skipped</span></div>
+      <div class="stat"><b id="mStatDocs">0</b><span>docs queued</span></div>
+    </div>
+
+    <div class="tblwrap">
+      <table>
+        <thead><tr>
+          <th style="width:84px">Match</th>
+          <th style="width:28%">CompanyCam project</th>
+          <th style="width:32%">Zuper property</th>
+          <th style="width:70px">Docs</th>
+        </tr></thead>
+        <tbody id="mapBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 4. SYNC -->
+  <div class="card hidden" id="syncCard">
+    <h2><span class="step" id="s4">4</span> Sync documents to Zuper</h2>
+    <p class="desc">
+      Documents are attached to the <b>customer linked to the matched property</b> via
+      <code>POST customers/{customer_uid}/attachments</code> — Zuper has no property-level attachment endpoint, so that is the
+      real target. Zuper stores the CompanyCam document <b>URL</b> rather than a copy of the file, so nothing is downloaded or
+      re-uploaded. A property with no linked customer is reported and skipped.
+    </p>
+    <div class="row">
+      <div style="flex:0 0 auto">
+        <label class="flex small" style="margin:0;cursor:pointer">
+          <input type="checkbox" id="dryRun" checked> <b>Dry run</b> (preview only — nothing is written)
+        </label>
+      </div>
+      <div style="flex:0 0 auto">
+        <label class="flex small" style="margin:0;cursor:pointer">
+          <input type="checkbox" id="visibleToCustomer"> mark attachments visible to the customer
+        </label>
+      </div>
+      <div style="flex:0 0 auto">
+        <label class="flex small" style="margin:0;cursor:pointer">
+          <input type="checkbox" id="skipSynced" checked> skip documents this browser already synced to this account
+        </label>
+      </div>
+    </div>
+    <div class="msg msg-warn show small" style="margin-top:14px">
+      <b>Re-runs can duplicate.</b> Zuper exposes no "list customer attachments" endpoint, so the tool can't ask the account
+      what is already there. The checkbox above dedupes against a record kept in <i>this</i> browser only — from a different
+      machine, or after clearing site data, the same document will attach again.
+    </div>
+    <div class="flex" style="margin-top:14px">
+      <button class="btn" id="syncBtn" onclick="runSync()">▶ Run</button>
+      <button class="btn sec small hidden" id="cancelBtn" onclick="cancelSync()">■ Stop</button>
+      <button class="btn sec small hidden" id="resultsBtn" onclick="exportResultsCsv()">⬇ Export results CSV</button>
+      <span id="syncStatus" class="muted small"></span>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+
+</div>
+
+<!-- Injects a "← Back to Dashboard" link only when served from the dashboard's /tools folder -->
+<script src="../assets/back-link.js"></script>
+<script src="../assets/zuper-panel-bridge.js"></script>
+<script src="../assets/zuper-regions.js"></script>
+<script src="../assets/zuper-connect.js"></script>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+
+const CC_BASE='https://api.companycam.com/v2';
+const CC_PER_PAGE=100;
+const DOC_CONCURRENCY=6;   // parallel document fetches, mirrors the batched fetch in the other tools
+const PROP_CONCURRENCY=5;  // parallel fresh property reads at sync time
+
+let ccProjects=[];                       // [{id,name,address,addrStr,docs:[...]}]
+let properties=[], customers=[], custByUid={};
+let mapping=[];                          // [{project,candidate,score,reason,override}]
+let _base='', _account='', _region='';
+let _cancel=false, _results=[];
+let _propCache={};                       // property_uid -> fresh property object
+
+/* ---------- small helpers ---------- */
+function showMsg(id,txt,type){const e=$(id);e.className='msg msg-'+type+' show';e.innerHTML=txt;}
+function hideMsg(id){const e=$(id);e.className='msg';e.innerHTML='';}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function fmtBytes(n){if(n==null||isNaN(n))return'?';const u=['B','KB','MB','GB','TB'];let i=0,v=+n;
+  while(v>=1024&&i<u.length-1){v/=1024;i++;}return (v<10&&i?v.toFixed(1):Math.round(v))+' '+u[i];}
+function markDone(id){const e=$(id);if(e)e.classList.add('done');}
+function log(msg,cls){const l=$('log');l.classList.add('show');const s=document.createElement('div');
+  if(cls)s.className='l-'+cls;s.textContent=msg;l.appendChild(s);l.scrollTop=l.scrollHeight;}
+
+// Run fn over items with a bounded number in flight. Results keep input order.
+async function pMap(items,fn,limit){
+  const out=new Array(items.length);let i=0;
+  const workers=Array.from({length:Math.min(limit,items.length)||0},async()=>{
+    while(true){const n=i++;if(n>=items.length)return;out[n]=await fn(items[n],n);}
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+/* ================= STEP 1: CompanyCam ================= */
+function ccTab(t){
+  const isFetch=t==='fetch';
+  $('tabFetchBtn').classList.toggle('on',isFetch);
+  $('tabPasteBtn').classList.toggle('on',!isFetch);
+  $('ccTabFetch').classList.toggle('hidden',!isFetch);
+  $('ccTabPaste').classList.toggle('hidden',isFetch);
+}
+
+// Strip surrounding quotes, a pasted "Bearer " prefix, and stray whitespace/newlines —
+// all three are common when copying out of docs or a password manager.
+function ccTok(){return $('ccToken').value.trim().replace(/^["']|["']$/g,'').replace(/^Bearer\s+/i,'').trim();}
+
+// Route through the relay. A prefix ending in "=" gets the target URL-encoded.
+function viaRelay(url){
+  const p=$('ccProxy').value.trim();
+  if(!p)return url;
+  return p.endsWith('=')?p+encodeURIComponent(url):p+url;
+}
+
+async function ccGet(path){
+  const r=await fetch(viaRelay(CC_BASE+path),{
+    headers:{Authorization:'Bearer '+ccTok(),Accept:'application/json'}
+  });
+  if(!r.ok){
+    let hint='';
+    if(r.status===401)hint=' — the token was rejected. Check that it came from app.companycam.com/access_tokens, has no stray spaces or quotes, and that the relay forwards the Authorization header.';
+    else if(r.status===403)hint=' — authenticated but forbidden. CompanyCam API access requires a Pro, Premium or Elite plan.';
+    else if(r.status===429)hint=' — rate limited by CompanyCam. Wait a minute and retry.';
+    throw new Error('CompanyCam '+r.status+' on '+path+hint);
+  }
+  return r.json();
+}
+
+// /v2 list endpoints return a bare array and page with page/per_page.
+async function ccPaginate(path){
+  const out=[];
+  for(let page=1;page<=200;page++){
+    const sep=path.includes('?')?'&':'?';
+    const body=await ccGet(path+sep+'page='+page+'&per_page='+CC_PER_PAGE);
+    const arr=Array.isArray(body)?body:(body&&body.data)||[];
+    out.push(...arr);
+    if(arr.length<CC_PER_PAGE)break;
+  }
+  return out;
+}
+
+function ccAddrStr(a){
+  if(!a)return'';
+  return [a.street_address_1,a.street_address_2,a.city,a.state,a.postal_code].filter(Boolean).join(', ');
+}
+const mapDoc=d=>({id:String(d.id??''),name:d.name||'(unnamed)',url:d.url||'',
+  contentType:d.content_type||'',size:d.byte_size==null?null:+d.byte_size});
+
+// A document URL that carries a signature/expiry can't be handed to Zuper as a
+// durable reference — Zuper stores the URL, so the attachment would break later.
+function urlExpires(u){
+  if(!u)return false;
+  let q;try{q=new URL(u).searchParams;}catch{return false;}
+  for(const k of q.keys()){
+    if(/^(x-amz-(signature|expires|credential)|expires|signature|token|se|sig)$/i.test(k))return true;
+  }
+  return false;
+}
+
+async function ccFetch(){
+  hideMsg('cc-msg');
+  const btn=$('ccFetchBtn');btn.disabled=true;
+  try{
+    if(!ccTok())throw new Error('Enter a CompanyCam access token first.');
+    $('ccStatus').textContent='Authenticating…';
+    await ccGet('/company');                              // cheapest call that proves the token
+    $('ccStatus').textContent='Fetching projects…';
+    const projects=await ccPaginate('/projects');
+    if(!projects.length)throw new Error('The token works but the account returned no projects.');
+
+    let done=0;
+    const withDocs=await pMap(projects,async p=>{
+      let docs=[],err=null;
+      try{docs=await ccPaginate('/projects/'+p.id+'/documents');}
+      catch(e){err=e.message;}
+      $('ccStatus').textContent='Documents '+(++done)+' / '+projects.length+'…';
+      const addr=p.address||{};
+      return {id:String(p.id),name:p.name||'(unnamed)',address:addr,addrStr:ccAddrStr(addr),
+              docs:docs.map(mapDoc),docError:err};
+    },DOC_CONCURRENCY);
+
+    const failed=withDocs.filter(p=>p.docError);
+    ccProjects=$('ccSkipEmpty').checked?withDocs.filter(p=>p.docs.length):withDocs;
+    renderCC();
+    let m='✓ Loaded '+withDocs.length+' project(s) from CompanyCam.';
+    if($('ccSkipEmpty').checked)m+=' Showing the '+ccProjects.length+' with at least one document.';
+    if(failed.length)m+=' '+failed.length+' project(s) failed their document call — see the table.';
+    showMsg('cc-msg',m,failed.length?'warn':'ok');
+    $('ccStatus').textContent='';
+  }catch(e){
+    let extra='';
+    if(/Failed to fetch|NetworkError|Load failed/i.test(e.message)){
+      extra=' <br><b>This looks like the relay itself failing.</b> If you opened this file straight from disk, '+
+            '<code>/api/companycam</code> does not exist — use the deployed site, or the <b>Paste JSON</b> tab.';
+    }
+    showMsg('cc-msg','✗ '+esc(e.message)+extra,'err');
+    $('ccStatus').textContent='';
+  }finally{btn.disabled=false;}
+}
+
+function ccPaste(){
+  hideMsg('cc-msg');
+  try{
+    const projects=JSON.parse($('ccProjectsJson').value||'[]');
+    const docMap=JSON.parse($('ccDocsJson').value||'{}');
+    if(!Array.isArray(projects))throw new Error('Projects JSON must be an array.');
+    ccProjects=projects.map(p=>{
+      const addr=p.address||{};
+      const raw=docMap[p.id]||docMap[String(p.id)]||[];
+      return {id:String(p.id),name:p.name||'(unnamed)',address:addr,addrStr:ccAddrStr(addr),
+              docs:(Array.isArray(raw)?raw:[]).map(mapDoc),docError:null};
+    });
+    renderCC();
+    showMsg('cc-msg','✓ Loaded '+ccProjects.length+' project(s) from pasted JSON.','ok');
+  }catch(e){showMsg('cc-msg','✗ Invalid JSON: '+esc(e.message),'err');}
+}
+
+function renderCC(){
+  const totalDocs=ccProjects.reduce((n,p)=>n+p.docs.length,0);
+  const totalBytes=ccProjects.reduce((n,p)=>n+p.docs.reduce((m,d)=>m+(d.size||0),0),0);
+  const expiring=ccProjects.reduce((n,p)=>n+p.docs.filter(d=>urlExpires(d.url)).length,0);
+  $('ccStatProjects').textContent=ccProjects.length;
+  $('ccStatDocs').textContent=totalDocs;
+  $('ccStatBytes').textContent=totalBytes?fmtBytes(totalBytes):'—';
+  $('ccStatExpiring').textContent=expiring;
+
+  if(expiring){
+    showMsg('ccExpiryWarn','⚠ <b>'+expiring+' document URL(s) carry a signature or expiry parameter.</b> Zuper stores the '+
+      'URL, not a copy of the file, so those attachments will stop resolving once the link expires. They are flagged in the '+
+      'mapping and sync log — check one in Zuper before syncing the rest.','warn');
+  }else{
+    hideMsg('ccExpiryWarn');
+  }
+
+  const rows=ccProjects.map(p=>{
+    let docCell;
+    if(p.docError){
+      docCell='<span class="pill nocust">DOC FETCH FAILED</span> <span class="small muted">'+esc(p.docError)+'</span>';
+    }else if(!p.docs.length){
+      docCell='<span class="muted small">none</span>';
+    }else{
+      docCell='<ul class="docs">'+p.docs.map(d=>'<li>'+esc(d.name)+
+        ' <span class="mono">('+esc(d.contentType||'?')+', '+fmtBytes(d.size)+')</span>'+
+        (urlExpires(d.url)?' <span class="pill review">EXPIRING URL</span>':'')+
+        (!d.url?' <span class="pill nocust">NO URL</span>':'')+'</li>').join('')+'</ul>';
+    }
+    return '<tr><td><b>'+esc(p.name)+'</b><br><span class="mono">'+esc(p.id)+'</span></td>'+
+           '<td class="small muted">'+(esc(p.addrStr)||'—')+'</td><td>'+docCell+'</td></tr>';
+  });
+  $('ccBody').innerHTML=rows.join('');
+  $('ccResult').classList.remove('hidden');
+  $('ccbadge').textContent='📷 '+ccProjects.length+' project(s) · '+totalDocs+' doc(s)';
+  $('ccbadge').style.display='inline-block';
+  markDone('s1');
+  maybeBuildMapping();
+}
+
+/* ================= STEP 2: Zuper ================= */
+const apiKey=()=>$('apikey').value.trim();
+const getHdrs=()=>ZuperConnect.headers(apiKey(),false);
+const jsonHdrs=()=>ZuperConnect.headers(apiKey(),true);
+
+async function connect(){
+  hideMsg('conn-msg');
+  if(!apiKey()){showMsg('conn-msg','✗ Please enter an API key.','err');return;}
+  const btn=$('connectBtn');btn.disabled=true;btn.textContent='Connecting…';
+  try{
+    const {baseUrl,accountName,dcUrl}=await ZuperConnect.resolve(apiKey());
+    _base=baseUrl;_account=accountName||'Account';
+    _region=dcUrl.replace('https://','').replace('.zuperpro.com','');
+    showMsg('conn-msg','✓ Connected to "'+esc(_account)+'" on '+esc(_region),'ok');
+    $('badge').textContent='✓ '+_account+' ('+_region+')';
+    $('badge').style.display='inline-block';
+    $('disconnectBtn').classList.remove('hidden');
+    $('zuFetchRow').classList.remove('hidden');
+  }catch(e){showMsg('conn-msg','✗ '+esc(e.message),'err');}
+  finally{btn.disabled=false;btn.textContent='Connect';}
+}
+
+function disconnect(){
+  _base='';_account='';_region='';
+  properties=[];customers=[];custByUid={};mapping=[];_results=[];_propCache={};_cancel=false;
+  $('apikey').value='';
+  const sv=$('saved');if(sv)sv.value='';
+  $('badge').style.display='none';$('badge').textContent='';
+  $('disconnectBtn').classList.add('hidden');
+  $('zuFetchRow').classList.add('hidden');
+  $('zuResult').classList.add('hidden');
+  $('mapCard').classList.add('hidden');
+  $('syncCard').classList.add('hidden');
+  $('s2').classList.remove('done');$('s3').classList.remove('done');$('s4').classList.remove('done');
+  hideMsg('zu-msg');
+  showMsg('conn-msg','Disconnected. Enter an API key to connect again.','info');
+}
+
+// Generic paginated GET — matches the Data Manager / Customer↔Property Mapper standard.
+async function fetchPaged(endpoint,recordKeys,onPage){
+  const out=[];const count=100;
+  for(let page=1;page<=500;page++){
+    const r=await fetch(_base+endpoint+'?page='+page+'&count='+count,{headers:getHdrs()});
+    if(!r.ok)throw new Error(endpoint+' fetch failed (HTTP '+r.status+')');
+    const d=await r.json().catch(()=>({}));
+    let recs=Array.isArray(d)?d:null;
+    if(!recs){for(const k of recordKeys){if(Array.isArray(d[k])){recs=d[k];break;}}}
+    if(!recs)recs=d.data||[];
+    if(!recs.length)break;
+    out.push(...recs);
+    if(onPage)onPage(out.length);
+    if(recs.length<count)break;
+  }
+  return out;
+}
+
+const propUid=p=>(p&&(p.property_uid||p.uid||p._id))||'';
+const propName=p=>(p&&(p.property_name))||'(unnamed)';
+const custUid=c=>(c&&(c.customer_uid||c.uid||c._id))||'';
+function custName(c){
+  if(!c)return'';
+  const n=[c.customer_first_name,c.customer_last_name].filter(Boolean).join(' ').trim();
+  return c.customer_company_name||n||c.customer_email||custUid(c);
+}
+function zuAddrStr(a){
+  if(!a)return'';
+  return [a.street,a.city,a.state,a.zip_code].filter(Boolean).join(', ');
+}
+// Pull the first linked customer uid out of a property, tolerating both the
+// sparse list shape and the fully-nested single-GET shape.
+function linkedCustomerUid(p){
+  const arr=(p&&p.property_customers)||[];
+  for(const e of arr){
+    if(!e)continue;
+    const c=e.customer;
+    const uid=(c&&typeof c==='object')?(c.customer_uid||c.uid):(typeof c==='string'?c:null);
+    if(uid)return uid;
+  }
+  return null;
+}
+
+async function zuFetch(){
+  hideMsg('zu-msg');
+  const btn=$('zuFetchBtn');btn.disabled=true;
+  try{
+    $('zuStatus').textContent='Loading properties…';
+    properties=await fetchPaged('property',['properties','property'],n=>{$('zuStatus').textContent='Loading properties… '+n;});
+    $('zuStatus').textContent='Loading customers…';
+    customers=await fetchPaged('customers',['customers'],n=>{$('zuStatus').textContent='Loading customers… '+n;});
+    custByUid={};customers.forEach(c=>{const u=custUid(c);if(u)custByUid[u]=c;});
+    _propCache={};
+
+    const linked=properties.filter(p=>linkedCustomerUid(p)).length;
+    $('zuStatProps').textContent=properties.length;
+    $('zuStatCusts').textContent=customers.length;
+    $('zuStatLinked').textContent=linked;
+    $('zuResult').classList.remove('hidden');
+    showMsg('zu-msg','✓ Loaded '+properties.length+' property(ies) and '+customers.length+' customer(s).','ok');
+    $('zuStatus').textContent='';
+    markDone('s2');
+    maybeBuildMapping();
+  }catch(e){
+    showMsg('zu-msg','✗ '+esc(e.message),'err');
+    $('zuStatus').textContent='';
+  }finally{btn.disabled=false;}
+}
+
+/* ================= STEP 3: mapping ================= */
+// Drop punctuation and the words that appear in almost every roofing account name,
+// so "Triumph Roofing LLC - 12 Elm St." and "12 Elm Street" can still meet.
+const NOISE=/\b(llc|l\.l\.c|inc|co|corp|company|the|and|roofing|roof|roofs|exteriors|exterior|construction|contractors|contracting|restoration|group|services|service|project|job)\b/g;
+function normalize(s){
+  return String(s||'').toLowerCase()
+    .replace(/[^a-z0-9]+/g,' ')
+    .replace(NOISE,' ')
+    .replace(/\b(street|st)\b/g,'st').replace(/\b(avenue|ave)\b/g,'ave')
+    .replace(/\b(road|rd)\b/g,'rd').replace(/\b(drive|dr)\b/g,'dr')
+    .replace(/\b(lane|ln)\b/g,'ln').replace(/\b(boulevard|blvd)\b/g,'blvd')
+    .replace(/\b(court|ct)\b/g,'ct').replace(/\b(suite|ste|apt|unit)\b/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+const tight=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+
+function lev(a,b){
+  const m=a.length,n=b.length;
+  if(!m)return n;if(!n)return m;
+  let prev=Array.from({length:n+1},(_,j)=>j),cur=new Array(n+1);
+  for(let i=1;i<=m;i++){
+    cur[0]=i;
+    for(let j=1;j<=n;j++){
+      cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    }
+    [prev,cur]=[cur,prev];
+  }
+  return prev[n];
+}
+function sim(a,b){
+  const A=normalize(a),B=normalize(b);
+  if(!A||!B)return 0;
+  if(A===B)return 1;
+  const ta=new Set(A.split(' ').filter(Boolean)),tb=new Set(B.split(' ').filter(Boolean));
+  if(!ta.size||!tb.size)return 0;
+  const inter=[...ta].filter(x=>tb.has(x)).length;
+  const jacc=inter/new Set([...ta,...tb]).size;
+  // Containment: a short address inside a long "Company - Address" project name.
+  const cont=inter/Math.min(ta.size,tb.size);
+  const dist=1-lev(A,B)/Math.max(A.length,B.length);
+  return Math.max(jacc,0.6*cont+0.4*dist,0.5*jacc+0.5*dist);
+}
+
+// Score one project against one property across every signal we have, and say which won.
+function scorePair(proj,prop){
+  const pa=prop.property_address||{};
+  const propAddr=zuAddrStr(pa);
+  const ca=proj.address||{};
+
+  // Strongest possible signal: same street line and same postcode.
+  if(ca.street_address_1&&pa.street&&tight(ca.street_address_1)===tight(pa.street)){
+    if(ca.postal_code&&pa.zip_code&&tight(ca.postal_code)===tight(pa.zip_code))return {score:1,reason:'street + zip'};
+    if(ca.city&&pa.city&&tight(ca.city)===tight(pa.city))return {score:0.98,reason:'street + city'};
+    return {score:0.9,reason:'street'};
+  }
+
+  const cands=[
+    [sim(proj.name,propName(prop)),'name ↔ name'],
+    [sim(proj.addrStr,propAddr),'address ↔ address'],
+    [sim(proj.name,propAddr),'project name ↔ address'],
+    [sim(proj.addrStr,propName(prop)),'address ↔ property name'],
+  ];
+  cands.sort((x,y)=>y[0]-x[0]);
+  return {score:cands[0][0],reason:cands[0][1]};
+}
+
+function maybeBuildMapping(){
+  if(!ccProjects.length||!properties.length)return;
+  buildMapping();
+}
+function buildMapping(){
+  mapping=ccProjects.map(proj=>{
+    let best=null,score=0,reason='';
+    for(const prop of properties){
+      const s=scorePair(proj,prop);
+      if(s.score>score){score=s.score;best=prop;reason=s.reason;}
+    }
+    return {project:proj,candidate:best,score,reason,override:null};
+  });
+  $('mapCard').classList.remove('hidden');
+  $('syncCard').classList.remove('hidden');
+  markDone('s3');
+  renderMap();
+}
+
+// Which property a row will sync to: explicit override wins, otherwise the
+// auto candidate if it clears the threshold.
+function chosen(r){
+  const th=+$('threshold').value;
+  if(r.override==='__skip')return null;
+  if(r.override)return properties.find(p=>propUid(p)===r.override)||null;
+  return r.score>=th?r.candidate:null;
+}
+function rowState(r){
+  if(r.override==='__skip')return'skip';
+  if(!chosen(r))return'review';
+  if(r.override)return'auto';
+  return r.score>=0.95?'exact':'auto';
+}
+
+function renderMap(){
+  const th=+$('threshold').value;
+  const q=normalize($('mapFilter').value);
+  let matched=0,review=0,skipped=0,docs=0;
+  const rows=[];
+
+  // Property <option> list is identical for every row — build the markup once.
+  const propOpts=properties.map(p=>{
+    const a=zuAddrStr(p.property_address);
+    return '<option value="'+esc(propUid(p))+'">'+esc(propName(p))+(a?' — '+esc(a):'')+'</option>';
+  }).join('');
+
+  mapping.forEach((r,i)=>{
+    const state=rowState(r);
+    if(state==='skip')skipped++;
+    else if(state==='review')review++;
+    else{matched++;docs+=r.project.docs.length;}
+
+    if(q){
+      const hay=normalize(r.project.name+' '+r.project.addrStr+' '+(r.candidate?propName(r.candidate):''));
+      if(!hay.includes(q))return;
+    }
+
+    const pick=chosen(r);
+    const autoLabel=r.candidate?'auto: '+propName(r.candidate)+' ('+Math.round(r.score*100)+'%)':'— no candidate —';
+    let opts='<option value=""'+(!r.override?' selected':'')+'>'+esc(autoLabel)+'</option>'+
+             '<option value="__skip"'+(r.override==='__skip'?' selected':'')+'>— skip this project —</option>'+
+             propOpts;
+    if(r.override&&r.override!=='__skip'){
+      // Re-mark the selected option, since propOpts is shared and carries no selection.
+      opts=opts.replace('<option value="'+esc(r.override)+'">','<option value="'+esc(r.override)+'" selected>');
+    }
+
+    const expiring=r.project.docs.filter(d=>urlExpires(d.url)).length;
+    const nourl=r.project.docs.filter(d=>!d.url).length;
+
+    rows.push('<tr>'+
+      '<td><span class="pill '+state+'">'+state.toUpperCase()+'</span><br>'+
+        '<span class="mono">'+Math.round(r.score*100)+'%</span>'+
+        (r.reason?'<br><span class="mono" title="matched on">'+esc(r.reason)+'</span>':'')+'</td>'+
+      '<td><b>'+esc(r.project.name)+'</b>'+(r.project.addrStr?'<br><span class="small muted">'+esc(r.project.addrStr)+'</span>':'')+'</td>'+
+      '<td><select class="inp" onchange="setOverride('+i+',this.value)">'+opts+'</select>'+
+        (pick?'<div class="mono" style="margin-top:4px">'+esc(propUid(pick))+'</div>':'')+'</td>'+
+      '<td>'+r.project.docs.length+
+        (expiring?'<br><span class="pill review" title="'+expiring+' expiring URL(s)">'+expiring+' exp</span>':'')+
+        (nourl?'<br><span class="pill nocust">'+nourl+' no url</span>':'')+'</td>'+
+    '</tr>');
+  });
+
+  $('mapBody').innerHTML=rows.join('')||'<tr><td colspan="4" class="muted small">No rows match that filter.</td></tr>';
+  $('mStatMatched').textContent=matched;
+  $('mStatReview').textContent=review;
+  $('mStatSkipped').textContent=skipped;
+  $('mStatDocs').textContent=docs;
+  $('syncBtn').disabled=docs===0;
+}
+function setOverride(i,v){mapping[i].override=v||null;renderMap();}
+
+function exportMappingCsv(){
+  const head=['cc_project','cc_project_id','cc_address','score','matched_on','state','zuper_property','zuper_property_uid','doc_count'];
+  const rows=mapping.map(r=>{
+    const p=chosen(r);
+    return [r.project.name,r.project.id,r.project.addrStr,r.score.toFixed(2),r.reason,rowState(r),
+            p?propName(p):'',p?propUid(p):'',r.project.docs.length];
+  });
+  downloadCsv('companycam-zuper-mapping.csv',head,rows);
+}
+function downloadCsv(filename,head,rows){
+  const q=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
+  const csv=[head.map(q).join(','),...rows.map(r=>r.map(q).join(','))].join('\r\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
+  a.download=filename;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+
+/* ================= STEP 4: sync ================= */
+// Local record of what this browser has already pushed, so a re-run doesn't
+// duplicate. Keyed per Zuper account. Zuper has no list-attachments endpoint
+// for customers, so this is the only dedupe available.
+const syncedKey=()=>'ccz_synced_'+(_region||'x')+'_'+(_account||'x');
+function loadSynced(){try{return new Set(JSON.parse(localStorage.getItem(syncedKey())||'[]'));}catch{return new Set();}}
+function saveSynced(set){try{localStorage.setItem(syncedKey(),JSON.stringify([...set]));}catch{}}
+
+// The property list returns customer links sparsely — re-read the property to get
+// a trustworthy customer uid. Cached, because several projects can map to one property.
+async function freshProperty(uid){
+  if(_propCache[uid])return _propCache[uid];
+  const r=await fetch(_base+'property/'+uid,{headers:getHdrs()});
+  if(!r.ok)throw new Error('property read failed (HTTP '+r.status+')');
+  const d=await r.json().catch(()=>({}));
+  const p=d.data||d.property||d;
+  _propCache[uid]=p;
+  return p;
+}
+
+async function postAttachments(customerUid,docs,visible){
+  const body={attachments:docs.map(d=>{
+    const a={file_name:d.name,url:d.url,visible_to_customer:!!visible};
+    if(d.size!=null)a.file_size=d.size;
+    return a;
+  })};
+  const r=await fetch(_base+'customers/'+customerUid+'/attachments',{
+    method:'POST',headers:jsonHdrs(),body:JSON.stringify(body)
+  });
+  const txt=await r.text().catch(()=>'');
+  if(!r.ok)throw new Error('HTTP '+r.status+(txt?' — '+txt.slice(0,200):''));
+  let j=null;try{j=JSON.parse(txt);}catch{}
+  // Zuper answers 200 with type:"error" on some validation failures.
+  if(j&&j.type&&j.type!=='success')throw new Error(j.message||'Zuper reported a non-success response');
+  return j||{};
+}
+
+function cancelSync(){_cancel=true;$('syncStatus').textContent='Stopping…';}
+
+async function runSync(){
+  const dry=$('dryRun').checked;
+  const visible=$('visibleToCustomer').checked;
+  const useSkip=$('skipSynced').checked;
+  const synced=loadSynced();
+
+  _cancel=false;_results=[];
+  $('log').innerHTML='';$('log').classList.add('show');
+  $('syncBtn').disabled=true;$('cancelBtn').classList.remove('hidden');$('resultsBtn').classList.add('hidden');
+
+  const rows=mapping.filter(r=>chosen(r)&&r.project.docs.length);
+  log((dry?'DRY RUN':'LIVE')+' · '+_account+' ('+_region+') · '+rows.length+' project(s) · attachments '+
+      (visible?'visible':'not visible')+' to customer','head');
+  if(!dry)log('Writing to Zuper. Attachments reference the CompanyCam URL — no file is copied.','dim');
+
+  let ok=0,failed=0,skipped=0;
+
+  for(const r of rows){
+    if(_cancel){log('\nStopped by user.','warn');break;}
+    const prop=chosen(r);
+    const uid=propUid(prop);
+    log('\n── '+r.project.name+'  →  '+propName(prop),'head');
+
+    // Resolve the customer this property is linked to.
+    let customerUid=null,resolveErr=null;
+    try{
+      const fresh=await freshProperty(uid);
+      customerUid=linkedCustomerUid(fresh);
+    }catch(e){resolveErr=e.message;}
+
+    if(resolveErr){
+      log('  ✗ could not read the property: '+resolveErr,'err');
+      failed+=r.project.docs.length;
+      r.project.docs.forEach(d=>pushResult(r,prop,d,'failed','property read: '+resolveErr));
+      continue;
+    }
+    if(!customerUid){
+      log('  ! this property has no linked customer — skipped. Link one in Zuper (or via the Customer ↔ Property Mapper) and re-run.','warn');
+      skipped+=r.project.docs.length;
+      r.project.docs.forEach(d=>pushResult(r,prop,d,'skipped','property has no linked customer'));
+      continue;
+    }
+    const cname=custName(custByUid[customerUid])||customerUid;
+    log('  customer: '+cname+' ('+customerUid+')','dim');
+
+    // Filter the document set before sending.
+    const send=[];
+    for(const d of r.project.docs){
+      if(!d.url){
+        log('  ! '+d.name+' — CompanyCam returned no url, cannot attach','warn');
+        skipped++;pushResult(r,prop,d,'skipped','no url from CompanyCam');continue;
+      }
+      const tag=customerUid+'|'+d.id;
+      if(useSkip&&synced.has(tag)){
+        log('  · '+d.name+' — already synced from this browser','dim');
+        skipped++;pushResult(r,prop,d,'skipped','already synced (local record)');continue;
+      }
+      if(urlExpires(d.url))log('  ⚠ '+d.name+' — url carries an expiry; the attachment may stop resolving','warn');
+      send.push(d);
+    }
+    if(!send.length)continue;
+
+    if(dry){
+      send.forEach(d=>{
+        log('  would attach: '+d.name+'  ('+fmtBytes(d.size)+')','dim');
+        pushResult(r,prop,d,'would attach','');
+      });
+      ok+=send.length;
+      continue;
+    }
+
+    // One request per customer carrying the whole batch — Zuper accepts an array.
+    try{
+      await postAttachments(customerUid,send,visible);
+      send.forEach(d=>{synced.add(customerUid+'|'+d.id);pushResult(r,prop,d,'attached','');});
+      saveSynced(synced);
+      ok+=send.length;
+      log('  ✓ attached '+send.length+' document(s)','ok');
+    }catch(e){
+      // The batch is atomic from Zuper's side, so retry one-by-one to find out
+      // whether it was one bad document or the whole request.
+      log('  ✗ batch failed ('+e.message+') — retrying individually','warn');
+      for(const d of send){
+        if(_cancel)break;
+        try{
+          await postAttachments(customerUid,[d],visible);
+          synced.add(customerUid+'|'+d.id);pushResult(r,prop,d,'attached','recovered after batch failure');
+          ok++;log('    ✓ '+d.name,'ok');
+        }catch(e2){
+          failed++;pushResult(r,prop,d,'failed',e2.message);
+          log('    ✗ '+d.name+' — '+e2.message,'err');
+        }
+      }
+      saveSynced(synced);
+    }
+  }
+
+  log('\n'+(dry
+    ? 'Dry run complete — '+ok+' document(s) would attach, '+skipped+' skipped. Uncheck Dry run to write.'
+    : 'Done. '+ok+' attached, '+skipped+' skipped, '+failed+' failed.'),failed?'warn':'ok');
+
+  $('syncBtn').disabled=false;$('cancelBtn').classList.add('hidden');$('syncStatus').textContent='';
+  if(_results.length)$('resultsBtn').classList.remove('hidden');
+  if(!dry&&ok)markDone('s4');
+}
+
+function pushResult(r,prop,d,status,detail){
+  _results.push({cc_project:r.project.name,cc_project_id:r.project.id,document:d.name,
+    doc_id:d.id,size:d.size==null?'':d.size,url:d.url,
+    zuper_property:propName(prop),property_uid:propUid(prop),status,detail});
+}
+function exportResultsCsv(){
+  const head=['cc_project','cc_project_id','document','doc_id','size_bytes','url','zuper_property','property_uid','status','detail'];
+  downloadCsv('companycam-zuper-sync-results.csv',head,
+    _results.map(x=>[x.cc_project,x.cc_project_id,x.document,x.doc_id,x.size,x.url,x.zuper_property,x.property_uid,x.status,x.detail]));
+}
+
+/* ================= saved connections ================= */
+const SKEY='ccz_saved';
+function loadSavedList(){
+  const arr=JSON.parse(localStorage.getItem(SKEY)||'[]');
+  const sel=$('saved');sel.innerHTML='<option value="">— pick a saved account —</option>';
+  arr.forEach((c,i)=>{const o=document.createElement('option');o.value=i;o.textContent=c.name;sel.appendChild(o);});
+}
+function saveConn(){
+  if(!apiKey())return;
+  const arr=JSON.parse(localStorage.getItem(SKEY)||'[]');
+  const name=prompt('Label for this connection:',_account||'Zuper account');
+  if(!name)return;
+  const ex=arr.findIndex(c=>c.key===apiKey());
+  if(ex>=0)arr[ex]={name,key:apiKey()};else arr.push({name,key:apiKey()});
+  localStorage.setItem(SKEY,JSON.stringify(arr));loadSavedList();
+}
+function loadSaved(){
+  const i=$('saved').value;if(i==='')return;
+  const arr=JSON.parse(localStorage.getItem(SKEY)||'[]');
+  if(arr[i]){$('apikey').value=arr[i].key;connect();}
+}
+function delSaved(){
+  const i=$('saved').value;if(i==='')return;
+  const arr=JSON.parse(localStorage.getItem(SKEY)||'[]');arr.splice(i,1);
+  localStorage.setItem(SKEY,JSON.stringify(arr));loadSavedList();
+}
+
+/* ================= theme ================= */
+function applyThemeLabel(){
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  $('themeBtn').textContent=dark?'☀ Light':'🌙 Dark';
+}
+function toggleTheme(){
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  if(dark){document.documentElement.removeAttribute('data-theme');try{localStorage.setItem('zuper_tools_theme','light');}catch{}}
+  else{document.documentElement.setAttribute('data-theme','dark');try{localStorage.setItem('zuper_tools_theme','dark');}catch{}}
+  applyThemeLabel();
+}
+
+applyThemeLabel();
+loadSavedList();
+</script>
+</body>
+</html>
