@@ -97,6 +97,7 @@
   .log.show{display:block}
   .log .l-ok{color:var(--ok)}.log .l-err{color:var(--err)}.log .l-warn{color:var(--warn)}
   .log .l-head{color:var(--accent2);font-weight:700}.log .l-dim{color:var(--muted)}
+  .log .l-info{color:var(--accent2)}
   .docs{margin:0;padding-left:16px}
   .docs li{margin:1px 0}
 
@@ -340,6 +341,11 @@
       real target. Zuper stores the CompanyCam document <b>URL</b> rather than a copy of the file, so nothing is downloaded or
       re-uploaded. A property with no linked customer is reported and skipped.
     </p>
+    <div class="msg msg-info show small" style="margin-top:14px">
+      <b>Where the documents end up: on the CUSTOMER, not the property.</b> Zuper has no attachment storage for properties at
+      all, so a synced document will <i>never</i> show on the property page — that is not a failure. To verify a run, open
+      <b>Customers → the linked customer → Attachments</b>. The log below names that customer for every project it writes.
+    </div>
     <div class="row">
       <div style="flex:0 0 auto">
         <label class="flex small" style="margin:0;cursor:pointer">
@@ -404,6 +410,7 @@ let mapPage=1;                           // mapping-table page
 let _base='', _account='', _region='';
 let _cancel=false, _results=[];
 let _propCache={};                       // property_uid -> fresh property object
+let _lastZuperBody='';                   // raw body of the last accepted attachment write
 
 /* ---------- small helpers ---------- */
 function showMsg(id,txt,type){const e=$(id);e.className='msg msg-'+type+' show';e.innerHTML=txt;}
@@ -1204,6 +1211,9 @@ async function postAttachments(customerUid,docs,visible){
   let j=null;try{j=JSON.parse(txt);}catch{}
   // Zuper answers 200 with type:"error" on some validation failures.
   if(j&&j.type&&j.type!=='success')throw new Error(j.message||'Zuper reported a non-success response');
+  // Keep the raw body: a write that is accepted-and-ignored is indistinguishable
+  // from a real one otherwise, and Zuper cannot be asked what it stored.
+  _lastZuperBody=txt.slice(0,300);
   return j||{};
 }
 
@@ -1240,6 +1250,8 @@ async function runSync(){
   }
 
   let ok=0,failed=0,skipped=0;
+  let echoedBody=false;                    // Zuper's response is echoed once, not per row
+  const verifyOn=new Set();                // customers to point the user at when the run ends
 
   for(const r of rows){
     if(_cancel){log('\nStopped by user.','warn');break;}
@@ -1301,7 +1313,14 @@ async function runSync(){
       send.forEach(d=>{synced.add(customerUid+'|'+d.id);pushResult(r,prop,d,'attached','');});
       saveSynced(synced);
       ok+=send.length;
-      log('  ✓ attached '+send.length+' document(s)','ok');
+      log('  ✓ attached '+send.length+' document(s) → Customers → '+cname+' → Attachments','ok');
+      // Echo Zuper's answer once. If a write is being accepted and ignored, this
+      // line is the only place it can be seen — there is no list-attachments call.
+      if(!echoedBody&&_lastZuperBody){
+        echoedBody=true;
+        log('    Zuper replied: '+_lastZuperBody,'dim');
+      }
+      verifyOn.add(cname);
     }catch(e){
       // The batch is atomic from Zuper's side, so retry one-by-one to find out
       // whether it was one bad document or the whole request.
@@ -1311,7 +1330,7 @@ async function runSync(){
         try{
           await postAttachments(customerUid,[d],visible);
           synced.add(customerUid+'|'+d.id);pushResult(r,prop,d,'attached','recovered after batch failure');
-          ok++;log('    ✓ '+d.name,'ok');
+          ok++;verifyOn.add(cname);log('    ✓ '+d.name,'ok');
         }catch(e2){
           failed++;pushResult(r,prop,d,'failed',e2.message);
           log('    ✗ '+d.name+' — '+e2.message,'err');
@@ -1324,6 +1343,15 @@ async function runSync(){
   log('\n'+(dry
     ? 'Dry run complete — '+ok+' document(s) would attach, '+skipped+' skipped. Uncheck Dry run to write.'
     : 'Done. '+ok+' attached, '+skipped+' skipped, '+failed+' failed.'),failed?'warn':'ok');
+
+  // The single most common "it didn't work" report is looking at the property.
+  // Zuper stores no attachments there, so say plainly where they actually are.
+  if(!dry&&ok){
+    const names=[...verifyOn];
+    log('Verify in Zuper under Customers → '+
+        (names.length>3?names.slice(0,3).join(', ')+' (+'+(names.length-3)+' more)':names.join(', '))+
+        ' → Attachments. They do NOT appear on the property page — Zuper has no attachment storage for properties.','info');
+  }
 
   $('syncBtn').disabled=false;$('cancelBtn').classList.add('hidden');$('syncStatus').textContent='';
   if(_results.length)$('resultsBtn').classList.remove('hidden');
