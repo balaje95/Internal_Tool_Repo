@@ -676,11 +676,12 @@ function autoMatch(){
 function resetChanges(){if(mode==='vendor')vChanges={};else if(mode==='color')cChanges={};else if(mode==='productid')pidChanges={};else changes={};renderRows();updateStats();}
 
 /* ---------- import CSV / Excel ---------- */
-function importMapping(){
+async function importMapping(){
   const file=$('mapFile').files[0];if(!file)return;
   // Re-selecting the same filename fires no change event, so a corrected re-import
   // would silently do nothing. The File is already held, so clearing is safe.
   setTimeout(()=>{$('mapFile').value='';},0);
+  if(!await importReady('import-status'))return;
   const ext=file.name.toLowerCase().split('.').pop();
   if(ext==='csv'){
     const rd=new FileReader();
@@ -749,6 +750,22 @@ function impMsg(id,text,kind){
   e.className='msg impmsg msg-'+(kind||'info');
   e.style.display='block';
   e.textContent=text;
+}
+// Gate every import on the mode actually having its reference data. Without this
+// an import run before that data arrives matches nothing and blames the file.
+async function importReady(statusId){
+  if(!_base){impMsg(statusId,'Connect to an account first, then click Fetch.','err');return false;}
+  if(!products.length){impMsg(statusId,'No products loaded yet — click Fetch, then import.','err');return false;}
+  if(!modeDataReady(mode)){
+    impMsg(statusId,'Loading this mode\'s data first…','info');
+    await ensureModeData();
+  }
+  if(!modeDataReady(mode)){
+    const what=mode==='vendor'?'Vendors are':mode==='formula'?'Formulas are':'Product custom fields are';
+    impMsg(statusId,what+' not loaded for this account, so nothing in the file could be matched. Click Fetch and re-import.','err');
+    return false;
+  }
+  return true;
 }
 // Why did nothing queue? Answer with the specifics needed to fix the file.
 function impWhyNothing(keys,total,miss,skip,missSamples,sameNote){
@@ -901,6 +918,10 @@ async function apply(dry){
       $('progbar').style.width=(done/list.length*100)+'%';
     }
   }
+  // An unexpected throw in here used to leave Apply and Dry run disabled for the
+  // rest of the session — indistinguishable from "the tool stopped working", and
+  // only a reload or re-login brought them back. Always re-enable.
+  try{
   await Promise.all(Array.from({length:Math.min(CONC,list.length)},worker));
   log('— DONE — '+ok+' succeeded, '+fail+' failed'+(_cancel?' (cancelled)':''),fail?'warn':'ok');
   if(!dry&&ok){
@@ -918,8 +939,12 @@ async function apply(dry){
     }
     renderRows();updateStats();
   }
-  $('dryBtn').disabled=false;$('applyBtn').disabled=false;$('cancelBtn').classList.add('hidden');
-  $('resultActions').classList.remove('hidden');
+  }catch(e){
+    log('✗ The run stopped unexpectedly: '+(e&&e.message||e),'err');
+  }finally{
+    $('dryBtn').disabled=false;$('applyBtn').disabled=false;$('cancelBtn').classList.add('hidden');
+    if(_results.length)$('resultActions').classList.remove('hidden');
+  }
 }
 
 function exportResults(){
@@ -981,6 +1006,9 @@ function exportTemplate(){
 
 /* ================= VENDOR MODE ================= */
 function setMode(m){
+  // Results belong to the mode that produced them — the export builds its headers
+  // from the *current* mode, so carrying them across produced a mismatched CSV.
+  if(m!==mode&&_results.length){_results=[];$('resultActions').classList.add('hidden');}
   mode=m; const isV=(m==='vendor'), isC=(m==='color'), isF=(m==='formula'), isP=(m==='productid');
   $('formulaToolbar').classList.toggle('hidden',!isF);
   $('vendorToolbar').classList.toggle('hidden',!isV);
@@ -1013,8 +1041,55 @@ function setMode(m){
     : isP
     ? '<tr><th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th><th>Product</th><th>Category</th><th>Current ID</th><th>New Product ID →</th>'+customFields.map(f=>'<th title="custom field">'+esc(f.name)+'</th>').join('')+'<th>Status</th></tr>'
     : '<tr><th class="checkcol"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th><th>Product</th><th>ID</th><th>Category</th><th>Current formula</th><th>Map to →</th><th>Status</th></tr>';
-  if(isV && products.length && !vendors.length) $('fetch-status').textContent='Switched to vendor mode — click Fetch to load vendors.';
   if(products.length){renderRows();updateStats();}
+  // Each mode needs its own reference data (vendors / formulas / custom fields).
+  // Switching mode used to keep the products and leave the map card visible while
+  // that data was missing, so the page looked ready and every imported row then
+  // failed to match — the "second upload does nothing until I log out again" bug.
+  // Load it here instead of asking for another Fetch.
+  ensureModeData();
+}
+
+// True when the current mode has the reference data it needs to match an import.
+function modeDataReady(m){
+  if(m==='vendor')return vendors.length>0;
+  if(m==='formula')return formulas.length>0;
+  if(m==='productid')return customFields.length>0;
+  return true;                                  // color mode needs only the master list
+}
+let _ensuring=null;                              // in-flight load, so callers can await one
+// Load whatever the current mode is missing, without refetching the products.
+function ensureModeData(){
+  if(!_base||!products.length||modeDataReady(mode))return Promise.resolve(true);
+  if(_ensuring)return _ensuring;
+  const m=mode;
+  _ensuring=(async()=>{
+    try{
+      if(m==='vendor'){
+        $('fetch-status').textContent='Loading vendors for vendor mode…';
+        vendors=await fetchVendors();
+        vendorByUid={};vendors.forEach(v=>vendorByUid[v.vendor_uid]=v);
+        buildVendorSelects();
+      }else if(m==='formula'){
+        $('fetch-status').textContent='Loading formulas for formula mode…';
+        formulas=await fetchFormulas();
+        formulaByUid={};formulas.forEach(f=>formulaByUid[f.formula_uid]=f);
+        buildFormulaSelects();
+      }else if(m==='productid'){
+        $('fetch-status').textContent='Loading product custom fields…';
+        customFields=await fetchProductCustomFields();
+        cfByUid={};customFields.forEach(f=>cfByUid[f.uid]=f);
+      }
+      $('fetch-status').textContent='';
+      if(mode===m){setMode(m);}                  // rebuilds the header (custom-field columns) and rows
+      return true;
+    }catch(e){
+      $('fetch-status').textContent='';
+      showMsg('fetch-msg','✗ Could not load '+(m==='vendor'?'vendors':m==='formula'?'formulas':'custom fields')+': '+e.message+' — click Fetch to retry.','err');
+      return false;
+    }finally{_ensuring=null;}
+  })();
+  return _ensuring;
 }
 
 function vName(v){return (v&&(v.vendor_name||v.vendor_display_name||[v.vendor_first_name,v.vendor_last_name].filter(Boolean).join(' ')||v.company_name))||v&&v.vendor_uid||'—';}
@@ -1106,11 +1181,12 @@ function assignAllVendors(){
   selected.forEach(uid=>{const p=products.find(x=>x.product_uid===uid);if(!p)return;vendors.forEach(v=>addStagedVendor(uid,v.vendor_uid,p.product_id||'',p.purchase_price??''));});
   renderRows();updateStats();
 }
-function importVendorMapping(){
+async function importVendorMapping(){
   const file=$('vmapFile').files[0];if(!file)return;
   // Re-selecting the same filename fires no change event, so a corrected re-import
   // would silently do nothing. The File is already held, so clearing is safe.
   setTimeout(()=>{$('vmapFile').value='';},0);
+  if(!await importReady('vimport-status'))return;
   const ext=file.name.toLowerCase().split('.').pop();
   if(ext==='csv'){const rd=new FileReader();rd.onload=e=>applyImportedVendorRows(parseCSV(e.target.result));rd.readAsText(file);}
   else{
@@ -1270,11 +1346,12 @@ function assignAllColors(){
   if(!selected.size){alert('Select some products first (checkboxes).');return;}
   selected.forEach(uid=>colorMaster.forEach(c=>addStagedColor(uid,c)));renderRows();updateStats();
 }
-function importColorMapping(){
+async function importColorMapping(){
   const file=$('cmapFile').files[0];if(!file)return;
   // Re-selecting the same filename fires no change event, so a corrected re-import
   // would silently do nothing. The File is already held, so clearing is safe.
   setTimeout(()=>{$('cmapFile').value='';},0);
+  if(!await importReady('cimport-status'))return;
   const ext=file.name.toLowerCase().split('.').pop();
   if(ext==='csv'){const rd=new FileReader();rd.onload=e=>applyImportedColorRows(parseCSV(e.target.result));rd.readAsText(file);}
   else{
@@ -1525,11 +1602,12 @@ async function updateProductId(product,change,dry){
   }
   return {ok:false,msg:(jd&&jd.message)||('HTTP '+put.status)};
 }
-function importPidMapping(){
+async function importPidMapping(){
   const file=$('pmapFile').files[0];if(!file)return;
   // Re-selecting the same filename fires no change event, so a corrected re-import
   // would silently do nothing. The File is already held, so clearing is safe.
   setTimeout(()=>{$('pmapFile').value='';},0);
+  if(!await importReady('pimport-status'))return;
   const ext=file.name.toLowerCase().split('.').pop();
   const done=rows=>applyImportedPidRows(rows);
   if(ext==='csv'){const rd=new FileReader();rd.onload=e=>done(parseCSV(e.target.result));rd.readAsText(file);}
