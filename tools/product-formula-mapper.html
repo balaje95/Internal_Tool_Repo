@@ -57,6 +57,9 @@
   .msg-err{background:var(--errbg);color:var(--err)}
   .msg-info{background:var(--chip);color:var(--accent2)}
   .msg-warn{background:var(--warnbg);color:var(--warn)}
+  /* Import outcome: a full-width banner on its own line inside the import box,
+     not a grey span beside the file picker that nobody reads. */
+  .impmsg{flex:1 0 100%;margin-top:10px;white-space:pre-line}
   .hidden{display:none!important}
   .stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
   .stat{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 15px;min-width:96px}
@@ -202,6 +205,7 @@
     <div class="flex hidden" style="margin-bottom:12px" id="pidExtras">
       <button class="btn sec small" onclick="resetChanges()">↺ Reset all changes</button>
       <label class="pill" style="cursor:pointer"><input type="checkbox" onchange="document.getElementById('pidImportBox').classList.toggle('hidden',!this.checked)" style="vertical-align:-2px"> Import from CSV / Excel</label>
+      <button class="btn sec small" onclick="exportTemplate()" title="A CSV of this account's Product UIDs with the exact headers the importer reads">&#8681; Export template CSV</button>
       <span class="muted small">Edit new Product IDs (and any custom-field columns) inline, or import a sheet.</span>
     </div>
 
@@ -217,6 +221,7 @@
       <button class="btn sec small" onclick="autoMatch()">✨ Auto-match by name</button>
       <button class="btn sec small" onclick="resetChanges()">↺ Reset all changes</button>
       <label class="pill" style="cursor:pointer"><input type="checkbox" id="importChk" onchange="document.getElementById('importBox').classList.toggle('hidden',!this.checked)" style="vertical-align:-2px"> Import mapping from CSV / Excel</label>
+      <button class="btn sec small" onclick="exportTemplate()" title="A CSV of this account's Product UIDs with the exact headers the importer reads">&#8681; Export template CSV</button>
     </div>
 
     <div id="importBox" class="hidden" style="padding:14px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
@@ -232,6 +237,7 @@
       <button class="btn sec small" onclick="assignAllVendors()">➕ Add ALL vendors to selected</button>
       <button class="btn sec small" onclick="resetChanges()">↺ Reset all changes</button>
       <label class="pill" style="cursor:pointer"><input type="checkbox" onchange="document.getElementById('vendorImportBox').classList.toggle('hidden',!this.checked)" style="vertical-align:-2px"> Import from CSV / Excel</label>
+      <button class="btn sec small" onclick="exportTemplate()" title="A CSV of this account's Product UIDs with the exact headers the importer reads">&#8681; Export template CSV</button>
       <span class="muted small">New vendor rows default SKU → Product ID, cost → purchase price.</span>
     </div>
 
@@ -263,6 +269,7 @@
         <button class="btn sec small" onclick="assignAllColors()">➕ Add ALL master colors to selected</button>
         <button class="btn sec small" onclick="resetChanges()">↺ Reset</button>
         <label class="pill" style="cursor:pointer"><input type="checkbox" onchange="document.getElementById('colorImportBox').classList.toggle('hidden',!this.checked)" style="vertical-align:-2px"> Import CSV / Excel</label>
+      <button class="btn sec small" onclick="exportTemplate()" title="A CSV of this account's Product UIDs with the exact headers the importer reads">&#8681; Export template CSV</button>
       </div>
     </div>
 
@@ -671,6 +678,9 @@ function resetChanges(){if(mode==='vendor')vChanges={};else if(mode==='color')cC
 /* ---------- import CSV / Excel ---------- */
 function importMapping(){
   const file=$('mapFile').files[0];if(!file)return;
+  // Re-selecting the same filename fires no change event, so a corrected re-import
+  // would silently do nothing. The File is already held, so clearing is safe.
+  setTimeout(()=>{$('mapFile').value='';},0);
   const ext=file.name.toLowerCase().split('.').pop();
   if(ext==='csv'){
     const rd=new FileReader();
@@ -687,35 +697,98 @@ function importMapping(){
     rd.readAsArrayBuffer(file);
   }
 }
-function parseCSV(text){
-  const lines=text.split(/\r?\n/).filter(l=>l.trim());
-  if(!lines.length)return [];
-  const split=l=>{const o=[];let c='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];if(ch==='"'){if(q&&l[i+1]==='"'){c+='"';i++;}else q=!q;}else if(ch===','&&!q){o.push(c);c='';}else c+=ch;}o.push(c);return o.map(s=>s.trim());};
-  const head=split(lines[0]);
-  return lines.slice(1).map(l=>{const cells=split(l);const o={};head.forEach((h,i)=>o[h]=cells[i]??'');return o;});
+// Shared by all four import modes, so every fix here fixes all of them.
+// Handles what real exports actually contain: a UTF-8 BOM, ; or tab delimiters
+// (Excel uses the locale's list separator, not always a comma), quoted fields,
+// escaped "" quotes, and newlines inside quoted cells.
+function sniffDelimiter(firstLine){
+  let best=',',bestN=-1;
+  for(const d of [',',';','\t','|']){
+    let n=0,q=false;
+    for(let i=0;i<firstLine.length;i++){
+      const ch=firstLine[i];
+      if(ch==='"'){if(q&&firstLine[i+1]==='"')i++;else q=!q;}
+      else if(ch===d&&!q)n++;
+    }
+    if(n>bestN){bestN=n;best=d;}
+  }
+  return best;
 }
+function parseCSV(text){
+  text=String(text||'').replace(/^﻿/,'');
+  if(!text.trim())return [];
+  // Find the header line to sniff on — the first line with any content.
+  const probe=text.split(/\r?\n/).find(l=>l.trim())||'';
+  const delim=sniffDelimiter(probe);
+  // Single pass, so a quoted cell may span lines.
+  const rows=[];let row=[],cell='',q=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(q){
+      if(ch==='"'){if(text[i+1]==='"'){cell+='"';i++;}else q=false;}
+      else cell+=ch;
+      continue;
+    }
+    if(ch==='"'){q=true;continue;}
+    if(ch===delim){row.push(cell);cell='';continue;}
+    if(ch==='\r'){continue;}
+    if(ch==='\n'){row.push(cell);cell='';rows.push(row);row=[];continue;}
+    cell+=ch;
+  }
+  row.push(cell);rows.push(row);
+  const clean=rows.map(r=>r.map(s=>s.trim())).filter(r=>r.some(c=>c!==''));
+  if(!clean.length)return [];
+  const head=clean[0];
+  return clean.slice(1).map(cells=>{const o={};head.forEach((h,i)=>o[h]=cells[i]??'');return o;});
+}
+// Import outcome, said loudly. A silent "0 queued" is the single most confusing
+// state this tool has — Apply then reports "no changes queued" with no clue why —
+// so every import ends here with the counts and, when nothing queued, the reason.
+function impMsg(id,text,kind){
+  const e=$(id);
+  e.className='msg impmsg msg-'+(kind||'info');
+  e.style.display='block';
+  e.textContent=text;
+}
+// Why did nothing queue? Answer with the specifics needed to fix the file.
+function impWhyNothing(keys,total,miss,skip,missSamples,sameNote){
+  const lines=['Nothing was queued, so Apply will report "no changes queued".'];
+  if(miss&&miss>=total-skip)lines.push('None of the '+miss+' Product UID(s) in the file exist in this account. From your file: '+missSamples.slice(0,3).join(', ')+(missSamples.length>3?' …':''));
+  else if(miss)lines.push(miss+' UID(s) were not found in this account: '+missSamples.slice(0,3).join(', ')+(missSamples.length>3?' …':''));
+  if(skip)lines.push(skip+' row(s) were skipped as blank or error values.');
+  if(sameNote)lines.push(sameNote);
+  lines.push('Columns read from your file: '+keys.join(', '));
+  lines.push('Tip: click "⬇ Export template CSV" to get a file with this account\'s exact UIDs and headers, edit it, then re-import.');
+  return lines.join('\n');
+}
+
 function applyImportedRows(rows){
-  if(!rows.length){$('import-status').textContent='No rows found.';return;}
+  if(!rows.length){impMsg('import-status','No rows found in the file. If it is an Excel file, check the first sheet is the one with the data.','err');return;}
   const keys=Object.keys(rows[0]);
   const findCol=(preds)=>keys.find(k=>preds(k.toLowerCase().trim()));
   const itemCol=findCol(l=>l==='line item uid'||l==='product uid')||findCol(l=>l.includes('uid')&&(l.includes('line item')||l.includes('lineitem')||l.includes('product')));
   const fCol=findCol(l=>l==='formula uid'||l==='formula_uid')||findCol(l=>l.includes('formula')&&l.includes('uid'));
-  if(!itemCol||!fCol){$('import-status').textContent='Could not find "Product/Line Item UID" and "Formula UID" columns. Found: '+keys.join(', ');return;}
+  if(!itemCol||!fCol){impMsg('import-status','Could not find a "Product UID" (or "Line Item UID") column and a "Formula UID" column.\nColumns found in your file: '+keys.join(', ')+'\nTip: click "⬇ Export template CSV" for a file with the exact headers this tool reads.','err');return;}
   const known=new Set(products.map(p=>p.product_uid));
   const bad=['nan','none','#n/a','#ref!','#value!','#name?','#div/0!','#null!',''];
-  let ok=0,miss=0,skip=0;
+  let ok=0,miss=0,skip=0,same=0;const missSamples=[];
   rows.forEach(r=>{
     const pu=String(r[itemCol]??'').trim();
     const fu=String(r[fCol]??'').trim();
     if(!pu||bad.includes(pu.toLowerCase())||pu.startsWith('#')){skip++;return;}
     if(!fu||bad.includes(fu.toLowerCase())||fu.startsWith('#')||fu===pu){skip++;return;}
-    if(!known.has(pu)){miss++;return;}
+    if(!known.has(pu)){miss++;if(missSamples.length<4)missSamples.push(pu);return;}
     const p=products.find(x=>x.product_uid===pu);
-    if(curFormulaUid(p)===fu)return;
+    if(curFormulaUid(p)===fu){same++;return;}
     changes[pu]=fu;ok++;
   });
   renderRows();updateStats();
-  $('import-status').textContent='Queued '+ok+' change(s). '+(miss?miss+' UID(s) not found in this account. ':'')+(skip?skip+' invalid row(s) skipped.':'');
+  if(!ok)impMsg('import-status',impWhyNothing(keys,rows.length,miss,skip,missSamples,
+    same?same+' row(s) already have that formula in Zuper, so there is nothing to change.':''),'warn');
+  else impMsg('import-status','✓ Queued '+ok+' formula change(s). Click Apply to write them.'+
+    (miss?'\n'+miss+' UID(s) not found in this account: '+missSamples.slice(0,3).join(', '):'')+
+    (same?'\n'+same+' row(s) already match Zuper.':'')+
+    (skip?'\n'+skip+' blank/error row(s) skipped.':''),miss||skip?'warn':'ok');
 }
 
 /* ---------- stats ---------- */
@@ -794,7 +867,13 @@ async function updateProductFormula(product,formulaUid,dry){
 async function apply(dry){
   const isV=mode==='vendor',isC=mode==='color',isP=mode==='productid';
   const list=isV?vendorQueuedList():isC?colorQueuedList():isP?pidQueuedList():queuedList();
-  if(!list.length){alert('No changes queued.');return;}
+  if(!list.length){
+    alert('No changes queued.\n\nIf you just imported a file, read the import summary in the import box — it says how '+
+          'many rows matched and why the rest did not. A row queues nothing when its Product UID is not in this account, '+
+          'when the cell is blank, or when the value already matches Zuper.\n\n'+
+          'The surest fix: click "Export template CSV", edit that file, and re-import it.');
+    return;
+  }
   if(!dry&&!confirm('Apply '+list.length+' '+(isV?'product vendor update(s)':isC?'product color update(s)':isP?'product ID / custom-field update(s)':'formula change(s)')+' to live products in "'+_account+'"?\n\nRun a dry-run first if you haven\'t.'))return;
   _cancel=false;_results=[];
   $('log').innerHTML='';$('log').classList.remove('hidden');
@@ -863,9 +942,41 @@ function exportResults(){
     rows=_results.map(r=>[r.product_uid,r.product_name,r.formula_uid,r.formula_name,r.status]);
     fname='formula_mapping_results.csv';
   }
+  dlCsv(fname,head,rows);
+}
+
+function dlCsv(fname,head,rows){
   const csv=[head,...rows].map(row=>row.map(c=>'"'+String(c??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+
+// A round-trip file for the current mode: this account's real Product UIDs, the
+// exact headers the importer looks for, and current values pre-filled. Editing
+// this and re-importing cannot fail on a UID or header mismatch — which is what
+// an "import did nothing / no changes queued" report almost always turns out to be.
+function exportTemplate(){
+  if(!products.length){alert('Load the account first — click Fetch, then export the template.');return;}
+  let head,rows,fname;
+  if(mode==='vendor'){
+    head=['Product UID','Product Name','Vendor UID','Vendor SKU','Vendor Cost'];
+    rows=products.map(p=>[p.product_uid,p.product_name||'','',p.product_id||'',p.purchase_price??'']);
+    fname='vendor_mapping_template.csv';
+  }else if(mode==='color'){
+    head=['Product UID','Product Name','Colors'];
+    rows=products.map(p=>[p.product_uid,p.product_name||'',(cChanges[p.product_uid]||[]).join(', ')]);
+    fname='color_mapping_template.csv';
+  }else if(mode==='productid'){
+    head=['Product UID','Product Name','Product ID',...customFields.map(f=>f.name)];
+    rows=products.map(p=>[p.product_uid,p.product_name||'',p.product_id||'',...customFields.map(f=>cfCurrent(p,f.uid))]);
+    fname='product_id_template.csv';
+  }else{
+    head=['Product UID','Product Name','Current Formula','Formula UID'];
+    rows=products.map(p=>[p.product_uid,p.product_name||'',curFormulaName(p)||'',curFormulaUid(p)||'']);
+    fname='formula_mapping_template.csv';
+  }
+  dlCsv(fname,head,rows);
 }
 
 /* ================= VENDOR MODE ================= */
@@ -997,6 +1108,9 @@ function assignAllVendors(){
 }
 function importVendorMapping(){
   const file=$('vmapFile').files[0];if(!file)return;
+  // Re-selecting the same filename fires no change event, so a corrected re-import
+  // would silently do nothing. The File is already held, so clearing is safe.
+  setTimeout(()=>{$('vmapFile').value='';},0);
   const ext=file.name.toLowerCase().split('.').pop();
   if(ext==='csv'){const rd=new FileReader();rd.onload=e=>applyImportedVendorRows(parseCSV(e.target.result));rd.readAsText(file);}
   else{
@@ -1007,24 +1121,24 @@ function importVendorMapping(){
   }
 }
 function applyImportedVendorRows(rows){
-  if(!rows.length){$('vimport-status').textContent='No rows found.';return;}
+  if(!rows.length){impMsg('vimport-status','No rows found in the file. If it is an Excel file, check the first sheet is the one with the data.','err');return;}
   const keys=Object.keys(rows[0]);
   const findCol=(preds)=>keys.find(k=>preds(k.toLowerCase().trim()));
   const pCol=findCol(l=>l==='product uid'||l==='product_uid')||findCol(l=>l.includes('product')&&l.includes('uid'));
   const vCol=findCol(l=>l==='vendor uid'||l==='vendor_uid')||findCol(l=>l.includes('vendor')&&l.includes('uid'));
   const skuCol=findCol(l=>l.includes('sku'));
   const costCol=findCol(l=>l.includes('cost')||l.includes('price'));
-  if(!pCol||!vCol){$('vimport-status').textContent='Could not find "Product UID" and "Vendor UID" columns. Found: '+keys.join(', ');return;}
+  if(!pCol||!vCol){impMsg('vimport-status','Could not find "Product UID" and "Vendor UID" columns.\nColumns found in your file: '+keys.join(', ')+'\nTip: click "⬇ Export template CSV" for a file with the exact headers this tool reads.','err');return;}
   const knownP=new Set(products.map(p=>p.product_uid));
   const knownV=new Set(vendors.map(v=>v.vendor_uid));
   const bad=['nan','none','#n/a','#ref!','#value!',''];
-  let ok=0,missP=0,missV=0,skip=0;
+  let ok=0,missP=0,missV=0,skip=0;const missSamples=[],missVSamples=[];
   rows.forEach(r=>{
     const pu=String(r[pCol]??'').trim(), vu=String(r[vCol]??'').trim();
     if(!pu||bad.includes(pu.toLowerCase())){skip++;return;}
     if(!vu||bad.includes(vu.toLowerCase())){skip++;return;}
-    if(!knownP.has(pu)){missP++;return;}
-    if(!knownV.has(vu)){missV++;return;}
+    if(!knownP.has(pu)){missP++;if(missSamples.length<4)missSamples.push(pu);return;}
+    if(!knownV.has(vu)){missV++;if(missVSamples.length<4)missVSamples.push(vu);return;}
     const p=products.find(x=>x.product_uid===pu);
     const sku=skuCol?String(r[skuCol]??''):(p.product_id||'');
     const cost=costCol?(r[costCol]??''):(p.purchase_price??'');
@@ -1033,7 +1147,12 @@ function applyImportedVendorRows(rows){
     if((vChanges[pu]||[]).length>before)ok++;
   });
   renderRows();updateStats();
-  $('vimport-status').textContent='Staged '+ok+' vendor link(s). '+(missP?missP+' product UID(s) not found. ':'')+(missV?missV+' vendor UID(s) not found. ':'')+(skip?skip+' row(s) skipped.':'');
+  if(!ok)impMsg('vimport-status',impWhyNothing(keys,rows.length,missP,skip,missSamples,
+    missV?missV+' vendor UID(s) are not in this account: '+missVSamples.slice(0,3).join(', ')+' — vendors must be loaded (Fetch products & vendors) and the UID must match.':''),'warn');
+  else impMsg('vimport-status','✓ Staged '+ok+' vendor link(s). Click Apply to write them.'+
+    (missP?'\n'+missP+' product UID(s) not found: '+missSamples.slice(0,3).join(', '):'')+
+    (missV?'\n'+missV+' vendor UID(s) not found: '+missVSamples.slice(0,3).join(', '):'')+
+    (skip?'\n'+skip+' blank/error row(s) skipped.':''),missP||missV||skip?'warn':'ok');
 }
 function vendorQueuedList(){
   return Object.keys(vChanges).map(uid=>{
@@ -1153,6 +1272,9 @@ function assignAllColors(){
 }
 function importColorMapping(){
   const file=$('cmapFile').files[0];if(!file)return;
+  // Re-selecting the same filename fires no change event, so a corrected re-import
+  // would silently do nothing. The File is already held, so clearing is safe.
+  setTimeout(()=>{$('cmapFile').value='';},0);
   const ext=file.name.toLowerCase().split('.').pop();
   if(ext==='csv'){const rd=new FileReader();rd.onload=e=>applyImportedColorRows(parseCSV(e.target.result));rd.readAsText(file);}
   else{
@@ -1163,18 +1285,18 @@ function importColorMapping(){
   }
 }
 function applyImportedColorRows(rows){
-  if(!rows.length){$('cimport-status').textContent='No rows found.';return;}
+  if(!rows.length){impMsg('cimport-status','No rows found in the file. If it is an Excel file, check the first sheet is the one with the data.','err');return;}
   const keys=Object.keys(rows[0]);
   const findCol=(preds)=>keys.find(k=>preds(k.toLowerCase().trim()));
   const pCol=findCol(l=>l==='product uid'||l==='product_uid')||findCol(l=>l.includes('product')&&l.includes('uid'));
   const cCol=findCol(l=>l==='colors'||l==='color'||l==='color options')||findCol(l=>l.includes('color'));
-  if(!pCol||!cCol){$('cimport-status').textContent='Could not find "Product UID" and "Colors" columns. Found: '+keys.join(', ');return;}
+  if(!pCol||!cCol){impMsg('cimport-status','Could not find "Product UID" and "Colors" columns.\nColumns found in your file: '+keys.join(', ')+'\nTip: click "⬇ Export template CSV" for a file with the exact headers this tool reads.','err');return;}
   const knownP=new Set(products.map(p=>p.product_uid));
-  let ok=0,missP=0,skip=0,added=0;
+  let ok=0,missP=0,skip=0,added=0;const missSamples=[];
   rows.forEach(r=>{
     const pu=String(r[pCol]??'').trim();const rawColors=String(r[cCol]??'').trim();
     if(!pu){skip++;return;}
-    if(!knownP.has(pu)){missP++;return;}
+    if(!knownP.has(pu)){missP++;if(missSamples.length<4)missSamples.push(pu);return;}
     const cols=rawColors.split(',').map(s=>s.trim()).filter(Boolean);
     if(!cols.length){skip++;return;}
     cols.forEach(c=>{
@@ -1184,7 +1306,11 @@ function applyImportedColorRows(rows){
   });
   if(added){colorMaster.sort((a,b)=>a.localeCompare(b));saveColorMaster();buildColorSelects();renderColorMaster();}
   renderRows();updateStats();
-  $('cimport-status').textContent='Staged '+ok+' color link(s)'+(added?(', added '+added+' new color(s) to master'):'')+'. '+(missP?missP+' product UID(s) not found. ':'')+(skip?skip+' row(s) skipped.':'');
+  if(!ok)impMsg('cimport-status',impWhyNothing(keys,rows.length,missP,skip,missSamples,
+    'A row also stages nothing when every colour it lists is already staged on that product.'),'warn');
+  else impMsg('cimport-status','✓ Staged '+ok+' color link(s)'+(added?(', added '+added+' new color(s) to the master'):'')+'. Click Apply to write them.'+
+    (missP?'\n'+missP+' product UID(s) not found: '+missSamples.slice(0,3).join(', '):'')+
+    (skip?'\n'+skip+' row(s) skipped (no UID or no colours).':''),missP||skip?'warn':'ok');
 }
 function colorQueuedList(){
   return Object.keys(cChanges).map(uid=>{
@@ -1401,6 +1527,9 @@ async function updateProductId(product,change,dry){
 }
 function importPidMapping(){
   const file=$('pmapFile').files[0];if(!file)return;
+  // Re-selecting the same filename fires no change event, so a corrected re-import
+  // would silently do nothing. The File is already held, so clearing is safe.
+  setTimeout(()=>{$('pmapFile').value='';},0);
   const ext=file.name.toLowerCase().split('.').pop();
   const done=rows=>applyImportedPidRows(rows);
   if(ext==='csv'){const rd=new FileReader();rd.onload=e=>done(parseCSV(e.target.result));rd.readAsText(file);}
@@ -1410,29 +1539,41 @@ function importPidMapping(){
   }
 }
 function applyImportedPidRows(rows){
-  if(!rows.length){$('pimport-status').textContent='No rows found.';return;}
+  if(!rows.length){impMsg('pimport-status','No rows found in the file. If it is an Excel file, check the first sheet is the one with the data.','err');return;}
   const keys=Object.keys(rows[0]);
   const nk=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
   const uidCol=keys.find(k=>nk(k)==='productuid')||keys.find(k=>nk(k).includes('productuid'))||keys.find(k=>nk(k)==='uid');
   const idCol=keys.find(k=>nk(k)==='productid')||keys.find(k=>nk(k)==='newproductid');
-  if(!uidCol){$('pimport-status').textContent='Could not find a "Product UID" column. Found: '+keys.join(', ');return;}
+  if(!uidCol){impMsg('pimport-status','Could not find a "Product UID" column.\nColumns found in your file: '+keys.join(', ')+'\nTip: click "⬇ Export template CSV" for a file with the exact headers this tool reads.','err');return;}
   // Map any header that matches a custom-field name → field uid.
   const cfCols={};keys.forEach(k=>{const f=customFields.find(f=>nk(f.name)===nk(k));if(f&&k!==uidCol&&k!==idCol)cfCols[k]=f.uid;});
   const known=new Set(products.map(p=>p.product_uid));
   const bad=['nan','none','#n/a','#ref!','#value!','#name?','#div/0!','#null!',''];
-  let ok=0,miss=0,skip=0;
+  let ok=0,miss=0,skip=0,same=0;const missSamples=[];
   rows.forEach(r=>{
     const pu=String(r[uidCol]??'').trim();
     if(!pu||bad.includes(pu.toLowerCase())||pu.startsWith('#')){skip++;return;}
-    if(!known.has(pu)){miss++;return;}
+    if(!known.has(pu)){miss++;if(missSamples.length<4)missSamples.push(pu);return;}
     const p=products.find(x=>x.product_uid===pu);let touched=false;
     if(idCol){const nid=String(r[idCol]??'').trim();if(nid&&nid!==(p.product_id||'')){pidEnsure(pu).product_id=nid;touched=true;}}
     Object.keys(cfCols).forEach(col=>{const v=String(r[col]??'').trim();if(v!==''&&v!==cfCurrent(p,cfCols[col])){pidEnsure(pu).cf[cfCols[col]]=v;touched=true;}});
-    if(touched)ok++; else pidPrune(pu);
+    if(touched)ok++; else {same++;pidPrune(pu);}
   });
   renderRows();updateStats();
-  const cfNote=Object.keys(cfCols).length?(' Custom-field columns matched: '+Object.keys(cfCols).join(', ')+'.'):' No custom-field columns matched.';
-  $('pimport-status').textContent='Queued changes for '+ok+' product(s).'+cfNote+(miss?(' '+miss+' UID(s) not found.'):'')+(skip?(' '+skip+' row(s) skipped.'):'');
+  // Which columns were understood matters here more than in the other modes: a
+  // custom-field header that doesn't match a field name exactly is read as nothing.
+  const cfNote=Object.keys(cfCols).length
+    ? 'Custom-field columns matched: '+Object.keys(cfCols).join(', ')+'.'
+    : 'No custom-field columns matched — a header must equal a custom field\'s name exactly.';
+  if(!ok)impMsg('pimport-status',impWhyNothing(keys,rows.length,miss,skip,missSamples,[
+    same?same+' row(s) had nothing new — a blank cell is ignored, and a value identical to what is already in Zuper is not a change.':'',
+    idCol?'':'No "Product ID" column was found, so only custom-field columns could have queued anything.',
+    cfNote
+  ].filter(Boolean).join('\n')),'warn');
+  else impMsg('pimport-status','✓ Queued edits for '+ok+' product(s). Click Apply to write them.\n'+cfNote+
+    (miss?'\n'+miss+' UID(s) not found in this account: '+missSamples.slice(0,3).join(', '):'')+
+    (same?'\n'+same+' row(s) had nothing new (blank or identical values).':'')+
+    (skip?'\n'+skip+' blank/error row(s) skipped.':''),miss||skip?'warn':'ok');
 }
 
 /* ---------- theme ---------- */
