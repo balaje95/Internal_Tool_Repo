@@ -1503,9 +1503,50 @@ input[type=checkbox]{accent-color:var(--primary)}
 // are bucketed. Resolved once at load; falls back to UTC where Intl is unavailable.
 const _ZTZ=(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';}catch(e){return 'UTC';}})();
 
+// ── Material Orders share the Purchase Orders resource ───────────────────────
+// Zuper labels them differently in the UI, but a Material Order IS a purchase
+// order record — confirmed live: DELETE /api/purchase_orders/{uid} returns 200
+// for a Material Order. The old `material_requests` path does not exist, which
+// is why neither fetch nor delete worked for this module.
+// The two module entries therefore hit the same endpoint and differ only in
+// which rows they keep. The type value has varied across accounts
+// ('MATERIAL_REQUEST', 'MATERIAL_ORDER', 'MATERIAL'), so match on the substring
+// rather than one exact string.
+function _poTypeOf(r){
+  return String(r.purchase_order_type||r.material_request_type||r.order_type||r.type||'').toUpperCase();
+}
+function _isMaterialOrder(r){ return _poTypeOf(r).includes('MATERIAL'); }
+// Keeps only the material-order rows out of a purchase_orders response.
+// Three cases, kept apart on purpose:
+//   • some rows are material-typed    → those rows
+//   • rows carry types, none material → none (the account really has no material
+//     orders; listing POs here would invite deleting one from the wrong tab)
+//   • no row carries a type at all    → every row, plus a console warning, because
+//     the two cannot be told apart and hiding all of them would read as "this
+//     account has no material orders" — the exact bug being fixed.
+function materialOrderRows(recs){
+  const mo=recs.filter(_isMaterialOrder);
+  if(mo.length) return mo;
+  const types=[...new Set(recs.map(_poTypeOf).filter(Boolean))];
+  if(types.length){
+    console.log('[ZDM] Material Orders: none of the '+recs.length+' purchase_orders row(s) are material orders. Types seen: '+types.join(', '));
+    return [];
+  }
+  console.warn('[ZDM] Material Orders: '+recs.length+' purchase_orders row(s) carry no type field, so material orders cannot be told apart from POs — showing all of them. Check the Type column before deleting.');
+  return recs;
+}
+
 const MODULES={
   purchase_orders:{label:'Purchase Orders',uid:['purchase_order_uid','uid','_id'],del:'purchase_orders',cols:[{h:'Order #',f:'_po_no'},{h:'Type',f:'purchase_order_type'},{h:'Status',f:'purchase_order_status'},{h:'Items',f:'number_of_line_items'},{h:'Total',f:'_total'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_po_no:r.reference_number||r.purchase_order_number||'—',_total:r.total_price||r.purchase_order_total||'—'}))},
-  material_requests:{label:'Material Orders',uid:['material_request_uid','uid','_id'],del:'material_requests',cols:[{h:'MO #',f:'material_request_number'},{h:'Title',f:'material_request_title'},{h:'Status',f:'material_request_status'},{h:'Created',f:'created_at'}]},
+  material_requests:{label:'Material Orders',uid:['purchase_order_uid','material_request_uid','uid','_id'],del:'purchase_orders',
+    endpoint:'purchase_orders',readPaths:['purchase_orders','material_requests'],dryRunFromList:true,
+    cols:[{h:'MO #',f:'_mo_no'},{h:'Title',f:'_mo_title'},{h:'Type',f:'_mo_type'},{h:'Status',f:'_mo_status'},{h:'Items',f:'number_of_line_items'},{h:'Total',f:'_total'},{h:'Created',f:'created_at'}],
+    transform:(recs)=>materialOrderRows(recs).map(r=>({...r,
+      _mo_no:r.reference_number||r.material_request_number||r.purchase_order_number||'—',
+      _mo_title:r.material_request_title||r.purchase_order_title||r.title||r.description||'—',
+      _mo_type:_poTypeOf(r)||'—',
+      _mo_status:r.material_request_status||r.purchase_order_status||r.status||'—',
+      _total:r.total_price||r.purchase_order_total||r.total||'—'}))},
   customers:{label:'Customers',uid:['customer_uid','uid','_id'],del:'customers',cols:[{h:'Name',f:['customer_first_name','customer_last_name']},{h:'Email',f:'customer_email'},{h:'Phone',f:'customer_phone'},{h:'Type',f:'customer_type'},{h:'Created',f:'created_at'}]},
   property:{label:'Properties',uid:['property_uid','uid','_id'],del:'property',preDelete:deactivatePropertyBeforeDelete,cols:[{h:'Name',f:'property_name'},{h:'Address',f:'property_address'},{h:'City',f:'city'},{h:'Status',f:'property_status'},{h:'Created',f:'created_at'}]},
   organization:{label:'Organizations',uid:['organization_uid','uid','_id'],del:'organization',cols:[{h:'Name',f:'organization_name'},{h:'Email',f:'organization_email'},{h:'Active',f:'is_active'},{h:'Created',f:'created_at'}]},
