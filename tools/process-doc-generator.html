@@ -27,6 +27,10 @@
 <!-- PptxGenJS powers the Handover Document (.pptx) export. Loaded from CDN, same
      pattern as html-docx-js above. If it fails to load the PPTX button explains why. -->
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+<!-- xlsx-js-style is SheetJS's style-capable fork: the community build writes
+     values but silently drops every cell style, and the CPQ export has to
+     reproduce the import template's header/banner fills exactly. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 
 <style id="docStyle">
   /* ---- Palette (matches the Roof & Nail sample document) ---- */
@@ -150,6 +154,17 @@
   .choice p{font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.5;}
   .choice .go{display:inline-block;font-size:13px;font-weight:700;color:var(--accent);}
 
+  /* ---- CPQ → Excel export picker ---- */
+  .cpq-wrap{max-width:820px;margin:26px auto 40px;padding:0 22px;}
+  .cpq-list{margin:14px 0 4px;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .cpq-row{display:flex;gap:10px;align-items:flex-start;padding:11px 14px;border-bottom:1px solid var(--line);font-size:13px;}
+  .cpq-row:last-child{border-bottom:none;}
+  .cpq-row input{margin-top:2px;}
+  .cpq-row .nm{font-weight:700;color:var(--head);}
+  .cpq-row .meta{color:var(--muted);font-size:12px;margin-top:2px;line-height:1.45;}
+  .cpq-actions{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap;}
+  .cpq-note{font-size:12px;color:var(--muted);line-height:1.5;margin-top:12px;}
+
   /* ---- Handover document (editable sections) ---- */
   .ho-sec{margin:0 0 6px;}
   .ho-num{color:var(--accent);font-weight:800;margin-right:4px;}
@@ -234,6 +249,27 @@
       <p>A support-handover checklist (questionnaire) deck. Start from a blank template pre-filled with this account, edit each section inline or import a prepared JSON, then export a branded PowerPoint (.pptx).</p>
       <span class="go">Build handover template →</span>
     </div>
+    <div class="choice" id="choiceCpqXlsx" role="button" tabindex="0">
+      <div class="ic">📊</div>
+      <h3>CPQ → Excel</h3>
+      <p>This account's proposal templates exported to a spreadsheet in the CPQ import template format — one sheet per option, with section banners, products, prices and quantity formulas. Re-importable with the CPQ Importer.</p>
+      <span class="go">Fetch CPQ &amp; export →</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CPQ → Excel picker (shown after the CPQ fetch in that mode) ===== -->
+<div class="cpq-wrap" id="cpqWrap" style="display:none;">
+  <div class="card">
+    <h2>Export CPQ from <span id="cpqAcct">the account</span></h2>
+    <p class="hint">Pick the proposal templates to export. Each option becomes one sheet, laid out exactly like the CPQ import template, so the file can be reviewed in Excel and imported into another account.</p>
+    <div class="cpq-list" id="cpqList"></div>
+    <div class="cpq-actions">
+      <button class="btn" id="btnCpqXlsx">⬇ Download .xlsx</button>
+      <button id="btnCpqBack" style="background:none;border:1px solid var(--line);border-radius:9px;padding:10px 16px;font:inherit;font-size:13px;cursor:pointer;">← Back</button>
+    </div>
+    <div class="status-msg" id="cpqStatus"></div>
+    <div class="cpq-note" id="cpqNote"></div>
   </div>
 </div>
 
@@ -882,6 +918,11 @@ function chooseMode(mode){
     $("connectWrap").style.display="block";
     $("btnConnect").disabled=true;
     fetchConfiguration();                        // unchanged existing behaviour
+  }else if(mode==="cpqxlsx"){
+    // Same reason as above: the connect card carries the status line for the fetch.
+    $("connectWrap").style.display="block";
+    $("btnConnect").disabled=true;
+    startCpqExport();
   }else{
     startHandover();
   }
@@ -1257,6 +1298,259 @@ $("btnWord").addEventListener("click",()=>{
 
 $("btnPrint").addEventListener("click",()=>{ if(editing) $("btnEdit").click(); window.print(); });
 
+/* ============================================================================
+   SECTION 6e — CPQ → EXCEL EXPORT
+   --------------------------------------------------------------------------
+   Writes an account's proposal templates back out in the same shape as the CPQ
+   import template, so a quoting setup can be reviewed in Excel and re-imported
+   elsewhere with the CPQ Importer. One sheet per proposal option, named after
+   the option ("Good - Atlas Pinnacle Pristine").
+
+   Layout replicated from the sample workbook:
+     row 1            header — bold on #D9D9D9, centred, wrapped, 30pt tall
+     section banner   section name upper-cased, bold white on #2E75B6,
+                      merged A:H, 21.75pt tall
+     item rows        one line item each, Calculation column wrapped
+     columns A..H     at the sample's widths (59/13/16/16/7/18/17/59)
+   Styles require SheetJS's style-capable fork (xlsx-js-style, loaded in <head>) —
+   the community build writes values but silently drops every `s`.
+
+   UOM, unit price and product category live on the PRODUCT, not on the template
+   line item, so the product catalogue is pulled once and joined by uid, then by
+   name for line items whose product reference no longer resolves.
+   ========================================================================== */
+const CPQ_XLSX_HEADERS=["Product Name","Section","Product Type","Product Category","UOM","Unit Price ($)","Quantity Type","Calculation"];
+const CPQ_XLSX_WIDTHS=[59,13,16,16,7,18,17,59];
+const CPQ_S_HEADER={font:{name:"Calibri",sz:11,bold:true,color:{rgb:"FF000000"}},
+  fill:{patternType:"solid",fgColor:{rgb:"FFD9D9D9"}},
+  alignment:{horizontal:"center",vertical:"center",wrapText:true}};
+const CPQ_S_BANNER={font:{name:"Calibri",sz:11,bold:true,color:{rgb:"FFFFFFFF"}},
+  fill:{patternType:"solid",fgColor:{rgb:"FF2E75B6"}},
+  alignment:{horizontal:"left",vertical:"center"}};
+const CPQ_S_CELL={font:{name:"Calibri",sz:11},alignment:{vertical:"top"}};
+const CPQ_S_WRAP={font:{name:"Calibri",sz:11},alignment:{vertical:"top",wrapText:true}};
+
+// Product catalogue, keyed for line-item joins. POST product/filter is the list
+// endpoint that works for products — GET product/{uid} 404s account-wide.
+// A failure here is not fatal: the sheet still exports, just without UOM/price.
+async function fetchProductIndex(base){
+  const byUid={}, byName={}; let ok=false;
+  try{
+    for(let page=1;page<=30;page++){
+      const res=await fetch(base+"/product/filter",{method:"POST",
+        headers:{"x-api-key":state.apiKey,"Content-Type":"application/json"},
+        body:JSON.stringify({page:page,count:100})});
+      if(!res.ok) break;
+      ok=true;
+      const json=await res.json();
+      const rows=Array.isArray(json&&json.data)?json.data:(Array.isArray(json)?json:[]);
+      for(const p of rows){
+        const uid=p.product_uid||p.uid||p._id;
+        if(uid) byUid[uid]=p;
+        const nm=String(p.product_name||"").trim().toLowerCase();
+        if(nm&&!byName[nm]) byName[nm]=p;
+      }
+      if(rows.length<100) break;
+    }
+  }catch(err){ /* leave the index empty — see above */ }
+  return { byUid:byUid, byName:byName, ok:ok };
+}
+
+// A line item's product can come back as a uid string, as an embedded object, or
+// not at all. Prefer the embedded object (freshest), then the catalogue by uid,
+// then by name — a renamed-then-recreated product only matches on the last one.
+function cpqLineProduct(li, idx){
+  const p=li&&li.product;
+  if(p&&typeof p==="object") return p;
+  const uid=(typeof p==="string"&&p)||li.product_uid||null;
+  if(uid&&idx.byUid[uid]) return idx.byUid[uid];
+  const nm=String(li.product_name||"").trim().toLowerCase();
+  return (nm&&idx.byName[nm])||null;
+}
+function cpqProductCategory(prod){
+  if(!prod) return "";
+  const c=prod.product_category;
+  if(c&&typeof c==="object") return c.category_name||c.name||"";
+  return c||prod.category_name||"";
+}
+function cpqUom(li,prod){
+  return li.uom||li.unit_of_measurement||(prod&&(prod.uom||prod.unit_of_measurement||prod.unit))||"";
+}
+function cpqUnitPrice(li,prod){
+  const v=[li.unit_price,li.price,prod&&prod.price,prod&&prod.unit_price,prod&&prod.selling_price]
+    .find(x=>x!=null&&x!=="");
+  const n=Number(v);
+  return Number.isFinite(n)?n:"";
+}
+// The Calculation column holds the readable formula for FORMULA lines; the
+// sample leaves it blank for FIXED ones.
+function cpqCalculation(li){
+  if(String(li.quantity_type||"").toUpperCase()!=="FORMULA") return "";
+  const r=resolveLineFormula(li);
+  return r.rec?readableFormula(r.rec):"";
+}
+
+// One option → an array-of-arrays plus the row indexes of its section banners.
+function cpqOptionRows(option, idx){
+  const rows=[CPQ_XLSX_HEADERS.slice()];
+  const banners=[];
+  // Group items under their section in the order the template lists them. HEADER
+  // line items carry the section name in product_name (that is how the importer
+  // writes them); ITEM rows also carry section_name, which covers a template
+  // whose items appear before any header row.
+  const sections=[]; const byName={};
+  let current=null;
+  for(const li of optionLineItems(option)){
+    const liType=String(li.type||li.line_item_type||"ITEM").toUpperCase();
+    if(liType==="HEADER"){
+      const hn=li.product_name||li.section_name||li.label||"";
+      if(!hn) continue;
+      if(!byName[hn]){ byName[hn]={name:hn,items:[]}; sections.push(byName[hn]); }
+      current=byName[hn];
+      continue;
+    }
+    const nm=li.section_name||(current&&current.name)||"Items";
+    if(!byName[nm]){ byName[nm]={name:nm,items:[]}; sections.push(byName[nm]); }
+    byName[nm].items.push(li);
+  }
+  sections.forEach(function(sec,i){
+    if(i>0) rows.push(["","","","","","","",""]);   // spacer row between sections
+    banners.push(rows.length);                      // 0-based index of the banner row
+    rows.push([String(sec.name).toUpperCase(),"","","","","","",""]);
+    for(const li of sec.items){
+      const prod=cpqLineProduct(li,idx);
+      rows.push([
+        li.product_name||"",
+        sec.name,
+        String(li.product_type||(prod&&prod.product_type)||"").toUpperCase(),
+        cpqProductCategory(prod),
+        cpqUom(li,prod),
+        cpqUnitPrice(li,prod),
+        String(li.quantity_type||"FIXED").toUpperCase(),
+        cpqCalculation(li)
+      ]);
+    }
+  });
+  return { rows:rows, banners:banners };
+}
+
+function cpqBuildSheet(option, idx){
+  const built=cpqOptionRows(option, idx);
+  const rows=built.rows, banners=built.banners;
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  const bannerSet=new Set(banners);
+  const nCols=CPQ_XLSX_HEADERS.length;
+  for(let r=0;r<rows.length;r++){
+    for(let c=0;c<nCols;c++){
+      const addr=XLSX.utils.encode_cell({r:r,c:c});
+      // aoa_to_sheet omits empty trailing cells; create them so a banner's fill
+      // runs the full width of its merge instead of stopping after column A.
+      if(!ws[addr]) ws[addr]={t:"s",v:""};
+      ws[addr].s=(r===0)?CPQ_S_HEADER:(bannerSet.has(r)?CPQ_S_BANNER:(c===7?CPQ_S_WRAP:CPQ_S_CELL));
+    }
+  }
+  ws["!ref"]=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(rows.length-1,0),c:nCols-1}});
+  ws["!cols"]=CPQ_XLSX_WIDTHS.map(function(w){ return {wch:w}; });
+  ws["!merges"]=banners.map(function(r){ return {s:{r:r,c:0},e:{r:r,c:nCols-1}}; });
+  ws["!rows"]=rows.map(function(_,r){ return r===0?{hpt:30}:(bannerSet.has(r)?{hpt:21.75}:{}); });
+  return ws;
+}
+
+// Excel rejects []:*?/\ in a sheet name and cuts it at 31 characters, and two
+// templates can easily share option names — so names are sanitised and
+// de-duplicated before the sheet is appended.
+function cpqSheetName(raw, used){
+  let nm=String(raw||"Option").replace(/[\[\]:\*\?\/\\]/g," ").trim().slice(0,31)||"Option";
+  if(!used.has(nm)){ used.add(nm); return nm; }
+  for(let i=2;i<100;i++){
+    const suffix=" ("+i+")";
+    const cand=nm.slice(0,31-suffix.length)+suffix;
+    if(!used.has(cand)){ used.add(cand); return cand; }
+  }
+  used.add(nm); return nm;
+}
+
+function cpqBuildWorkbook(templates, idx){
+  const wb=XLSX.utils.book_new();
+  const used=new Set();
+  let sheets=0, items=0;
+  for(const t of templates){
+    for(const o of templateOptions(t)){
+      const ws=cpqBuildSheet(o, idx);
+      items+=XLSX.utils.decode_range(ws["!ref"]).e.r;   // rows below the header
+      XLSX.utils.book_append_sheet(wb, ws, cpqSheetName(o.option_name||o.name||"Option", used));
+      sheets++;
+    }
+  }
+  return { wb:wb, sheets:sheets, items:items };
+}
+
+/* ---- CPQ export screen ---- */
+let cpqProductIdx={ byUid:{}, byName:{}, ok:false };
+
+function showCpqStatus(msg, kind){
+  const el=$("cpqStatus"); el.className="status-msg show "+(kind||"info"); el.innerHTML=msg;
+}
+async function startCpqExport(){
+  const base=state.region.base;
+  showStatus("Fetching CPQ proposal templates &amp; formulas…","info");
+  try{ await fetchCpq(base); }catch(err){ state.cpqError=err&&err.status||true; }
+  showStatus("Fetching the product catalogue (for UOM, price &amp; category)…","info");
+  cpqProductIdx=await fetchProductIndex(base);
+  hideStatus();
+  $("connectWrap").style.display="none";
+  $("btnConnect").disabled=false;
+  renderCpqPicker();
+}
+function renderCpqPicker(){
+  $("cpqAcct").textContent=(state.company&&state.company.name)||"the account";
+  const templates=state.templates||[];
+  const list=$("cpqList");
+  if(!templates.length){
+    list.innerHTML='<div class="cpq-row"><span>No CPQ proposal templates were found on this account'+
+      esc(cpqEmptyReason())+'</span></div>';
+    $("btnCpqXlsx").disabled=true;
+  }else{
+    $("btnCpqXlsx").disabled=false;
+    list.innerHTML=templates.map(function(t,i){
+      const opts=templateOptions(t);
+      const items=opts.reduce(function(n,o){
+        return n+optionLineItems(o).filter(function(li){
+          return String(li.type||li.line_item_type||"ITEM").toUpperCase()!=="HEADER";
+        }).length;
+      },0);
+      const meta=opts.length+" option"+(opts.length===1?"":"s")+" · "+items+" line item"+(items===1?"":"s")+
+        (opts.length?" · "+opts.map(function(o){ return esc(o.option_name||o.name||"—"); }).join(", "):"")+
+        (t.is_draft===true?" · draft":"");
+      return '<label class="cpq-row"><input type="checkbox" class="cpq-pick" value="'+i+'" checked>'+
+        '<span><span class="nm">'+esc(t.template_name||t.name||"Untitled Template")+'</span>'+
+        '<span class="meta">'+meta+'</span></span></label>';
+    }).join("");
+  }
+  $("cpqNote").innerHTML=cpqProductIdx.ok
+    ? "UOM, unit price and product category are read from this account's product catalogue."
+    : "<b>Product catalogue unavailable</b> — UOM, Unit Price and Product Category will export blank. The API key may lack product permissions.";
+  $("cpqWrap").style.display="block";
+}
+function cpqSelectedTemplates(){
+  const picks=[].slice.call(document.querySelectorAll(".cpq-pick:checked"));
+  return picks.map(function(el){ return (state.templates||[])[Number(el.value)]; }).filter(Boolean);
+}
+function downloadCpqXlsx(){
+  if(typeof XLSX==="undefined"){
+    showCpqStatus("The Excel library didn't load (offline or blocked). Reload the page and try again.","err"); return;
+  }
+  const templates=cpqSelectedTemplates();
+  if(!templates.length){ showCpqStatus("Pick at least one proposal template first.","err"); return; }
+  const out=cpqBuildWorkbook(templates, cpqProductIdx);
+  if(!out.sheets){ showCpqStatus("The selected template"+(templates.length===1?"":"s")+" have no options to export.","err"); return; }
+  const buf=XLSX.write(out.wb,{bookType:"xlsx",type:"array"});
+  download(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),
+           safeName()+"-cpq-template.xlsx");
+  showCpqStatus("✓ Exported "+out.sheets+" sheet"+(out.sheets===1?"":"s")+" — "+out.items+" row"+
+    (out.items===1?"":"s")+" from "+templates.length+" template"+(templates.length===1?"":"s")+".","info");
+}
+
 /* ---- Connect UI wiring ---- */
 $("btnConnect").addEventListener("click",connect);
 $("apiKey").addEventListener("keydown",(e)=>{ if(e.key==="Enter") connect(); });
@@ -1267,6 +1561,7 @@ $("btnReconnect").addEventListener("click",()=>{
   state.formulas=[]; state.formulasByUid={}; state.templates=[]; state.cpqError=null;
   if(editing) $("btnEdit").click();
   $("doc").innerHTML=""; $("pageWrap").style.display="none"; $("chooserWrap").style.display="none";
+  $("cpqWrap").style.display="none"; $("cpqStatus").className="status-msg";
   $("connectWrap").style.display="block"; $("apiKey").value=""; hideStatus();
   ["btnEdit","btnJson","btnHtml","btnPrint","btnWord"].forEach(id=>$(id).disabled=true);
   ["btnImport","btnAddMtg","btnPptx"].forEach(id=>$(id).style.display="none");
@@ -1277,9 +1572,15 @@ $("btnReconnect").addEventListener("click",()=>{
 /* ---- Mode chooser + Handover controls wiring ---- */
 $("choiceProcess").addEventListener("click",()=>chooseMode("process"));
 $("choiceHandover").addEventListener("click",()=>chooseMode("handover"));
-["choiceProcess","choiceHandover"].forEach(id=>$(id).addEventListener("keydown",(e)=>{
+$("choiceCpqXlsx").addEventListener("click",()=>chooseMode("cpqxlsx"));
+["choiceProcess","choiceHandover","choiceCpqXlsx"].forEach(id=>$(id).addEventListener("keydown",(e)=>{
   if(e.key==="Enter"||e.key===" "){ e.preventDefault(); $(id).click(); }
 }));
+$("btnCpqXlsx").addEventListener("click",downloadCpqXlsx);
+$("btnCpqBack").addEventListener("click",()=>{
+  $("cpqWrap").style.display="none"; $("cpqStatus").className="status-msg";
+  $("chooserWrap").style.display="block";
+});
 $("btnImport").addEventListener("click",()=>$("importFile").click());
 $("importFile").addEventListener("change",handleImportFile);
 $("btnAddMtg").addEventListener("click",addMeeting);
