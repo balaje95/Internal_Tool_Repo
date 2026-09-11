@@ -418,6 +418,7 @@ input[type=checkbox]{accent-color:var(--primary)}
         <option value="recurring_jobs">Recurring Jobs</option>
         <option value="invoice">Invoices</option>
         <option value="estimate">Quotes / Estimates</option>
+        <option value="tax">Taxes</option>
         <option value="user">Users</option>
         <option value="team">Teams</option>
         <option value="workflow_group">Workflows</option>
@@ -1536,6 +1537,17 @@ function materialOrderRows(recs){
   return recs;
 }
 
+// ── Taxes ────────────────────────────────────────────────────────────────────
+// The rate lives under a different key depending on the account/API version, and
+// is sometimes a string. Render it as a percentage only when it reads as a
+// number, so an unexpected shape shows the raw value instead of "NaN%".
+function _taxRate(r){
+  const v=[r.tax_value,r.tax_percentage,r.tax_rate,r.rate,r.percentage,r.value].find(x=>x!=null&&x!=='');
+  if(v==null||v==='') return '—';
+  const n=Number(v);
+  return Number.isFinite(n)?n+'%':String(v);
+}
+
 const MODULES={
   purchase_orders:{label:'Purchase Orders',uid:['purchase_order_uid','uid','_id'],del:'purchase_orders',cols:[{h:'Order #',f:'_po_no'},{h:'Type',f:'purchase_order_type'},{h:'Status',f:'purchase_order_status'},{h:'Items',f:'number_of_line_items'},{h:'Total',f:'_total'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_po_no:r.reference_number||r.purchase_order_number||'—',_total:r.total_price||r.purchase_order_total||'—'}))},
   material_requests:{label:'Material Orders',uid:['purchase_order_uid','material_request_uid','uid','_id'],del:'purchase_orders',
@@ -1588,6 +1600,22 @@ const MODULES={
     })},
   invoice:{label:'Invoices',uid:['invoice_uid','uid','_id'],del:'invoice',cols:[{h:'Invoice #',f:'_inv_no'},{h:'Title',f:'invoice_title'},{h:'Status',f:'invoice_status'},{h:'Total',f:'_total'},{h:'Due',f:'due_date'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_inv_no:r.invoice_no||r.invoice_number||'—',_total:r.total||r.invoice_total||'—'}))},
   estimate:{label:'Quotes / Estimates',uid:['estimate_uid','quote_uid','uid'],del:'estimate',cols:[{h:'Quote #',f:'_est_no'},{h:'Title',f:'_est_title'},{h:'Status',f:'estimate_status'},{h:'Total',f:'_total'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_est_no:r.estimate_no||r.estimate_number||'—',_est_title:r.proposal_title||r.estimate_title||'—',_total:r.total||r.estimate_total||'—'}))},
+  // Taxes — the tax rates applied on invoices/quotes (Settings → Tax).
+  // Confirmed live: DELETE /api/invoice_estimate/tax/{uid} → 200.
+  // The LIST path was never captured, so this uses the no-page fetch with the
+  // delete resource as the first candidate and the usual spelling variants after
+  // it — that branch already treats a bad path (which surfaces in the browser as
+  // a CORS-preflight failure, not a clean 404) as "try the next candidate".
+  tax:{label:'Taxes',uid:['tax_uid','uid','_id'],del:'invoice_estimate/tax',
+    endpoint:'invoice_estimate/tax',altEndpoints:['invoice_estimate/taxes','invoice_estimate/tax/all','settings/tax'],
+    noPageLimit:true,readPaths:['invoice_estimate/tax'],dryRunFromList:true,
+    cols:[{h:'Name',f:'_tax_name'},{h:'Rate',f:'_tax_rate'},{h:'Type',f:'_tax_type'},{h:'Default',f:'_tax_default'},{h:'Active',f:'_tax_active'},{h:'Created',f:'created_at'}],
+    transform:(recs)=>recs.map(r=>({...r,
+      _tax_name:r.tax_name||r.name||r.tax_title||'—',
+      _tax_rate:_taxRate(r),
+      _tax_type:r.tax_type||r.type||'—',
+      _tax_default:r.is_default===true?'Yes':r.is_default===false?'No':'—',
+      _tax_active:r.is_active===false?'No':r.is_active===true?'Yes':'—'}))},
   user:{label:'Users',uid:['user_uid','uid','_id'],del:'user',endpoint:'user/all',dryRunSkipGet:true,delUrl:(uid)=>'user/'+encodeURIComponent(uid)+'/delete',cols:[{h:'Name',f:'_name'},{h:'Email',f:'email'},{h:'Role',f:'_role_name'},{h:'Status',f:'_status'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_name:[r.first_name,r.last_name].filter(Boolean).join(' ')||'—',_role_name:(r.role&&r.role.role_name)||'—',_status:r.is_active===false?'Inactive':'Active'}))},
   team:{label:'Teams',uid:['team_uid','uid','_id'],del:'team',dryRunSkipGet:true,cols:[{h:'Name',f:'team_name'},{h:'Members',f:'_member_count'},{h:'Active',f:'_active'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_member_count:(r.users||[]).length,_active:r.is_active===false?'No':'Yes'}))},
   workflow:{label:'Workflows',uid:['workflow_uid','uid','_id'],del:'workflows',dryRunSkipGet:true,endpoint:'workflows',customBaseUrl:'_workflowBaseUrl',paginationParam:'limit',fetchParams:'sort=ASC&sort_by=created_at',cols:[{h:'Name',f:'workflow_name'},{h:'Trigger Module',f:'trigger_module'},{h:'Trigger Event',f:'trigger_event_name'},{h:'Access',f:'workflow_access'},{h:'Active',f:'allow_workflow_to_trigger'},{h:'Created',f:'created_at'}]},
@@ -1797,6 +1825,7 @@ const MIGRATE_MODULES={
   recurring_jobs:{supported:false, reason:'Recurring Jobs reference customers, properties and assigned technicians that cannot be automatically mapped across accounts.'},
   invoice:    {supported:false, reason:'Invoices depend on related Jobs and customer records that may not exist in the destination account.'},
   estimate:   {supported:false, reason:'Quotes/Estimates reference Jobs and customers that may not exist in the destination account.'},
+  tax:        {supported:false, reason:'Tax rates are account settings — recreate them in the destination under Settings → Tax.'},
   purchase_orders:{supported:false, reason:'Purchase Orders reference vendors and inventory records that require manual mapping.'},
   material_requests:{supported:false, reason:'Material Orders reference jobs and inventory that require manual mapping.'},
   property:   {supported:false, reason:'Properties are linked to customers — migrate customers first, then re-link properties manually.'},
