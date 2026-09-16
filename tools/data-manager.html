@@ -646,6 +646,17 @@ input[type=checkbox]{accent-color:var(--primary)}
       <div class="rs rs-r"><div class="rs-val" id="dd-dupes">0</div><div class="rs-lbl">Duplicate Groups</div></div>
       <div class="rs rs-r"><div class="rs-val" id="dd-affected">0</div><div class="rs-lbl">Affected Records</div></div>
     </div>
+    <!-- Selection tools. These tick the SAME selUids set the main table uses, so the
+         existing delete pipeline (dry run, confirmations, undo buffer) applies here
+         unchanged and the two tables can never disagree about what is selected. -->
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-o" style="font-size:.76rem;padding:6px 11px" onclick="dedupSelectAllButFirst()" title="In every group, tick rows #2 and below and leave #1 — the copy to keep. This is the usual de-duplication.">☑ Select all but #1 in each group</button>
+      <button class="btn btn-o" style="font-size:.76rem;padding:6px 11px" onclick="dedupSelectAll()" title="Tick every row in every group — including the copy you would normally keep">☑ Select every duplicate</button>
+      <button class="btn btn-o" style="font-size:.76rem;padding:6px 11px" onclick="dedupClearSelection()">✕ Clear selection</button>
+      <span style="flex:1"></span>
+      <span id="dedup-sel-note" style="font-size:.72rem;color:var(--text-sub)"></span>
+      <button class="btn btn-d" id="dedup-del-btn" style="font-size:.78rem;padding:6px 12px" onclick="dedupDeleteSelected()">🗑 Delete Selected</button>
+    </div>
     <div class="tbl-wrap">
       <table style="width:100%;border-collapse:collapse;font-size:.81rem" id="dedup-table">
         <thead id="dedup-thead"></thead>
@@ -1968,6 +1979,9 @@ async function doConnect(){
 async function doFetch(){
   if(!apiKey()){showMsg('conn-msg','✗ API key missing.','err');return;}
   const cfg=modCfg(),btn=$('fetch-btn');
+  // A refetch replaces the records the last scan grouped, so its groups (and the
+  // panel's delete count, which is derived from them) are stale from here on.
+  hideDedupPanel();
 
   // Resolve base URL — workflow module uses its own service URL
   let fetchBase=baseUrl();
@@ -2658,6 +2672,8 @@ function updSel(){
   if(migBtn&&migBtn.style.display!=='none') migBtn.textContent='🚀 Migrate Selected'+(n>0?' ('+n+')':'');
   const cfg=modCfg();
   if(n>0&&cfg){const warn=$('del-warn');if(warn) warn.textContent='⚠ '+n+' '+cfg.label+' record(s) selected. '+($('dryrun').checked?'Dry Run ON — nothing will be deleted.':'⚠ LIVE MODE — records will be permanently deleted!');}
+  // Ticking a row in the main table must move the duplicate panel's count too.
+  try{ if(dedupGroups.length) updDedupSel(); }catch(e){}
 }
 function doExport(f){
   if(!allRecs.length){alert('No records to export.');return;}
@@ -5904,6 +5920,8 @@ function downloadMigLog(){
 
 // ── DUPLICATE DETECTION ──────────────────────────────────────────────────────
 let dedupData=[];
+let dedupGroups=[];   // [[groupValue, records], …] — kept so the panel can re-render
+                      // its checkboxes without re-running the scan
 
 function buildDedupFieldOptions(cfg){
   const sel=$('dedup-field');
@@ -5931,6 +5949,9 @@ function hideDedupPanel(){
   const el=$('dedup-card');
   if(el) el.style.display='none';
   dedupData=[];
+  dedupGroups=[];
+  // The selection is intentionally NOT cleared: closing the panel after ticking
+  // rows and then deleting from the main table is a normal way to work.
 }
 
 function runDedup(){
@@ -5952,6 +5973,7 @@ function runDedup(){
   $('dd-affected').textContent=dedupData.length;
 
   if(!dupeGroups.length){
+    dedupGroups=[];
     const msgEl=$('dedup-msg');
     msgEl.className='msg msg-ok';
     msgEl.textContent='✓ No duplicates found for field "'+field+'" across '+allRecs.length+' records.';
@@ -5966,26 +5988,127 @@ function runDedup(){
   msgEl.textContent='⚠ Found '+dupeGroups.length+' duplicate group(s) — '+dedupData.length+' affected records — based on "'+field+'".';
   msgEl.style.display='block';
 
-  const cfg=modCfg();
-  const colHeaders=['Group Value','Count',...cfg.cols.map(c=>c.h),'UID'];
+  dedupGroups=dupeGroups;
+  renderDedupTable();
+
+  $('dedup-results').style.display='block';
+  $('dedup-export-btn').style.display='inline-flex';
+}
+
+// Rows carry a "#" so "all but #1" means exactly what the table shows. Within a
+// group the oldest copy is put at #1 when every record has a usable created_at,
+// because the newer duplicates are the ones you normally remove; when the dates
+// are missing or unparseable the fetch order is kept rather than invented.
+function orderDedupGroup(recs){
+  const stamped=recs.map(r=>{
+    const raw=r.created_at||r.createdAt||r.date_created||'';
+    const t=raw?Date.parse(raw):NaN;
+    return{r,t};
+  });
+  if(stamped.some(s=>isNaN(s.t))) return recs.slice();
+  return stamped.sort((a,b)=>a.t-b.t).map(s=>s.r);
+}
+
+function renderDedupTable(){
+  const cfg=modCfg();if(!cfg) return;
+  const colHeaders=['','Group Value','Count','#',...cfg.cols.map(c=>c.h),'UID'];
   $('dedup-thead').innerHTML='<tr style="background:var(--th-bg)">'+colHeaders.map(h=>'<th style="padding:7px 10px;font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--border);font-weight:800;color:var(--text);white-space:nowrap">'+esc(h)+'</th>').join('')+'</tr>';
 
   const colors=['#fff7ed','#fef3c7','#f0fdf4','#eff6ff','#fdf4ff'];
   let colorIdx=0;
-  $('dedup-tbody').innerHTML=dupeGroups.map(([val,recs])=>{
+  $('dedup-tbody').innerHTML=dedupGroups.map(([val,recsRaw])=>{
+    const recs=orderDedupGroup(recsRaw);
     const bg=colors[colorIdx++%colors.length];
-    const darkBg=document.documentElement.getAttribute('data-theme')==='dark';
     return recs.map((r,i)=>{
       const uid=String(r[uidField]||'');
+      const sel=selUids.has(uid);
+      const chk=`<td style="padding:7px 10px;text-align:center"><input type="checkbox" data-dedup-uid="${esc(uid)}" ${sel?'checked':''} onchange="toggleDedupRow('${esc(uid)}',this.checked)"></td>`;
       const groupCell=i===0?`<td style="padding:7px 10px;font-weight:700;font-size:.78rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" rowspan="${recs.length}">${esc(val)}</td><td style="padding:7px 10px;text-align:center;font-weight:700;color:var(--primary)" rowspan="${recs.length}">${recs.length}</td>`:'';
-      return`<tr style="border-bottom:0.5px solid var(--border);background:${bg}">${groupCell}`+
+      const rank=i===0
+        ? `<td style="padding:7px 10px;text-align:center;font-size:.7rem;font-weight:800;color:#1E854B" title="First copy — left alone by &quot;Select all but #1&quot;">1</td>`
+        : `<td style="padding:7px 10px;text-align:center;font-size:.72rem;color:var(--text-sub)">${i+1}</td>`;
+      return`<tr style="border-bottom:0.5px solid var(--border);background:${bg};color:#191919">${chk}${groupCell}${rank}`+
         cfg.cols.map(c=>`<td style="padding:7px 10px;font-size:.79rem">${esc(fmt(getF(r,c.f)))}</td>`).join('')+
-        `<td style="padding:7px 10px;font-family:monospace;font-size:.7rem;color:var(--text-sub)">${esc(uid)}</td></tr>`;
+        `<td style="padding:7px 10px;font-family:monospace;font-size:.7rem;color:#666">${esc(uid)}</td></tr>`;
     }).join('');
   }).join('');
+  updDedupSel();
+}
 
-  $('dedup-results').style.display='block';
-  $('dedup-export-btn').style.display='inline-flex';
+// ── Duplicate-panel selection ────────────────────────────────────────────────
+// Everything here writes to the shared selUids set, so the main table, the
+// selection stat and the delete pipeline all stay in step with this panel.
+function _dedupUids(){
+  const out=[];
+  for(const [,recs] of dedupGroups) for(const r of recs){const u=String(r[uidField]||'');if(u) out.push(u);}
+  return out;
+}
+
+function toggleDedupRow(uid,checked){
+  if(checked) selUids.add(uid); else selUids.delete(uid);
+  _selectAllMode=false;hideSellAllBanner();
+  syncSelectionUi();
+}
+
+function dedupSelectAllButFirst(){
+  for(const [,recsRaw] of dedupGroups){
+    orderDedupGroup(recsRaw).forEach((r,i)=>{
+      const u=String(r[uidField]||'');
+      if(!u) return;
+      if(i===0) selUids.delete(u); else selUids.add(u);
+    });
+  }
+  _selectAllMode=false;hideSellAllBanner();
+  syncSelectionUi();
+}
+
+function dedupSelectAll(){
+  _dedupUids().forEach(u=>selUids.add(u));
+  _selectAllMode=false;hideSellAllBanner();
+  syncSelectionUi();
+}
+
+function dedupClearSelection(){
+  _dedupUids().forEach(u=>selUids.delete(u));
+  _selectAllMode=false;hideSellAllBanner();
+  syncSelectionUi();
+}
+
+// Repaint every surface that shows the selection, without re-running the scan.
+function syncSelectionUi(){
+  document.querySelectorAll('#dedup-tbody input[data-dedup-uid]').forEach(cb=>{
+    cb.checked=selUids.has(cb.getAttribute('data-dedup-uid'));
+  });
+  try{ if(filtRecs.length) renderRows(); }catch(e){}
+  updSel();
+  updDedupSel();
+}
+
+function updDedupSel(){
+  const btn=$('dedup-del-btn');
+  const note=$('dedup-sel-note');
+  const dupUids=new Set(_dedupUids());
+  let inPanel=0;
+  for(const u of selUids) if(dupUids.has(u)) inPanel++;
+  if(btn){
+    btn.textContent='🗑 Delete Selected'+(inPanel?' ('+inPanel+')':'');
+    btn.disabled=!inPanel;
+    btn.style.opacity=inPanel?'1':'.5';
+    btn.style.cursor=inPanel?'pointer':'not-allowed';
+  }
+  if(note){
+    const other=selUids.size-inPanel;
+    note.textContent=!inPanel?'Nothing selected here.'
+      :inPanel+' duplicate row(s) selected'+(other?' — plus '+other+' selected elsewhere, which will also be deleted':'');
+    note.style.color=other?'var(--amber-d)':'var(--text-sub)';
+  }
+}
+
+function dedupDeleteSelected(){
+  if(!selUids.size){alert('Tick at least one duplicate row first.');return;}
+  // Deliberately the same panel the main table uses: Dry Run stays ticked by
+  // default and the confirmation still spells out the module and the count.
+  showDelete();
 }
 
 function exportDuplicates(){
