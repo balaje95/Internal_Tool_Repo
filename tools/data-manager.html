@@ -591,6 +591,18 @@ input[type=checkbox]{accent-color:var(--primary)}
     <input type="date" id="df-to" class="inp" style="width:155px;font-size:.82rem;padding:6px 10px" onchange="applyFilters()" title="To date (inclusive)">
     <button class="btn btn-o" style="font-size:.74rem;padding:5px 10px" onclick="clearDateFilter()">✕ Clear dates</button>
   </div>
+  <!-- CPQ usage filter — Parts & Services only. Populated by annotateProductCpqUsage(). -->
+  <div id="cpq-filter-row" style="display:none;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+    <span style="font-size:.74rem;font-weight:600;color:var(--lbl)">CPQ:</span>
+    <select id="cpq-filter" class="inp" style="width:200px;font-size:.82rem;padding:6px 10px" onchange="applyFilters()" title="Filter by whether a proposal template or service package references this part/service">
+      <option value="">All parts &amp; services</option>
+      <option value="in">✓ Used in CPQ</option>
+      <option value="out">Not used in CPQ</option>
+    </select>
+    <button class="btn btn-o" style="font-size:.74rem;padding:5px 10px" onclick="selAll(true)" title="Tick every row currently shown — filter to &quot;Used in CPQ&quot; first to select just those">☑ Select shown</button>
+    <button class="btn btn-o" style="font-size:.74rem;padding:5px 10px" onclick="rescanCpqUsage()" title="Re-read proposal templates and service packages">↻ Rescan</button>
+    <span id="cpq-filter-note" style="font-size:.7rem;color:var(--text-sub)"></span>
+  </div>
   <div id="recipe-row" style="display:none;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
     <span style="font-size:.74rem;font-weight:600;color:var(--lbl)">Recipes:</span>
     <select id="recipe-select" class="inp" style="width:200px;font-size:.82rem;padding:6px 10px"><option value="">— saved recipes —</option></select>
@@ -1563,7 +1575,7 @@ const MODULES={
   property:{label:'Properties',uid:['property_uid','uid','_id'],del:'property',preDelete:deactivatePropertyBeforeDelete,cols:[{h:'Name',f:'property_name'},{h:'Address',f:'property_address'},{h:'City',f:'city'},{h:'Status',f:'property_status'},{h:'Created',f:'created_at'}]},
   organization:{label:'Organizations',uid:['organization_uid','uid','_id'],del:'organization',cols:[{h:'Name',f:'organization_name'},{h:'Email',f:'organization_email'},{h:'Active',f:'is_active'},{h:'Created',f:'created_at'}]},
   assets:{label:'Assets',uid:['asset_uid','uid','_id'],del:'assets',cols:[{h:'Name',f:'asset_name'},{h:'Serial #',f:'serial_number'},{h:'Type',f:'asset_type'},{h:'Status',f:'asset_status'},{h:'Created',f:'created_at'}]},
-  product:{label:'Parts & Services',uid:['product_uid','uid','_id'],del:'product',dryRunSkipGet:true,fetchMethod:'POST',endpoint:'product/filter',fetchBody:(page,count)=>({page,count}),cols:[{h:'Name',f:'product_name'},{h:'Type',f:'product_type'},{h:'Category',f:'_cat_name'},{h:'Price',f:'price'},{h:'Formula',f:'_formula_name'},{h:'Trade Types',f:'_bu_names'},{h:'Vendors',f:'_vendors'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_cat_name:(r.product_category?.category_name||r.product_category||'—'),_formula_name:(r.formula?.formula_name||'—'),_bu_names:(r.business_unit||[]).map(b=>b.bu_name||b.name||'').filter(Boolean).join(', ')||'—',_vendors:'…'}))},
+  product:{label:'Parts & Services',uid:['product_uid','uid','_id'],del:'product',dryRunSkipGet:true,fetchMethod:'POST',endpoint:'product/filter',fetchBody:(page,count)=>({page,count}),cols:[{h:'Name',f:'product_name'},{h:'Type',f:'product_type'},{h:'In CPQ',f:'_cpq'},{h:'Category',f:'_cat_name'},{h:'Price',f:'price'},{h:'Formula',f:'_formula_name'},{h:'Trade Types',f:'_bu_names'},{h:'Vendors',f:'_vendors'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_cat_name:(r.product_category?.category_name||r.product_category||'—'),_formula_name:(r.formula?.formula_name||'—'),_bu_names:(r.business_unit||[]).map(b=>b.bu_name||b.name||'').filter(Boolean).join(', ')||'—',_vendors:'…',_cpq:'…',_cpqUsed:false,_cpqRefs:[]}))},
   vendor:{label:'Vendors',uid:['vendor_uid','uid','_id'],del:'vendors',dryRunSkipGet:true,fetchMethod:'POST',endpoint:'vendors/filter',fetchBody:(page,count)=>({page,limit:count,filter_rules:[]}),cols:[{h:'Name',f:'_vname'},{h:'Email',f:'vendor_email'},{h:'Phone',f:'vendor_phone'},{h:'Contact',f:'_contact'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_vname:(r.vendor_name||r.vendor_display_name||[r.vendor_first_name,r.vendor_last_name].filter(Boolean).join(' ')||r.company_name||'—'),_contact:([r.vendor_first_name,r.vendor_last_name].filter(Boolean).join(' ')||'—')}))},
   // readPaths: candidates for GET-by-UID, tried in order. The delete resource is
   // 'job' (singular) but GET job/{uid} 404s, so the read path is not simply the
@@ -2144,14 +2156,218 @@ async function doFetch(){
     showMsg('fetch-msg','✓ Loaded '+allRecs.length+' record(s). UID field: "'+uidField+'".'+(_dupCount?' ('+_dupCount+' duplicate row(s) from repeated API pages removed.)':''),'ok');
     $('s-total').textContent=allRecs.length;$('s-module').textContent=cfg.label;
     filtRecs=[...allRecs];renderTable();
-    // Parts & Services: fill the "Vendors" column from vendor_catalogs (non-blocking).
-    if(modKey()==='product') annotateProductVendors().catch(err=>console.warn('[ZDM] vendor annotate failed',err));
+    // Parts & Services: fill the "In CPQ" and "Vendors" columns (non-blocking).
+    if(modKey()==='product') annotateProductColumns().catch(err=>console.warn('[ZDM] product annotate failed',err));
   }catch(e){
     console.error('[ZDM] Fetch error:',e);
     showMsg('fetch-msg','✗ '+e.message,'err');
     $('tbody').innerHTML='<tr><td colspan="10" style="padding:36px;text-align:center;color:var(--red-d)">'+esc(e.message)+'</td></tr>';
   }
   finally{btn.textContent='📄 Fetch Records';btn.disabled=false;btn.classList.remove('fetching');}
+}
+
+// ── Parts & Services "In CPQ" column ─────────────────────────────────────────
+//
+// A part/service counts as used in CPQ when a CPQ artefact references its
+// product_uid. Two sources, both of them shapes the migrators in this file
+// already rely on:
+//
+//   • Proposal templates — GET invoice_estimate/proposal_template for the list,
+//     then ONE detail call each. The detail is required: the list response does
+//     not reliably carry line items, and that is also why
+//     migrateProposalTemplateRecord re-fetches by uid before reading options.
+//     detail → proposal_options[].line_items[] → line_item.product, plus
+//     associated_products[].product on BUNDLE items (a bundle's own product uid
+//     counts too — it is a real Parts & Services record).
+//   • Service packages — GET invoice_estimate/package?count=1000. Their
+//     line_items[] carry product_uid inline, so no detail call is needed.
+//
+// **Only a positive is ever asserted.** If any source fails, is capped, or a
+// template detail cannot be read, unmatched rows show "?" rather than "—". The
+// whole point of the column is to decide what is safe to bulk-delete, and
+// "not used in CPQ" on a part that quietly is used would be the one wrong
+// answer that costs real data. A "?" costs a second look.
+let _cpqScan={state:'idle',summary:'',used:0,trusted:false};
+
+const _prodUidOf=(p)=>(p&&typeof p==='object')?(p.product_uid||p.uid||p._id||''):(p||'');
+
+async function _fetchAllProposalTemplates(){
+  const out=[];let page=1;const count=100;
+  while(page<=50){
+    const r=await fetch(baseUrl()+'invoice_estimate/proposal_template?filter.keyword=&page='+page+'&count='+count,{headers:getHdrs()});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d=await r.json().catch(()=>({}));
+    const recs=Array.isArray(d)?d:(d.data||[]);
+    if(!recs.length) break;
+    out.push(...recs);
+    if(recs.length<count) break;
+    page++;
+  }
+  return out;
+}
+
+async function _fetchAllCpqPackages(){
+  const r=await fetch(baseUrl()+'invoice_estimate/package?count=1000',{headers:getHdrs()});
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const d=await r.json().catch(()=>({}));
+  return Array.isArray(d)?d:(d.data||[]);
+}
+
+// Walk one template detail, calling add(product_uid, label) for every reference.
+function _collectTemplateProductRefs(tpl,add){
+  const label='Template: '+(tpl.template_name||tpl.proposal_template_name||tpl.name||'untitled');
+  for(const opt of (tpl.proposal_options||tpl.options||tpl.template_options||[])){
+    for(const it of (opt.line_items||opt.items||opt.proposal_line_items||[])){
+      if(it.line_item_type==='HEADER'||it.type==='HEADER') continue;
+      const pu=_prodUidOf(it.product)||it.product_uid||'';
+      if(pu) add(pu,label);
+      for(const ap of (it.associated_products||[])){
+        const au=_prodUidOf(ap.product)||ap.product_uid||'';
+        if(au) add(au,label);
+      }
+    }
+  }
+}
+
+async function annotateProductCpqUsage(){
+  const recs=allRecs;
+  if(!recs||!recs.length||modKey()!=='product') return;
+
+  _cpqScan={state:'loading',summary:'',used:0,trusted:false};
+  recs.forEach(r=>{r._cpq='…';});
+  renderRows();
+
+  const usage={};   // product_uid -> Set(source label)
+  const add=(uid,label)=>{(usage[uid]=usage[uid]||new Set()).add(label);};
+  const failed=[];
+
+  showMsg('fetch-msg','Checking CPQ usage… (reading proposal templates)','info');
+  let templates=[];
+  try{templates=await _fetchAllProposalTemplates();}
+  catch(e){failed.push('proposal templates ('+e.message+')');}
+
+  let packages=[];
+  try{packages=await _fetchAllCpqPackages();}
+  catch(e){failed.push('service packages ('+e.message+')');}
+
+  // Nothing readable at all — say so and assert nothing.
+  if(failed.length===2){
+    recs.forEach(r=>{r._cpq='?';r._cpqUsed=false;r._cpqRefs=[];});
+    _cpqScan={state:'error',summary:'CPQ usage could not be checked — '+failed.join('; '),used:0,trusted:false};
+    renderRows();syncCpqFilterRow();
+    showMsg('fetch-msg','⚠ '+_cpqScan.summary+'. The In CPQ column shows "?" — nothing has been marked unused.','warn');
+    return;
+  }
+
+  for(const pkg of packages){
+    const label='Package: '+(pkg.package_name||pkg.name||'untitled');
+    for(const li of (pkg.line_items||[])){
+      const pu=li.product_uid||_prodUidOf(li.product);
+      if(pu) add(pu,label);
+    }
+  }
+
+  const TPL_CAP=400;
+  const tplList=templates.slice(0,TPL_CAP);
+  const tplCapped=templates.length>TPL_CAP;
+  let done=0,idx=0,tplFail=0;const CONC=5;
+  async function worker(){
+    while(idx<tplList.length){
+      const t=tplList[idx++];
+      const tu=t.proposal_template_uid||t.template_uid||t.uid||'';
+      if(tu){
+        try{
+          const r=await fetch(baseUrl()+'invoice_estimate/proposal_template/'+encodeURIComponent(tu),{headers:getHdrs()});
+          if(r.ok){const d=await r.json().catch(()=>({}));_collectTemplateProductRefs(d?.data||d||t,add);}
+          else tplFail++;
+        }catch(e){tplFail++;}
+      }else tplFail++;
+      done++;
+      if(done%3===0||done===tplList.length) showMsg('fetch-msg','Checking CPQ usage… ('+done+'/'+tplList.length+' templates)','info');
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(CONC,tplList.length)},worker));
+
+  // Trusted only when every source was read in full. Anything less and a blank
+  // row means "not found in what we could read", which is not the same claim.
+  const trusted=!failed.length&&!tplFail&&!tplCapped;
+  recs.forEach(r=>{
+    const s=usage[r.product_uid];
+    r._cpqRefs=s?[...s].sort():[];
+    r._cpqUsed=!!(s&&s.size);
+    r._cpq=r._cpqUsed?('✓ '+s.size):(trusted?'—':'?');
+  });
+
+  const used=recs.filter(r=>r._cpqUsed).length;
+  const caveats=[];
+  if(failed.length) caveats.push('could not read '+failed.join('; '));
+  if(tplFail) caveats.push(tplFail+' template(s) unreadable');
+  if(tplCapped) caveats.push('capped at the first '+TPL_CAP+' of '+templates.length+' templates');
+  _cpqScan={
+    state:trusted?'ok':'partial',
+    used:used,
+    trusted:trusted,
+    summary:used+' of '+recs.length+' used in CPQ ('+tplList.length+' template(s), '+packages.length+' package(s) scanned)'+
+            (caveats.length?' — '+caveats.join('; ')+'; unmatched rows show "?" rather than "not used"':''),
+  };
+  applyFilters();
+  syncCpqFilterRow();
+}
+
+// Show/hide the CPQ filter row and keep its note honest about what a blank means.
+function syncCpqFilterRow(){
+  const row=$('cpq-filter-row');if(!row) return;
+  const on=modKey()==='product';
+  row.style.display=on?'flex':'none';
+  if(!on) return;
+  const sel=$('cpq-filter');
+  const note=$('cpq-filter-note');
+  const scanning=_cpqScan.state==='loading'||_cpqScan.state==='idle';
+  if(sel){
+    // A failed scan must not let anyone filter to "Not used in CPQ" and act on it.
+    sel.disabled=scanning||_cpqScan.state==='error';
+    if(sel.disabled&&sel.value){sel.value='';}
+    sel.title=_cpqScan.state==='error'
+      ? 'CPQ usage could not be checked, so there is nothing to filter on.'
+      : 'Filter by whether a proposal template or service package references this part/service';
+  }
+  if(note){
+    note.textContent=
+      _cpqScan.state==='loading'?'scanning…':
+      _cpqScan.state==='idle'?'':
+      _cpqScan.state==='error'?'⚠ scan failed — column shows "?"':
+      _cpqScan.state==='partial'?'⚠ '+_cpqScan.used+' found — scan incomplete, "?" means unknown':
+      '✓ '+_cpqScan.used+' used in CPQ';
+  }
+}
+
+async function rescanCpqUsage(){
+  if(modKey()!=='product'){alert('CPQ usage applies to the Parts & Services module.');return;}
+  if(!allRecs.length){alert('Fetch Parts & Services records first.');return;}
+  await annotateProductCpqUsage().catch(e=>{
+    console.warn('[ZDM] cpq rescan failed',e);
+    showMsg('fetch-msg','⚠ CPQ rescan failed: '+e.message,'warn');
+  });
+  if(_cpqScan.state==='ok'||_cpqScan.state==='partial') showMsg('fetch-msg','✓ '+_cpqScan.summary,_cpqScan.trusted?'ok':'warn');
+}
+
+// Green pill for a hit, grey dash for a clean miss, amber "?" when the scan
+// could not prove a miss. Rendered as HTML because the plain-text cell path
+// cannot carry the distinction.
+function cpqPill(r){
+  const v=r._cpq||'…';
+  if(v==='…') return '<span style="color:var(--text-sub)">…</span>';
+  if(v==='?') return '<span title="CPQ usage could not be confirmed for this part — this is NOT a claim that it is unused" style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:.7rem;font-weight:700;background:var(--rs-r-bg);color:var(--amber-d);border:1px solid var(--rs-r-border)">?</span>';
+  if(!r._cpqUsed) return '<span style="color:var(--text-sub)" title="No proposal template or service package references this part">—</span>';
+  const refs=(r._cpqRefs||[]);
+  return '<span title="'+esc(refs.join('\n'))+'" style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:.7rem;font-weight:700;background:var(--rs-g-bg);color:var(--green-d);border:1px solid var(--rs-g-border)">✓ '+refs.length+'</span>';
+}
+
+// Both Parts & Services annotators, in sequence. Running them concurrently made
+// them fight over the fetch-msg line and each other's renderTable().
+async function annotateProductColumns(){
+  try{await annotateProductCpqUsage();}catch(e){console.warn('[ZDM] cpq usage annotate failed',e);}
+  try{await annotateProductVendors();}catch(e){console.warn('[ZDM] vendor annotate failed',e);}
 }
 
 // ── Parts & Services "Vendors" column: map product_uid → vendor names ─────────
@@ -2209,7 +2425,10 @@ async function annotateProductVendors(){
   recs.forEach(r=>{const s=map[r.product_uid];r._vendors=(s&&s.size)?[...s].sort().join(', '):'—';});
   renderTable();
   const mapped=recs.filter(r=>r._vendors&&r._vendors!=='—').length;
-  showMsg('fetch-msg','✓ Loaded '+recs.length+' product(s). '+mapped+' mapped to a vendor'+(capped?(' (checked first '+CAP+' of '+vendors.length+' vendors — some mappings may be missing)'):'')+'.','ok');
+  // The CPQ scan runs first and its summary would otherwise be overwritten here,
+  // so it is carried into the final line rather than lost.
+  const cpqTail=_cpqScan.summary?' CPQ: '+_cpqScan.summary+'.':'';
+  showMsg('fetch-msg','✓ Loaded '+recs.length+' product(s). '+mapped+' mapped to a vendor'+(capped?(' (checked first '+CAP+' of '+vendors.length+' vendors — some mappings may be missing)'):'')+'.'+cpqTail,(_cpqScan.state==='error'||_cpqScan.state==='partial')?'warn':'ok');
 }
 
 // Derive the workflow service URL from a DC API URL
@@ -2339,6 +2558,7 @@ function renderTable(){
   const ttMapBtn=$('tt-map-btn');if(ttMapBtn) ttMapBtn.style.display=(modKey()==='product')?'inline-flex':'none';
   const tplImpBtn=$('tpl-import-btn');if(tplImpBtn) tplImpBtn.style.display=(modKey()==='proposal_template')?'inline-flex':'none';
   const dfRow=$('date-filter-row');if(dfRow) dfRow.style.display='flex';
+  syncCpqFilterRow();
   buildDedupFieldOptions(cfg);
   renderRows();
   $('rec-count').textContent=filtRecs.length+' of '+allRecs.length+' records';
@@ -2378,7 +2598,7 @@ function renderRows(){
   $('tbody').innerHTML=pageRecs().map(r=>{
     const uid=String(r[uidField]||''),sel=selUids.has(uid);
     const chkCell=noDelete?'':'<td><input type="checkbox" '+(sel?'checked':'')+' onchange="toggleRow(\''+esc(uid)+'\',this.checked,this.closest(\'tr\'))"></td>';
-    return'<tr class="'+(sel?'row-sel':'')+'" data-uid="'+esc(uid)+'" ondblclick="openDrawer(allRecs.find(r=>String(r[uidField]||\'\')===this.dataset.uid))" style="cursor:pointer">'+chkCell+'<td class="uid-cell" title="'+esc(uid)+'">'+esc(uid)+'</td>'+vcols.map(c=>'<td>'+esc(fmt(getF(r,c.f)))+'</td>').join('')+'</tr>';
+    return'<tr class="'+(sel?'row-sel':'')+'" data-uid="'+esc(uid)+'" ondblclick="openDrawer(allRecs.find(r=>String(r[uidField]||\'\')===this.dataset.uid))" style="cursor:pointer">'+chkCell+'<td class="uid-cell" title="'+esc(uid)+'">'+esc(uid)+'</td>'+vcols.map(c=>'<td>'+(c.f==='_cpq'?cpqPill(r):esc(fmt(getF(r,c.f))))+'</td>').join('')+'</tr>';
   }).join('')||'<tr><td colspan="10" style="padding:28px;text-align:center;color:#aaa">No matching records.</td></tr>';
 }
 function toggleRow(uid,checked,row){
@@ -6860,7 +7080,12 @@ function applyFilters(){
   }
   const fromVal=$('df-from')?$('df-from').value:'';
   const toVal=$('df-to')?$('df-to').value:'';
+  const cpqVal=(modKey()==='product'&&$('cpq-filter'))?$('cpq-filter').value:'';
   filtRecs=allRecs.filter(r=>{
+    if(cpqVal){
+      if(cpqVal==='in'&&!r._cpqUsed) return false;
+      if(cpqVal==='out'&&r._cpqUsed) return false;
+    }
     if(q){
       const matchQ=String(r[uidField]||'').toLowerCase().includes(q)||
         cfg.cols.some(c=>{const v=getF(r,c.f);return v&&String(v).toLowerCase().includes(q);});
@@ -9256,6 +9481,10 @@ function onModuleChange(){
   const ttCardH=$('tt-card');if(ttCardH) ttCardH.style.display='none';
   const tplImpBtn2=$('tpl-import-btn');if(tplImpBtn2) tplImpBtn2.style.display=(modKey()==='proposal_template'&&!!_baseUrl)?'inline-flex':'none';
   const dfRow=$('date-filter-row');if(dfRow) dfRow.style.display='none';
+  // Switching module invalidates the CPQ scan: its results are product_uids.
+  _cpqScan={state:'idle',summary:'',used:0,trusted:false};
+  const cpqFilterSel=$('cpq-filter');if(cpqFilterSel) cpqFilterSel.value='';
+  const cpqFilterRow=$('cpq-filter-row');if(cpqFilterRow) cpqFilterRow.style.display='none';
   if($('update-card')) $('update-card').style.display='none';
   clearUndoBuffer();
   // Import button only for product module
