@@ -294,6 +294,22 @@ const API_MODULES = {
     uid: ['measurement_category_uid', 'category_uid', 'uid', '_id'],
     fields: ['measurement_category_name'],
   },
+
+  // --------------------------------------------------------------------- CPQ
+  // The Intelligent Quote Builder is not a listing of one module. Every row is a
+  // quote LINE ITEM, and the id worth copying is the catalogue record behind it:
+  // a product, a service task, or a service package. So this key is a composite
+  // — three real modules fetched together, each record keeping its own uid key
+  // so the chip's tooltip can say which kind of record it found.
+  //
+  // Formulas and measurement categories are deliberately NOT in the set. Their
+  // names are printed in the row's own QUANTITY / FORMULA cell ("Shingles
+  // (squares)"), so they would compete with the product for the match and could
+  // win it — and a line item badged with a formula_uid is exactly the kind of
+  // confidently wrong id this whole feature is built to avoid.
+  cpq_line_item: {
+    composite: ['product', 'service_task', 'package'],
+  },
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -419,9 +435,14 @@ async function fetchPage(base, cfg, endpoint, apiKey, page) {
 // thousands of complete records in the worker.
 function compact(rec, cfg) {
   let uid = null;
+  // Which key the id came from is kept, not just the id. On a composite module
+  // the records arriving at a page are a mix of kinds, and `product_uid` vs
+  // `service_task_master_uid` in the chip tooltip is the only thing telling the
+  // two apart once they are both just a UUID.
+  let uidKey = '';
   for (const key of cfg.uid) {
     const v = rec[key];
-    if (typeof v === 'string' && UUID_RE.test(v)) { uid = v; break; }
+    if (typeof v === 'string' && UUID_RE.test(v)) { uid = v; uidKey = key; break; }
   }
   if (!uid) return null;
 
@@ -434,12 +455,63 @@ function compact(rec, cfg) {
     if (s.length < 3 || s.length > 80 || UUID_RE.test(s)) continue;
     if (fields.indexOf(s) < 0) fields.push(s);
   }
-  return fields.length ? { uid, fields } : null;
+  return fields.length ? { uid, fields, key: uidKey } : null;
+}
+
+// A composite module is several real modules matched against the same page, for
+// a screen whose rows are not records of any one module (the CPQ quote builder).
+//
+// Each part goes back through fetchModuleRecords, so it keeps its own cache entry
+// and is shared with the pages that list that module on its own. One failing part
+// does not sink the rest — if service tasks are out of scope for the key, the
+// product ids should still work — but if every part fails the first error is
+// rethrown unchanged, so "API key was not recognised" still reaches the pill as a
+// key problem rather than a generic failure.
+async function fetchComposite(cfg, apiKey) {
+  const parts = await Promise.all(cfg.composite.map(async (sub) => {
+    try {
+      return await fetchModuleRecords(sub, apiKey);
+    } catch (err) {
+      return { error: String((err && err.message) || err) };
+    }
+  }));
+
+  const records = [];
+  const seen = new Set();
+  let accountName = '';
+  let dcUrl = '';
+  let cached = true;
+  let truncated = false;
+  let fetchedAt = 0;
+  let ok = 0;
+
+  for (const part of parts) {
+    if (part.error) continue;
+    ok++;
+    accountName = accountName || part.accountName;
+    dcUrl = dcUrl || part.dcUrl;
+    if (!part.cached) cached = false;
+    if (part.truncated) truncated = true;
+    fetchedAt = Math.max(fetchedAt, part.fetchedAt || 0);
+    for (const rec of part.records) {
+      if (seen.has(rec.uid)) continue;
+      seen.add(rec.uid);
+      records.push(rec);
+    }
+  }
+
+  if (!ok) throw new Error(parts[0].error);
+
+  return {
+    records, accountName, dcUrl, cached, truncated,
+    fetchedAt: fetchedAt || Date.now(),
+  };
 }
 
 async function fetchModuleRecords(moduleKey, apiKey) {
   const cfg = API_MODULES[moduleKey];
   if (!cfg) throw new Error('No API mapping for "' + moduleKey + '".');
+  if (cfg.composite) return fetchComposite(cfg, apiKey);
 
   const { dcUrl, accountName } = await resolveDc(apiKey);
   const cacheKey = dcUrl + '|' + moduleKey;

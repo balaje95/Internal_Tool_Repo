@@ -134,9 +134,71 @@
     return found;
   }
 
+  // ------------------------------------------------------------- CPQ builder
+  //
+  // The Intelligent Quote Builder has to be recognised before any generic hint
+  // gets a look at the page, for two reasons. Its title contains the word
+  // "Quote", so ROUTE_HINTS reads it as an estimates listing and fetches
+  // estimates — records that can never match a line item, leaving every row
+  // bare. And its rows are not records of one module at all: each is a quote
+  // line item standing in for a product, a service task or a service package,
+  // which is what the cpq_line_item composite in background.js fetches.
+  const CPQ_URL_RE =
+    /quote[-_ ]?builder|intelligent[-_ ]?quote|proposal[-_ ]?builder|quote[-_ ]?item|\bcpq\b/;
+  const CPQ_TEXT_RE =
+    /\bquote\s+builder\b|\bintelligent\s+quote\b|\bquote\s+items\b|\boption\s+configuration\b/i;
+
+  // Memoised on a short timer rather than per URL. The builder is opened from a
+  // template listing and can be reached without the address bar changing at all,
+  // so a per-href cache would hold "not the builder" for the whole visit.
+  let cpqCache = { at: 0, is: false };
+  const CPQ_CACHE_MS = 1500;
+
+  function isCpqBuilder() {
+    const route = (location.pathname + ' ' + location.hash + ' ' + location.search).toLowerCase();
+    if (CPQ_URL_RE.test(route)) return true;
+    if (!document.body) return false;
+
+    const now = Date.now();
+    if (now - cpqCache.at < CPQ_CACHE_MS) return cpqCache.is;
+
+    let is = CPQ_TEXT_RE.test(document.title || '');
+    if (!is) {
+      // The builder's chrome ("Zuper Intelligent Quote Builder", "Quote Items",
+      // the step rail) sits in the top band of the page. The regex is tested
+      // before the rect is measured, because getBoundingClientRect on every
+      // short-text element forces layout and this runs while the user types.
+      const els = document.querySelectorAll('h1, h2, h3, h4, [role="heading"], span, div, p');
+      const cap = Math.min(els.length, 1500);
+      for (let i = 0; i < cap && !is; i++) {
+        const el = els[i];
+        if (el.children.length > 1) continue;
+        const t = (el.textContent || '').trim();
+        if (!t || t.length > 60) continue;
+        if (!CPQ_TEXT_RE.test(t)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width > 20 && r.top >= 0 && r.top < 400) is = true;
+      }
+    }
+    cpqCache = { at: now, is: is };
+    return is;
+  }
+
   function detectModule() {
+    if (isCpqBuilder()) return 'cpq_line_item';
     return detectModuleFromUrl() || detectModuleFromPage();
   }
+
+  // Composite modules read badly in the status line ("1240 cpq_line_item
+  // records"), so they get a plain-English name for anything the user sees.
+  const MODULE_LABELS = {
+    cpq_line_item: 'CPQ catalogue (products, service tasks, packages)',
+  };
+
+  function moduleLabel(mod) {
+    return MODULE_LABELS[mod] || mod;
+  }
+
   let enabled = true;
   let deepMode = true;   // observation currently active
   let deepPref = true;   // the user's setting, preserved across on/off cycles
@@ -252,28 +314,41 @@
     );
     if (ariaRows.length) add(ariaRows, 'aria');
 
-    // Repeated-sibling fallback for card/div listings — best group only.
-    let bestSiblings = null;
+    // Repeated-sibling fallback for card/div listings.
+    //
+    // The single best group is not enough on a page that repeats the same row
+    // component in more than one container: the CPQ quote builder splits its line
+    // items across a Material section, a Services section and Add-ons, and taking
+    // only the largest silently skipped every other section. So the runners-up are
+    // included too — but ONLY those whose child signature is identical to the best
+    // group's. That is what separates another block of the same list from a nav
+    // menu that merely happens to be a run of similar siblings, which is the thing
+    // the "best group only" rule was there to keep out.
+    const sigOf = (k) => k.tagName + '.' + (String(k.className || '').split(/\s+/)[0] || '');
+    const groups = [];
     const all = document.body ? document.body.querySelectorAll('*') : [];
     const cap = Math.min(all.length, MAX_SCAN_ELEMENTS);
     for (let i = 0; i < cap; i++) {
       const kids = all[i].children;
       if (kids.length < 3 || kids.length > 500) continue;
-      const sig = (k) => k.tagName + '.' + (String(k.className || '').split(/\s+/)[0] || '');
-      const first = sig(kids[0]);
+      const first = sigOf(kids[0]);
       let same = 0;
       let texty = 0;
       for (let k = 0; k < kids.length; k++) {
-        if (sig(kids[k]) === first) same++;
+        if (sigOf(kids[k]) === first) same++;
         if ((kids[k].textContent || '').trim().length > 15) texty++;
       }
       if (same / kids.length >= 0.8 && texty / kids.length >= 0.8) {
-        if (!bestSiblings || kids.length > bestSiblings.length) {
-          bestSiblings = Array.prototype.slice.call(kids);
-        }
+        groups.push({ sig: first, kids: Array.prototype.slice.call(kids) });
       }
     }
-    if (bestSiblings) add(bestSiblings, 'siblings');
+    if (groups.length) {
+      let best = groups[0];
+      for (const g of groups) if (g.kids.length > best.kids.length) best = g;
+      for (const g of groups) {
+        if (g === best || g.sig === best.sig) add(g.kids, 'siblings');
+      }
+    }
 
     return { rows: rows.slice(0, MAX_ROWS), kind: kinds.join(' ') || 'none' };
   }
@@ -387,6 +462,17 @@
 
   function scan() {
     if (!enabled || !document.body) return;
+
+    // A single-page app can swap the whole page — a proposal-template listing for
+    // the CPQ quote builder — without the URL changing, and checkRoute only fires
+    // on a URL change, so the module would otherwise stay whatever it was when the
+    // route last moved and the new page would be matched against the old module's
+    // records. loadApiRecords wipes and refetches when it sees the mismatch.
+    if (enabled && apiPref && !apiInFlight && apiModule) {
+      const nowMod = detectModule();
+      if (nowMod && nowMod !== apiModule) loadApiRecords(false);
+    }
+
     annotating = true;
     try {
       const found = findRows();
@@ -483,6 +569,7 @@
     if (location.href === lastHref) return;
     lastHref = location.href;
     pageModuleCache = { href: '', mod: null };
+    cpqCache = { at: 0, is: false };
     if (enabled) {
       loadApiRecords(false);   // wipes and refetches if the module changed
       queueScan();
@@ -632,8 +719,10 @@
       window.dispatchEvent(new CustomEvent('zuper-uid-status', {
         detail: {
           state: apiState,
+          // The label, not the key: this one goes straight into the pill's
+          // tooltip ("Fetching … records from Zuper").
+          module: apiModule ? moduleLabel(apiModule) : apiModule,
           message: apiMessage,
-          module: apiModule,
           apiCount: apiCount,
         },
       }));
@@ -697,7 +786,10 @@
     }
 
     for (const rec of res.records) {
-      indexRecord({ uid: rec.uid, key: apiModule, fields: rec.fields });
+      // A composite module returns a mix of kinds, so each record carries the uid
+      // key it was read from and that is what the chip reports. Falling back to
+      // the module name keeps the single-module case reading as it always has.
+      indexRecord({ uid: rec.uid, key: rec.key || apiModule, fields: rec.fields });
     }
     apiCount = res.records.length;
     apiState = 'ok';
@@ -705,7 +797,7 @@
     apiFetchedAt = res.fetchedAt || Date.now();
     apiAccount = res.account || '';
     apiTruncated = !!res.truncated;
-    apiMessage = apiCount + ' ' + apiModule + ' records from ' +
+    apiMessage = apiCount + ' ' + moduleLabel(apiModule) + ' records from ' +
       (res.account || 'the account') + (res.region ? ' (' + res.region + ')' : '') +
       (res.cached ? ', cached' : '') +
       (apiTruncated
@@ -776,6 +868,7 @@
     tokenIndex.clear();
     prefixIndex.clear();
     pageModuleCache = { href: '', mod: null };
+    cpqCache = { at: 0, is: false };
     apiState = 'idle';
     apiCount = 0;
     apiCached = false;

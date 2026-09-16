@@ -69,6 +69,15 @@ cannot restyle it and its own styles cannot leak out. Zuper is a single-page app
 re-renders that toolbar on navigation, so a debounced observer re-mounts it, guarding
 against duplicates.
 
+"Mounted" is not the same as "on screen", and treating them as the same once cost a whole
+page its Show UID control: navigating from a listing into a full-screen view (the CPQ quote
+builder) can leave the old toolbar in the DOM but hidden, taking the inline control with
+it — still `isConnected`, so the floating pill stayed suppressed and there was no way to
+turn UIDs on at all. `inlineIsLive()` therefore measures the control rather than trusting
+its connectedness; a stranded one is dropped and the pill takes over. The measurement is
+rate-limited to once a second, because measuring on every mutation of a live app page is
+enough to make it feel sticky.
+
 Either control shows how many rows on the current page got a badge, and doubles as the
 status readout: a pulsing dot while records are being fetched, `!` when the lookup failed.
 The controls and the options checkbox are all one switch — they write a single setting, and
@@ -143,6 +152,40 @@ otherwise request the same URL six times) and `flatten` (job statuses arrive nes
 their category on the `jobs/category` response). **Custom fields** and **checklists** are
 deliberately absent: they are addressed by a `module_name`, or by a category and status
 pair, that the page's route does not carry, so there is nothing to look them up by.
+
+### CPQ — the Intelligent Quote Builder
+
+The quote builder needed three things the listing path could not give it, so it is handled
+as its own case.
+
+**It is detected before any other rule.** Its title contains the word "Quote", so the
+generic hints read it as an estimates listing and fetched estimates — records that can
+never match a line item, leaving every row bare with no hint as to why. `isCpqBuilder()`
+in `uid-badges.js` claims the page first, from the route (`quote-builder`, `cpq`,
+`intelligent-quote`, …) or, for routes that name none of that, from the builder's own
+chrome in the top band of the page ("Zuper Intelligent Quote Builder", "Quote Items",
+"Option Configuration"). The DOM half is memoised on a 1.5s timer rather than per URL,
+because the builder is opened from a template listing and can be reached without the
+address bar changing at all.
+
+**Its rows are not records of one module.** Each is a quote line item standing in for a
+product, a service task or a service package, so `cpq_line_item` in `API_MODULES` is a
+**composite**: those three modules fetched together, each record keeping the uid key it
+was read from so the chip's tooltip says `product_uid` or `service_task_master_uid` rather
+than just showing a UUID. Sub-fetches go through `fetchModuleRecords`, so each keeps its
+own 10-minute cache entry and is shared with the pages that list that module on its own,
+and one failing part does not sink the rest. CPQ **formulas** and **measurement
+categories** are deliberately *not* in the set, even though they are CPQ records: their
+names are printed in the row's own QUANTITY / FORMULA cell ("Shingles (squares)"), so they
+would compete with the product for the match and could win it.
+
+**Its rows live in several containers.** The builder splits line items across a Material
+section, a Services section and Add-ons, and the repeated-sibling sweep took only the
+single largest group — so one section got badged and the rest silently did not. Runners-up
+are now included too, but only those whose child signature is identical to the best
+group's: that is what separates another block of the same list from a nav menu that merely
+happens to be a run of similar siblings, which is what the best-group-only rule was there
+to keep out.
 
 Route rules are matched **latest-position-wins**, not first-rule-wins, because a route
 names its module at the end: `/job-category/<uid>/job-status` lists statuses, and taking

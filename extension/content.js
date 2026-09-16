@@ -272,6 +272,8 @@
   let floatingToggleEl = null;
   let inlineHost = null;
   let inlineTimer = 0;
+  let lastLiveCheck = 0;
+  const LIVE_CHECK_MS = 1000;
   let copyBtnEl = null;
   let uidSelection = { count: 0, selected: false };
   let uidOn = true;
@@ -351,8 +353,9 @@
     }
 
     // Once the control is sitting in the toolbar, the floating pill is clutter.
+    // Connected is not the same as visible, though — see inlineIsLive.
     if (floatingToggleEl) {
-      floatingToggleEl.style.display = (inlineHost && inlineHost.isConnected) ? 'none' : '';
+      floatingToggleEl.style.display = inlineIsLive() ? 'none' : '';
     }
     renderCopyBtn();
   }
@@ -560,6 +563,34 @@
     }
   `;
 
+  // Is the inline control actually on screen?
+  //
+  // `isConnected` alone was not enough and cost a whole page its Show UID
+  // control: navigating from a listing into a full-screen view (the CPQ quote
+  // builder) can leave the old toolbar in the DOM but hidden or scrolled out of
+  // the viewport. The inline toggle went with it, still connected — so the
+  // floating pill stayed suppressed and there was no way to turn UIDs on at all.
+  function inlineIsLive() {
+    if (!inlineHost || !inlineHost.isConnected) return false;
+    let r;
+    try { r = inlineHost.getBoundingClientRect(); } catch (e) { return false; }
+    if (r.width < 1 || r.height < 1) return false;
+    return r.bottom > 0 && r.top < window.innerHeight &&
+           r.right > 0 && r.left < window.innerWidth;
+  }
+
+  // Detach a stranded inline control so the floating pill takes over again and a
+  // fresh mount can be attempted against the page's current toolbar.
+  function dropInline() {
+    if (inlineHost && inlineHost.parentNode) inlineHost.parentNode.removeChild(inlineHost);
+    inlineHost = null;
+    copyBtnEl = null;
+    for (let i = toggles.length - 1; i >= 0; i--) {
+      if (toggles[i].kind === 'inline') toggles.splice(i, 1);
+    }
+    renderUidToggle();
+  }
+
   // "All Customers" is the target; "Create New View" is the backup anchor. Both
   // are matched on their visible text rather than a class, because Zuper's class
   // names are not ours to depend on.
@@ -592,7 +623,8 @@
 
   function mountInlineToggle() {
     if (!hostEl) return;                                  // launcher disabled entirely
-    if (inlineHost && inlineHost.isConnected) return;
+    if (inlineIsLive()) return;
+    if (inlineHost) dropInline();
     const anchor = findToolbarAnchor();
     if (!anchor || !anchor.parentNode) return;
 
@@ -796,7 +828,20 @@
           if (n.id === HOST_ID || n.id === INLINE_HOST_ID) return;
         }
       }
-      if (!inlineHost || !inlineHost.isConnected) queueInlineMount();
+      if (!inlineHost || !inlineHost.isConnected) {
+        queueInlineMount();
+        return;
+      }
+      // Connected but possibly stranded on a toolbar the app has since hidden.
+      // Rate-limited because inlineIsLive measures, and measuring on every
+      // mutation of a busy app page is enough to make it feel sticky.
+      const now = Date.now();
+      if (now - lastLiveCheck < LIVE_CHECK_MS) return;
+      lastLiveCheck = now;
+      if (!inlineIsLive()) {
+        dropInline();
+        queueInlineMount();
+      }
     });
     if (document.body) observer.observe(document.body, { childList: true, subtree: true });
   }
