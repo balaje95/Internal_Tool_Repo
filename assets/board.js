@@ -55,6 +55,12 @@
     // textContent, not innerHTML — icon is admin-supplied free text.
     inner.querySelector(".tile-icon").textContent = tool.icon || "🔧";
     inner.querySelector("h2").textContent = tool.name || "";
+    if (tool.tag) {
+      var tag = document.createElement("span");
+      tag.className = "tile-tag";
+      tag.textContent = tool.tag;
+      inner.querySelector("h2").appendChild(tag);
+    }
     inner.querySelector("p").textContent = tool.description || "";
     tile.appendChild(inner);
 

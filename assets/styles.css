@@ -369,6 +369,21 @@ main.dashboard-grid {
   border-radius: 999px;
 }
 
+/* ---- Tile tag (optional "tag" in tools.config.js, e.g. Beta) ---- */
+.tile-tag {
+  display: inline-block;
+  margin-left: 0.45rem;
+  vertical-align: middle;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--orange);
+  border: 1px solid var(--orange);
+  padding: 0.06rem 0.42rem;
+  border-radius: 999px;
+}
+
 /* ---- Tile action buttons (help / delete) ---- */
 .tile-actions {
   position: absolute;

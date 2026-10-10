@@ -7,7 +7,8 @@
 // array as JSON when they rewrite this file, so unquoted keys or trailing commas will break it.
 //
 // Recognized fields per tool: name, description, file, icon, updated (ISO date — drives the
-// "New/Updated" badge), help (optional longer text shown in the info popover).
+// "New/Updated" badge), help (optional longer text shown in the info popover),
+// tag (optional short label shown next to the name, e.g. "Beta").
 const TOOLS = [
   {
     "name": "Background Studio",
@@ -126,6 +127,7 @@ const TOOLS = [
     "description": "Customer questionnaire that configures a base Zuper account from the answers",
     "file": "tools/self-onboarding.html",
     "icon": "🚀",
+    "tag": "Beta",
     "updated": "2026-10-07",
     "help": "Four tabs. Questionnaire: 11 steps (company, trades, job types, workflow stages, checklists, custom fields, products & services, proposals & payments, customer notifications, team, integrations), pre-filled with a standard roofing setup the customer edits rather than a blank form. Answers autosave in the browser and download/upload as a blueprint JSON. Review: counts, open issues (missing NEW/COMPLETED stage, duplicate names, messages that match no stage) and the workflows at a glance. Configure: connect an existing account by API key (test mode; creating a brand-new account is not wired yet), read what it already has, and see a plan of what will be created vs skipped. Apply creates business units, job categories + statuses, product categories, service products and stage-triggered customer notifications. Anything whose name already exists is skipped, so re-runs are safe. Custom-field creation is opt-in because its endpoint is unconfirmed. Checklists, teams, users, company profile, integrations and the proposal template have no confirmed API, so they go onto the handover's to-do list. Handover: a printable report of what was set up, what already existed, what failed and what's left, plus a users CSV for invites."
   }
