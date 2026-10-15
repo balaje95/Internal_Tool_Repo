@@ -419,7 +419,8 @@ async function zuperResolve(apiKey: string) {
         return {
           base: dc + "/api/",
           name: d?.company_name || d?.name || j?.company_name || "",
-          companyId: String(d?.company_id ?? d?.id ?? d?.company?.company_id ?? ""),
+          companyId: companyIdOf(j),
+          loginName: String(d?.company_login_name || ""),
         };
       }
     }
@@ -433,12 +434,60 @@ async function zuperGet(base: string, key: string, path: string) {
   if (!r.ok) throw new Error(path + " → " + r.status);
   return r.json();
 }
+// The records array wherever this endpoint puts it: bare array, .data, or the first array
+// inside .data / the root (the user endpoint does not use .data as an array).
+function listOf(j: any): any[] {
+  if (Array.isArray(j)) return j;
+  if (Array.isArray(j?.data)) return j.data;
+  for (const o of [j?.data, j]) {
+    if (o && typeof o === "object") for (const v of Object.values(o)) if (Array.isArray(v) && v.length && typeof v[0] === "object") return v as any[];
+  }
+  return [];
+}
 const totalOf = (j: any) => {
   const t = Number(j?.total_records ?? j?.data?.total_records);
-  if (Number.isFinite(t)) return t;
-  const d = Array.isArray(j) ? j : (j?.data || []);
-  return Array.isArray(d) ? d.length : null;
+  if (Number.isFinite(t) && t >= 0) return t;
+  return listOf(j).length;
 };
+// Numeric Zuper company id from the company response, wherever it is nested.
+function companyIdOf(j: any): string {
+  let found = "";
+  const walk = (o: any, depth: number) => {
+    if (found || !o || typeof o !== "object" || depth > 3) return;
+    for (const [k, v] of Object.entries(o)) {
+      if (/^company_?id$/i.test(k) && (typeof v === "number" || /^\d+$/.test(String(v)))) { found = String(v); return; }
+    }
+    for (const v of Object.values(o)) walk(v, depth + 1);
+  };
+  walk(j, 0);
+  return found;
+}
+const createdOf = (x: any) => Date.parse(x?.created_at || x?.createdAt || x?.created_on || x?.created_time || "");
+
+// Newest ~100 jobs. Tries the request shapes the other tools use; if the list comes back
+// oldest-first, reads the last page(s) instead so "recent" really is recent.
+async function recentJobs(base: string, key: string) {
+  const prefixes = ["jobs?sort=DESC&sort_by=none&", "jobs?"];
+  let j: any = null, prefix = "", lastErr = "";
+  for (const pre of prefixes) {
+    try { j = await zuperGet(base, key, pre + "page=1&count=100"); prefix = pre; break; } catch (e) { lastErr = (e as Error).message; }
+  }
+  if (!j) throw new Error(lastErr || "jobs unavailable");
+  const total = totalOf(j);
+  let list = listOf(j);
+  const ts = list.map(createdOf).filter((n) => Number.isFinite(n));
+  const ascending = ts.length > 1 && ts[0] < ts[ts.length - 1];
+  if (ascending && total > list.length) {
+    const lastPage = Math.ceil(total / 100);
+    const more: any[] = [];
+    for (const p of [lastPage, lastPage - 1].filter((n) => n > 1)) {
+      try { more.push(...listOf(await zuperGet(base, key, `${prefix}page=${p}&count=100`))); } catch (_) { /* keep page 1 */ }
+    }
+    if (more.length) list = more;
+  }
+  list.sort((a, b) => (createdOf(b) || 0) - (createdOf(a) || 0));
+  return { total, list };
+}
 
 async function pullAdoption(acc: any) {
   const key = await decrypt(acc.api_key_enc);
@@ -449,43 +498,64 @@ async function pullAdoption(acc: any) {
   };
   await Promise.all([
     safe("jobs", async () => {
-      const j = await zuperGet(base, key, "jobs?sort=DESC&sort_by=created_at&page=1&count=100");
-      m.jobs_total = totalOf(j);
-      const list: any[] = Array.isArray(j?.data) ? j.data : [];
+      const { total, list } = await recentJobs(base, key);
+      m.jobs_total = total;
       const now = Date.now();
-      const age = (x: any) => (now - Date.parse(x.created_at || "")) / 86400000;
+      const age = (x: any) => (now - createdOf(x)) / 86400000;
       m.jobs_7d = list.filter((x) => age(x) <= 7).length;
       m.jobs_30d = list.filter((x) => age(x) <= 30).length;
-      m.jobs_30d_capped = list.length === 100 && list.every((x) => age(x) <= 30);
-      m.last_job_at = list[0]?.created_at || null;
+      m.jobs_30d_capped = list.length >= 100 && list.every((x) => age(x) <= 30);
+      const newest = list.find((x) => Number.isFinite(createdOf(x)));
+      m.last_job_at = newest ? new Date(createdOf(newest)).toISOString() : null;
       const users = new Set<string>();
       list.filter((x) => age(x) <= 30).forEach((x) => (x.assigned_to || []).forEach((a: any) => {
-        const u = a?.user?.user_uid || a?.user_uid; if (u) users.add(u);
+        const u = a?.user?.user_uid || a?.user_uid || a?.user?.uid; if (u) users.add(String(u));
       }));
       m.field_users_30d = users.size;
-      const done = list.filter((x) => age(x) <= 30 && /complet/i.test(x.current_job_status?.status_name || ""));
+      const done = list.filter((x) => age(x) <= 30 && /complet/i.test(x.current_job_status?.status_name || x.status || ""));
       m.jobs_completed_30d = done.length;
+    }),
+    // Zuper's company response has company_login_name (also on the Zoho project), not the
+    // numeric id Zoho stores — that's what links an account to its project.
+    safe("company", async () => {
+      if (acc.company_login_name && acc.zuper_company_id) return;
+      const j = await zuperGet(base, key, "user/company");
+      const d = j?.data || j;
+      const patch: any = {};
+      if (!acc.company_login_name && d?.company_login_name) patch.company_login_name = String(d.company_login_name);
+      const id = companyIdOf(j);
+      if (!acc.zuper_company_id && id) patch.zuper_company_id = id;
+      if (Object.keys(patch).length) await db.from("pcc_accounts").update(patch).eq("id", acc.id);
     }),
     safe("customers", async () => { m.customers_total = totalOf(await zuperGet(base, key, "customers?page=1&count=1")); }),
     safe("invoices", async () => {
       const j = await zuperGet(base, key, "invoice?page=1&count=100");
       m.invoices_total = totalOf(j);
-      const list: any[] = Array.isArray(j?.data) ? j.data : [];
       const now = Date.now();
-      m.invoices_30d = list.filter((x) => (now - Date.parse(x.created_at || x.invoice_date || "")) / 86400000 <= 30).length;
+      m.invoices_30d = listOf(j).filter((x) => (now - (createdOf(x) || Date.parse(x.invoice_date || ""))) / 86400000 <= 30).length;
     }),
     safe("quotes", async () => {
       const j = await zuperGet(base, key, "estimate?page=1&count=100");
       m.quotes_total = totalOf(j);
-      const list: any[] = Array.isArray(j?.data) ? j.data : [];
       const now = Date.now();
-      m.quotes_30d = list.filter((x) => (now - Date.parse(x.created_at || "")) / 86400000 <= 30).length;
+      m.quotes_30d = listOf(j).filter((x) => (now - createdOf(x)) / 86400000 <= 30).length;
     }),
+    // `user` is the calling user only; the team list is `user/all` (paged, 10 by default).
     safe("users", async () => {
-      const j = await zuperGet(base, key, "user?page=1&count=200");
-      const list: any[] = Array.isArray(j?.data) ? j.data : [];
-      m.users_total = totalOf(j);
-      m.users_active = list.filter((u) => u.is_active !== false && u.is_deleted !== true).length || m.users_total;
+      const first = await zuperGet(base, key, "user/all?page=1&count=100");
+      const list: any[] = [...listOf(first)];
+      const pages = Math.min(Number(first?.total_pages) || 1, 20);
+      for (let p = 2; p <= pages; p++) {
+        try { list.push(...listOf(await zuperGet(base, key, `user/all?page=${p}&count=100`))); } catch (_) { break; }
+      }
+      const live = list.filter((u) => u.is_deleted !== true);
+      const now = Date.now();
+      const loginAge = (u: any) => (now - Date.parse(u.last_login_at || "")) / 86400000;
+      m.users_total = live.length;
+      m.users_active = live.filter((u) => u.is_active !== false).length;
+      m.users_login_7d = live.filter((u) => loginAge(u) <= 7).length;
+      m.users_login_30d = live.filter((u) => loginAge(u) <= 30).length;
+      m.users_never_logged_in = live.filter((u) => u.is_active !== false && !u.last_login_at).length;
     }),
   ]);
   const today = new Date().toISOString().slice(0, 10);
@@ -520,7 +590,7 @@ async function readData() {
     readAll("pcc_snapshots", "snap_date,project_id,status,current_eta,tasks_open,tasks_closed", (q) => q.gte("snap_date", since)),
     readAll("pcc_people", "*"),
     readAll("pcc_settings", "key,value,updated_at"),
-    readAll("pcc_accounts", "id,company_name,zuper_company_id,base_url,key_hint,created_at,last_pulled,last_error"),
+    readAll("pcc_accounts", "id,company_name,zuper_company_id,company_login_name,base_url,key_hint,created_at,last_pulled,last_error"),
     readAll("pcc_adoption", "account_id,snap_date,metrics", (q) => q.gte("snap_date", since)),
   ]);
   const settings: any = {};
@@ -571,7 +641,8 @@ Deno.serve(async (req) => {
       const cs = await getSetting("cron_secret");
       isCron = !!(cs && cs.s && cs.s === cronHdr);
     }
-    if (isCron && action !== "cron") return json({ error: "cron credential is limited to the cron action" }, 403);
+    // The cron credential may also run server maintenance (adoption probe/pull), nothing else.
+    if (isCron && !["cron", "adoption_probe", "adoption_pull"].includes(action)) return json({ error: "cron credential is limited to maintenance actions" }, 403);
     if (!isCron && !(await verifyToken(req.headers.get("x-pcc-token")))) {
       return json({ error: "unauthorized" }, 401);
     }
@@ -657,10 +728,11 @@ Deno.serve(async (req) => {
         const { data, error } = await db.from("pcc_accounts").insert({
           company_name: body.company_name || info.name || "Unnamed account",
           zuper_company_id: info.companyId || null,
+          company_login_name: info.loginName || null,
           base_url: info.base,
           api_key_enc: await encrypt(key),
           key_hint: "…" + key.slice(-4),
-        }).select("id,company_name,zuper_company_id,base_url,key_hint,created_at").single();
+        }).select("id,company_name,zuper_company_id,company_login_name,base_url,key_hint,created_at").single();
         if (error) throw new Error(error.message);
         let metrics = null;
         try { metrics = await pullAdoption({ ...data, api_key_enc: await encrypt(key) }); } catch (_) { /* shown later */ }
@@ -678,6 +750,34 @@ Deno.serve(async (req) => {
         if (typeof body.zuper_company_id === "string") patch.zuper_company_id = body.zuper_company_id.slice(0, 40);
         await db.from("pcc_accounts").update(patch).eq("id", String(body.id || ""));
         return json({ ok: true });
+      }
+
+      case "adoption_probe": {
+        // Diagnostic: status + response shape (keys only, no values) of candidate endpoints.
+        const { data: acc } = await db.from("pcc_accounts").select("*").eq("id", String(body.id || "")).single();
+        if (!acc) return json({ error: "no such account" }, 404);
+        const key = await decrypt(acc.api_key_enc);
+        const paths: string[] = Array.isArray(body.paths) ? body.paths.slice(0, 15) : [];
+        const out: any[] = [];
+        for (const p of paths) {
+          try {
+            const r = await fetch(acc.base_url + p, { headers: ZHDR(key), signal: AbortSignal.timeout(20000) });
+            const t = await r.text();
+            let j: any = null; try { j = JSON.parse(t); } catch { /* text */ }
+            const d = j && (Array.isArray(j) ? j : j.data);
+            const first = Array.isArray(d) ? d[0] : (d && typeof d === "object" ? d : null);
+            out.push({
+              path: p, status: r.status,
+              top: j && typeof j === "object" && !Array.isArray(j) ? Object.keys(j) : null,
+              total_records: j?.total_records ?? null,
+              data_type: Array.isArray(d) ? "array[" + d.length + "]" : typeof d,
+              first_keys: first ? Object.keys(first).slice(0, 60) : null,
+              first_dates: first ? Object.fromEntries(Object.entries(first).filter(([k]) => /(_at|date|_time)$/i.test(k)).slice(0, 8)) : null,
+              err: r.ok ? null : t.slice(0, 200),
+            });
+          } catch (e) { out.push({ path: p, error: (e as Error).message }); }
+        }
+        return json({ base: acc.base_url, out });
       }
 
       case "adoption_pull": {

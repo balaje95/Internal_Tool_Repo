@@ -722,12 +722,20 @@ function derive(){
   ACCOUNTS=(RAW.accounts||[]).map(a=>{
     const rows=(RAW.adoption||[]).filter(r=>r.account_id===a.id).sort((x,y)=>x.snap_date<y.snap_date?-1:1);
     const last=rows[rows.length-1];const m=last?last.metrics||{}:{};
-    const proj=a.zuper_company_id?P.find(p=>String(p.zuper_company_id||'')===String(a.zuper_company_id)):null;
+    // Link to the Zoho project: Zuper company id, then company login name (both sides carry it), then exact name.
+    // Zuper says "ultradryroofing" where Zoho says "ultra-dry-roofing", so compare letters/digits only.
+    const norm=s=>String(s||'').trim().toLowerCase();
+    const slug=s=>norm(s).replace(/[^a-z0-9]/g,'');
+    const proj=(a.zuper_company_id&&P.find(p=>String(p.zuper_company_id||'')===String(a.zuper_company_id)))
+      ||(a.company_login_name&&P.find(p=>slug(p.company_login_name)===slug(a.company_login_name)))
+      ||P.find(p=>norm(p.name)===norm(a.company_name))||null;
     const lastJob=pd(m.last_job_at);const idle=lastJob?ddiff(t0(),lastJob):null;
     let score=0;
     if(idle!=null)score+=idle<=3?40:idle<=7?30:idle<=14?15:0;
     const j30=m.jobs_30d||0;score+=j30>=50?30:j30>=20?20:j30>=5?10:0;
-    const ratio=m.users_active?(m.field_users_30d||0)/m.users_active:0;score+=ratio>=.6?30:ratio>=.3?20:ratio>0?10:0;
+    // Share of active users who logged in (or worked a job) in the last 30 days.
+    const engaged=Math.max(m.users_login_30d||0,m.field_users_30d||0);
+    const ratio=m.users_active?engaged/m.users_active:0;score+=ratio>=.6?30:ratio>=.3?20:ratio>0?10:0;
     const health=!last?'N':score>=70?'G':score>=40?'A':'R';
     return Object.assign({},a,{rows,m,proj,idle,score,health,ratio});
   });
@@ -1236,38 +1244,39 @@ function renderAdoption(){
     {label:'Jobs created (30d)',val:A.reduce((t,a)=>t+(a.m.jobs_30d||0),0).toLocaleString(),cls:'blue',sub:'across accounts'},
   ])}</div>
   <div class="charts-grid">${chartCard('adHealth','Adoption health',A.length+' accounts',200,'adHealthLeg')}${chartCard('adJobs','Jobs created, last 30 days',null,Math.max(200,Math.min(A.length,15)*24),null)}</div>
-  <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Accounts</span><span class="tbl-pill">${A.length}</span></div><div class="tbl-wrap"><table id="adTable"><thead><tr><th data-k="health">Health</th><th data-k="name">Customer</th><th data-k="live">Live since</th><th data-k="day">Day</th><th data-k="users">Field users 30d / active</th><th data-k="jobs">Jobs 30d</th><th data-k="quotes">Quotes 30d</th><th data-k="inv">Invoices 30d</th><th data-k="idle">Last job</th><th data-k="csm">Owner</th></tr></thead><tbody id="adTbl"></tbody></table></div></div>`;
+  <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Accounts</span><span class="tbl-pill">${A.length}</span></div><div class="tbl-wrap"><table id="adTable"><thead><tr><th data-k="health">Health</th><th data-k="name">Customer</th><th data-k="live">Live since</th><th data-k="day">Day</th><th data-k="users">Logged in 30d / users</th><th data-k="field">Field users 30d</th><th data-k="jobs">Jobs 30d</th><th data-k="quotes">Quotes 30d</th><th data-k="inv">Invoices 30d</th><th data-k="idle">Last job</th><th data-k="csm">Owner</th></tr></thead><tbody id="adTbl"></tbody></table></div></div>`;
   const h={G:0,A:0,R:0,N:0};A.forEach(a=>h[a.health]++);
   const top=A.slice().sort((x,y)=>(y.m.jobs_30d||0)-(x.m.jobs_30d||0)).slice(0,15);
   later(()=>{makeDoughnut('adHealth',['Healthy','Watch','At risk','No data'],[h.G,h.A,h.R,h.N],['#22C55E','#EAB308','#EF4444','#94A3B8']);
     legend('adHealthLeg',[`Healthy (${h.G})`,`Watch (${h.A})`,`At risk (${h.R})`,`No data (${h.N})`],['#22C55E','#EAB308','#EF4444','#94A3B8']);
     makeHBar('adJobs',top.map(a=>a.company_name),top.map(a=>a.m.jobs_30d||0),'#3B82F6',n=>{const a=A.find(x=>x.company_name===n);if(a){$('adoptSel').value=a.id;renderAdoption();}});});
   setTable('adTbl',A.map(a=>{const day=adoptionDay(a);return{cells:`<td>${healthBadge(a.health)}</td><td><b>${esc(a.company_name)}</b>${a.proj?` <span class="dim">· ${esc(a.proj.status)}</span>`:''}</td><td class="dim">${fmtD(a.proj&&a.proj.liveD)}</td><td>${day!=null?milestoneChip(day):'—'}</td>
-    <td>${a.m.field_users_30d!=null?`${a.m.field_users_30d} / ${a.m.users_active??'—'}`:'—'}</td><td>${a.m.jobs_30d??'—'}${a.m.jobs_30d_capped?'+':''}</td><td>${a.m.quotes_30d??'—'}</td><td>${a.m.invoices_30d??'—'}</td><td class="dim">${a.idle!=null?a.idle+'d ago':'—'}</td><td>${who(a.proj&&a.proj.owner)}</td>`,
-    sort:{health:{R:0,A:1,G:2,N:3}[a.health],name:a.company_name,live:a.proj&&a.proj.liveD,day,users:a.m.field_users_30d,jobs:a.m.jobs_30d,quotes:a.m.quotes_30d,inv:a.m.invoices_30d,idle:a.idle,csm:a.proj&&a.proj.owner},
-    csv:[a.company_name,a.zuper_company_id,{G:'Healthy',A:'Watch',R:'At risk',N:'No data'}[a.health],a.score,a.proj?ymd(a.proj.liveD):'',day,a.m.field_users_30d,a.m.users_active,a.m.jobs_30d,a.m.quotes_30d,a.m.invoices_30d,a.idle,a.proj&&a.proj.owner],
+    <td>${a.m.users_login_30d!=null?`${a.m.users_login_30d} / ${a.m.users_active??'—'}`:'—'}</td><td>${a.m.field_users_30d??'—'}</td><td>${a.m.jobs_30d??'—'}${a.m.jobs_30d_capped?'+':''}</td><td>${a.m.quotes_30d??'—'}</td><td>${a.m.invoices_30d??'—'}</td><td class="dim">${a.idle!=null?a.idle+'d ago':'—'}</td><td>${who(a.proj&&a.proj.owner)}</td>`,
+    sort:{health:{R:0,A:1,G:2,N:3}[a.health],name:a.company_name,live:a.proj&&a.proj.liveD,day,users:a.m.users_login_30d,field:a.m.field_users_30d,jobs:a.m.jobs_30d,quotes:a.m.quotes_30d,inv:a.m.invoices_30d,idle:a.idle,csm:a.proj&&a.proj.owner},
+    csv:[a.company_name,a.zuper_company_id,{G:'Healthy',A:'Watch',R:'At risk',N:'No data'}[a.health],a.score,a.proj?ymd(a.proj.liveD):'',day,a.m.users_login_30d,a.m.field_users_30d,a.m.users_active,a.m.jobs_30d,a.m.quotes_30d,a.m.invoices_30d,a.idle,a.proj&&a.proj.owner],
     onclick:`$('adoptSel').value='${a.id}';renderAdoption()`};}),
-    ['Customer','Zuper company id','Health','Score','Live since','Day','Field users 30d','Active users','Jobs 30d','Quotes 30d','Invoices 30d','Days since last job','Owner'],{sortK:'health',title:'adoption'});
+    ['Customer','Zuper company id','Health','Score','Live since','Day','Logged in 30d','Field users 30d','Active users','Jobs 30d','Quotes 30d','Invoices 30d','Days since last job','Owner'],{sortK:'health',title:'adoption'});
 }
 function milestoneChip(day){const ms=[7,30,60,90];const next=ms.find(m=>day<m);return `<span class="badge ${day>90?'bg':'bb'}">Day ${day}</span>${next?` <span class="dim" style="font-size:10px">next: D${next}</span>`:''}`;}
 function renderAdoptionOne(a){
   const body=$('adoptBody');const m=a.m;const rows=a.rows;
   const series=k=>rows.map(r=>(r.metrics||{})[k]??null);
   const day=adoptionDay(a);
-  body.innerHTML=`<div class="notice">${healthBadge(a.health)} <b>${esc(a.company_name)}</b> · score ${a.score}/100 · ${a.base_url?esc((a.base_url.match(/https:\/\/([\w-]+)\./)||[])[1]||''):''} · pulled ${ago(a.last_pulled)}${a.proj?` · linked to <a href="#" onclick="openProject('${jsq(a.proj.id)}');return false">${esc(a.proj.name)}</a>`:' · <span class="dim">no linked Zoho project (set the Zuper company id in Zoho)</span>'}${a.last_error?`<br><span style="color:var(--amber)">Partial pull: ${esc(a.last_error)}</span>`:''}</div>
+  body.innerHTML=`<div class="notice">${healthBadge(a.health)} <b>${esc(a.company_name)}</b> · score ${a.score}/100 · ${a.base_url?esc((a.base_url.match(/https:\/\/([\w-]+)\./)||[])[1]||''):''} · pulled ${ago(a.last_pulled)}${a.proj?` · linked to <a href="#" onclick="openProject('${jsq(a.proj.id)}');return false">${esc(a.proj.name)}</a>`:' · <span class="dim">no linked Zoho project (matched on company login name or project name)</span>'}${a.last_error?`<br><span style="color:var(--amber)">Partial pull: ${esc(a.last_error)}</span>`:''}</div>
   ${day!=null?`<div class="card" style="margin-bottom:16px"><div class="card-title">Post go-live milestones <span class="chart-badge">live ${fmtD(a.proj.liveD)} · day ${day}</span></div><div class="stepper">${[7,30,60,90].map((d,i)=>`${i?'<span class="step-line"></span>':''}<span class="step ${day>=d?'done':day<d&&(i===0||day>=[7,30,60,90][i-1])?'cur':''}"><span class="dot"></span>Day ${d}${d===30?' · hypercare exit':d===90?' · graduation':''}</span>`).join('')}</div></div>`:''}
   <div class="kpi-grid">${kpiEnhHtml([
     {label:'Jobs (30d)',val:(m.jobs_30d??'—')+(m.jobs_30d_capped?'+':''),cls:'orange',sub:`${m.jobs_7d??'—'} in last 7d`},
-    {label:'Field users active',val:m.field_users_30d??'—',cls:'blue',sub:`of ${m.users_active??'—'} users`},
+    {label:'Users logged in (30d)',val:m.users_login_30d??'—',cls:'blue',sub:`of ${m.users_active??'—'} active · ${m.users_login_7d??'—'} this week`},
+    {label:'Field users (30d)',val:m.field_users_30d??'—',cls:'teal',sub:'assigned to jobs'+(m.users_never_logged_in?` · ${m.users_never_logged_in} never logged in`:'')},
     {label:'Quotes (30d)',val:m.quotes_30d??'—',cls:'purple',sub:`${m.quotes_total??'—'} total`},
     {label:'Invoices (30d)',val:m.invoices_30d??'—',cls:'green',sub:`${m.invoices_total??'—'} total`},
     {label:'Last job created',val:a.idle!=null?a.idle+'d ago':'—',cls:a.idle>7?'red':'teal',sub:fmtD(m.last_job_at)},
     {label:'Customers',val:m.customers_total??'—',cls:'amber',sub:`${m.jobs_total??'—'} jobs all time`},
   ])}</div>
-  <div class="charts-grid">${chartCard('a1','Jobs created per 30 days',rows.length+' daily pulls',200,null)}${chartCard('a2','Active field users (30d)',null,200,null)}${chartCard('a3','Totals over time',null,200,null,false,'Totals grow by one data point per daily pull, so trends fill in over time.')}</div>`;
+  <div class="charts-grid">${chartCard('a1','Jobs created per 30 days',rows.length+' daily pulls',200,null)}${chartCard('a2','Active users (30d)',null,200,null)}${chartCard('a3','Totals over time',null,200,null,false,'Totals grow by one data point per daily pull, so trends fill in over time.')}</div>`;
   const labels=rows.map(r=>fmtD(r.snap_date));
   later(()=>{makeLine('a1',labels,[{label:'Jobs 30d',data:series('jobs_30d'),borderColor:'#FD5000',backgroundColor:'rgba(253,80,0,.1)',fill:true,tension:.3,pointRadius:2}]);
-    makeLine('a2',labels,[{label:'Field users',data:series('field_users_30d'),borderColor:'#3B82F6',tension:.3,pointRadius:2},{label:'Active users',data:series('users_active'),borderColor:'#94A3B8',borderDash:[4,4],pointRadius:0}]);
+    makeLine('a2',labels,[{label:'Logged in',data:series('users_login_30d'),borderColor:'#A855F7',tension:.3,pointRadius:2},{label:'Field users',data:series('field_users_30d'),borderColor:'#3B82F6',tension:.3,pointRadius:2},{label:'Active users',data:series('users_active'),borderColor:'#94A3B8',borderDash:[4,4],pointRadius:0}]);
     makeLine('a3',labels,[{label:'Jobs',data:series('jobs_total'),borderColor:'#FD5000',pointRadius:0,tension:.3},{label:'Quotes',data:series('quotes_total'),borderColor:'#A855F7',pointRadius:0,tension:.3},{label:'Invoices',data:series('invoices_total'),borderColor:'#22C55E',pointRadius:0,tension:.3}]);});
 }
 async function pullAdoption(id){
