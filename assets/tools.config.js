@@ -130,5 +130,14 @@ const TOOLS = [
     "tag": "Beta",
     "updated": "2026-10-07",
     "help": "Four tabs. Questionnaire: 11 steps (company, trades, job types, workflow stages, checklists, custom fields, products & services, proposals & payments, customer notifications, team, integrations), pre-filled with a standard roofing setup the customer edits rather than a blank form. Answers autosave in the browser and download/upload as a blueprint JSON. Review: counts, open issues (missing NEW/COMPLETED stage, duplicate names, messages that match no stage) and the workflows at a glance. Configure: connect an existing account by API key (test mode; creating a brand-new account is not wired yet), read what it already has, and see a plan of what will be created vs skipped. Apply creates business units, job categories + statuses, product categories, service products and stage-triggered customer notifications. Anything whose name already exists is skipped, so re-runs are safe. Custom-field creation is opt-in because its endpoint is unconfirmed. Checklists, teams, users, company profile, integrations and the proposal template have no confirmed API, so they go onto the handover's to-do list. Handover: a printable report of what was set up, what already existed, what failed and what's left, plus a users CSV for invites."
+  },
+  {
+    "name": "Project Command Center",
+    "description": "Every customer project from kick-off to go-live and adoption — health, ETAs, capacity",
+    "file": "tools/project-command-center.html",
+    "icon": "🛰️",
+    "tag": "Beta",
+    "updated": "2026-10-15",
+    "help": "Leadership view of every onboarding project, synced from Zoho Projects (no exports). Overview: projects in onboarding, go-lives vs the monthly target, off-track count, ARR in flight, days to go-live, on-time %, plus a 'what changed this week' panel and a copy-to-Slack weekly digest. Projects: health (red/amber/green with the reasons), phase, P1–P4 pipeline progress, current stage, ETA vs first-seen baseline, and a forecast from each project's task pace; click any row for the full drawer (pipelines and stages, Gantt timeline, Zoho tasks, adoption, history). Pipelines: a Stage 1–5 heatmap across P1 Lead Intake → P4 Revenue and where projects get stuck. Tasks: overdue, due soon and unassigned Zoho tasks. Go-Lives: delivered vs target, ETA vs pace for the next six months. Team Load: weighted project load vs each person's capacity, plus an eight-week task heatmap. Adoption: add a customer's Zuper API key under Accounts and daily usage (jobs, active field users, quotes, invoices, last activity) turns into a health score with Day 7/30/60/90 milestones. My Dashboard: drag-and-drop widgets, like the Dashboard Builder. Sign in with the team password; 'Explore with demo data' on the sign-in screen shows sample projects."
   }
 ];
