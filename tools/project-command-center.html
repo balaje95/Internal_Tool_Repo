@@ -321,6 +321,38 @@ ol.steps{padding-left:18px;font-size:12px;color:var(--text2);line-height:1.9}
 .dash-tab-del{font-size:10px;opacity:.6}
 .dash-tab-add{padding:4px 10px;border-radius:7px;border:1.5px dashed var(--border2);background:transparent;color:var(--text3);font-size:12px;cursor:pointer}
 
+/* PIPELINE PROGRESS BOARD + EDITOR */
+td.pcell{cursor:pointer;min-width:150px}
+td.pcell:hover{background:var(--surface3)!important}
+.psub{font-size:10px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.mtag{font-size:11px;color:var(--zuper)}
+.ov-card{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--zuper);border-radius:10px;padding:14px;margin-bottom:12px;scroll-margin-top:10px}
+.ov-hd{display:flex;align-items:center;gap:10px}
+.ov-pct{font-size:18px;font-weight:700;margin-left:auto}
+.ov-meta{font-size:11px;color:var(--text2);margin-bottom:10px}
+.ov-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.ov-items{margin-bottom:10px}
+.ov-add{display:flex;gap:6px;margin-top:6px}
+.ov-note{width:100%;min-height:54px;background:var(--surface2);border:1.5px solid var(--border2);border-radius:7px;padding:7px 10px;font-size:12px;color:var(--text);font-family:inherit;margin-bottom:10px;resize:vertical}
+.ov-note:focus{outline:none;border-color:var(--zuper)}
+.cta.sm:disabled{opacity:.45}
+/* TASKS BY PROJECT */
+.tp-list{padding:8px 12px 12px}
+.tp-card{border:1px solid var(--border);border-radius:9px;margin-bottom:8px;background:var(--surface);overflow:hidden}
+.tp-card.open{border-color:var(--border2);box-shadow:0 2px 10px rgba(0,0,0,.04)}
+.tp-hd{display:flex;align-items:center;gap:12px;padding:10px 12px;cursor:pointer}
+.tp-hd:hover{background:var(--surface2)}
+.tp-caret{width:12px;color:var(--text3);font-size:11px}
+.tp-name{min-width:200px;flex:1.2}
+.tp-sub{font-size:11px;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:380px}
+.tp-chips{display:flex;gap:4px;flex-wrap:wrap;min-width:150px}
+.tp-chip{font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--surface3);color:var(--text2);white-space:nowrap}
+.tp-chip.red{background:var(--red-bg);color:var(--red)}.tp-chip.amber{background:var(--amber-bg);color:var(--amber)}
+.tp-next{flex:1.4;font-size:11px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tp-body{padding:4px 14px 12px 36px;border-top:1px solid var(--border);background:var(--bg)}
+.tp-body .task-group{margin-top:10px}
+@media(max-width:1100px){.tp-next{display:none}}
+
 /* TOAST */
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--text);color:var(--surface);padding:10px 18px;border-radius:9px;font-size:12px;z-index:900;transition:transform .25s;max-width:90vw}
 .toast.show{transform:translateX(-50%)}
@@ -410,27 +442,28 @@ ol.steps{padding-left:18px;font-size:12px;color:var(--text2);line-height:1.9}
         <div class="kpi-grid" id="projKpi"></div>
         <div class="charts-grid" id="projCharts"></div>
         <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">All projects</span><span class="tbl-pill" id="projPill">—</span></div>
-          <div class="tbl-wrap"><table id="projTable"><thead><tr>
-            <th data-k="rag">Health</th><th data-k="name">Project</th><th data-k="phase">Phase</th><th data-k="status">Zoho status</th><th class="nosort">P1 · P2 · P3 · P4</th><th data-k="pct">Done</th><th data-k="stageIdx">Stage</th><th data-k="eta">ETA</th><th data-k="slip">Slip</th><th data-k="forecast">Forecast</th><th data-k="owner">Owner</th><th data-k="team">Team</th><th data-k="arr">ARR</th><th data-k="modified">Updated</th>
-          </tr></thead><tbody id="projTbl"></tbody></table></div></div>
+          <div class="tbl-wrap"><table id="projTable"><thead><tr id="projHead"></tr></thead><tbody id="projTbl"></tbody></table></div></div>
       </div>
 
       <div class="page" id="page-pipelines">
         <div class="page-hdr"><div><div class="page-title">Pipelines</div><div class="page-sub">P1 Lead Intake → P2 Inspection → P3 Production → P4 Revenue, Stage 1–5 each</div></div>
           <div class="hdr-right"><select class="filter-select" id="pipeSort" onchange="renderPipelines()"><option value="pct">Sort: least done first</option><option value="eta">Sort: ETA</option><option value="name">Sort: name</option></select></div></div>
         <div class="kpi-grid" id="pipeKpi"></div>
-        <div class="charts-grid" id="pipeCharts"></div>
-        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Stage heatmap · % of tasks done</span><span class="tbl-pill" id="pipePill">—</span></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title" id="pipeTitle">Pipeline progress</span>
+            <div style="display:flex;gap:8px;align-items:center"><input class="tbl-search" id="pipeSearch" placeholder="Search project, owner, PM, BA…" style="width:240px" oninput="pipeQ=this.value;renderPipelines()"><div class="seg" id="pipeSeg" style="margin:0"></div><span class="tbl-pill" id="pipePill">—</span></div></div>
           <div class="tbl-wrap heat" id="pipeHeat"></div></div>
+        <div class="charts-grid" id="pipeCharts"></div>
       </div>
 
       <div class="page" id="page-tasks">
         <div class="page-hdr"><div><div class="page-title">Tasks</div><div class="page-sub">Zoho tasks across onboarding projects</div></div>
-          <div class="hdr-right"><select class="filter-select" id="taskView" onchange="renderTasks()"><option value="overdue">Overdue</option><option value="due7">Due in 7 days</option><option value="open">All open</option><option value="unassigned">Open · unassigned</option><option value="done">Completed in period</option></select></div></div>
+          <div class="hdr-right"><select class="filter-select" id="taskView" onchange="renderTasks()"><option value="open">All open</option><option value="overdue">Overdue</option><option value="due7">Due in 7 days</option><option value="unassigned">Open · unassigned</option><option value="done">Completed in period</option></select>
+            <select class="filter-select" id="taskSort" onchange="renderTasks()"><option value="overdue">Sort: most overdue</option><option value="open">Sort: most open</option><option value="eta">Sort: go-live ETA</option><option value="name">Sort: name</option></select></div></div>
         <div class="kpi-grid" id="taskKpi"></div>
         <div class="charts-grid" id="taskCharts"></div>
-        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title" id="taskTblTitle">Tasks</span><span class="tbl-pill" id="taskPill">—</span></div>
-          <div class="tbl-wrap"><table id="taskTable"><thead><tr><th data-k="name">Task</th><th data-k="project">Project</th><th data-k="where">Pipeline · Stage</th><th data-k="owner">Owner</th><th data-k="due">Due</th><th data-k="status">Status</th><th data-k="late">Days late</th></tr></thead><tbody id="taskTbl"></tbody></table></div></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title" id="taskTblTitle">Tasks by project</span>
+            <div style="display:flex;gap:8px;align-items:center"><input class="tbl-search" id="taskSearch" placeholder="Search project or task…" style="width:240px" oninput="renderTaskList()"><button class="top-btn" onclick="tpAll(true)">Expand all</button><button class="top-btn" onclick="tpAll(false)">Collapse all</button><button class="tbl-csv-btn" onclick="csvTasks()">⬇ CSV</button><span class="tbl-pill" id="taskPill">—</span></div></div>
+          <div id="taskProjects" class="tp-list"></div></div>
       </div>
 
       <div class="page" id="page-golives">
@@ -438,9 +471,9 @@ ol.steps{padding-left:18px;font-size:12px;color:var(--text2);line-height:1.9}
         <div class="kpi-grid" id="glKpi"></div>
         <div class="charts-grid" id="glCharts"></div>
         <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Upcoming go-lives</span><span class="tbl-pill" id="glPill">—</span></div>
-          <div class="tbl-wrap"><table id="glTable"><thead><tr><th data-k="rag">Health</th><th data-k="name">Project</th><th data-k="eta">ETA</th><th data-k="forecast">Forecast</th><th data-k="gap">Gap (days)</th><th data-k="pct">Done</th><th data-k="stageIdx">Stage</th><th data-k="owner">Owner</th><th data-k="arr">ARR</th></tr></thead><tbody id="glTbl"></tbody></table></div></div>
+          <div class="tbl-wrap"><table id="glTable"><thead><tr id="glHead"></tr></thead><tbody id="glTbl"></tbody></table></div></div>
         <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Went live in period</span><span class="tbl-pill" id="glDonePill">—</span></div>
-          <div class="tbl-wrap"><table id="glDoneTable"><thead><tr><th data-k="name">Project</th><th data-k="golive">Go-live</th><th data-k="baseline">Baseline ETA</th><th data-k="vs">vs baseline</th><th data-k="dtl">Days to live</th><th data-k="owner">Owner</th><th data-k="arr">ARR</th></tr></thead><tbody id="glDoneTbl"></tbody></table></div></div>
+          <div class="tbl-wrap"><table id="glDoneTable"><thead><tr id="glDoneHead"></tr></thead><tbody id="glDoneTbl"></tbody></table></div></div>
       </div>
 
       <div class="page" id="page-team">
@@ -457,6 +490,17 @@ ol.steps{padding-left:18px;font-size:12px;color:var(--text2);line-height:1.9}
         <div class="page-hdr"><div><div class="page-title">Adoption</div><div class="page-sub">Post go-live usage from each customer's Zuper account</div></div>
           <div class="hdr-right"><select class="filter-select" id="adoptSel" onchange="renderAdoption()"></select><button class="top-btn" onclick="pullAdoption()">⟳ Pull usage now</button></div></div>
         <div id="adoptBody"></div>
+      </div>
+
+      <div class="page" id="page-billing">
+        <div class="page-hdr"><div><div class="page-title">Billing &amp; Renewals</div><div class="page-sub">Payments due, renewals coming up and what's not collected yet</div></div>
+          <div class="hdr-right"><select class="filter-select" id="billPhase" onchange="renderBilling()"><option value="">All projects</option><option value="post">Live (incl. hypercare)</option><option value="pre">Pre go-live</option></select>
+            <select class="filter-select" id="billShow" onchange="renderBilling()"><option value="">Show all</option><option value="renew90">Renewing in 90 days</option><option value="due">Payment due / overdue</option><option value="notcollected">Not collected (Zoho)</option><option value="ready">Ready to invoice (Zoho)</option><option value="missing">Missing billing details</option></select></div></div>
+        <div id="billNotice"></div>
+        <div class="kpi-grid" id="billKpi"></div>
+        <div class="charts-grid" id="billCharts"></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Accounts</span><span class="tbl-pill" id="billPill">—</span></div>
+          <div class="tbl-wrap"><table id="billTable"><thead><tr><th data-k="name">Project</th><th data-k="status">Status</th><th data-k="arr">ARR</th><th data-k="pay">Payment</th><th data-k="collected">Collected (Zoho)</th><th data-k="ready">Ready to invoice</th><th data-k="freq">Frequency</th><th data-k="next">Next invoice</th><th data-k="due">Amount due</th><th data-k="renew">Renewal</th><th data-k="days">Days to renewal</th><th data-k="owner">Owner</th><th data-k="csm">CSM</th></tr></thead><tbody id="billTbl"></tbody></table></div></div>
       </div>
 
       <div class="page" id="page-accounts">
@@ -531,7 +575,7 @@ const CL=['#FD5000','#3B82F6','#22C55E','#A855F7','#EAB308','#14B8A6','#EF4444',
 const DAY=864e5;
 
 let token='',DEMO=false,RAW=null,isDark=false,charts={},activePage='overview';
-let P=[],PBYID={},TBY={},PEOPLE=[],ACCOUNTS=[],SET={},STATUSES=[];
+let P=[],PBYID={},TBY={},OVBY={},BILLBY={},PEOPLE=[],ACCOUNTS=[],SET={},STATUSES=[];
 let F={team:'',partner:'',owner:'',industry:'',period:'all'};
 let teamRole='All';
 
@@ -646,6 +690,8 @@ function derive(){
   };
   const excl=new Set(SET.exclude.map(s=>s.toLowerCase().trim()));
   TBY={};(RAW.tasks||[]).forEach(t=>{(TBY[t.project_id]=TBY[t.project_id]||[]).push(t);});
+  OVBY={};(RAW.overrides||[]).forEach(o=>{(OVBY[o.project_id]=OVBY[o.project_id]||[]).push(o);});
+  BILLBY={};(RAW.billing||[]).forEach(b=>BILLBY[b.project_id]=b);
   const snapBy={};(RAW.snapshots||[]).forEach(s=>{(snapBy[s.project_id]=snapBy[s.project_id]||[]).push(s);});
   const now=new Date(),today=t0();
   const riskSt=new Set((SET.rag.risk_statuses||[]).map(s=>s.toLowerCase()));
@@ -667,6 +713,22 @@ function derive(){
     x.pipe={};PIPES.forEach(pp=>{x.pipe[pp.k]={total:0,done:0,stages:{}};});
     tasks.forEach(t=>{const pp=x.pipe[t.pipeline];if(!pp)return;pp.total++;if(t.is_completed)pp.done++;
       const st=t.stage||0;const s=pp.stages[st]=pp.stages[st]||{total:0,done:0};s.total++;if(t.is_completed)s.done++;});
+    // Pipeline progress = Zoho tasks + team checklist items, unless someone set a manual %.
+    // Zoho's own per-pipeline status ("Completed") fills in when a pipeline has no tasks.
+    const ex=p.extra||{};x.ex=ex;
+    const zStat={P1:ex.lead_intake_status,P2:ex.inspection_status,P3:ex.production_eta},zEta={P1:ex.lead_intake_eta,P2:ex.inspection_eta};
+    x.ov={};(OVBY[p.id]||[]).forEach(o=>x.ov[o.pipeline]=o);
+    PIPES.forEach(pp=>{const g=x.pipe[pp.k],o=x.ov[pp.k]||{};
+      g.items=Array.isArray(o.items)?o.items:[];g.itemsDone=g.items.filter(i=>i.done).length;
+      const tot=g.total+g.items.length,dn=g.done+g.itemsDone;
+      g.zohoStatus=zStat[pp.k]||null;g.zohoEta=zEta[pp.k]||null;
+      g.autoPct=tot?Math.round(dn/tot*100):(/complet/i.test(g.zohoStatus||'')?100:null);
+      g.manual=o.manual_pct!=null;g.status=o.status||null;g.note=o.note||null;
+      g.pct=g.manual?o.manual_pct:(g.status==='Done'?100:g.autoPct);});
+    const pps=PIPES.map(pp=>x.pipe[pp.k].pct).filter(v=>v!=null);
+    if(pps.length)x.pct=Math.round(pps.reduce((a,b)=>a+b,0)/pps.length);
+    x.hasManual=PIPES.some(pp=>x.pipe[pp.k].manual||x.pipe[pp.k].items.length||x.pipe[pp.k].status);
+    x.pm=p.pm_name||'';x.ba=p.ba_name||'';x.csm=p.csm_name||'';
     // current stage = first pipeline/stage with open work
     x.stage='';x.stageIdx=99;
     for(let i=0;i<PIPES.length;i++){const pp=x.pipe[PIPES[i].k];
@@ -795,6 +857,7 @@ const ICON={
   team:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   adoption:'<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
   accounts:'<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  billing:'<rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>',
   settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
 };
 function navItem(id,label,count,red){return `<div class="nav-item${activePage===id?' active':''}" id="nav-${id}" onclick="showPage('${id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${ICON[id]}</svg><span class="nav-lbl">${label}</span>${count!=null?`<span class="nav-count${red?' red':''}">${count}</span>`:''}</div>`;}
@@ -806,7 +869,7 @@ function renderSidebar(){
     `<div class="sidebar-section">Overview</div>`+navItem('overview','Overview')+navItem('dashboard','My Dashboard')+
     `<div class="sidebar-section">Delivery</div>`+navItem('projects','Projects',vp.filter(p=>p.preLive).length)+navItem('pipelines','Pipelines')+navItem('tasks','Tasks',overdue||null,true)+navItem('golives','Go-Lives')+
     `<div class="sidebar-section">People</div>`+navItem('team','Team Load')+
-    `<div class="sidebar-section">Post go-live</div>`+navItem('adoption','Adoption',ACCOUNTS.length||null)+
+    `<div class="sidebar-section">Post go-live</div>`+navItem('adoption','Adoption',ACCOUNTS.length||null)+navItem('billing','Billing &amp; Renewals',billAlerts()||null,true)+
     `<div class="sidebar-section">Admin</div>`+navItem('accounts','Accounts')+navItem('settings','Settings',(!DEMO&&!s.zoho_connected)?'!':null,true)+
     `<div class="side-foot">${DEMO?'Demo data':`Projects synced ${ago(s.projects_at)}<br>Tasks synced ${ago(s.tasks_at)}`}${atRisk?`<br><b style="color:var(--red)">${atRisk} off track</b>`:''}</div>`;
 }
@@ -820,7 +883,7 @@ function showPage(id){
 function renderPage(id){
   Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}});charts={};
   const fn={overview:renderOverview,projects:renderProjects,pipelines:renderPipelines,tasks:renderTasks,golives:renderGoLives,
-    team:renderTeam,adoption:renderAdoption,accounts:renderAccounts,settings:renderSettings,dashboard:renderDashboardPage}[id];
+    team:renderTeam,adoption:renderAdoption,billing:renderBilling,accounts:renderAccounts,settings:renderSettings,dashboard:renderDashboardPage}[id];
   if(fn)fn();
 }
 
@@ -844,9 +907,9 @@ function makeHBar(id,labels,data,color,onClick,extra){destroyChart(id);const ctx
   charts[id]=new Chart(ctx,{type:'bar',data:{labels,datasets:ds},
     options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,onClick:onClick?(e,el)=>{if(el.length)onClick(labels[el[0].index]);}:undefined,plugins:{legend:{display:!!extra,labels:{font:{size:10},color:gTick(),boxWidth:10}}},
       scales:{x:{beginAtZero:true,ticks:{font:{size:10},color:gTick()},grid:{color:gGrid()},border:{color:'transparent'}},y:{ticks:{font:{size:10},color:gTick()},grid:{display:false},border:{color:'transparent'}}}}});}
-function makeCombo(id,labels,datasets,stacked){destroyChart(id);const ctx=$(id);if(!ctx)return;
+function makeCombo(id,labels,datasets,stacked,yFmt){destroyChart(id);const ctx=$(id);if(!ctx)return;
   charts[id]=new Chart(ctx,{type:'bar',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,
-    plugins:{legend:{display:true,labels:{font:{size:10},color:gTick(),boxWidth:10,padding:8}}},scales:baseScales(stacked)}});}
+    plugins:{legend:{display:true,labels:{font:{size:10},color:gTick(),boxWidth:10,padding:8}}},scales:baseScales(stacked,yFmt)}});}
 function makeLine(id,labels,datasets){destroyChart(id);const ctx=$(id);if(!ctx)return;
   charts[id]=new Chart(ctx,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,
     plugins:{legend:{display:datasets.length>1,labels:{font:{size:10},color:gTick(),boxWidth:10}}},scales:baseScales(false)}});}
@@ -923,19 +986,25 @@ function csvDownload(headers,rows,filename){
 function filterTable(id,q){const st=TBL[id];if(!st)return;st.q=q;st.page=1;const tb=$(id);const s=tb&&tb.closest('.tbl-card').querySelector('.tbl-search');if(s)s.value=q;drawTable(id);tb.closest('.tbl-card').scrollIntoView({behavior:'smooth',block:'nearest'});}
 
 // shared cell renderers
-function minibars(p){return `<span class="minibars">${PIPES.map(pp=>{const x=p.pipe[pp.k];const pc=x.total?Math.round(x.done/x.total*100):0;
-  return `<span class="minibar" title="${pp.k} ${pp.n}: ${x.done}/${x.total}"><i style="width:${pc}%;background:${PIPE_COLORS[pp.k]}"></i></span>`;}).join('')}</span>`;}
+function minibars(p){return `<span class="minibars">${PIPES.map(pp=>{const x=p.pipe[pp.k];const pc=x.pct||0;
+  return `<span class="minibar" title="${pp.k} ${pp.n}: ${x.pct==null?'no tasks':pc+'%'}${x.manual?' (manual)':''}"><i style="width:${pc}%;background:${PIPE_COLORS[pp.k]}"></i></span>`;}).join('')}</span>`;}
 function pctCell(pct,cls){return `<div class="pct-cell"><div class="pbar ${cls||''}"><i style="width:${Math.max(0,Math.min(100,pct))}%"></i></div><span>${pct}%</span></div>`;}
 function slipCell(s){return s==null?'<span class="dim">—</span>':s>0?`<span class="slip pos">+${s}d</span>`:s<0?`<span class="slip neg">${s}d</span>`:'<span class="dim">0</span>';}
-function projectRow(p){
-  return{cells:`<td>${ragDot(p.rag,p.why.join(' · '))}</td><td><b>${esc(p.name)}</b> <span class="dim mono">${esc(p.key||'')}</span></td><td>${phaseBadge(p.phase)}</td><td><span class="badge ${badgeFor(p.status)}">${esc(p.status||'—')}</span></td>
-    <td>${minibars(p)}</td><td>${pctCell(p.pct)}</td><td class="mono">${esc(p.stage||'—')}</td><td class="dim">${fmtD(p.etaD)}</td><td>${slipCell(p.slip)}</td>
-    <td class="dim">${p.forecastD?fmtD(p.forecastD)+(p.forecastGap>0?` <span class="slip pos">+${p.forecastGap}d</span>`:''):'—'}</td><td>${who(p.owner)}</td><td class="dim">${esc(p.team||'—')}</td><td class="num">${p.arr?fmt$(p.arr):'—'}</td><td class="dim">${ago(p.modified_time)}</td>`,
-    sort:{rag:p.ragRank,name:p.name,phase:PHASES.indexOf(p.phase),status:p.status,pct:p.pct,stageIdx:p.stageIdx,eta:p.etaD,slip:p.slip,forecast:p.forecastD,owner:p.owner,team:p.team,arr:p.arr,modified:p.modD},
-    csv:[p.name,p.key,p.phase,p.status,{R:'Off track',A:'At risk',G:'On track',N:''}[p.rag],p.why.join('; '),p.pct,p.stage,p.current_eta,p.baseline_eta,p.slip,p.forecastD?ymd(p.forecastD):'',p.owner,p.second,p.team,partnerKind(p),p.arr,p.modified_time],
+// Standard project row used by Projects and Go-Lives:
+// Health · Project · Status · Done · Current ETA (or Go-live) · ARR · Owner · Project Manager · BA · SA
+const PROJ_HEAD=dateLbl=>`<th data-k="rag">Health</th><th data-k="name">Project</th><th data-k="status">Status</th><th data-k="pct">Done</th><th data-k="date">${dateLbl}</th><th data-k="arr">ARR</th><th data-k="owner">Owner</th><th data-k="pm">Project Manager</th><th data-k="ba">BA</th><th data-k="sa">SA</th>`;
+function projectRow(p,dateMode){
+  const d=dateMode==='golive'?p.liveD:p.etaD;
+  const dCell=dateMode==='golive'?`<td class="dim">${fmtD(d)}</td>`
+    :`<td class="dim">${fmtD(d)}${p.preLive&&p.etaD&&p.etaD<t0()?' <span class="badge br">passed</span>':p.slip>0?` <span class="slip pos" title="vs first ETA seen">+${p.slip}d</span>`:''}</td>`;
+  return{cells:`<td>${ragDot(p.rag,p.why.join(' · ')||({N:'Live / not scored'}[p.rag]||'On track'))}</td><td><b>${esc(p.name)}</b> <span class="dim mono">${esc(p.key||'')}</span></td><td><span class="badge ${badgeFor(p.status)}">${esc(p.status||'—')}</span></td>
+    <td title="P1–P4: ${PIPES.map(pp=>pp.k+' '+(p.pipe[pp.k].pct==null?'–':p.pipe[pp.k].pct+'%')).join(' · ')}">${pctCell(p.pct)}${p.hasManual?' <span class="dim" title="Includes manual pipeline updates">✎</span>':''}</td>${dCell}
+    <td class="num">${p.arr?fmt$(p.arr):'—'}</td><td>${who(p.owner)}</td><td>${p.pm?who(p.pm):'<span class="dim">—</span>'}</td><td>${p.ba?who(p.ba):'<span class="dim">—</span>'}</td><td>${p.second?who(p.second):'<span class="dim">—</span>'}</td>`,
+    sort:{rag:p.ragRank,name:p.name,status:p.status,pct:p.pct,date:d,arr:p.arr,owner:p.owner,pm:p.pm,ba:p.ba,sa:p.second},
+    csv:[p.name,p.key,{R:'Off track',A:'At risk',G:'On track',N:''}[p.rag],p.why.join('; '),p.status,p.phase,p.pct,...PIPES.map(pp=>p.pipe[pp.k].pct),p.current_eta,p.baseline_eta,p.actual_go_live,p.arr,p.owner,p.pm,p.ba,p.second,p.csm,p.team,partnerKind(p)],
     onclick:`openProject('${jsq(p.id)}')`};
 }
-const PROJ_CSV=['Project','Key','Phase','Zoho status','Health','Why','% done','Stage','ETA','Baseline ETA','Slip days','Forecast','Owner','Secondary','Team','Direct/Partner','ARR','Updated'];
+const PROJ_CSV=['Project','Key','Health','Why','Status','Phase','% done','P1 %','P2 %','P3 %','P4 %','Current ETA','Baseline ETA','Go-live','ARR','Owner','Project Manager','BA','SA','CSM','Team','Direct/Partner'];
 
 // ═══════════════════════════════════════════════════════════════
 // OVERVIEW
@@ -1041,7 +1110,7 @@ function renderProjects(){
   $('projKpi').innerHTML=kpiEnhHtml([
     {label:'Projects',val:rows.length,cls:'orange',sub:`${pre.length} pre go-live`},
     {label:'Off track',val:rows.filter(p=>p.rag==='R').length,cls:'red',sub:`${rows.filter(p=>p.rag==='A').length} at risk`},
-    {label:'Avg completion',val:(pre.length?Math.round(pre.reduce((t,p)=>t+p.pct,0)/pre.length):0)+'%',cls:'blue',sub:'pre go-live, by tasks'},
+    {label:'Avg completion',val:(pre.length?Math.round(pre.reduce((t,p)=>t+p.pct,0)/pre.length):0)+'%',cls:'blue',sub:'pre go-live, avg of P1–P4'},
     {label:'ETA slipped',val:pre.filter(p=>p.slip>0).length,cls:'amber',sub:'vs first ETA seen'},
     {label:'No ETA',val:pre.filter(p=>!p.etaD).length,cls:'purple',sub:'pre go-live'},
     {label:'ARR',val:fmt$(rows.reduce((t,p)=>t+(p.arr||0),0)),cls:'green',sub:'of listed projects'},
@@ -1056,15 +1125,24 @@ function renderProjects(){
     makePie('prPartner',pk,pk.map(k=>pt[k]),pk.map((_,i)=>CL[(i+1)%CL.length]));legend('prPartnerLeg',pk.map(k=>`${k} (${pt[k]})`),pk.map((_,i)=>CL[(i+1)%CL.length]));
   });
   $('projPill').textContent=rows.length+' projects';
-  setTable('projTbl',rows.map(projectRow),PROJ_CSV,{sortK:'rag',title:'projects'});
+  if(!$('projHead').innerHTML)$('projHead').innerHTML=PROJ_HEAD('Current ETA');
+  setTable('projTbl',rows.map(p=>projectRow(p)),PROJ_CSV,{sortK:'rag',title:'projects'});
 }
 
 // ═══════════════════════════════════════════════════════════════
 // PIPELINES
 // ═══════════════════════════════════════════════════════════════
 function heatColor(pct,has){if(!has)return'transparent';const a=.15+.75*(pct/100);return pct>=100?`rgba(34,197,94,${isDark?.55:.75})`:`rgba(253,80,0,${a*(isDark?.8:.9)})`;}
+let pipeView='progress',pipeQ='';
+function pipeCell(p,pk){const g=p.pipe[pk];
+  const pc=g.pct;const st=g.status||g.zohoStatus;
+  return `<td class="pcell" onclick="event.stopPropagation();openProject('${jsq(p.id)}','pipelines','${pk}')" title="Click to update ${pk}">
+    <div class="pct-cell"><div class="pbar"><i style="width:${pc||0}%;background:${PIPE_COLORS[pk]}"></i></div><span>${pc==null?'–':pc+'%'}</span>${g.manual?'<span class="mtag" title="Manual %">✎</span>':''}</div>
+    <div class="psub">${st?esc(st):''}${g.items.length?` · ${g.itemsDone}/${g.items.length} items`:''}</div></td>`;}
 function renderPipelines(){
-  const pre=VP().filter(p=>p.preLive&&p.total>0);
+  $('pipeSeg').innerHTML=[['progress','Progress (editable)'],['heat','Stage heatmap']].map(([k,l])=>`<button class="${pipeView===k?'active':''}" onclick="pipeView='${k}';renderPipelines()">${l}</button>`).join('');
+  $('pipeSearch').style.display=pipeView==='progress'?'':'none';
+  const pre=VP().filter(p=>p.preLive&&(pipeView==='progress'||p.total>0));
   const srt=$('pipeSort').value;
   pre.sort(srt==='eta'?(a,b)=>(a.etaD||9e15)-(b.etaD||9e15):srt==='name'?(a,b)=>a.name.localeCompare(b.name):(a,b)=>a.pct-b.pct);
   const stages=[1,2,3,4,5];
@@ -1076,8 +1154,8 @@ function renderPipelines(){
   const keys=[];PIPES.forEach(pp=>stages.forEach(s=>keys.push(pp.k+'·S'+s)));
   const busiest=Object.keys(sitting).sort((a,b)=>sitting[b]-sitting[a])[0];
   const slowest=Object.keys(ageN).sort((a,b)=>ageSum[b]/ageN[b]-ageSum[a]/ageN[a])[0];
-  $('pipeKpi').innerHTML=kpiEnhHtml(PIPES.map(pp=>{const t=pre.reduce((s,p)=>s+p.pipe[pp.k].total,0),d=pre.reduce((s,p)=>s+p.pipe[pp.k].done,0);
-    return{label:pp.k+' '+pp.n,val:(t?Math.round(d/t*100):0)+'%',cls:{P1:'blue',P2:'green',P3:'amber',P4:'purple'}[pp.k],sub:`${d}/${t} tasks done`};})
+  $('pipeKpi').innerHTML=kpiEnhHtml(PIPES.map(pp=>{const v=pre.map(p=>p.pipe[pp.k].pct).filter(x=>x!=null);const man=pre.filter(p=>p.pipe[pp.k].manual).length;
+    return{label:pp.k+' '+pp.n,val:(v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):0)+'%',cls:{P1:'blue',P2:'green',P3:'amber',P4:'purple'}[pp.k],sub:`avg across ${v.length} projects${man?` · ${man} manual`:''}`};})
     .concat([{label:'Most projects at',val:busiest||'—',cls:'orange',sub:busiest?sitting[busiest]+' projects':''},{label:'Slowest stage',val:slowest||'—',cls:'red',sub:slowest?Math.round(ageSum[slowest]/ageN[slowest])+'d avg open':''}]));
   $('pipeCharts').innerHTML=chartCard('ppSit','Projects by current stage',pre.length+' projects',220,null,true)+chartCard('ppAge','Avg days the current stage has been open',null,220,null,true);
   later(()=>{
@@ -1085,7 +1163,15 @@ function renderPipelines(){
     const ka=keys.filter(k=>ageN[k]);makeBar('ppAge',ka,ka.map(k=>Math.round(ageSum[k]/ageN[k])),ka.map(k=>PIPE_COLORS[k.slice(0,2)]));
   });
   $('pipePill').textContent=pre.length+' projects';
-  if(!pre.length){$('pipeHeat').innerHTML='<div class="empty">No onboarding projects with synced tasks yet.</div>';return;}
+  $('pipeTitle').textContent=pipeView==='progress'?'Pipeline progress · click a cell to update it':'Stage heatmap · % of Zoho tasks done';
+  if(!pre.length){$('pipeHeat').innerHTML='<div class="empty">No onboarding projects yet.</div>';return;}
+  if(pipeView==='progress'){
+    const q=pipeQ.trim().toLowerCase();
+    const rows=pre.filter(p=>!q||(p.name+' '+p.owner+' '+p.pm+' '+p.ba).toLowerCase().includes(q));
+    $('pipeHeat').innerHTML=`<table><thead><tr><th class="nosort">Project</th><th class="nosort">Status</th><th class="nosort">Overall</th>${PIPES.map(pp=>`<th class="nosort" style="color:${PIPE_COLORS[pp.k]}">${pp.k} ${pp.n}</th>`).join('')}<th class="nosort">Owner</th></tr></thead><tbody>
+      ${rows.map(p=>`<tr class="click" onclick="openProject('${jsq(p.id)}','pipelines')"><td style="white-space:nowrap">${ragDot(p.rag,p.why.join(' · '))} <b>${esc(p.name)}</b></td><td><span class="badge ${badgeFor(p.status)}">${esc(p.status)}</span></td><td>${pctCell(p.pct)}</td>${PIPES.map(pp=>pipeCell(p,pp.k)).join('')}<td class="dim">${esc(p.owner)}</td></tr>`).join('')||'<tr><td colspan="8"><div class="empty">No match.</div></td></tr>'}</tbody></table>`;
+    return;
+  }
   const hdr1=`<tr><th class="nosort" rowspan="2">Project</th><th class="nosort" rowspan="2">Done</th>${PIPES.map(pp=>`<th class="nosort pgrp hc" colspan="5" style="color:${PIPE_COLORS[pp.k]}">${pp.k} ${pp.n}</th>`).join('')}</tr>`;
   const hdr2=`<tr>${PIPES.map(()=>stages.map((s,i)=>`<th class="nosort hc${i===0?' pstart':''}">S${s}</th>`).join('')).join('')}</tr>`;
   const body=pre.slice(0,400).map(p=>`<tr class="click" onclick="openProject('${jsq(p.id)}')"><td style="white-space:nowrap">${ragDot(p.rag,p.why.join(' · '))} ${esc(p.name)}</td><td>${p.pct}%</td>${PIPES.map(pp=>stages.map((s,i)=>{const c=p.pipe[pp.k].stages[s];const pc=c&&c.total?Math.round(c.done/c.total*100):0;
@@ -1114,23 +1200,56 @@ function renderTasks(){
     {label:'Unassigned',val:unassigned.length,cls:'purple',sub:'open, no owner',click:"$('taskView').value='unassigned';renderTasks()"},
     {id:'tk-done',label:'Completed',val:doneP.length.toLocaleString(),raw:doneP.length,cls:'green',sub:F.period==='all'?'all time':'in period',delta:donePrev!=null?calcDelta(doneP.length,donePrev):null,click:"$('taskView').value='done';renderTasks()"},
   ]);
-  const ob={};over.forEach(t=>{const n=(t.owners||[]).map(o=>o.name);(n.length?n:['Unassigned']).forEach(x=>ob[x]=(ob[x]||0)+1);});
+  // Overdue by project (not by owner)
+  const ob={};over.forEach(t=>{const n=(PBYID[t.project_id]||{}).name||'—';ob[n]=(ob[n]||0)+1;});
   const ok=Object.keys(ob).sort((a,b)=>ob[b]-ob[a]).slice(0,12);
   const weeks=[];for(let i=7;i>=0;i--){const e=new Date(Date.now()-i*7*DAY);weeks.push(e);}
   const wk=weeks.map((e,i)=>{const s=new Date(e-7*DAY);return all.filter(t=>t.is_completed&&t.modified_time&&pd(t.modified_time)>s&&pd(t.modified_time)<=e).length;});
-  $('taskCharts').innerHTML=chartCard('tkOwner','Overdue by owner',over.length+' overdue',Math.max(180,ok.length*24),null)+chartCard('tkWeek','Tasks completed per week',null,200,null);
-  later(()=>{makeHBar('tkOwner',ok,ok.map(k=>ob[k]),'#EF4444',l=>filterTable('taskTbl',l));
+  $('taskCharts').innerHTML=chartCard('tkProj','Overdue tasks by project',over.length+' overdue',Math.max(180,ok.length*24),null)+chartCard('tkWeek','Tasks completed per week',null,200,null);
+  later(()=>{makeHBar('tkProj',ok,ok.map(k=>ob[k]),'#EF4444',l=>{$('taskSearch').value=l;$('taskView').value='overdue';TP_OPEN=new Set(P.filter(p=>p.name===l).map(p=>p.id));renderTaskList();$('taskProjects').scrollIntoView({behavior:'smooth',block:'start'});});
     makeLine('tkWeek',weeks.map(d=>fmtD(d)),[{label:'Completed',data:wk,borderColor:'#22C55E',backgroundColor:'rgba(34,197,94,.12)',fill:true,tension:.35,pointRadius:3}]);});
-  const view=$('taskView').value;
-  const list={overdue:over,due7,open:openT,unassigned,done:doneP}[view]||over;
-  $('taskTblTitle').textContent={overdue:'Overdue tasks',due7:'Due in the next 7 days',open:'All open tasks',unassigned:'Open, unassigned',done:'Completed in period'}[view];
-  $('taskPill').textContent=list.length.toLocaleString()+' tasks';
-  setTable('taskTbl',list.map(t=>{const p=PBYID[t.project_id]||{};const due=pd(t.end_date);const late=!t.is_completed&&due&&due<now?ddiff(t0(),due):null;
-    return{cells:`<td>${esc(t.name)}</td><td><b>${esc(p.name||'')}</b></td><td class="mono">${esc((t.pipeline||'—')+(t.stage?' · S'+t.stage:''))}</td><td>${(t.owners||[]).length?esc(ownerNames(t)):'<span class="badge ba">Unassigned</span>'}</td><td class="dim">${fmtD(due)}</td><td><span class="badge ${t.is_completed?'bg':badgeFor(t.status)}">${esc(t.status||'—')}</span></td><td>${late!=null?`<span class="slip pos">${late}d</span>`:'<span class="dim">—</span>'}</td>`,
-      sort:{name:t.name,project:p.name,where:(t.pipeline||'')+(t.stage||''),owner:ownerNames(t),due:due,status:t.status,late:late},
-      csv:[t.name,p.name,t.pipeline,t.stage,ownerNames(t),t.end_date?String(t.end_date).slice(0,10):'',t.status,late],onclick:`openProject('${jsq(t.project_id)}','tasks')`};}),
-    ['Task','Project','Pipeline','Stage','Owner','Due','Status','Days late'],{sortK:view==='overdue'?'late':'due',dir:view==='overdue'?-1:1,title:'tasks-'+view});
+  TASK_SETS={overdue:over,due7,open:openT,unassigned,done:doneP};
+  renderTaskList();
 }
+let TASK_SETS={},TP_OPEN=new Set(),TASK_LIST=[];
+function tpToggle(id){TP_OPEN.has(id)?TP_OPEN.delete(id):TP_OPEN.add(id);renderTaskList();}
+function tpAll(open){TP_OPEN=open?new Set(TASK_LIST.map(g=>g.p.id)):new Set();renderTaskList();}
+function renderTaskList(){
+  const view=$('taskView').value,now=new Date(),in7=new Date(Date.now()+7*DAY);
+  const list=TASK_SETS[view]||[];const q=($('taskSearch').value||'').trim().toLowerCase();
+  const by={};list.forEach(t=>{(by[t.project_id]=by[t.project_id]||[]).push(t);});
+  let groups=Object.keys(by).map(id=>{const p=PBYID[id];if(!p)return null;let ts=by[id];
+    if(q&&!p.name.toLowerCase().includes(q))ts=ts.filter(t=>t.name.toLowerCase().includes(q));
+    if(!ts.length)return null;
+    const openAll=p.tasks.filter(t=>!t.is_completed);
+    return{p,ts,overdue:openAll.filter(t=>t.end_date&&pd(t.end_date)<now).length,due7:openAll.filter(t=>t.end_date&&pd(t.end_date)>=now&&pd(t.end_date)<=in7).length,open:openAll.length,
+      next:openAll.filter(t=>t.end_date).sort((a,b)=>pd(a.end_date)-pd(b.end_date))[0]};}).filter(Boolean);
+  const srt=$('taskSort').value;
+  groups.sort(srt==='open'?(a,b)=>b.open-a.open:srt==='eta'?(a,b)=>(a.p.etaD||9e15)-(b.p.etaD||9e15):srt==='name'?(a,b)=>a.p.name.localeCompare(b.p.name):(a,b)=>b.overdue-a.overdue||b.open-a.open);
+  TASK_LIST=groups;
+  $('taskTblTitle').textContent={overdue:'Overdue tasks',due7:'Due in the next 7 days',open:'Open tasks',unassigned:'Open, unassigned',done:'Completed in period'}[view]+' · by project';
+  $('taskPill').textContent=`${groups.length} projects · ${groups.reduce((s,g)=>s+g.ts.length,0).toLocaleString()} tasks`;
+  if(q)groups.forEach(g=>TP_OPEN.add(g.p.id));
+  $('taskProjects').innerHTML=groups.length?groups.map(g=>{const p=g.p,open=TP_OPEN.has(p.id);
+    const nx=g.next;const nxDue=nx&&pd(nx.end_date);
+    const byGrp={};g.ts.forEach(t=>{const k=(t.pipeline||'Other')+'|'+(t.stage||'')+'|'+(t.tasklist_name||'');(byGrp[k]=byGrp[k]||[]).push(t);});
+    return `<div class="tp-card${open?' open':''}">
+      <div class="tp-hd" onclick="tpToggle('${jsq(p.id)}')">
+        <span class="tp-caret">${open?'▾':'▸'}</span>${ragDot(p.rag,p.why.join(' · '))}
+        <div class="tp-name"><b>${esc(p.name)}</b><div class="tp-sub">${esc(p.status)} · ${esc(p.owner||'no owner')}${p.pm?' · PM '+esc(p.pm):''}${p.etaD?' · ETA '+fmtD(p.etaD):''}</div></div>
+        <div style="width:150px">${pctCell(p.pct)}</div>
+        <div class="tp-chips"><span class="tp-chip">${g.open} open</span>${g.overdue?`<span class="tp-chip red">${g.overdue} overdue</span>`:''}${g.due7?`<span class="tp-chip amber">${g.due7} due 7d</span>`:''}</div>
+        <div class="tp-next">${nx?`<span class="dim">Next:</span> ${esc(nx.name)} <span class="${nxDue<now?'slip pos':'dim'}">${fmtD(nxDue)}</span>`:'<span class="dim">No dated open tasks</span>'}</div>
+        <button class="top-btn" onclick="event.stopPropagation();openProject('${jsq(p.id)}','pipelines')" title="Update pipeline progress">✎ Pipelines</button>
+      </div>
+      ${open?`<div class="tp-body">${Object.keys(byGrp).sort().map(k=>{const [pk,st,tl]=k.split('|');const ts=byGrp[k];
+        return `<div class="task-group"><div class="task-gh"><span style="color:${PIPE_COLORS[pk]||'var(--text2)'}">${esc(pk)}${st?' · Stage '+esc(st):''} <span class="dim" style="text-transform:none;font-weight:400">${esc(tl.replace(/^stage\s*\d+\s*/i,''))}</span></span><span>${ts.length}</span></div>
+        ${ts.sort((a,b)=>(pd(a.end_date)||9e15)-(pd(b.end_date)||9e15)).map(t=>{const due=pd(t.end_date);const over=!t.is_completed&&due&&due<now;const late=over?ddiff(t0(),due):0;
+          return `<div class="task-row${t.is_completed?' done':''}${over?' over':''}"><span class="chk${t.is_completed?' on':''}">${t.is_completed?'✓':''}</span><span class="tn">${esc(t.name)}</span><span class="dim" style="font-size:11px">${(t.owners||[]).length?esc(ownerNames(t)):'<span class="badge ba">Unassigned</span>'}</span><span class="dim" style="font-size:11px;width:72px;text-align:right">${fmtD(due)}</span><span class="badge ${t.is_completed?'bg':over?'br':badgeFor(t.status)}" style="min-width:74px;justify-content:center">${over?late+'d late':esc(t.status||'')}</span></div>`;}).join('')}</div>`;}).join('')}</div>`:''}
+    </div>`;}).join(''):`<div class="empty">No ${view==='done'?'completed':'matching'} tasks${q?' for “'+esc(q)+'”':''}.</div>`;
+}
+function csvTasks(){const rows=[];TASK_LIST.forEach(g=>g.ts.forEach(t=>{const due=pd(t.end_date);rows.push([g.p.name,g.p.status,g.p.owner,g.p.pm,t.pipeline,t.stage,t.tasklist_name,t.name,ownerNames(t),t.end_date?String(t.end_date).slice(0,10):'',t.status,!t.is_completed&&due&&due<new Date()?ddiff(t0(),due):'']);}));
+  csvDownload(['Project','Project status','Owner','Project Manager','Pipeline','Stage','Task list','Task','Assignee','Due','Status','Days late'],rows,'tasks-by-project.csv');}
 
 // ═══════════════════════════════════════════════════════════════
 // GO-LIVES
@@ -1162,17 +1281,14 @@ function renderGoLives(){
     makeLine('glCum',months.map(monLbl),[{label:'Actual',data:cumA,borderColor:'#22C55E',backgroundColor:'rgba(34,197,94,.1)',fill:true,tension:.3,pointRadius:2},{label:'Plan',data:cumT,borderColor:'#FD5000',borderDash:[5,4],pointRadius:0}]);
     makeCombo('glFut',fut.map(monLbl),[{type:'bar',label:'By ETA',data:futN,backgroundColor:'#3B82F6',borderRadius:4},{type:'bar',label:'By pace',data:futF,backgroundColor:'#FD5000',borderRadius:4},{type:'line',label:'Target',data:fut.map(()=>tgt),borderColor:'#EF4444',borderDash:[5,4],pointRadius:0,borderWidth:1.5}]);
   });
-  const up=pre.filter(p=>p.etaD||p.forecastD);
+  const up=pre.filter(p=>p.etaD);
   $('glPill').textContent=up.length+' with an ETA';
-  setTable('glTbl',up.map(p=>({cells:`<td>${ragDot(p.rag,p.why.join(' · '))}</td><td><b>${esc(p.name)}</b></td><td class="dim">${fmtD(p.etaD)}${p.etaD&&p.etaD<t0()?' <span class="badge br">missed</span>':''}</td><td class="dim">${fmtD(p.forecastD)}</td><td>${slipCell(p.forecastGap)}</td><td>${pctCell(p.pct)}</td><td class="mono">${esc(p.stage||'—')}</td><td>${who(p.owner)}</td><td class="num">${p.arr?fmt$(p.arr):'—'}</td>`,
-    sort:{rag:p.ragRank,name:p.name,eta:p.etaD,forecast:p.forecastD,gap:p.forecastGap,pct:p.pct,stageIdx:p.stageIdx,owner:p.owner,arr:p.arr},
-    csv:[p.name,p.current_eta,p.forecastD?ymd(p.forecastD):'',p.forecastGap,p.pct,p.stage,p.owner,p.arr],onclick:`openProject('${jsq(p.id)}')`})),
-    ['Project','ETA','Forecast','Gap days','% done','Stage','Owner','ARR'],{sortK:'eta',title:'upcoming-go-lives'});
+  if(!$('glHead').innerHTML)$('glHead').innerHTML=PROJ_HEAD('Current ETA');
+  setTable('glTbl',up.map(p=>projectRow(p)),PROJ_CSV,{sortK:'date',title:'upcoming-go-lives'});
   const went=goLivesIn(vp,d=>F.period==='all'?true:inPeriod(d));
   $('glDonePill').textContent=went.length+' go-lives';
-  setTable('glDoneTbl',went.map(p=>{const vs=p.baseD?ddiff(p.liveD,p.baseD):null;return{cells:`<td><b>${esc(p.name)}</b></td><td class="dim">${fmtD(p.liveD)}</td><td class="dim">${fmtD(p.baseD)}</td><td>${slipCell(vs)}</td><td>${p.daysToLive!=null?p.daysToLive+'d':'—'}</td><td>${who(p.owner)}</td><td class="num">${p.arr?fmt$(p.arr):'—'}</td>`,
-    sort:{name:p.name,golive:p.liveD,baseline:p.baseD,vs,dtl:p.daysToLive,owner:p.owner,arr:p.arr},csv:[p.name,ymd(p.liveD),p.baseline_eta,vs,p.daysToLive,p.owner,p.arr],onclick:`openProject('${jsq(p.id)}')`};}),
-    ['Project','Go-live','Baseline ETA','Days vs baseline','Days to live','Owner','ARR'],{sortK:'golive',dir:-1,title:'went-live'});
+  if(!$('glDoneHead').innerHTML)$('glDoneHead').innerHTML=PROJ_HEAD('Go-live');
+  setTable('glDoneTbl',went.map(p=>projectRow(p,'golive')),PROJ_CSV,{sortK:'date',dir:-1,title:'went-live'});
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1411,15 +1527,143 @@ async function savePeople(){
 // ═══════════════════════════════════════════════════════════════
 // DRAWERS — project + person
 // ═══════════════════════════════════════════════════════════════
-let drawerProject=null,drawerTab='overview';
-function openProject(id,tab){const p=PBYID[id];if(!p){toast('Project is hidden by the current filters or settings.');return;}drawerProject=p;drawerTab=tab||'overview';renderDrawer();$('drawerOv').style.display='block';requestAnimationFrame(()=>$('drawer').classList.add('open'));}
+let drawerProject=null,drawerTab='overview',drawerFocus=null;
+function openProject(id,tab,focus){const p=PBYID[id];if(!p){toast('Project is hidden by the current filters or settings.');return;}drawerProject=p;drawerTab=tab||'overview';drawerFocus=focus||null;OVDRAFT={};renderDrawer();$('drawerOv').style.display='block';requestAnimationFrame(()=>$('drawer').classList.add('open'));
+  if(focus)setTimeout(()=>{const el=$('ovc-'+focus);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},260);}
+// Re-derive and keep the same drawer open after a save.
+async function refreshKeepDrawer(){const id=drawerProject&&drawerProject.id,tab=drawerTab;await loadData();renderPage(activePage);if(id&&PBYID[id]){drawerProject=PBYID[id];drawerTab=tab;renderDrawer();}}
+
+// ─── Pipeline editor (drawer tab) ───────────────────────────────
+// Draft per pipeline: {mode:'auto'|'manual', manual_pct, status, note, items:[{id,text,done}]}
+let OVDRAFT={};
+const OV_STATUSES=['','Not started','In progress','Blocked','Done'];
+function ovDraft(k){
+  if(!OVDRAFT[k]){const g=drawerProject.pipe[k];
+    OVDRAFT[k]={mode:g.manual?'manual':'auto',manual_pct:g.manual?g.pct:(g.autoPct??0),status:g.status||'',note:g.note||'',items:JSON.parse(JSON.stringify(g.items||[])),dirty:false};}
+  return OVDRAFT[k];}
+function ovSet(k,f,v){const d=ovDraft(k);d[f]=v;d.dirty=true;renderPipeEditor();}
+function ovItemAdd(k){const inp=$('ovi-'+k);const t=(inp.value||'').trim();if(!t)return;const d=ovDraft(k);d.items.push({id:'i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),text:t,done:false});d.dirty=true;renderPipeEditor();setTimeout(()=>{const n=$('ovi-'+k);if(n)n.focus();},0);}
+function ovItemToggle(k,id){const d=ovDraft(k);const it=d.items.find(i=>i.id===id);if(it){it.done=!it.done;d.dirty=true;renderPipeEditor();}}
+function ovItemDel(k,id){const d=ovDraft(k);d.items=d.items.filter(i=>i.id!==id);d.dirty=true;renderPipeEditor();}
+function ovPreview(k){const g=drawerProject.pipe[k],d=ovDraft(k);
+  if(d.mode==='manual')return Number(d.manual_pct)||0;if(d.status==='Done')return 100;
+  const tot=g.total+d.items.length,dn=g.done+d.items.filter(i=>i.done).length;return tot?Math.round(dn/tot*100):(/complet/i.test(g.zohoStatus||'')?100:null);}
+async function ovSave(k){const d=ovDraft(k);
+  try{await api('override_save',{project_id:drawerProject.id,pipeline:k,manual_pct:d.mode==='manual'?Number(d.manual_pct):null,status:d.status||null,note:d.note||null,items:d.items});
+    delete OVDRAFT[k];toast(`${k} saved.`);await refreshKeepDrawer();}catch(e){toast(e.message,4000);}}
+async function ovReset(k){if(!confirm(`Clear manual updates for ${k}? Progress goes back to Zoho tasks only.`))return;
+  try{await api('override_save',{project_id:drawerProject.id,pipeline:k,manual_pct:null,status:null,note:null,items:[]});delete OVDRAFT[k];toast(`${k} reset.`);await refreshKeepDrawer();}catch(e){toast(e.message,4000);}}
+function renderPipeEditor(){
+  const b=$('drawerBody');if(!b||drawerTab!=='pipelines')return;const p=drawerProject;
+  const keep=document.activeElement&&document.activeElement.id;
+  b.innerHTML=`<div class="chart-note" style="margin:0 0 12px">Progress for each pipeline comes from its Zoho tasks plus any checklist items you add here. Switch to <b>Manual</b> to set the % yourself. Overall project progress is the average of P1–P4.</div>`+
+  PIPES.map(pp=>{const k=pp.k,g=p.pipe[k],d=ovDraft(k),pv=ovPreview(k);const col=PIPE_COLORS[k];
+    return `<div class="ov-card" id="ovc-${k}" style="border-top-color:${col}">
+      <div class="ov-hd"><span style="color:${col};font-weight:700">${k} ${pp.n}</span><span class="ov-pct">${pv==null?'–':pv+'%'}</span>${d.dirty?'<span class="badge ba">unsaved</span>':g.manual?'<span class="badge bz">manual</span>':''}</div>
+      <div class="pbar" style="margin:6px 0 10px"><i style="width:${pv||0}%;background:${col}"></i></div>
+      <div class="ov-meta">Zoho tasks: <b>${g.done}/${g.total}</b> done${g.zohoStatus?` · Zoho status: <b>${esc(g.zohoStatus)}</b>`:''}${g.zohoEta?` · Zoho ETA: <b>${fmtD(g.zohoEta)}</b>`:''}</div>
+      <div class="ov-row">
+        <div class="seg" style="margin:0"><button class="${d.mode==='auto'?'active':''}" onclick="ovSet('${k}','mode','auto')">Auto (tasks + items)</button><button class="${d.mode==='manual'?'active':''}" onclick="ovSet('${k}','mode','manual')">Manual %</button></div>
+        ${d.mode==='manual'?`<input type="range" min="0" max="100" step="5" value="${d.manual_pct}" oninput="ovDraft('${k}').manual_pct=+this.value;ovDraft('${k}').dirty=true;this.nextElementSibling.value=this.value;this.closest('.ov-card').querySelector('.ov-pct').textContent=this.value+'%'" style="flex:1;min-width:120px"><input type="number" min="0" max="100" value="${d.manual_pct}" class="cell-inp" style="width:64px;border-color:var(--border2)" onchange="ovSet('${k}','manual_pct',Math.max(0,Math.min(100,+this.value||0)))">`:''}
+        <select class="filter-select" onchange="ovSet('${k}','status',this.value)">${OV_STATUSES.map(s=>`<option value="${s}"${d.status===s?' selected':''}>${s||'Status…'}</option>`).join('')}</select>
+      </div>
+      <div class="ov-items">${d.items.map(it=>`<div class="task-row${it.done?' done':''}"><span class="chk${it.done?' on':''}" style="cursor:pointer" onclick="ovItemToggle('${k}','${it.id}')">${it.done?'✓':''}</span><span class="tn">${esc(it.text)}</span><button class="cw-btn rm" onclick="ovItemDel('${k}','${it.id}')" title="Remove">✕</button></div>`).join('')}
+        <div class="ov-add"><input id="ovi-${k}" class="tbl-search" placeholder="Add a checklist item to ${k} and press Enter…" onkeydown="if(event.key==='Enter')ovItemAdd('${k}')"><button class="top-btn" onclick="ovItemAdd('${k}')">+ Add</button></div></div>
+      <textarea class="ov-note" placeholder="Note (blockers, what's left, who's waiting on whom)…" onchange="ovSet('${k}','note',this.value)">${esc(d.note)}</textarea>
+      <div class="ov-row" style="justify-content:flex-end"><button class="top-btn" onclick="ovReset('${k}')">Reset</button><button class="cta sm" onclick="ovSave('${k}')"${d.dirty?'':' disabled'}>Save ${k}</button></div>
+    </div>`;}).join('');
+  if(keep&&$(keep))$(keep).focus();
+}
+
+// ─── Billing (drawer tab + page) ────────────────────────────────
+const PAY_STATUSES=['','Current','Invoice sent','Due','Overdue','Paid','Disputed','Not billing yet'];
+function addMonths(d,m){const x=new Date(d);x.setMonth(x.getMonth()+m);return x;}
+function billingOf(p){
+  const b=BILLBY[p.id]||{},ex=p.ex||{},today=t0();
+  const term=Number(b.term_months)||12;
+  const startD=pd(b.billing_start)||pd(ex.bill_from)||p.liveD||null;
+  let renewD=pd(b.renewal_date),renewEst=false;
+  if(!renewD&&startD){renewD=addMonths(startD,term);while(renewD<today)renewD=addMonths(renewD,term);renewEst=true;}
+  const nextInv=pd(b.next_invoice_date);
+  let status=b.payment_status||'';
+  if(!status){if(nextInv&&nextInv<today&&Number(b.amount_due)>0)status='Overdue';else if(Number(b.amount_due)>0)status='Due';
+    else if(/^yes$/i.test(ex.payment_collected||''))status='Paid';else if(/^no$/i.test(ex.payment_collected||''))status='Not collected';}
+  return{b,startD,term,renewD,renewEst,daysToRenew:renewD?ddiff(renewD,today):null,nextInv,amountDue:Number(b.amount_due)||0,status,
+    collected:ex.payment_collected||'',readyToInvoice:ex.ready_to_invoice||'',hasRecord:!!BILLBY[p.id]};
+}
+function payBadge(s){if(!s)return'<span class="dim">—</span>';const c=/overdue|disput/i.test(s)?'br':/due|not collected|invoice sent/i.test(s)?'ba':/paid|current/i.test(s)?'bg':'bgr';return`<span class="badge ${c}">${esc(s)}</span>`;}
+function billingForm(p){const bi=billingOf(p),b=bi.b,ex=p.ex||{};
+  const v=x=>x?String(x).slice(0,10):'';
+  return `<div class="info-rows" style="margin-bottom:14px">${[['ARR (Zoho)',p.arr?fmt$(p.arr):'—'],['Payment collected (Zoho)',ex.payment_collected||'—'],['Ready to invoice (Zoho)',ex.ready_to_invoice||'—'],['Bill from (Zoho)',ex.bill_from?fmtD(ex.bill_from):'—'],['Deal closed by',ex.deal_closed_by||'—'],['Renewal',bi.renewD?fmtD(bi.renewD)+(bi.renewEst?' (estimated)':''):'—']]
+    .map(([k,x])=>`<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${esc(x)}</span></div>`).join('')}</div>
+  ${p.deal_url?`<div style="margin-bottom:12px"><a class="top-btn" target="_blank" rel="noopener" href="${esc(p.deal_url)}">Open HubSpot deal ↗</a></div>`:''}
+  <div class="card"><div class="card-title">Billing details <span class="chart-badge">${bi.hasRecord?'updated '+ago(b.updated_at):'not entered yet'}</span></div>
+  <div class="form-grid">
+    <div class="fld"><label>Billing start</label><input type="date" id="bl-start" value="${v(b.billing_start)}"></div>
+    <div class="fld"><label>Frequency</label><select id="bl-freq">${['','Monthly','Quarterly','Semi-annual','Annual'].map(f=>`<option${b.frequency===f?' selected':''}>${f}</option>`).join('')}</select></div>
+    <div class="fld"><label>Contract term (months)</label><input type="number" id="bl-term" value="${b.term_months??''}" placeholder="12"></div>
+    <div class="fld"><label>Renewal date</label><input type="date" id="bl-renew" value="${v(b.renewal_date)}"></div>
+    <div class="fld"><label>Next invoice date</label><input type="date" id="bl-next" value="${v(b.next_invoice_date)}"></div>
+    <div class="fld"><label>Amount due ($)</label><input type="number" step="0.01" id="bl-due" value="${b.amount_due??''}"></div>
+    <div class="fld"><label>Payment status</label><select id="bl-status">${PAY_STATUSES.map(s=>`<option value="${s}"${(b.payment_status||'')===s?' selected':''}>${s||'Auto'}</option>`).join('')}</select></div>
+    <div class="fld"><label>Last payment date</label><input type="date" id="bl-last" value="${v(b.last_payment_date)}"></div>
+  </div>
+  <div class="fld" style="margin-top:12px"><label>Notes</label><textarea id="bl-notes" rows="3">${esc(b.notes||'')}</textarea></div>
+  <div class="chart-note">Leave Renewal date empty to estimate it from billing start (or Zoho "bill from" / go-live) + contract term. Payment status "Auto" is worked out from amount due, next invoice date and Zoho's "payment collected".</div>
+  <div style="margin-top:12px;display:flex;justify-content:flex-end"><button class="cta sm" onclick="saveBilling('${jsq(p.id)}')">Save billing</button></div></div>`;}
+async function saveBilling(id){
+  const g=x=>$(x).value;
+  try{await api('billing_save',{project_id:id,billing_start:g('bl-start'),frequency:g('bl-freq'),term_months:g('bl-term'),renewal_date:g('bl-renew'),next_invoice_date:g('bl-next'),amount_due:g('bl-due'),payment_status:g('bl-status'),last_payment_date:g('bl-last'),notes:g('bl-notes')});
+    toast('Billing saved.');await refreshKeepDrawer();}catch(e){toast(e.message,4000);}
+}
+// Sidebar badge: overdue payments + renewals in the next 30 days.
+function billAlerts(){if(!P.length)return 0;return VP().filter(p=>p.phase!=='Churned').map(billingOf).filter(b=>b.status==='Overdue'||(b.daysToRenew!=null&&b.daysToRenew>=0&&b.daysToRenew<=30)).length;}
+function renderBilling(){
+  const vp=VP().filter(p=>p.phase!=='Churned');const ph=$('billPhase').value,show=$('billShow').value;
+  const rowsAll=vp.filter(p=>!ph||(ph==='post'?p.postLive:p.preLive)).map(p=>({p,bi:billingOf(p)}));
+  const rows=rowsAll.filter(({p,bi})=>!show||(show==='renew90'?bi.daysToRenew!=null&&bi.daysToRenew>=0&&bi.daysToRenew<=90
+    :show==='due'?/due|overdue/i.test(bi.status):show==='notcollected'?/^no$/i.test(bi.collected):show==='ready'?/^yes$/i.test(bi.readyToInvoice):show==='missing'?!bi.hasRecord:true));
+  const live=rowsAll.filter(r=>r.p.postLive);
+  const r90=rowsAll.filter(r=>r.bi.daysToRenew!=null&&r.bi.daysToRenew>=0&&r.bi.daysToRenew<=90);
+  const overdue=rowsAll.filter(r=>r.bi.status==='Overdue'),due=rowsAll.filter(r=>/^(due|invoice sent)$/i.test(r.bi.status));
+  const notColl=rowsAll.filter(r=>/^no$/i.test(r.bi.collected)),ready=rowsAll.filter(r=>/^yes$/i.test(r.bi.readyToInvoice));
+  const entered=Object.keys(BILLBY).length;
+  $('billNotice').innerHTML=entered<3?`<div class="notice"><b>Most billing details aren't in any synced system yet.</b> From Zoho we have ARR, "payment collected", "ready to invoice" and "bill from" on a few projects. Renewal dates below are <i>estimated</i> as go-live (or bill-from) + 12 months until you enter the real ones — open any row → <b>Billing</b> tab. Connecting your billing system will fill these in automatically.</div>`:'';
+  $('billKpi').innerHTML=kpiEnhHtml([
+    {label:'ARR (live customers)',val:fmt$(live.reduce((t,r)=>t+(r.p.arr||0),0)),cls:'green',sub:`${live.length} live · ${fmt$(rowsAll.filter(r=>r.p.preLive).reduce((t,r)=>t+(r.p.arr||0),0))} in onboarding`},
+    {label:'Renewals in 90 days',val:r90.length,cls:'blue',sub:fmt$(r90.reduce((t,r)=>t+(r.p.arr||0),0))+' ARR up for renewal',click:"$('billShow').value='renew90';renderBilling()"},
+    {label:'Payments overdue',val:overdue.length,cls:'red',sub:fmt$(overdue.reduce((t,r)=>t+r.bi.amountDue,0))+' overdue',click:"$('billShow').value='due';renderBilling()"},
+    {label:'Payments due',val:due.length,cls:'amber',sub:fmt$(due.reduce((t,r)=>t+r.bi.amountDue,0))+' outstanding'},
+    {label:'Not collected (Zoho)',val:notColl.length,cls:'purple',sub:'payment collected = No',click:"$('billShow').value='notcollected';renderBilling()"},
+    {label:'Ready to invoice',val:ready.length,cls:'teal',sub:'flagged in Zoho',click:"$('billShow').value='ready';renderBilling()"},
+  ]);
+  const months=monthKeys(0,11);
+  const byM=months.map(k=>rowsAll.filter(r=>r.bi.renewD&&ym(r.bi.renewD)===k));
+  const ps=countBy(rowsAll,r=>r.bi.status||'Unknown'),pk=Object.keys(ps);
+  $('billCharts').innerHTML=chartCard('blRenew','Renewals by month (ARR)','next 12 months',220,null,true,'Lighter bars = estimated renewal (go-live or bill-from + term).')+chartCard('blPay','Payment status',rowsAll.length+' projects',220,'blPayLeg');
+  later(()=>{
+    makeCombo('blRenew',months.map(monLbl),[{type:'bar',label:'Confirmed',data:byM.map(a=>a.filter(r=>!r.bi.renewEst).reduce((t,r)=>t+(r.p.arr||0),0)),backgroundColor:'#3B82F6',borderRadius:4,stack:'s'},
+      {type:'bar',label:'Estimated',data:byM.map(a=>a.filter(r=>r.bi.renewEst).reduce((t,r)=>t+(r.p.arr||0),0)),backgroundColor:isDark?'rgba(59,130,246,.35)':'rgba(59,130,246,.3)',borderRadius:4,stack:'s'}],true,v=>fmt$(v));
+    const cols=pk.map(k=>/overdue|disput/i.test(k)?'#EF4444':/due|not collected|invoice/i.test(k)?'#EAB308':/paid|current/i.test(k)?'#22C55E':'#94A3B8');
+    makeDoughnut('blPay',pk,pk.map(k=>ps[k]),cols,l=>filterTable('billTbl',l));legend('blPayLeg',pk.map(k=>`${k} (${ps[k]})`),cols);
+  });
+  $('billPill').textContent=rows.length+' projects';
+  setTable('billTbl',rows.map(({p,bi})=>({cells:`<td>${ragDot(p.rag)} <b>${esc(p.name)}</b></td><td><span class="badge ${badgeFor(p.status)}">${esc(p.status)}</span></td><td class="num">${p.arr?fmt$(p.arr):'—'}</td><td>${payBadge(bi.status)}</td>
+      <td>${bi.collected?`<span class="badge ${/^yes$/i.test(bi.collected)?'bg':'ba'}">${esc(bi.collected)}</span>`:'<span class="dim">—</span>'}</td><td>${bi.readyToInvoice?`<span class="badge ${/^yes$/i.test(bi.readyToInvoice)?'bt':'bgr'}">${esc(bi.readyToInvoice)}</span>`:'<span class="dim">—</span>'}</td>
+      <td class="dim">${esc(bi.b.frequency||'—')}</td><td class="dim">${bi.nextInv?fmtD(bi.nextInv)+(bi.nextInv<t0()?' <span class="badge br">past</span>':''):'—'}</td><td class="num">${bi.amountDue?fmt$(bi.amountDue):'—'}</td>
+      <td class="dim">${bi.renewD?fmtD(bi.renewD)+(bi.renewEst?' <span class="dim" title="Estimated: go-live/bill-from + term">est.</span>':''):'—'}</td><td>${bi.daysToRenew!=null?`<span class="${bi.daysToRenew<=30?'slip pos':bi.daysToRenew<=90?'':'dim'}">${bi.daysToRenew}d</span>`:'—'}</td><td>${who(p.owner)}</td><td class="dim">${esc(p.csm||'—')}</td>`,
+    sort:{name:p.name,status:p.status,arr:p.arr,pay:bi.status,collected:bi.collected,ready:bi.readyToInvoice,freq:bi.b.frequency,next:bi.nextInv,due:bi.amountDue,renew:bi.renewD,days:bi.daysToRenew,owner:p.owner,csm:p.csm},
+    csv:[p.name,p.status,p.arr,bi.status,bi.collected,bi.readyToInvoice,bi.b.billing_start||'',bi.b.frequency||'',bi.term,bi.nextInv?ymd(bi.nextInv):'',bi.amountDue,bi.renewD?ymd(bi.renewD):'',bi.renewEst?'estimated':'confirmed',bi.daysToRenew,bi.b.last_payment_date||'',p.owner,p.csm,bi.b.notes||''],
+    onclick:`openProject('${jsq(p.id)}','billing')`})),
+    ['Project','Status','ARR','Payment status','Collected (Zoho)','Ready to invoice (Zoho)','Billing start','Frequency','Term (months)','Next invoice','Amount due','Renewal','Renewal type','Days to renewal','Last payment','Owner','CSM','Notes'],{sortK:'days',title:'billing-renewals'});
+}
 function closeDrawer(){$('drawer').classList.remove('open');$('drawerOv').style.display='none';Object.keys(charts).filter(k=>k.startsWith('dr')).forEach(destroyChart);}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
 function renderDrawer(){
   const p=drawerProject;const acc=ACCOUNTS.find(a=>a.proj&&a.proj.id===p.id);
-  const tabs=[['overview','Overview'],['timeline','Timeline'],['tasks',`Tasks (${p.open} open)`],['adoption','Adoption'],['history','History']];
+  const tabs=[['overview','Overview'],['pipelines','Pipelines ✎'],['tasks',`Tasks (${p.open} open)`],['timeline','Timeline'],['billing','Billing'],['adoption','Adoption'],['history','History']];
   $('drawer').innerHTML=`<div class="drawer-hd"><div class="drawer-title">${ragDot(p.rag)} ${esc(p.name)} <span class="dim mono" style="font-size:12px">${esc(p.key||'')}</span> ${phaseBadge(p.phase)} <span class="badge ${badgeFor(p.status)}">${esc(p.status)}</span><button class="drawer-close" onclick="closeDrawer()">✕</button></div>
-    <div class="drawer-meta"><span>Owner <b>${esc(p.owner||'—')}</b></span><span>Secondary <b>${esc(p.second||'—')}</b></span><span>Team <b>${esc(p.team||'—')}</b></span><span>${esc(partnerKind(p))}</span><span>ARR <b>${p.arr?fmt$(p.arr):'—'}</b></span>${p.conf!=null?`<span>Confidence <b>${p.conf}/5</b></span>`:''}</div>
+    <div class="drawer-meta"><span>Owner <b>${esc(p.owner||'—')}</b></span><span>PM <b>${esc(p.pm||'—')}</b></span><span>BA <b>${esc(p.ba||'—')}</b></span><span>SA <b>${esc(p.second||'—')}</b></span>${p.csm?`<span>CSM <b>${esc(p.csm)}</b></span>`:''}<span>Team <b>${esc(p.team||'—')}</b></span><span>${esc(partnerKind(p))}</span><span>ARR <b>${p.arr?fmt$(p.arr):'—'}</b></span>${p.conf!=null?`<span>Confidence <b>${p.conf}/5</b></span>`:''}</div>
     ${p.why.length?`<div class="drawer-meta" style="color:${p.rag==='R'?'var(--red)':'var(--amber)'}">${esc(p.why.join(' · '))}</div>`:''}
     <div class="drawer-links">${DEMO?'':`<a class="top-btn" target="_blank" rel="noopener" href="https://projects.zoho.com/portal/zuperinc#project/${encodeURIComponent(p.id)}">Open in Zoho ↗</a>`}${p.deal_url?`<a class="top-btn" target="_blank" rel="noopener" href="${esc(p.deal_url)}">HubSpot deal ↗</a>`:''}${p.zuper_company_id?`<span class="company-pill">Zuper acct ${esc(p.zuper_company_id)}</span>`:''}</div>
     <div class="drawer-tabs">${tabs.map(([k,l])=>`<div class="dtab${drawerTab===k?' active':''}" onclick="drawerTab='${k}';renderDrawer()">${l}</div>`).join('')}</div></div>
@@ -1428,8 +1672,8 @@ function renderDrawer(){
   if(drawerTab==='overview'){
     const steps=['Sold','Kick-off','Onboarding','Hypercare','Live'];const ci=p.phase==='On Hold'?2:p.phase==='Churned'?-1:steps.indexOf(p.phase);
     b.innerHTML=`<div class="stepper">${steps.map((s,i)=>`${i?'<span class="step-line"></span>':''}<span class="step ${i<ci?'done':i===ci?'cur':''}"><span class="dot"></span>${s}</span>`).join('')}${p.phase==='Churned'?' <span class="badge br" style="margin-left:10px">Churned</span>':''}${p.phase==='On Hold'?' <span class="badge ba" style="margin-left:10px">On hold</span>':''}</div>
-    <div class="pipe-grid">${PIPES.map(pp=>{const x=p.pipe[pp.k];const pc=x.total?Math.round(x.done/x.total*100):0;
-      return `<div class="pipe-card" style="border-top-color:${PIPE_COLORS[pp.k]}"><div class="pipe-name"><span>${pp.k} ${pp.n}</span><span class="dim">${x.done}/${x.total}</span></div><div class="pipe-pct">${pc}%</div><div class="pbar"><i style="width:${pc}%;background:${PIPE_COLORS[pp.k]}"></i></div>
+    <div class="pipe-grid">${PIPES.map(pp=>{const x=p.pipe[pp.k];const pc=x.pct||0;
+      return `<div class="pipe-card click" style="border-top-color:${PIPE_COLORS[pp.k]};cursor:pointer" onclick="openProject('${jsq(p.id)}','pipelines','${pp.k}')" title="Click to update"><div class="pipe-name"><span>${pp.k} ${pp.n}</span><span class="dim">${x.done}/${x.total}${x.items.length?` +${x.itemsDone}/${x.items.length}`:''}</span></div><div class="pipe-pct">${x.pct==null?'–':pc+'%'}${x.manual?' <span class="badge bz" style="font-size:9px">manual</span>':''}${x.status?` <span class="badge bgr" style="font-size:9px">${esc(x.status)}</span>`:''}</div><div class="pbar"><i style="width:${pc}%;background:${PIPE_COLORS[pp.k]}"></i></div>
       <div class="stage-dots">${[1,2,3,4,5].map(s=>{const c=x.stages[s];const sp=c&&c.total?Math.round(c.done/c.total*100):null;return `<div class="sdot" title="Stage ${s}: ${c?c.done+'/'+c.total:'no tasks'}" style="background:${sp==null?'var(--surface3)':sp>=100?PIPE_COLORS[pp.k]:sp>0?PIPE_COLORS[pp.k]+'66':'var(--surface3)'};color:${sp>=100?'#fff':'var(--text3)'}">S${s}</div>`;}).join('')}</div></div>`;}).join('')}</div>
     <div class="info-rows">
       ${[['Start',fmtD(p.startD)],['Baseline ETA',fmtD(p.baseD)],['Current ETA',fmtD(p.etaD)],['ETA slip',p.slip!=null?(p.slip>0?'+':'')+p.slip+' days':'—'],['Forecast (pace)',p.forecastD?fmtD(p.forecastD):'not enough recent progress'],['Go-live',fmtD(p.liveD)],
@@ -1437,6 +1681,10 @@ function renderDrawer(){
         .map(([k,v])=>`<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${esc(v)}</span></div>`).join('')}
     </div>
     ${p.comments?`<div class="card" style="margin-top:14px"><div class="card-title">Project comments (Zoho)</div><div style="font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.6">${esc(p.comments)}</div></div>`:''}`;
+  }else if(drawerTab==='pipelines'){
+    renderPipeEditor();
+  }else if(drawerTab==='billing'){
+    b.innerHTML=billingForm(p);
   }else if(drawerTab==='timeline'){
     b.innerHTML=ganttSvg(p);
   }else if(drawerTab==='tasks'){
@@ -1620,7 +1868,7 @@ function buildDemo(){
       if(done)closed++;else open++;
       tasks.push({id:'t'+(tid++),project_id:id,pipeline:t.pp,stage:+(t.tl.match(/Stage (\d)/)||[])[1],tasklist_name:t.tl,name:t.n,status:done?'Closed':(e<today?'In Progress':'Open'),is_completed:done,owners:ow,
         start_date:s.toISOString(),end_date:e.toISOString(),modified_time:new Date(done?Math.min(+today,+e)-Math.floor(r()*10)*DAY:+today-modDays*DAY).toISOString(),created_time:start.toISOString()});});
-    projects.push({id,key:'ZU-'+(1500+i),name:pick(words1)+' '+pick(words2)+(r()<.15?' LLC':''),status,status_closed:false,owner_name:o[0],owner_email:o[1],secondary_name:o2&&o2[0],secondary_email:o2&&o2[1],
+    projects.push({id,key:'ZU-'+(1500+i),name:pick(words1)+' '+pick(words2)+(r()<.15?' LLC':''),status,status_closed:false,owner_name:o[0],owner_email:o[1],secondary_name:o2&&o2[0],secondary_email:o2&&o2[1],pm_name:pick(owners)[0],ba_name:pick(owners)[0],csm_name:post?pick(owners)[0]:null,extra:{payment_collected:r()<.6?'Yes':'No',ready_to_invoice:r()<.3?'Yes':'No',lead_intake_status:post?'Completed':null},
       team:pick(['SMB','SMB','SMB','Mid-Market','Enterprise']),partner:pick(partners),industry:r()<.85?'Roofing':pick(['HVAC','Solar']),arr:Math.round(3000+r()*40000),potential_arr:null,confidence:post?null:(r()<.5?Math.ceil(r()*5):'0%'),
       start_date:ymd(start),current_eta:ymd(eta),baseline_eta:ymd(base),actual_go_live:live?ymd(live):null,zuper_company_id:String(1250000+i),company_login_name:null,deal_url:null,comments:r()<.4?'10/02 — weekly call held; waiting on customer data export.':null,
       tech_stack:r()<.5?['Measurement: EagleView','Accounting: QBO']:['CRM: JobNimbus','Measurement: Roofr'],business_tag:['NEW'],percent_complete:Math.round(progress*100),tasks_open:open,tasks_closed:closed,
@@ -1639,6 +1887,9 @@ function demoApi(action,body){
   if(action==='settings_save'){DEMO_DB.settings[body.key]=body.value;return Promise.resolve({ok:true});}
   if(action==='people_save'){(body.rows||[]).forEach(r=>{const i=DEMO_DB.people.findIndex(p=>p.email===r.email);if(i>=0)DEMO_DB.people[i]=r;else DEMO_DB.people.push(r);});return Promise.resolve({ok:true,saved:(body.rows||[]).length});}
   if(action==='adoption_pull')return Promise.resolve({ok:true});
+  if(action==='override_save'){DEMO_DB.overrides=(DEMO_DB.overrides||[]).filter(o=>!(o.project_id===body.project_id&&o.pipeline===body.pipeline));
+    DEMO_DB.overrides.push({project_id:body.project_id,pipeline:body.pipeline,manual_pct:body.manual_pct,status:body.status,note:body.note,items:body.items||[]});return Promise.resolve({ok:true});}
+  if(action==='billing_save'){DEMO_DB.billing=(DEMO_DB.billing||[]).filter(b=>b.project_id!==body.project_id);DEMO_DB.billing.push(Object.assign({},body,{updated_at:new Date().toISOString()}));return Promise.resolve({ok:true});}
   return Promise.reject(new Error('Not available with demo data.'));
 }
 function startDemo(){DEMO=true;enterApp();}

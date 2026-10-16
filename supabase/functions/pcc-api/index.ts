@@ -213,6 +213,19 @@ function normProject(p: any) {
     status_closed: !!p.status?.is_closed_type,
     owner_name: nm(p.owner), owner_email: ownerEmail,
     secondary_name: nm(p.secondary_owner), secondary_email: p.secondary_owner?.email || null,
+    ba_name: nm(p.ba_sa) || null,
+    pm_name: nm(p.project_manager) || null,
+    csm_name: nm(p.customer_success_manager) || null,
+    // Zoho fields the UI shows but we don't model as columns (billing flags, per-pipeline status/ETA).
+    extra: Object.fromEntries(Object.entries({
+      payment_collected: p.payment_collected, ready_to_invoice: p.ready_to_invoice, bill_from: p.bill_from,
+      deal_closed_by: p.deal_closed_by, targeted_go_live_date: p.targeted_go_live_date,
+      implementation_manager: nm(p.implementation_manager), no_of_users_on_live: p.no_of_users_on_live,
+      health_of_customer: p.health_of_customer,
+      lead_intake_status: p.lead_intake_status, lead_intake_eta: p.lead_intake_eta,
+      inspection_status: p.inspection_status, inspection_eta: p.inspection_eta, production_eta: p.production_eta,
+      reason_for_go_live_delay: p.reason_for_go_live_delay, reason_for_churn: p.reason_for_churn,
+    }).filter(([, v]) => v !== undefined && v !== null && v !== "")),
     team: p.team || null,
     partner: p.partner_driven || null,
     industry: p.industry || null,
@@ -583,8 +596,8 @@ async function readAll(table: string, cols: string, filter?: (q: any) => any) {
 
 async function readData() {
   const since = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
-  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption] = await Promise.all([
-    readAll("pcc_projects", "id,key,name,status,status_closed,owner_name,owner_email,secondary_name,secondary_email,team,partner,industry,arr,potential_arr,confidence,start_date,current_eta,baseline_eta,actual_go_live,zuper_company_id,company_login_name,deal_url,comments,tech_stack,business_tag,percent_complete,tasks_open,tasks_closed,milestones_open,milestones_closed,created_time,modified_time,first_seen,tasks_synced_at"),
+  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing] = await Promise.all([
+    readAll("pcc_projects", "id,key,name,status,status_closed,owner_name,owner_email,secondary_name,secondary_email,ba_name,pm_name,csm_name,extra,team,partner,industry,arr,potential_arr,confidence,start_date,current_eta,baseline_eta,actual_go_live,zuper_company_id,company_login_name,deal_url,comments,tech_stack,business_tag,percent_complete,tasks_open,tasks_closed,milestones_open,milestones_closed,created_time,modified_time,first_seen,tasks_synced_at"),
     readAll("pcc_tasks", "id,project_id,pipeline,stage,tasklist_name,name,status,is_completed,owners,start_date,end_date,modified_time,created_time"),
     readAll("pcc_milestones", "id,project_id,name,pipeline,start_date,end_date,status,is_closed"),
     readAll("pcc_snapshots", "snap_date,project_id,status,current_eta,tasks_open,tasks_closed", (q) => q.gte("snap_date", since)),
@@ -592,6 +605,8 @@ async function readData() {
     readAll("pcc_settings", "key,value,updated_at"),
     readAll("pcc_accounts", "id,company_name,zuper_company_id,company_login_name,base_url,key_hint,created_at,last_pulled,last_error"),
     readAll("pcc_adoption", "account_id,snap_date,metrics", (q) => q.gte("snap_date", since)),
+    readAll("pcc_pipeline_overrides", "*"),
+    readAll("pcc_billing", "*"),
   ]);
   const settings: any = {};
   let syncState: any = {}, zohoConnected = false;
@@ -602,7 +617,7 @@ async function readData() {
   });
   const { data: lastLog } = await db.from("pcc_sync_log").select("at,ok,detail").order("id", { ascending: false }).limit(1);
   return {
-    projects, tasks, milestones, snapshots, people, settings, accounts, adoption,
+    projects, tasks, milestones, snapshots, people, settings, accounts, adoption, overrides, billing,
     sync: {
       ...syncState,
       zoho_connected: zohoConnected,
@@ -696,6 +711,39 @@ Deno.serve(async (req) => {
         const salt = hex(crypto.getRandomValues(new Uint8Array(16)).buffer);
         await setSetting("auth", { salt, hash: await sha256hex(salt + ":" + np), at: new Date().toISOString() });
         return json({ ok: true });
+      }
+
+      case "override_save": {
+        const pid = String(body.project_id || ""), pipe = String(body.pipeline || "");
+        if (!pid || !/^P[1-9]$/.test(pipe)) return json({ error: "project_id and pipeline (P1..P4) required" }, 400);
+        const pct = body.manual_pct === null || body.manual_pct === undefined || body.manual_pct === "" ? null
+          : Math.max(0, Math.min(100, Math.round(Number(body.manual_pct))));
+        const items = (Array.isArray(body.items) ? body.items : []).slice(0, 100).map((it: any) => ({
+          id: String(it.id || crypto.randomUUID()).slice(0, 40), text: String(it.text || "").slice(0, 300), done: !!it.done,
+        })).filter((it: any) => it.text);
+        const row = { project_id: pid, pipeline: pipe, manual_pct: Number.isFinite(pct as number) ? pct : null,
+          status: body.status ? String(body.status).slice(0, 40) : null, note: body.note ? String(body.note).slice(0, 2000) : null,
+          items, updated_at: new Date().toISOString() };
+        const { error } = await db.from("pcc_pipeline_overrides").upsert(row);
+        if (error) throw new Error(error.message);
+        return json({ ok: true, row });
+      }
+
+      case "billing_save": {
+        const pid = String(body.project_id || "");
+        if (!pid) return json({ error: "project_id required" }, 400);
+        const d = (v: any) => (v && /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? String(v) : null);
+        const n = (v: any) => (v === "" || v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+        const row = {
+          project_id: pid, billing_start: d(body.billing_start), frequency: body.frequency ? String(body.frequency).slice(0, 20) : null,
+          term_months: n(body.term_months), renewal_date: d(body.renewal_date), next_invoice_date: d(body.next_invoice_date),
+          amount_due: n(body.amount_due), payment_status: body.payment_status ? String(body.payment_status).slice(0, 30) : null,
+          last_payment_date: d(body.last_payment_date), notes: body.notes ? String(body.notes).slice(0, 2000) : null,
+          updated_at: new Date().toISOString(),
+        };
+        const { error } = await db.from("pcc_billing").upsert(row);
+        if (error) throw new Error(error.message);
+        return json({ ok: true, row });
       }
 
       case "settings_save": {
