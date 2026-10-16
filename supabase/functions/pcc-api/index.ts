@@ -110,7 +110,7 @@ async function setSetting(key: string, value: unknown) {
   if (error) throw new Error(error.message);
 }
 // Keys the browser may read/write. zoho_* / sync_state / cron_secret / auth are server-only.
-const PUBLIC_SETTINGS = new Set(["phase_map", "rag", "targets", "general", "exclude"]);
+const PUBLIC_SETTINGS = new Set(["phase_map", "rag", "targets", "general", "exclude", "billing_import"]);
 
 // Zoho Self Client credentials: Edge secrets win; otherwise the pair saved from Settings →
 // Connect Zoho (server-only row, never returned to the browser).
@@ -596,7 +596,7 @@ async function readAll(table: string, cols: string, filter?: (q: any) => any) {
 
 async function readData() {
   const since = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
-  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing] = await Promise.all([
+  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing, billing_sheet] = await Promise.all([
     readAll("pcc_projects", "id,key,name,status,status_closed,owner_name,owner_email,secondary_name,secondary_email,ba_name,pm_name,csm_name,extra,team,partner,industry,arr,potential_arr,confidence,start_date,current_eta,baseline_eta,actual_go_live,zuper_company_id,company_login_name,deal_url,comments,tech_stack,business_tag,percent_complete,tasks_open,tasks_closed,milestones_open,milestones_closed,created_time,modified_time,first_seen,tasks_synced_at"),
     readAll("pcc_tasks", "id,project_id,pipeline,stage,tasklist_name,name,status,is_completed,owners,start_date,end_date,modified_time,created_time"),
     readAll("pcc_milestones", "id,project_id,name,pipeline,start_date,end_date,status,is_closed"),
@@ -607,6 +607,7 @@ async function readData() {
     readAll("pcc_adoption", "account_id,snap_date,metrics", (q) => q.gte("snap_date", since)),
     readAll("pcc_pipeline_overrides", "*"),
     readAll("pcc_billing", "*"),
+    readAll("pcc_billing_sheet", "*"),
   ]);
   const settings: any = {};
   let syncState: any = {}, zohoConnected = false;
@@ -617,7 +618,7 @@ async function readData() {
   });
   const { data: lastLog } = await db.from("pcc_sync_log").select("at,ok,detail").order("id", { ascending: false }).limit(1);
   return {
-    projects, tasks, milestones, snapshots, people, settings, accounts, adoption, overrides, billing,
+    projects, tasks, milestones, snapshots, people, settings, accounts, adoption, overrides, billing, billing_sheet,
     sync: {
       ...syncState,
       zoho_connected: zohoConnected,
@@ -746,8 +747,36 @@ Deno.serve(async (req) => {
         return json({ ok: true, row });
       }
 
+      // Replace the RevOps payments sheet snapshot. Rows are parsed in the browser (CSV/XLSX)
+      // and sent already normalised; this only validates and stores them.
+      case "billing_import": {
+        const rows = Array.isArray(body.rows) ? body.rows : [];
+        const d = (v: any) => (v && /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? String(v) : null);
+        const n = (v: any) => (v === "" || v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+        const s = (v: any, max = 300) => (v === null || v === undefined || String(v).trim() === "" ? null : String(v).trim().slice(0, max));
+        const clean = rows.filter((r: any) => r && /^\d+$/.test(String(r.deal_id || "").trim())).slice(0, 5000).map((r: any) => ({
+          deal_id: String(r.deal_id).trim(), deal_name: s(r.deal_name), deal_type: s(r.deal_type, 60), zoho_status: s(r.zoho_status, 80),
+          payment_status: s(r.payment_status, 60), amount: n(r.amount), amount_due: n(r.amount_due), amount_paid: n(r.amount_paid),
+          first_unpaid_due: d(r.first_unpaid_due), days_due: n(r.days_due), partner: s(r.partner), solution_partner: s(r.solution_partner),
+          deal_owner: s(r.deal_owner), close_year: n(r.close_year), partner_driven: s(r.partner_driven),
+          oldest_invoice: d(r.oldest_invoice), latest_invoice: d(r.latest_invoice), zoho_account_link: s(r.zoho_account_link, 500),
+          hs_link: s(r.hs_link, 500), connect_plan: s(r.connect_plan, 120), csr_agent: s(r.csr_agent, 120),
+          report_date: d(r.report_date) || d(body.report_date), imported_at: new Date().toISOString(),
+        }));
+        const seen = new Set<string>();
+        const uniq = clean.filter((r: any) => !seen.has(r.deal_id) && seen.add(r.deal_id));
+        if (!uniq.length) return json({ error: "No rows with a numeric Deal ID were found in the file." }, 400);
+        await db.from("pcc_billing_sheet").delete().neq("deal_id", "");
+        for (let i = 0; i < uniq.length; i += 500) {
+          const { error } = await db.from("pcc_billing_sheet").insert(uniq.slice(i, i + 500));
+          if (error) throw new Error(error.message);
+        }
+        await setSetting("billing_import", { file: s(body.file, 200), rows: uniq.length, report_date: uniq[0].report_date, at: new Date().toISOString() });
+        return json({ ok: true, rows: uniq.length, skipped: rows.length - uniq.length });
+      }
+
       case "settings_save": {
-        if (!PUBLIC_SETTINGS.has(body.key)) return json({ error: "unknown setting" }, 400);
+        if (!PUBLIC_SETTINGS.has(body.key) || body.key === "billing_import") return json({ error: "unknown setting" }, 400);
         await setSetting(body.key, body.value);
         return json({ ok: true });
       }
