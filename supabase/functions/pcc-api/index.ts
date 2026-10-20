@@ -365,6 +365,79 @@ async function syncProjectTasks(projectId: string) {
   return tRows.length;
 }
 
+// ─── Time logs (capacity) ────────────────────────────────────────────────────
+// Portal-wide V2 endpoint: every user's logs across ALL projects (roofing, other industries and
+// the internal "CX - Onboarding - Activities" project). V3 bulk time logs is known to return
+// partial lists, so V2 is used deliberately. Needs scope ZohoProjects.timesheets.READ.
+class ScopeMissing extends Error {}
+const isoFromLong = (n: any) => {
+  const v = Number(n);
+  // +12h then take the UTC date: lands on the right calendar day for any portal timezone.
+  return Number.isFinite(v) && v > 0 ? new Date(v + 12 * 3600 * 1000).toISOString().slice(0, 10) : null;
+};
+const isoFromMDY = (s: any) => {
+  const m = String(s || "").match(/^(\d{2})-(\d{2})-(\d{4})/);
+  return m ? `${m[3]}-${m[1]}-${m[2]}` : null;
+};
+function normLog(l: any, component: string, day: any) {
+  const mins = Number(l.total_minutes ?? ((Number(l.hours) || 0) * 60 + (Number(l.minutes) || 0))) || 0;
+  return {
+    id: String(l.id_string || l.id),
+    log_date: isoFromLong(l.log_date_long) || isoFromLong(day?.date_long) || isoFromMDY(l.log_date) || isoFromMDY(day?.date),
+    owner_id: l.owner_id ? String(l.owner_id) : null,
+    owner_name: l.owner_name || null,
+    project_id: l.project ? String(l.project.id_string || l.project.id) : null,
+    project_name: l.project?.name || null,
+    task_id: l.task ? String(l.task.id_string || l.task.id) : null,
+    task_name: String(l.task?.name || l.name || l.bug?.title || "").replace(/&amp;/g, "&") || null,
+    tasklist_name: l.task_list?.name || null,
+    component, minutes: mins,
+    bill_status: l.bill_status || null, approval_status: l.approval_status || null,
+    synced_at: new Date().toISOString(),
+  };
+}
+async function syncTimelogs(months: number) {
+  const out = { months: 0, entries: 0 };
+  const now = new Date();
+  for (let i = 0; i < months; i++) {
+    const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const next = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 1));
+    const mmdd = `${String(first.getUTCMonth() + 1).padStart(2, "0")}-01-${first.getUTCFullYear()}`;
+    const byId = new Map<string, any>();
+    for (const comp of ["task", "general"]) {
+      for (let index = 1; index < 50000; index += 200) {
+        let j: any;
+        try {
+          j = await zget(`/restapi/portal/${PORTAL_ID}/logs?users_list=all&view_type=month&date=${mmdd}&bill_status=All&component_type=${comp}&index=${index}&range=200`);
+        } catch (e) {
+          const msg = String((e as Error).message || e);
+          if (/scope|6401|INVALID_OAUTH|permission|401/i.test(msg)) throw new ScopeMissing(msg.slice(0, 200));
+          throw e;
+        }
+        const days: any[] = j?.timelogs?.date || [];
+        let fresh = 0, seen = 0;
+        for (const day of days) {
+          for (const l of [...(day.tasklogs || []), ...(day.generallogs || []), ...(day.buglogs || [])]) {
+            seen++;
+            const r = normLog(l, comp, day);
+            if (r.id && r.log_date && !byId.has(r.id)) { byId.set(r.id, r); fresh++; }
+          }
+        }
+        // Stop on a short page, or if the server ignored paging and repeated itself.
+        if (seen < 200 || fresh === 0) break;
+      }
+    }
+    const rows = [...byId.values()];
+    await db.from("pcc_timelogs").delete().gte("log_date", first.toISOString().slice(0, 10)).lt("log_date", next.toISOString().slice(0, 10));
+    for (let k = 0; k < rows.length; k += 500) {
+      const { error } = await db.from("pcc_timelogs").upsert(rows.slice(k, k + 500));
+      if (error) throw new Error("upsert timelogs: " + error.message);
+    }
+    out.months++; out.entries += rows.length;
+  }
+  return out;
+}
+
 // Projects whose task list is stale: never synced, changed in Zoho since, or >24h old
 // and still open. Closed projects are refreshed only when Zoho says they changed.
 async function staleProjects(limit: number) {
@@ -391,6 +464,20 @@ async function runSync(force: boolean) {
     if (force || stale) {
       out.projects = await syncProjects();
       state.projects_at = new Date().toISOString();
+      await setSetting("sync_state", state);
+    }
+    // Time logs every 2h: current + previous month; first run backfills 6 months.
+    const tlStale = !state.timelogs_at || Date.now() - Date.parse(state.timelogs_at) > 2 * 3600 * 1000;
+    if (force || tlStale) {
+      try {
+        out.timelogs = await syncTimelogs(state.timelogs_backfilled ? 2 : 6);
+        state.timelogs_at = new Date().toISOString(); state.timelogs_backfilled = true; state.timelogs_error = null;
+      } catch (e) {
+        if (e instanceof Throttled) throw e;
+        state.timelogs_error = e instanceof ScopeMissing ? "scope" : String((e as Error).message || e).slice(0, 200);
+        state.timelogs_at = new Date().toISOString();
+        out.errors.push("timelogs: " + state.timelogs_error);
+      }
       await setSetting("sync_state", state);
     }
     const { ids } = await staleProjects(200);
@@ -596,7 +683,8 @@ async function readAll(table: string, cols: string, filter?: (q: any) => any) {
 
 async function readData() {
   const since = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
-  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing, billing_sheet] = await Promise.all([
+  const tlSince = new Date(Date.now() - 98 * 86400000).toISOString().slice(0, 10); // 14 weeks
+  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing, billing_sheet, timelogs] = await Promise.all([
     readAll("pcc_projects", "id,key,name,status,status_closed,owner_name,owner_email,secondary_name,secondary_email,ba_name,pm_name,csm_name,extra,team,partner,industry,arr,potential_arr,confidence,start_date,current_eta,baseline_eta,actual_go_live,zuper_company_id,company_login_name,deal_url,comments,tech_stack,business_tag,percent_complete,tasks_open,tasks_closed,milestones_open,milestones_closed,created_time,modified_time,first_seen,tasks_synced_at"),
     readAll("pcc_tasks", "id,project_id,pipeline,stage,tasklist_name,name,status,is_completed,owners,start_date,end_date,modified_time,created_time"),
     readAll("pcc_milestones", "id,project_id,name,pipeline,start_date,end_date,status,is_closed"),
@@ -608,6 +696,7 @@ async function readData() {
     readAll("pcc_pipeline_overrides", "*"),
     readAll("pcc_billing", "*"),
     readAll("pcc_billing_sheet", "*"),
+    readAll("pcc_timelogs", "log_date,owner_name,owner_id,project_id,project_name,task_name,minutes,bill_status", (q) => q.gte("log_date", tlSince)),
   ]);
   const settings: any = {};
   let syncState: any = {}, zohoConnected = false;
@@ -618,7 +707,7 @@ async function readData() {
   });
   const { data: lastLog } = await db.from("pcc_sync_log").select("at,ok,detail").order("id", { ascending: false }).limit(1);
   return {
-    projects, tasks, milestones, snapshots, people, settings, accounts, adoption, overrides, billing, billing_sheet,
+    projects, tasks, milestones, snapshots, people, settings, accounts, adoption, overrides, billing, billing_sheet, timelogs,
     sync: {
       ...syncState,
       zoho_connected: zohoConnected,
@@ -658,7 +747,7 @@ Deno.serve(async (req) => {
       isCron = !!(cs && cs.s && cs.s === cronHdr);
     }
     // The cron credential may also run server maintenance (adoption probe/pull), nothing else.
-    if (isCron && !["cron", "adoption_probe", "adoption_pull"].includes(action)) return json({ error: "cron credential is limited to maintenance actions" }, 403);
+    if (isCron && !["cron", "adoption_probe", "adoption_pull", "zoho_probe"].includes(action)) return json({ error: "cron credential is limited to maintenance actions" }, 403);
     if (!isCron && !(await verifyToken(req.headers.get("x-pcc-token")))) {
       return json({ error: "unauthorized" }, 401);
     }
@@ -785,6 +874,7 @@ Deno.serve(async (req) => {
         const rows = (Array.isArray(body.rows) ? body.rows : []).filter((r: any) => r && r.email).map((r: any) => ({
           email: String(r.email).toLowerCase(), name: r.name || null, role: r.role || "Onboarding",
           org: r.org || "Zuper", capacity: Number(r.capacity) || 8, active: r.active !== false,
+          weekly_hours: Number(r.weekly_hours) > 0 ? Number(r.weekly_hours) : 40,
         }));
         if (rows.length) {
           const { error } = await db.from("pcc_people").upsert(rows);
@@ -827,6 +917,23 @@ Deno.serve(async (req) => {
         if (typeof body.zuper_company_id === "string") patch.zuper_company_id = body.zuper_company_id.slice(0, 40);
         await db.from("pcc_accounts").update(patch).eq("id", String(body.id || ""));
         return json({ ok: true });
+      }
+
+      // Diagnostic (maintenance credential only): GET a Zoho Projects path and report its shape.
+      case "zoho_probe": {
+        const path = String(body.path || "");
+        if (!/^\/(restapi|api\/v3)\/portal\//.test(path)) return json({ error: "path must start with /restapi/portal/ or /api/v3/portal/" }, 400);
+        try {
+          const j = await zget(path);
+          const tl = j?.timelogs;
+          const days: any[] = tl?.date || [];
+          const logs = days.flatMap((d: any) => [...(d.tasklogs || []), ...(d.generallogs || [])]);
+          return json({ ok: true, top: j && typeof j === "object" ? Object.keys(j) : null, tl_keys: tl ? Object.keys(tl) : null, days: days.length,
+            logs: logs.length, owners: [...new Set(logs.map((l: any) => l.owner_name))].slice(0, 40),
+            projects: [...new Set(logs.map((l: any) => l.project?.name))].slice(0, 20), sample_keys: logs[0] ? Object.keys(logs[0]) : null,
+            sample: logs[0] ? { log_date: logs[0].log_date, log_date_long: logs[0].log_date_long, total_minutes: logs[0].total_minutes, owner_id: logs[0].owner_id, task: logs[0].task?.name } : null,
+            grandtotal: tl?.grandtotal ?? null });
+        } catch (e) { return json({ ok: false, error: String((e as Error).message || e).slice(0, 400) }); }
       }
 
       case "adoption_probe": {

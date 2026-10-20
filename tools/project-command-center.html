@@ -477,13 +477,14 @@ td.pcell:hover{background:var(--surface3)!important}
       </div>
 
       <div class="page" id="page-team">
-        <div class="page-hdr"><div><div class="page-title">Team Load</div><div class="page-sub">Capacity by person — projects owned, open and overdue tasks</div></div>
-          <div class="hdr-right"><button class="top-btn" onclick="showPage('settings');setTimeout(()=>{const e=document.getElementById('setPeople');e&&e.scrollIntoView({behavior:'smooth'})},80)">Edit people &amp; capacity</button></div></div>
+        <div class="page-hdr"><div><div class="page-title">Team Load</div><div class="page-sub">Hours logged in Zoho vs available hours — customer work, internal time and logging gaps</div></div>
+          <div class="hdr-right"><div class="seg" id="teamPeriodSeg" style="margin:0"></div><button class="top-btn" onclick="showPage('settings');setTimeout(()=>{const e=document.getElementById('setPeople');e&&e.scrollIntoView({behavior:'smooth'})},80)">Edit people &amp; hours</button></div></div>
         <div class="seg" id="teamSeg"></div>
+        <div id="teamNotice"></div>
         <div class="kpi-grid" id="teamKpi"></div>
         <div class="charts-grid" id="teamCharts"></div>
         <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">People</span><span class="tbl-pill" id="teamPill">—</span></div>
-          <div class="tbl-wrap"><table id="teamTable"><thead><tr><th data-k="name">Person</th><th data-k="role">Role</th><th data-k="org">Org</th><th data-k="owned">Owner</th><th data-k="second">Secondary</th><th data-k="weighted">Weighted load</th><th data-k="open">Open tasks</th><th data-k="overdue">Overdue</th><th data-k="due7">Due 7d</th><th data-k="util">Utilisation</th></tr></thead><tbody id="teamTbl"></tbody></table></div></div>
+          <div class="tbl-wrap"><table id="teamTable"><thead><tr><th data-k="name">Person</th><th data-k="role">Role</th><th data-k="hours">Hours logged</th><th data-k="cust">Customer h</th><th data-k="int">Internal h</th><th data-k="util">Utilisation</th><th data-k="u4">4-wk avg</th><th data-k="proj">Owner / 2nd</th><th data-k="open">Open tasks</th><th data-k="overdue">Overdue</th><th data-k="last">Last log</th></tr></thead><tbody id="teamTbl"></tbody></table></div></div>
       </div>
 
       <div class="page" id="page-adoption">
@@ -790,7 +791,8 @@ function derive(){
   (RAW.tasks||[]).forEach(t=>(t.owners||[]).forEach(o=>add(o.name,o.email)));
   Object.values(cfg).forEach(c=>{const k=c.email.toLowerCase();seen[k]=Object.assign({},seen[k]||{},{name:c.name||(seen[k]||{}).name,email:c.email});});
   PEOPLE=Object.values(seen).map(s=>{const c=cfg[String(s.email||'').toLowerCase()]||{};
-    return{name:c.name||s.name,email:s.email,role:c.role||'Onboarding',org:c.org||'Zuper',capacity:Number(c.capacity)||SET.targets.capacity_default,active:c.active!==false,configured:!!c.email};});
+    return{name:c.name||s.name,email:s.email,role:c.role||'Onboarding',org:c.org||'Zuper',capacity:Number(c.capacity)||SET.targets.capacity_default,weekly_hours:Number(c.weekly_hours)||40,active:c.active!==false,configured:!!c.email};});
+  deriveTimelogs();
   ACCOUNTS=(RAW.accounts||[]).map(a=>{
     const rows=(RAW.adoption||[]).filter(r=>r.account_id===a.id).sort((x,y)=>x.snap_date<y.snap_date?-1:1);
     const last=rows[rows.length-1];const m=last?last.metrics||{}:{};
@@ -1305,6 +1307,54 @@ function renderGoLives(){
 // TEAM LOAD
 // ═══════════════════════════════════════════════════════════════
 const PHASE_WEIGHT={'Sold':.25,'Kick-off':.5,'Onboarding':1,'On Hold':.25,'Hypercare':.5,'Live':0,'Churned':0};
+// ─── Time logs → capacity ───────────────────────────────────────
+// Every Zoho time-log entry is put in one bucket. Customer work = roofing projects, other customer
+// projects, and generic "Training [date]" / "Implementation [date]" entries in the CX activities project.
+const TL_GROUPS={'Roofing projects':'customer','Other customer projects':'customer','Customer delivery (generic)':'customer',
+  'Internal calls':'internal','Training & L&D':'internal','Content & docs':'internal','Management':'internal','Testing & QA':'internal','Other internal':'internal'};
+const TL_COLORS={'Roofing projects':'#FD5000','Other customer projects':'#3B82F6','Customer delivery (generic)':'#14B8A6',
+  'Internal calls':'#A855F7','Training & L&D':'#EAB308','Content & docs':'#EC4899','Management':'#64748B','Testing & QA':'#22C55E','Other internal':'#94A3B8'};
+const TL_RULES=[[/train|learn|l\s*&\s*d|course|certif|onboarding of/i,'Training & L&D'],[/call|meeting|sync|stand.?up|1:1|huddle|cft/i,'Internal calls'],
+  [/video|record|content|doc|kb|article|blog/i,'Content & docs'],[/manager|follow.?up|review|hiring|interview|team/i,'Management'],[/test|qa|ui\/ux/i,'Testing & QA']];
+let ROOF_IDS=new Set(),TL=[],teamPeriod='last';
+function tlCat(l){
+  if(l.project_id&&ROOF_IDS.has(String(l.project_id)))return 'Roofing projects';
+  const pn=l.project_name||'',tn=l.task_name||'';
+  if(/activit/i.test(pn)&&/onboarding|cx/i.test(pn)){
+    if(/(training|implementation)\s*\[\s*\d/i.test(tn))return 'Customer delivery (generic)';
+    for(const [re,c] of TL_RULES)if(re.test(tn))return c;
+    return 'Other internal';
+  }
+  return 'Other customer projects';
+}
+const nkey=s=>String(s||'').toLowerCase().replace(/[^a-z ]/g,'').trim();
+// Map a time-log owner name onto a PEOPLE entry (exact name, else unique first-name match).
+function canonPerson(name){
+  const k=nkey(name);if(!k)return null;
+  let p=PEOPLE.find(x=>nkey(x.name)===k);if(p)return p;
+  const first=k.split(' ')[0];const cands=PEOPLE.filter(x=>nkey(x.name).split(' ')[0]===first);
+  return cands.length===1?cands[0]:null;
+}
+function deriveTimelogs(){
+  ROOF_IDS=new Set((RAW.projects||[]).map(p=>String(p.id)));
+  TL=(RAW.timelogs||[]).map(l=>{let pr=canonPerson(l.owner_name);
+    if(!pr&&l.owner_name){pr={name:l.owner_name,email:null,role:'Onboarding',org:'Zuper',capacity:SET.targets.capacity_default,weekly_hours:40,active:true,configured:false,fromLogs:true};PEOPLE.push(pr);}
+    const cat=tlCat(l);return Object.assign({},l,{person:pr?pr.name:l.owner_name,cat,group:TL_GROUPS[cat]||'internal',h:(Number(l.minutes)||0)/60,d:pd(l.log_date)});});
+}
+function mondayOf(d){const x=new Date(d);x.setHours(0,0,0,0);const wd=(x.getDay()+6)%7;x.setDate(x.getDate()-wd);return x;}
+// [from, to (exclusive), weeks of capacity] for the selected Team period.
+function teamRange(){
+  const thisMon=mondayOf(new Date());
+  if(teamPeriod==='this'){const wd=Math.min(5,((new Date().getDay()+6)%7)+1);return[thisMon,new Date(thisMon.getTime()+7*DAY),wd/5,'This week'];}
+  if(teamPeriod==='4w')return[new Date(thisMon.getTime()-28*DAY),thisMon,4,'Last 4 weeks'];
+  return[new Date(thisMon.getTime()-7*DAY),thisMon,1,'Last week'];
+}
+function hoursOf(name,from,to){
+  const r={total:0,customer:0,internal:0,byCat:{},byProject:{},last:null,logs:[]};
+  TL.forEach(l=>{if(l.person!==name||!l.d)return;if(!r.last||l.d>r.last)r.last=l.d;if(l.d<from||l.d>=to)return;
+    r.total+=l.h;r[l.group]+=l.h;r.byCat[l.cat]=(r.byCat[l.cat]||0)+l.h;const pk=l.project_name||'—';r.byProject[pk]=(r.byProject[pk]||0)+l.h;r.logs.push(l);});
+  return r;
+}
 function loadOf(pr){
   const vp=VP();const key=(pr.email||'').toLowerCase(),nm=pr.name;
   const isMe=(n,e)=>(e&&key&&e.toLowerCase()===key)||(n&&n===nm);
@@ -1315,40 +1365,82 @@ function loadOf(pr){
   const mine=(RAW.tasks||[]).filter(t=>!t.is_completed&&ids.has(t.project_id)&&(t.owners||[]).some(o=>isMe(o.name,o.email)));
   const overdue=mine.filter(t=>t.end_date&&pd(t.end_date)<now).length;
   const due7=mine.filter(t=>t.end_date&&pd(t.end_date)>=now&&pd(t.end_date)<=in7).length;
-  const util=pr.capacity?Math.round(weighted/pr.capacity*100):0;
-  return Object.assign({},pr,{owned,second,weighted:Math.round(weighted*10)/10,open:mine.length,overdue,due7,util,mine});
+  const wh=Number(pr.weekly_hours)||40;
+  const [from,to,weeks]=teamRange();const hrs=hoursOf(nm,from,to);
+  const thisMon=mondayOf(new Date());const h4=hoursOf(nm,new Date(thisMon.getTime()-28*DAY),thisMon);
+  const tracked=!!(h4.total||(hrs.last&&(Date.now()-hrs.last)<28*DAY));
+  const hUtil=Math.round(hrs.total/(wh*weeks)*100),h4Util=Math.round(h4.total/(wh*4)*100);
+  const pUtil=pr.capacity?Math.round(weighted/pr.capacity*100):0;
+  return Object.assign({},pr,{owned,second,weighted:Math.round(weighted*10)/10,open:mine.length,overdue,due7,mine,wh,hrs,h4,tracked,
+    avail:wh*weeks,hUtil,h4Util,pUtil,util:tracked?hUtil:pUtil});
 }
 function renderTeam(){
   const roles=['All'].concat(ROLES.filter(r=>PEOPLE.some(p=>p.role===r)));
   if(!roles.includes(teamRole))teamRole='All';
   $('teamSeg').innerHTML=roles.map(r=>`<button class="${r===teamRole?'active':''}" onclick="teamRole='${r}';renderTeam()">${r}</button>`).join('');
-  const L=PEOPLE.filter(p=>p.active&&(teamRole==='All'||p.role===teamRole)).map(loadOf).filter(l=>l.owned.length||l.second.length||l.open||l.configured).sort((a,b)=>b.util-a.util||b.open-a.open);
-  const over=L.filter(l=>l.util>100).length;const cap=L.reduce((t,l)=>t+l.capacity,0),used=L.reduce((t,l)=>t+l.weighted,0);
-  const vp=VP();const unassigned=(RAW.tasks||[]).filter(t=>!t.is_completed&&!(t.owners||[]).length&&PBYID[t.project_id]&&PBYID[t.project_id].preLive&&vp.includes(PBYID[t.project_id])).length;
-  const noOwner=vp.filter(p=>p.preLive&&!p.owner).length;
+  $('teamPeriodSeg').innerHTML=[['this','This week'],['last','Last week'],['4w','Last 4 weeks']].map(([k,l])=>`<button class="${teamPeriod===k?'active':''}" onclick="teamPeriod='${k}';renderTeam()">${l}</button>`).join('');
+  const [from,to,weeks,plabel]=teamRange();
+  const s=(RAW.sync||{});
+  const L=PEOPLE.filter(p=>p.active&&(teamRole==='All'||p.role===teamRole)).map(loadOf).filter(l=>l.tracked||l.owned.length||l.second.length||l.open||l.configured)
+    .sort((a,b)=>b.hrs.total-a.hrs.total||b.open-a.open);
+  const T=L.filter(l=>l.tracked);
+  const logged=T.reduce((t,l)=>t+l.hrs.total,0),avail=T.reduce((t,l)=>t+l.avail,0),cust=T.reduce((t,l)=>t+l.hrs.customer,0),intl=T.reduce((t,l)=>t+l.hrs.internal,0);
+  const lastMon=new Date(mondayOf(new Date()).getTime()-7*DAY);
+  const gaps=L.filter(l=>(l.tracked||l.owned.length||l.open)&&hoursOf(l.name,lastMon,mondayOf(new Date())).total<l.wh*.5);
+  const noLogs=!(RAW.timelogs||[]).length;
+  $('teamNotice').innerHTML=noLogs?(s.timelogs_error==='scope'?`<div class="notice warn"><b>Time logs need one more Zoho permission.</b> Go to <a href="#" onclick="showPage('settings');return false">Settings → Zoho connection → Reconnect</a> and generate a new code — the scope list now includes <code>ZohoProjects.timesheets.READ</code>. Until then, load below is based on projects and tasks only.</div>`
+      :`<div class="notice">Time logs haven't synced yet${s.timelogs_error?` (last error: ${esc(s.timelogs_error)})`:''}. Press <b>Sync</b> — the first run pulls the last 6 months.</div>`)
+    :gaps.length?`<div class="notice warn"><b>Logging gaps last week:</b> ${gaps.slice(0,12).map(l=>`<a href="#" onclick="openPerson('${jsq(l.name)}');return false">${esc(l.name)}</a> (${hoursOf(l.name,lastMon,mondayOf(new Date())).total.toFixed(1)}h)`).join(', ')}${gaps.length>12?` +${gaps.length-12} more`:''} logged under half of their ${gaps[0].wh}h week — capacity numbers for them are understated.</div>`:'';
   $('teamKpi').innerHTML=kpiEnhHtml([
-    {id:'tm-util',label:'Team utilisation',val:(cap?Math.round(used/cap*100):0)+'%',raw:cap?Math.round(used/cap*100):0,cls:'orange',sub:`${used.toFixed(1)} of ${cap} project slots`},
-    {label:'Over capacity',val:over,cls:'red',sub:`of ${L.length} people`},
-    {label:'Overdue tasks',val:L.reduce((t,l)=>t+l.overdue,0),cls:'amber',sub:'owned by this group'},
-    {label:'Unassigned tasks',val:unassigned,cls:'purple',sub:'open, pre go-live'},
-    {label:'Projects without owner',val:noOwner,cls:'blue',sub:'pre go-live'},
+    {label:'Hours logged',val:Math.round(logged).toLocaleString()+'h',cls:'orange',sub:`${plabel} · ${T.length} people logging`},
+    {id:'tm-hutil',label:'Team utilisation',val:(avail?Math.round(logged/avail*100):0)+'%',raw:avail?Math.round(logged/avail*100):0,cls:'blue',sub:`of ${Math.round(avail)}h available (${L[0]?L[0].wh:40}h/wk)`},
+    {label:'Customer work',val:(logged?Math.round(cust/logged*100):0)+'%',cls:'green',sub:Math.round(cust)+'h on customer projects'},
+    {label:'Internal',val:(logged?Math.round(intl/logged*100):0)+'%',cls:'purple',sub:Math.round(intl)+'h calls, training, content…'},
+    {label:'Over 100%',val:T.filter(l=>l.hUtil>100).length,cls:'red',sub:'people logged more than capacity'},
+    {label:'Logging gaps',val:gaps.length,cls:'amber',sub:'under 50% logged last week'},
   ]);
-  const top=L.slice(0,15);
-  $('teamCharts').innerHTML=chartCard('tmLoad','Weighted load vs capacity',L.length+' people',Math.max(200,top.length*26),null,true,'Owner = 1 slot per onboarding project (kick-off 0.5, sold/on-hold 0.25, hypercare 0.5); secondary counts half.')+
-    `<div class="chart-card wide"><div class="chart-title">Tasks due — next 8 weeks<span class="chart-badge">open tasks</span></div><div class="tbl-wrap heat" id="tmHeat"></div></div>`;
-  later(()=>{makeHBar('tmLoad',top.map(l=>l.name),top.map(l=>l.weighted),top.map(l=>l.util>100?'#EF4444':l.util>80?'#EAB308':'#22C55E'),n=>openPerson(n),
-    {type:'bar',label:'Capacity',data:top.map(l=>l.capacity),backgroundColor:isDark?'rgba(255,255,255,.08)':'rgba(0,0,0,.07)',borderRadius:4,grouped:false,order:2});});
-  const wk=[];for(let i=0;i<8;i++)wk.push(new Date(t0().getTime()+i*7*DAY));
-  const heatRows=top.map(l=>{const c=wk.map((s,i)=>l.mine.filter(t=>{const d=pd(t.end_date);return d&&d>=s&&d<new Date(s.getTime()+7*DAY);}).length);
-    const ov=l.overdue;const mx=Math.max(1,...c,ov);
-    return `<tr class="click" onclick="openPerson('${jsq(l.name)}')"><td style="white-space:nowrap">${who(l.name)}</td><td class="hc" style="background:${ov?`rgba(239,68,68,${.2+.6*ov/mx})`:'transparent'};color:${ov?'#fff':'var(--text3)'}">${ov||''}</td>${c.map(v=>`<td class="hc" style="background:${v?`rgba(253,80,0,${.12+.7*v/mx})`:'transparent'};color:${v/mx>.5?'#fff':'var(--text2)'}">${v||''}</td>`).join('')}</tr>`;}).join('');
-  later(()=>{const h=$('tmHeat');if(h)h.innerHTML=top.length?`<table><thead><tr><th class="nosort">Person</th><th class="nosort hc">Late</th>${wk.map(d=>`<th class="nosort hc">${d.toLocaleDateString(undefined,{month:'short',day:'numeric'})}</th>`).join('')}</tr></thead><tbody>${heatRows}</tbody></table>`:'<div class="empty">No people in this group.</div>';});
+  // charts
+  const top=L.filter(l=>l.hrs.total>0).slice(0,18);
+  const groups=['Roofing projects','Other customer projects','Customer delivery (generic)'];
+  const weeks12=[];for(let i=11;i>=0;i--)weeks12.push(new Date(mondayOf(new Date()).getTime()-i*7*DAY));
+  const wkCust=weeks12.map(w=>TL.filter(l=>l.d&&l.d>=w&&l.d<new Date(w.getTime()+7*DAY)&&l.group==='customer'&&L.some(x=>x.name===l.person)).reduce((t,l)=>t+l.h,0));
+  const wkInt=weeks12.map(w=>TL.filter(l=>l.d&&l.d>=w&&l.d<new Date(w.getTime()+7*DAY)&&l.group==='internal'&&L.some(x=>x.name===l.person)).reduce((t,l)=>t+l.h,0));
+  const intCats={};T.forEach(l=>Object.entries(l.hrs.byCat).forEach(([c,h])=>{if(TL_GROUPS[c]==='internal')intCats[c]=(intCats[c]||0)+h;}));const ik=Object.keys(intCats).sort((a,b)=>intCats[b]-intCats[a]);
+  $('teamCharts').innerHTML=chartCard('tmHours',`Hours by person · ${plabel}`,top.length+' people',Math.max(220,top.length*26),null,true,'Bars stack customer work and internal time; the % is hours logged ÷ available hours.')+
+    chartCard('tmTrend','Team hours per week','last 12 weeks',230,null,false,'Line = available hours of people currently logging.')+chartCard('tmInt','Where internal time goes',plabel,230,'tmIntLeg')+
+    `<div class="chart-card wide"><div class="chart-title">Utilisation by week<span class="chart-badge">hours logged ÷ available</span></div><div class="tbl-wrap heat" id="tmHeat"></div></div>`;
+  later(()=>{
+    const cats=Object.keys(TL_GROUPS);
+    makeStackH('tmHours',top.map(l=>`${l.name} · ${l.hUtil}%`),cats.filter(c=>top.some(l=>l.hrs.byCat[c])).map(c=>({label:c,data:top.map(l=>Math.round((l.hrs.byCat[c]||0)*10)/10),backgroundColor:TL_COLORS[c],borderRadius:3})),
+      i=>openPerson(top[i].name));
+    const availLine=weeks12.map(()=>T.reduce((t,l)=>t+l.wh,0));
+    makeCombo('tmTrend',weeks12.map(d=>d.toLocaleDateString(undefined,{month:'short',day:'numeric'})),[
+      {type:'bar',label:'Customer',data:wkCust.map(v=>Math.round(v)),backgroundColor:'#FD5000',borderRadius:3,stack:'s'},
+      {type:'bar',label:'Internal',data:wkInt.map(v=>Math.round(v)),backgroundColor:'#A855F7',borderRadius:3,stack:'s'},
+      {type:'line',label:'Available',data:availLine,borderColor:'#94A3B8',borderDash:[5,4],pointRadius:0,borderWidth:1.5}],true);
+    if(ik.length){makeDoughnut('tmInt',ik,ik.map(k=>Math.round(intCats[k])),ik.map(k=>TL_COLORS[k]));legend('tmIntLeg',ik.map(k=>`${k} (${Math.round(intCats[k])}h)`),ik.map(k=>TL_COLORS[k]));}
+  });
+  // utilisation heatmap: person × last 8 full weeks (+ current)
+  const wk8=[];for(let i=8;i>=0;i--)wk8.push(new Date(mondayOf(new Date()).getTime()-i*7*DAY));
+  const heatRows=L.filter(l=>l.tracked).slice(0,30).map(l=>`<tr class="click" onclick="openPerson('${jsq(l.name)}')"><td style="white-space:nowrap">${who(l.name)}</td>${wk8.map((w,i)=>{
+      const h=hoursOf(l.name,w,new Date(w.getTime()+7*DAY)).total;const isCur=i===wk8.length-1;const cap=l.wh*(isCur?Math.min(5,((new Date().getDay()+6)%7)+1)/5:1);
+      const u=cap?Math.round(h/cap*100):0;const bg=!h?'transparent':u>110?`rgba(239,68,68,${Math.min(.9,.35+(u-110)/150)})`:u>=80?`rgba(34,197,94,${.35+.4*Math.min(1,(u-80)/30)})`:u>=50?'rgba(234,179,8,.45)':'rgba(234,179,8,.18)';
+      return `<td class="hc" style="background:${bg};color:${u>110||u>=95?'#fff':'var(--text2)'};${isCur?'outline:1px dashed var(--border2)':''}" title="${Math.round(h*10)/10}h of ${Math.round(cap)}h">${h?u+'%':''}</td>`;}).join('')}</tr>`).join('');
+  later(()=>{const h=$('tmHeat');if(h)h.innerHTML=heatRows?`<table><thead><tr><th class="nosort">Person</th>${wk8.map((d,i)=>`<th class="nosort hc">${i===wk8.length-1?'This wk':d.toLocaleDateString(undefined,{month:'short',day:'numeric'})}</th>`).join('')}</tr></thead><tbody>${heatRows}</tbody></table>`:'<div class="empty">No time logs yet.</div>';});
   $('teamPill').textContent=L.length+' people';
-  setTable('teamTbl',L.map(l=>({cells:`<td>${who(l.name)}</td><td class="dim">${esc(l.role)}</td><td class="dim">${esc(l.org)}</td><td>${l.owned.length}</td><td>${l.second.length}</td><td>${l.weighted} / ${l.capacity}</td><td>${l.open}</td><td>${l.overdue?`<span class="slip pos">${l.overdue}</span>`:0}</td><td>${l.due7}</td><td>${pctCell(l.util,l.util>100?'red':l.util>80?'amber':'green')}</td>`,
-    sort:{name:l.name,role:l.role,org:l.org,owned:l.owned.length,second:l.second.length,weighted:l.weighted,open:l.open,overdue:l.overdue,due7:l.due7,util:l.util},
-    csv:[l.name,l.email,l.role,l.org,l.owned.length,l.second.length,l.weighted,l.capacity,l.open,l.overdue,l.due7,l.util],onclick:`openPerson('${jsq(l.name)}')`})),
-    ['Person','Email','Role','Org','Owner of','Secondary on','Weighted load','Capacity','Open tasks','Overdue','Due 7d','Utilisation %'],{sortK:'util',dir:-1,title:'team-load'});
+  setTable('teamTbl',L.map(l=>({cells:`<td>${who(l.name)}${l.fromLogs?' <span class="dim" title="Only seen in time logs">·</span>':''}</td><td class="dim">${esc(l.role)}</td><td class="num">${l.hrs.total?l.hrs.total.toFixed(1)+'h':'<span class="dim">0</span>'}</td><td class="num">${l.hrs.customer.toFixed(1)}</td><td class="num">${l.hrs.internal.toFixed(1)}</td>
+      <td>${l.tracked?pctCell(l.hUtil,l.hUtil>110?'red':l.hUtil>=80?'green':'amber'):'<span class="dim">not logging</span>'}</td><td>${l.tracked?l.h4Util+'%':'—'}</td><td>${l.owned.length} / ${l.second.length}</td><td>${l.open}</td><td>${l.overdue?`<span class="slip pos">${l.overdue}</span>`:0}</td><td class="dim">${l.hrs.last?ago(l.hrs.last):'never'}</td>`,
+    sort:{name:l.name,role:l.role,hours:l.hrs.total,cust:l.hrs.customer,int:l.hrs.internal,util:l.tracked?l.hUtil:-1,u4:l.h4Util,proj:l.owned.length+l.second.length,open:l.open,overdue:l.overdue,last:l.hrs.last},
+    csv:[l.name,l.email,l.role,l.org,l.wh,l.hrs.total.toFixed(1),l.hrs.customer.toFixed(1),l.hrs.internal.toFixed(1),l.hUtil,l.h4Util,l.owned.length,l.second.length,l.open,l.overdue,l.hrs.last?ymd(l.hrs.last):''],onclick:`openPerson('${jsq(l.name)}')`})),
+    ['Person','Email','Role','Org','Weekly hours','Hours logged','Customer h','Internal h','Utilisation %','4-wk avg %','Owner of','Secondary on','Open tasks','Overdue','Last log'],{sortK:'hours',dir:-1,title:'team-load-'+teamPeriod});
 }
+// Stacked horizontal bar (Team hours by person).
+function makeStackH(id,labels,datasets,onClick){destroyChart(id);const ctx=$(id);if(!ctx)return;
+  charts[id]=new Chart(ctx,{type:'bar',data:{labels,datasets},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+    onClick:onClick?(e,el)=>{if(el.length)onClick(el[0].index);}:undefined,
+    plugins:{legend:{display:true,position:'bottom',labels:{font:{size:10},color:gTick(),boxWidth:10}}},
+    scales:{x:{stacked:true,beginAtZero:true,ticks:{font:{size:10},color:gTick(),callback:v=>v+'h'},grid:{color:gGrid()},border:{color:'transparent'}},
+      y:{stacked:true,ticks:{font:{size:10},color:gTick()},grid:{display:false},border:{color:'transparent'}}}}});}
 
 // ═══════════════════════════════════════════════════════════════
 // ADOPTION + ACCOUNTS
@@ -1433,13 +1525,14 @@ async function deleteAccount(id,name){if(!confirm(`Remove ${name}? Its stored ke
 // ═══════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════
-const ZOHO_SCOPES='ZohoProjects.portals.READ,ZohoProjects.projects.READ,ZohoProjects.tasks.READ,ZohoProjects.tasklists.READ,ZohoProjects.milestones.READ,ZohoProjects.users.READ';
+const ZOHO_SCOPES='ZohoProjects.portals.READ,ZohoProjects.projects.READ,ZohoProjects.tasks.READ,ZohoProjects.tasklists.READ,ZohoProjects.milestones.READ,ZohoProjects.users.READ,ZohoProjects.timesheets.READ';
 function renderSettings(){
   const s=RAW.sync||{};const last=s.last&&s.last.detail;
   const statuses=Array.from(new Set(STATUSES.concat(Object.keys(SET.phase_map)))).sort();
   const peopleRows=PEOPLE.slice().sort((a,b)=>(b.configured-a.configured)||a.name.localeCompare(b.name));
   $('setBody').innerHTML=`
   <div class="card set-sec"><div class="card-title">Zoho Projects connection ${s.zoho_connected?'<span class="badge bg">Connected</span>':'<span class="badge ba">Not connected</span>'}</div>
+    ${s.zoho_connected&&s.timelogs_error==='scope'?`<div class="notice warn" style="margin-bottom:10px"><b>Time logs need the timesheets permission.</b> Click <b>Reconnect</b>, generate a new code with the scope below (it now includes <code>ZohoProjects.timesheets.READ</code>) and paste it — Client ID/Secret stay saved.</div>`:''}
     ${s.zoho_connected?`<div class="info-rows"><div class="info-row"><span class="info-key">Projects synced</span><span class="info-val">${ago(s.projects_at)}</span></div><div class="info-row"><span class="info-key">Tasks synced</span><span class="info-val">${ago(s.tasks_at)}</span></div>
       <div class="info-row"><span class="info-key">Last run</span><span class="info-val">${last?`${last.projects!=null?last.projects+' projects · ':''}${last.tasks_synced} task lists · ${last.zoho_calls} Zoho calls`:'—'}</span></div><div class="info-row"><span class="info-key">Queued</span><span class="info-val">${last?last.pending+' projects':'—'}</span></div></div>
       ${last&&last.errors&&last.errors.length?`<div class="notice warn" style="margin-top:10px"><b>Last sync error:</b> ${esc(last.errors[0])}</div>`:''}
@@ -1492,10 +1585,10 @@ function renderSettings(){
 
   <div class="card set-sec" id="setPeople"><div class="card-title">People &amp; capacity <span class="chart-badge">${PEOPLE.length} people from Zoho</span></div>
     <div class="chart-note" style="margin:0 0 10px">Everyone who owns a project or task in Zoho is listed. Set their team role (drives the Team Load tabs), whether they are Zuper staff or a partner, and how many onboarding projects they can carry.</div>
-    <div class="tbl-wrap" style="max-height:480px"><table><thead><tr><th class="nosort">Name</th><th class="nosort">Email</th><th class="nosort">Role</th><th class="nosort">Org</th><th class="nosort">Capacity</th><th class="nosort">Active</th></tr></thead><tbody id="peopleTbl">
+    <div class="tbl-wrap" style="max-height:480px"><table><thead><tr><th class="nosort">Name</th><th class="nosort">Email</th><th class="nosort">Role</th><th class="nosort">Org</th><th class="nosort">Projects capacity</th><th class="nosort">Weekly hours</th><th class="nosort">Active</th></tr></thead><tbody id="peopleTbl">
     ${peopleRows.map((p,i)=>`<tr data-email="${esc(p.email||'')}"><td><input class="cell-inp" data-f="name" value="${esc(p.name)}"></td><td class="mono">${esc(p.email||'(no email in Zoho)')}</td>
       <td><select class="filter-select" data-f="role">${ROLES.map(r=>`<option${p.role===r?' selected':''}>${r}</option>`).join('')}</select></td>
-      <td><input class="cell-inp" data-f="org" value="${esc(p.org)}" style="width:110px"></td><td><input class="cell-inp" type="number" data-f="capacity" value="${p.capacity}" style="width:70px"></td>
+      <td><input class="cell-inp" data-f="org" value="${esc(p.org)}" style="width:110px"></td><td><input class="cell-inp" type="number" data-f="capacity" value="${p.capacity}" style="width:70px"></td><td><input class="cell-inp" type="number" data-f="weekly_hours" value="${p.weekly_hours||40}" style="width:70px"></td>
       <td><input type="checkbox" data-f="active"${p.active?' checked':''}></td></tr>`).join('')}
     </tbody></table></div>
     <div style="margin-top:10px"><button class="cta sm" onclick="savePeople()">Save people</button></div></div>`;
@@ -1530,7 +1623,7 @@ async function changePassword(){
 }
 async function savePeople(){
   const rows=[];document.querySelectorAll('#peopleTbl tr').forEach(tr=>{const email=tr.dataset.email;if(!email)return;
-    const g=f=>tr.querySelector(`[data-f="${f}"]`);rows.push({email,name:g('name').value,role:g('role').value,org:g('org').value||'Zuper',capacity:+g('capacity').value||SET.targets.capacity_default,active:g('active').checked});});
+    const g=f=>tr.querySelector(`[data-f="${f}"]`);rows.push({email,name:g('name').value,role:g('role').value,org:g('org').value||'Zuper',capacity:+g('capacity').value||SET.targets.capacity_default,weekly_hours:+g('weekly_hours').value||40,active:g('active').checked});});
   try{const r=await api('people_save',{rows});await loadData();renderSettings();toast(`Saved ${r.saved} people.`);}catch(e){toast(e.message,4000);}
 }
 
@@ -1778,7 +1871,7 @@ function renderDrawer(){
       <div class="stage-dots">${[1,2,3,4,5].map(s=>{const c=x.stages[s];const sp=c&&c.total?Math.round(c.done/c.total*100):null;return `<div class="sdot" title="Stage ${s}: ${c?c.done+'/'+c.total:'no tasks'}" style="background:${sp==null?'var(--surface3)':sp>=100?PIPE_COLORS[pp.k]:sp>0?PIPE_COLORS[pp.k]+'66':'var(--surface3)'};color:${sp>=100?'#fff':'var(--text3)'}">S${s}</div>`;}).join('')}</div></div>`;}).join('')}</div>
     <div class="info-rows">
       ${[['Start',fmtD(p.startD)],['Baseline ETA',fmtD(p.baseD)],['Current ETA',fmtD(p.etaD)],['ETA slip',p.slip!=null?(p.slip>0?'+':'')+p.slip+' days':'—'],['Forecast (pace)',p.forecastD?fmtD(p.forecastD):'not enough recent progress'],['Go-live',fmtD(p.liveD)],
-        ['Tasks',`${p.done}/${p.total} done · ${p.overdue} overdue`],['Current stage',p.stage||'—'],['Last Zoho update',ago(p.modified_time)],['Industry',p.industry||'—'],['Tech stack',(p.tech_stack||[]).join(', ')||'—'],['Tags',(p.business_tag||[]).join(', ')||'—']]
+        ['Tasks',`${p.done}/${p.total} done · ${p.overdue} overdue`],['Effort logged',(()=>{const ls=TL.filter(x=>String(x.project_id)===String(p.id));const h=ls.reduce((t,x)=>t+x.h,0);const n=new Set(ls.map(x=>x.person)).size;return ls.length?`${h.toFixed(1)}h by ${n} ${n===1?"person":"people"} (last 14 wks)`:'—';})()],['Current stage',p.stage||'—'],['Last Zoho update',ago(p.modified_time)],['Industry',p.industry||'—'],['Tech stack',(p.tech_stack||[]).join(', ')||'—'],['Tags',(p.business_tag||[]).join(', ')||'—']]
         .map(([k,v])=>`<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${esc(v)}</span></div>`).join('')}
     </div>
     ${p.comments?`<div class="card" style="margin-top:14px"><div class="card-title">Project comments (Zoho)</div><div style="font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.6">${esc(p.comments)}</div></div>`:''}`;
@@ -1833,12 +1926,21 @@ function ganttSvg(p){
 }
 function openPerson(name){
   const pr=PEOPLE.find(p=>p.name===name);if(!pr)return;const l=loadOf(pr);const now=new Date();
+  const thisMon=mondayOf(now),h4=l.h4;const hw=hoursOf(name,thisMon,new Date(thisMon.getTime()+7*DAY)),hl=hoursOf(name,new Date(thisMon.getTime()-7*DAY),thisMon);
+  const catRows=Object.entries(h4.byCat).sort((a,b)=>b[1]-a[1]),projRows=Object.entries(h4.byProject).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  const recent=TL.filter(x=>x.person===name).sort((a,b)=>(b.d||0)-(a.d||0)).slice(0,25);
   $('drawer').innerHTML=`<div class="drawer-hd"><div class="drawer-title">${who(l.name)} <span class="badge bb">${esc(l.role)}</span> <span class="badge bgr">${esc(l.org)}</span><button class="drawer-close" onclick="closeDrawer()">✕</button></div>
-    <div class="drawer-meta"><span>Load <b>${l.weighted} / ${l.capacity}</b> (${l.util}%)</span><span>Open tasks <b>${l.open}</b></span><span>Overdue <b>${l.overdue}</b></span><span>Due 7d <b>${l.due7}</b></span></div><div style="height:12px"></div></div>
-    <div class="drawer-body"><div class="task-gh">Projects (${l.owned.length} owner · ${l.second.length} secondary)</div>
+    <div class="drawer-meta"><span>This week <b>${hw.total.toFixed(1)}h</b></span><span>Last week <b>${hl.total.toFixed(1)}h / ${l.wh}h</b> (${Math.round(hl.total/l.wh*100)}%)</span><span>4-wk avg <b>${l.h4Util}%</b></span><span>Open tasks <b>${l.open}</b></span><span>Overdue <b>${l.overdue}</b></span><span>Projects <b>${l.owned.length}</b> owner · <b>${l.second.length}</b> 2nd</span></div><div style="height:12px"></div></div>
+    <div class="drawer-body">
+    ${h4.total?`<div class="split" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
+      <div class="card"><div class="card-title">Last 4 weeks by type <span class="chart-badge">${h4.total.toFixed(1)}h</span></div>${catRows.map(([c,h])=>`<div class="info-row"><span class="info-key"><span class="leg-dot" style="display:inline-block;background:${TL_COLORS[c]};margin-right:6px"></span>${esc(c)}</span><span class="info-val">${h.toFixed(1)}h · ${Math.round(h/h4.total*100)}%</span></div>`).join('')}</div>
+      <div class="card"><div class="card-title">Last 4 weeks by project</div>${projRows.map(([n,h])=>`<div class="info-row"><span class="info-key">${esc(n)}</span><span class="info-val">${h.toFixed(1)}h</span></div>`).join('')}</div></div>`
+      :`<div class="notice">${(RAW.timelogs||[]).length?'No time logged in the last 4 weeks.':'Time logs are not synced yet.'}</div>`}
+    <div class="task-gh">Projects (${l.owned.length} owner · ${l.second.length} secondary)</div>
     ${l.owned.concat(l.second).map(p=>`<div class="task-row" style="cursor:pointer" onclick="openProject('${jsq(p.id)}')">${ragDot(p.rag)}<span class="tn"><b>${esc(p.name)}</b> <span class="dim">${l.owned.includes(p)?'owner':'secondary'}</span></span>${phaseBadge(p.phase)}<span class="dim" style="font-size:11px">ETA ${fmtD(p.etaD)}</span><span style="width:110px">${pctCell(p.pct)}</span></div>`).join('')||'<div class="empty">No active projects.</div>'}
     <div class="task-gh" style="margin-top:16px">Open tasks by due date</div>
     ${l.mine.slice().sort((a,b)=>(pd(a.end_date)||9e15)-(pd(b.end_date)||9e15)).slice(0,80).map(t=>{const due=pd(t.end_date);const over=due&&due<now;return `<div class="task-row${over?' over':''}"><span class="tn">${esc(t.name)} <span class="dim">· ${esc((PBYID[t.project_id]||{}).name||'')}</span></span><span class="dim" style="font-size:11px">${fmtD(due)}</span>${over?'<span class="badge br">Overdue</span>':''}</div>`;}).join('')||'<div class="empty">No open tasks.</div>'}
+    ${recent.length?`<div class="task-gh" style="margin-top:16px">Recent time logs</div>${recent.map(x=>`<div class="task-row"><span class="dim mono" style="width:70px">${fmtD(x.d)}</span><span class="tn">${esc(x.task_name||'—')} <span class="dim">· ${esc(x.project_name||'')}</span></span><span class="badge" style="background:${TL_COLORS[x.cat]}22;color:${TL_COLORS[x.cat]}">${esc(x.cat)}</span><b style="width:44px;text-align:right">${x.h.toFixed(1)}h</b></div>`).join('')}`:''}
     </div>`;
   $('drawerOv').style.display='block';requestAnimationFrame(()=>$('drawer').classList.add('open'));
 }
@@ -1980,6 +2082,14 @@ function buildDemo(){
       const level=r();for(let d=29;d>=0;d--){const jobs=Math.round(level*90*(0.8+r()*.4)+(29-d)*level);adoption.push({account_id:aid,snap_date:ymd(new Date(today.getTime()-d*DAY)),
         metrics:{jobs_30d:jobs,jobs_7d:Math.round(jobs/4),jobs_total:400+jobs*6+d,field_users_30d:Math.round(level*12),users_active:14,quotes_30d:Math.round(jobs*.6),quotes_total:300+jobs*3,invoices_30d:Math.round(jobs*.5),invoices_total:200+jobs*2,customers_total:900,last_job_at:new Date(today.getTime()-(level<.25?18:Math.floor(r()*3))*DAY).toISOString()}});}}
   }
+  // Sample time logs: 10 weeks of weekday entries per person — project work + internal activities.
+  const timelogs=[];let tlid=1;const INT=['Internal Calls-Roofing Team & Non Roofing Team','Learning & Development','Video recording for Roofing topics','Training [01-10-2026]','Implementation [02-10-2026]'];
+  owners.forEach(([nm],oi)=>{const mine=projects.filter(p=>p.owner_name===nm);const lazy=oi===6;
+    for(let d=70;d>=0;d--){const day=new Date(today.getTime()-d*DAY);if(day.getDay()===0||day.getDay()===6)continue;if(lazy&&d<10)continue;
+      const target=(6+r()*3.5)*(oi===0?1.25:1);let left=target;
+      while(left>0.4){const internal=r()<.3||!mine.length;const h=Math.min(left,.5+Math.round(r()*6)/2);left-=h;
+        const p=internal?null:pick(mine);
+        timelogs.push({log_date:ymd(day),owner_name:nm,project_id:internal?'act1':p.id,project_name:internal?'CX - Onboarding - Activities':p.name,task_name:internal?pick(INT):'Configuration work',minutes:Math.round(h*60),bill_status:internal?'Non Billable':'Billable'});tlid++;}}});
   // Sample payments sheet: most projects plus two deals that aren't in the Zoho sync.
   const PS=['Paid','Partially Paid','Partially Paid','Unpaid','Paused','Future','Cancelled'];
   const billing_sheet=projects.filter((p,i)=>i%5!==3).map((p,i)=>{const ps=p.status==='Churned'?'Cancelled':pick(PS);const amt=Math.round(p.arr*(0.8+r()*.4));
@@ -1990,7 +2100,7 @@ function buildDemo(){
       hs_link:p.deal_url,report_date:ymd(today)};});
   billing_sheet.push({deal_id:'91111111111',deal_name:'Orphan Roofing Co',zoho_status:'Churned',payment_status:'Partially Paid',amount:9000,amount_due:1500,amount_paid:3000,first_unpaid_due:ymd(new Date(today.getTime()-45*DAY)),days_due:45,deal_owner:'Nick Schmidt',report_date:ymd(today)},
     {deal_id:'91111111112',deal_name:'Not Synced Exteriors',zoho_status:'Configuration',payment_status:'Unpaid',amount:12000,amount_due:2000,amount_paid:0,first_unpaid_due:ymd(new Date(today.getTime()-12*DAY)),days_due:12,deal_owner:'Shane Carey',report_date:ymd(today)});
-  return{projects,tasks,milestones:[],snapshots:snaps,people:[],settings:{billing_import:{file:'Roofing Payments (demo).csv',rows:billing_sheet.length,report_date:ymd(today),at:new Date().toISOString()}},accounts,adoption,billing_sheet,sync:{zoho_connected:true,projects_at:new Date().toISOString(),tasks_at:new Date().toISOString(),last:null}};
+  return{projects,tasks,milestones:[],snapshots:snaps,people:[],settings:{billing_import:{file:'Roofing Payments (demo).csv',rows:billing_sheet.length,report_date:ymd(today),at:new Date().toISOString()}},accounts,adoption,billing_sheet,timelogs,sync:{zoho_connected:true,projects_at:new Date().toISOString(),tasks_at:new Date().toISOString(),last:null}};
 }
 function demoApi(action,body){
   if(!DEMO_DB)DEMO_DB=buildDemo();
