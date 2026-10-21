@@ -377,6 +377,18 @@ td.pcell:hover{background:var(--surface3)!important}
   .app-body{overflow:visible!important}
   .canvas-widget,.chart-card,.tbl-card{break-inside:avoid}
 }
+/* guided tour */
+#gtSpot{position:fixed;display:none;z-index:9000;border-radius:10px;box-shadow:0 0 0 9999px rgba(10,14,25,.55);outline:2px solid var(--blue);pointer-events:none;transition:all .18s ease}
+#gtPop{position:fixed;display:none;z-index:9001;width:340px;max-width:calc(100vw - 24px);background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:12px;padding:16px 16px 14px;box-shadow:0 18px 50px rgba(0,0,0,.28)}
+body.gt-on .drawer,body.gt-on .drawer-ov{display:none}
+.gt-x{position:absolute;top:8px;right:8px;width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--text2);font-size:14px;cursor:pointer}
+.gt-x:hover{background:var(--surface3);color:var(--text)}
+.gt-step{font-size:11px;font-weight:600;color:var(--blue);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;padding-right:24px}
+.gt-title{font-size:15px;font-weight:700;margin-bottom:6px}
+.gt-body{font-size:13px;line-height:1.55;color:var(--text2)}
+.gt-foot{display:flex;align-items:center;justify-content:space-between;margin-top:14px;gap:10px}
+.gt-dots{display:flex;gap:4px;flex-wrap:wrap}.gt-dots span{width:6px;height:6px;border-radius:50%;background:var(--border2)}.gt-dots span.on{background:var(--blue);width:16px;border-radius:3px}
+.gt-btns{display:flex;gap:6px;flex-shrink:0}
 </style>
 </head>
 <body data-theme="light">
@@ -411,6 +423,7 @@ td.pcell:hover{background:var(--surface3)!important}
     <div class="topbar-actions">
       <div class="status-dot" id="statusDot"></div>
       <span class="status-txt" id="statusTxt">Ready</span>
+      <button class="top-btn" onclick="guideStart()" title="Walk through this module">❔ Guide</button>
       <button class="top-btn" id="syncBtn" onclick="syncNow()" title="Pull the latest from Zoho Projects">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Sync
       </button>
@@ -551,6 +564,7 @@ td.pcell:hover{background:var(--surface3)!important}
 <div class="drawer-ov" id="drawerOv" onclick="closeDrawer()"></div>
 <div class="drawer" id="drawer"></div>
 <div class="toast" id="toast"></div>
+<div id="gtSpot"></div><div id="gtPop" role="dialog" aria-live="polite"></div>
 
 <script>
 // ═══════════════════════════════════════════════════════════════
@@ -889,7 +903,7 @@ function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const pg=$('page-'+id);if(pg)pg.classList.add('active');
   activePage=id;try{history.replaceState(null,'','#'+id);}catch(e){}
-  renderSidebar();renderPage(id);
+  renderSidebar();renderPage(id);guideAuto(id);
   $('mainContent').scrollTop=0;
 }
 function renderPage(id){
@@ -2114,6 +2128,123 @@ function demoApi(action,body){
   if(action==='billing_save'){DEMO_DB.billing=(DEMO_DB.billing||[]).filter(b=>b.project_id!==body.project_id);DEMO_DB.billing.push(Object.assign({},body,{updated_at:new Date().toISOString()}));return Promise.resolve({ok:true});}
   return Promise.reject(new Error('Not available with demo data.'));
 }
+// ═══════════════════════════════════════════════════════════════
+// GUIDED TOUR — per-module pop-up walkthrough (Back / Next / ✕).
+// Opens automatically the first time someone visits a module; the
+// "Guide" button in the top bar replays it for the current module.
+// ═══════════════════════════════════════════════════════════════
+const GUIDE_SEEN_KEY='pcc_guide_seen';
+const cardByTitle=t=>{const h=[...document.querySelectorAll('.page.active .card-title,.page.active .tbl-title')].find(e=>e.textContent.trim().toLowerCase().startsWith(t.toLowerCase()));return h?h.closest('.card,.tbl-card'):null;};
+const GUIDE={
+  overview:[
+    {sel:'#sidebar',title:'Modules',body:'Every module lives here: Delivery (Projects, Pipelines, Tasks, Go-Lives), People (Team Load), Post go-live (Adoption, Billing) and Admin. Red badges flag things that need attention.'},
+    {sel:'#filterBar',title:'Filters apply everywhere',body:'Pick a date range, team, Direct vs Partner and owner. Every module, KPI and chart follows these filters.'},
+    {sel:'#syncBtn',title:'Live from Zoho',body:'Data syncs from Zoho Projects every 10 minutes (read-only — nothing is written back). Press Sync to pull the latest right now.'},
+    {sel:'#ovKpi',title:'Headline KPIs',body:'Active projects, go-lives vs target, at-risk count, ARR in onboarding and more. Click “+ Set target” on a card to set a goal; ▲▼ compares with the previous period.'},
+    {sel:'#ovCharts',title:'Lifecycle at a glance',body:'Where every project sits from Sold → Kick-off → Onboarding → Live → Adoption, plus health mix and go-lives by month.'},
+    {sel:'#page-overview .split .tbl-card',title:'Needs attention',body:'The riskiest projects first, with the reasons (ETA slipped, overdue tasks, stalled, low confidence). Click a row to open the project.'},
+    {sel:'#ovChanges',title:'What changed',body:'Went live, ETA moved, new projects and stalled ones over the last 7 days — a quick weekly catch-up.'},
+    {sel:'#page-overview .hdr-right',title:'Share with leadership',body:'Copy a ready-to-paste weekly digest, or export this page as a PDF.'},
+  ],
+  projects:[
+    {sel:'#page-projects .hdr-right',title:'Filter by phase & health',body:'Narrow the list to a lifecycle phase or to Off track / At risk / On track projects.'},
+    {sel:'#projKpi',title:'Project KPIs',body:'Totals for onboarding, live and at-risk projects plus average completion.'},
+    {sel:'#projCharts',title:'Breakdowns',body:'Projects by status, by team and Direct vs Partner.'},
+    {sel:'#projTable',title:'All projects',body:'Health, status, % done, current ETA, ARR, Owner, Project Manager, BA and SA. Click a column to sort, use search, and click any row to open the project drawer (overview, pipelines, billing, timeline, tasks, adoption, history).'},
+  ],
+  pipelines:[
+    {sel:'#pipeKpi',title:'Pipeline KPIs',body:'How far each pipeline (P1 Lead Intake, P2 Inspection, P3 Production, P4 Revenue) has progressed across all projects.'},
+    {sel:'#pipeSeg',title:'Two views',body:'Progress shows % per pipeline for each project; Stage heatmap shows Stage 1–5 inside every pipeline.'},
+    {sel:'#pipeSearch',title:'Find a project',body:'Search by project, owner, PM or BA. Sort from the menu at the top right.'},
+    {sel:'#pipeHeat',title:'Update progress manually',body:'Click any project to open its pipeline editor: add your own checklist items or set a manual %. Progress is recalculated from Zoho tasks plus your items.'},
+    {sel:'#pipeCharts',title:'Where projects slow down',body:'Average progress and time per stage — spot the bottleneck stage.'},
+  ],
+  tasks:[
+    {sel:'#page-tasks .hdr-right',title:'Choose what to see',body:'All open, overdue, due in 7 days, unassigned or completed — sorted by most overdue, most open, ETA or name.'},
+    {sel:'#taskKpi',title:'Task KPIs',body:'Open, overdue and due-soon task counts across onboarding projects.'},
+    {sel:'#taskCharts',title:'Trends',body:'Overdue work by owner and tasks completed per week.'},
+    {sel:'#taskProjects',title:'Tasks grouped by project',body:'Each card is one project with its open/overdue counts and next task. Click to expand; use Expand all / Collapse all, search, or download a CSV.'},
+  ],
+  golives:[
+    {sel:'#glKpi',title:'Go-live scorecard',body:'This month vs the target, next month’s pipeline, missed ETAs and pulled-in go-lives.'},
+    {sel:'#glCharts',title:'Delivered vs target',body:'Monthly go-lives against the target line and cumulative progress.'},
+    {sel:'#glTable',title:'Upcoming go-lives',body:'Sorted by ETA with health, % done, ARR and the whole team (Owner, PM, BA, SA). “passed” means the ETA is already behind us.'},
+    {sel:'#glDoneTable',title:'Went live',body:'Projects that went live in the selected period.'},
+  ],
+  team:[
+    {sel:'#teamPeriodSeg',title:'Pick the period',body:'This week, last week or the last 4 weeks.'},
+    {sel:'#teamKpi',title:'Capacity from time logs',body:'Hours logged in Zoho against each person’s weekly hours (40h by default): utilisation, customer vs internal time, people over 100% and logging gaps.'},
+    {sel:'#teamCharts',title:'Where the hours go',body:'Hours by person split by work type, the weekly trend, internal time breakdown and a person × week utilisation heatmap.'},
+    {sel:'#teamTable',title:'People',body:'Hours, utilisation, 4-week average, projects owned and open/overdue tasks. Click a person for their hours by type, by project and recent logs.'},
+    {sel:'#page-team .hdr-right .top-btn',title:'Edit people & hours',body:'Change roles and weekly hours (e.g. part-time) in Settings.'},
+  ],
+  adoption:[
+    {sel:'#adoptSel',title:'All customers or one',body:'Look across all live customers, or pick one account from the dropdown for its trends.'},
+    {sel:'#page-adoption .hdr-right .top-btn',title:'Pull usage',body:'Usage is pulled from each customer’s Zuper account once a day; press this to refresh now.'},
+    {sel:'#adoptBody',title:'Usage & health',body:'Jobs created, active users, logins, quotes and invoices per account, linked to its Zoho project.'},
+  ],
+  billing:[
+    {sel:'#page-billing .hdr-right .cta',title:'Import the payments sheet',body:'Upload the RevOps “Roofing Payments” CSV or Excel. Deals match to Zoho projects by HubSpot deal ID, then company name.'},
+    {sel:'#page-billing .hdr-right',title:'Filters',body:'Live vs pre go-live, and quick views: owes money, overdue, 90+ days, paused, future billing or renewing in 90 days.'},
+    {sel:'#billKpi',title:'Money KPIs',body:'Outstanding, overdue, 90+ days, collected, paused contract value and renewals coming up.'},
+    {sel:'#billCharts',title:'Aging',body:'How much is owed and how long it has been overdue.'},
+    {sel:'#billTable',title:'Accounts',body:'Payment status, contract, paid, amount due, days overdue, renewal date and owners. Click a row to add renewal dates and notes for that account.'},
+  ],
+  accounts:[
+    {sel:'#page-accounts .card',title:'Add a customer account',body:'Paste the customer’s Zuper API key. The region and company name are detected automatically; keys are encrypted on the server and never shown again.'},
+    {sel:'#page-accounts .tbl-card',title:'Linked accounts',body:'Each account links to its Zoho project automatically. Refresh or remove an account here.'},
+  ],
+  settings:[
+    {el:()=>cardByTitle('Zoho Projects connection'),title:'Zoho connection',body:'Connect or reconnect Zoho (read-only). If a new permission is needed, a notice here tells you to reconnect.'},
+    {el:()=>cardByTitle('Lifecycle mapping'),title:'Lifecycle mapping',body:'Map each Zoho status to a lifecycle phase (Kick-off, Onboarding, Live, Hypercare…).'},
+    {el:()=>cardByTitle('Health rules'),title:'Health rules & targets',body:'Tune what makes a project At risk or Off track, and set go-live targets.'},
+    {el:()=>cardByTitle('People'),title:'People & capacity',body:'Roles and weekly hours per person — this drives Team Load utilisation.'},
+    {el:()=>cardByTitle('Team password'),title:'Team password',body:'Change the shared team password.'},
+  ],
+  dashboard:[
+    {sel:'#dbLibrary',title:'Widget library',body:'Every KPI and chart from the modules. Drag one onto the canvas.'},
+    {sel:'#dbCanvas',title:'Your canvas',body:'Arrange widgets, switch chart types and build your own view. It’s saved for you.'},
+    {sel:'#dashTabsBar',title:'Pages',body:'Add several dashboard pages — e.g. one for leadership, one for your team.'},
+    {sel:'#page-dashboard .hdr-right',title:'Export',body:'Hide the library, clear the canvas or export to PDF.'},
+  ],
+};
+let GT=null; // {page, steps, i}
+function guideSeen(){try{return JSON.parse(localStorage.getItem(GUIDE_SEEN_KEY)||'{}');}catch(e){return {};}}
+function guideMark(page){try{const s=guideSeen();s[page]=1;localStorage.setItem(GUIDE_SEEN_KEY,JSON.stringify(s));}catch(e){}}
+function guideTarget(st){const el=st.el?st.el():document.querySelector(st.sel);if(!el)return null;const r=el.getBoundingClientRect();return r.width>4&&r.height>4?el:null;}
+function guideStart(page){
+  page=page||activePage;
+  const steps=(GUIDE[page]||[]).filter(guideTarget);
+  if(!steps.length){toast('No guide for this page yet');return;}
+  if(typeof closeDrawer==='function')try{closeDrawer();}catch(e){}
+  GT={page,steps,i:0};guideMark(page);
+  document.body.classList.add('gt-on');guideShow();
+}
+function guideAuto(page){if(guideSeen()[page]||GT||!GUIDE[page])return;setTimeout(()=>{if(activePage===page&&!GT&&$('appShell').offsetParent!==null)guideStart(page);},450);}
+function guideClose(){GT=null;document.body.classList.remove('gt-on');['gtSpot','gtPop'].forEach(id=>{const e=$(id);if(e)e.style.display='none';});}
+function guideGo(d){if(!GT)return;const n=GT.i+d;if(n<0)return;if(n>=GT.steps.length){guideClose();return;}GT.i=n;guideShow();}
+function guideShow(){
+  const st=GT.steps[GT.i],el=guideTarget(st);
+  if(!el){GT.steps.splice(GT.i,1);if(GT.i>=GT.steps.length){guideClose();return;}return guideShow();}
+  el.scrollIntoView({block:'nearest',behavior:'auto'});
+  const r=el.getBoundingClientRect(),pad=6,spot=$('gtSpot'),pop=$('gtPop');
+  Object.assign(spot.style,{display:'block',left:(r.left-pad)+'px',top:(r.top-pad)+'px',width:(r.width+pad*2)+'px',height:(Math.min(r.height,innerHeight-r.top-12)+pad*2)+'px'});
+  const n=GT.steps.length,last=GT.i===n-1;
+  pop.innerHTML=`<button class="gt-x" onclick="guideClose()" title="Close guide" aria-label="Close guide">✕</button>
+    <div class="gt-step">${esc((document.querySelector('#page-'+GT.page+' .page-title')||{}).textContent||'Guide')} · ${GT.i+1} of ${n}</div>
+    <div class="gt-title">${esc(st.title)}</div><div class="gt-body">${esc(st.body)}</div>
+    <div class="gt-foot"><div class="gt-dots">${GT.steps.map((_,k)=>`<span class="${k===GT.i?'on':''}"></span>`).join('')}</div>
+      <div class="gt-btns">${GT.i?`<button class="top-btn" onclick="guideGo(-1)">Back</button>`:`<button class="top-btn" onclick="guideClose()">Skip</button>`}<button class="cta sm" onclick="guideGo(1)">${last?'Done':'Next'}</button></div></div>`;
+  pop.style.display='block';
+  const pw=pop.offsetWidth,ph=pop.offsetHeight,m=12;
+  let top=r.bottom+m;if(top+ph>innerHeight-m)top=r.top-ph-m;if(top<m)top=Math.max(m,Math.min(innerHeight-ph-m,r.top+m));
+  let left=Math.min(Math.max(m,r.left),innerWidth-pw-m);
+  if(r.width<innerWidth*.3&&r.height>innerHeight*.5){left=r.right+m;top=Math.max(m,r.top+40);if(left+pw>innerWidth-m)left=Math.max(m,r.left-pw-m);}
+  pop.style.left=left+'px';pop.style.top=top+'px';
+}
+document.addEventListener('keydown',e=>{if(!GT)return;if(e.key==='Escape')guideClose();else if(e.key==='ArrowRight')guideGo(1);else if(e.key==='ArrowLeft')guideGo(-1);});
+window.addEventListener('resize',()=>{if(GT)guideShow();});
+document.addEventListener('scroll',()=>{if(GT)guideShow();},true);
 function startDemo(){DEMO=true;enterApp();}
 
 // ═══════════════════════════════════════════════════════════════
