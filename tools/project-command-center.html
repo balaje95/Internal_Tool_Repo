@@ -1340,11 +1340,11 @@ const TL_COLORS={'Roofing projects':'#FD5000','Other customer projects':'#3B82F6
 const TL_RULES=[[/train|learn|l\s*&\s*d|course|certif|onboarding of/i,'Training & L&D'],[/call|meeting|sync|stand.?up|1:1|huddle|cft/i,'Internal calls'],
   [/video|record|content|doc|kb|article|blog/i,'Content & docs'],[/manager|follow.?up|review|hiring|interview|team/i,'Management'],[/test|qa|ui\/ux/i,'Testing & QA']];
 let ROOF_IDS=new Set(),TL=[],teamPeriod='last',LEAVE_RE=null;
-function leaveRe(s){const w=String(s||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s*'));return w.length?new RegExp('\\b('+w.join('|')+')\\b','i'):null;}
+function leaveRe(s){const w=String(s||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s*'));return w.length?new RegExp('\\b('+w.join('|')+')s?\\b','i'):null;}
 const isGeneralProject=pn=>/activit/i.test(pn||'')&&/onboarding|cx/i.test(pn||'');
 function tlCat(l){
   const pn=l.project_name||'',tn=l.task_name||'';
-  if(LEAVE_RE&&LEAVE_RE.test(tn))return 'Time off';
+  if(LEAVE_RE&&(isGeneralProject(pn)||!l.project_id)&&LEAVE_RE.test(tn))return 'Time off'; // only where leave is logged — customer tasks mention "leave" too
   if(l.project_id&&ROOF_IDS.has(String(l.project_id)))return 'Roofing projects';
   if(isGeneralProject(pn)){
     if(/(training|implementation)\s*\[\s*\d/i.test(tn))return 'Customer delivery (generic)';
@@ -1532,7 +1532,7 @@ async function removeLeave(name,i){
 function capacityCardHtml(){
   const c=SET.capacity;const n=Object.values(SET.timeoff||{}).reduce((t,a)=>t+a.length,0);
   return `<div class="card set-sec" id="setCapacity"><div class="card-title">Utilisation rules <span class="chart-badge">how Team Load is calculated</span></div>
-    <div class="chart-note" style="margin:0 0 10px"><b>Available hours</b> = weekly hours ÷ 5 per weekday, minus public holidays and time off (leave entered on a person, or logged in Zoho under a leave keyword — whichever is larger that day).
+    <div class="chart-note" style="margin:0 0 10px"><b>Available hours</b> = weekly hours ÷ 5 per weekday, minus public holidays and time off (leave entered on a person, or logged in CX - Onboarding - Activities under a leave keyword — whichever is larger that day).
       <b>Utilisation</b> = work hours logged (project + general CX activities) ÷ available. <b>Customer utilisation</b> = project hours + customer training/implementation ÷ available.
       <b>Project load</b> = active projects (owner 1, secondary ½, by phase) ÷ project capacity. A person is <b>Overloaded</b> if either utilisation or project load is over 100%.</div>
     <div class="form-grid">
@@ -1542,7 +1542,7 @@ function capacityCardHtml(){
       <div class="fld"><label>Under-utilised below (%)</label><input type="number" id="cUnder" value="${c.under}"></div>
       <div class="fld"><label>Customer utilisation target (%)</label><input type="number" id="cCust" value="${c.customer_target}"></div>
       <div class="fld"><label>Default project capacity (weighted projects)</label><input type="number" id="cCap" value="${SET.targets.capacity_default}"></div>
-      <div class="fld" style="grid-column:1/-1"><label>Time-off keywords in Zoho log task names (comma separated)</label><input id="cKw" value="${esc(c.leave_keywords)}"></div>
+      <div class="fld" style="grid-column:1/-1"><label>Time-off keywords in CX - Onboarding - Activities task names (comma separated)</label><input id="cKw" value="${esc(c.leave_keywords)}"></div>
       <div class="fld" style="grid-column:1/-1"><label>Public holidays — one per line: YYYY-MM-DD Name</label><textarea id="cHol" rows="4" style="width:100%;font-family:inherit;font-size:12px;padding:8px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text)" placeholder="2026-11-26 Thanksgiving&#10;2026-12-25 Christmas">${esc((c.public_holidays||[]).join('\n'))}</textarea></div>
     </div>
     <div class="chart-note">${n} time-off entr${n===1?'y':'ies'} entered — add or remove leave from a person's drawer on Team Load.</div>
