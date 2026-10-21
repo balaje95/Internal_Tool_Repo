@@ -498,7 +498,7 @@ body.gt-on .drawer,body.gt-on .drawer-ov{display:none}
         <div class="kpi-grid" id="teamKpi"></div>
         <div class="charts-grid" id="teamCharts"></div>
         <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">People</span><span class="tbl-pill" id="teamPill">—</span></div>
-          <div class="tbl-wrap"><table id="teamTable"><thead><tr><th data-k="name">Person</th><th data-k="role">Role</th><th data-k="hours">Hours logged</th><th data-k="cust">Customer h</th><th data-k="int">Internal h</th><th data-k="util">Utilisation</th><th data-k="u4">4-wk avg</th><th data-k="proj">Owner / 2nd</th><th data-k="open">Open tasks</th><th data-k="overdue">Overdue</th><th data-k="last">Last log</th></tr></thead><tbody id="teamTbl"></tbody></table></div></div>
+          <div class="tbl-wrap"><table id="teamTable"><thead><tr><th data-k="name">Person</th><th data-k="role">Role</th><th data-k="avail" title="Weekly hours minus holidays and leave">Available</th><th data-k="proj" title="Logged on customer projects">Project h</th><th data-k="gen" title="Logged on CX - Onboarding - Activities">General h</th><th data-k="off">Time off h</th><th data-k="util">Utilisation</th><th data-k="cust" title="Project hours + customer training/implementation ÷ available">Customer util</th><th data-k="load" title="Owner / secondary projects · weighted load vs project capacity">Projects · load</th><th data-k="status">Status</th><th data-k="open">Open tasks</th><th data-k="overdue">Overdue</th><th data-k="last">Last log</th></tr></thead><tbody id="teamTbl"></tbody></table></div></div>
       </div>
 
       <div class="page" id="page-adoption">
@@ -581,10 +581,13 @@ const POST_LIVE=new Set(['Hypercare','Live']);
 const PHASE_COLORS={'Sold':'#94A3B8','Kick-off':'#3B82F6','Onboarding':'#FD5000','On Hold':'#EAB308','Hypercare':'#14B8A6','Live':'#22C55E','Churned':'#EF4444'};
 const DEFAULT_PHASE_MAP={
   'New':'Sold','Outreach for Discovery':'Kick-off','Discovery Scheduled':'Kick-off','Kick-off Scheduled':'Kick-off',
-  'Training Scheduled':'Onboarding','Configuration':'Onboarding','Onboarding Slippage':'Onboarding','At Risk':'Onboarding',
+  'Training Scheduled':'Onboarding','Configuration':'Onboarding','Onboarding Slippage':'Churned','At Risk':'Onboarding',
   'On Hold':'On Hold','Hyper Care':'Hypercare','Completed':'Live','Moved to Support':'Live','Phase 2':'Live','Churned':'Churned'
 };
-const DEFAULT_RAG={slip_days:14,overdue_pct:20,stall_days:7,low_conf:3,risk_statuses:['At Risk','Onboarding Slippage']};
+const DEFAULT_RAG={slip_days:14,overdue_pct:20,stall_days:7,low_conf:3,risk_statuses:['At Risk']};
+// Utilisation rules (Settings → Utilisation rules). Per-person weekly hours override weekly_hours.
+const DEFAULT_CAPACITY={weekly_hours:45,healthy_low:75,healthy_high:90,under:60,customer_target:65,
+  leave_keywords:'holiday, leave, pto, vacation, sick, time off, ooo, comp off',public_holidays:[]};
 const DEFAULT_TARGETS={golives_per_month:10,capacity_default:8};
 const DEFAULT_EXCLUDE=['Golden Account','MVP','RBP Internal Use'];
 const ROLES=['Onboarding','CSM','Support','Adoption','Sales','Other'];
@@ -708,7 +711,10 @@ function derive(){
     targets:Object.assign({},DEFAULT_TARGETS,(RAW.settings||{}).targets||{}),
     exclude:(RAW.settings||{}).exclude||DEFAULT_EXCLUDE,
     general:(RAW.settings||{}).general||{},
+    capacity:Object.assign({},DEFAULT_CAPACITY,(RAW.settings||{}).capacity||{}),
+    timeoff:(RAW.settings||{}).timeoff||{},
   };
+  LEAVE_RE=leaveRe(SET.capacity.leave_keywords);
   const excl=new Set(SET.exclude.map(s=>s.toLowerCase().trim()));
   TBY={};(RAW.tasks||[]).forEach(t=>{(TBY[t.project_id]=TBY[t.project_id]||[]).push(t);});
   OVBY={};(RAW.overrides||[]).forEach(o=>{(OVBY[o.project_id]=OVBY[o.project_id]||[]).push(o);});
@@ -806,7 +812,7 @@ function derive(){
   (RAW.tasks||[]).forEach(t=>(t.owners||[]).forEach(o=>add(o.name,o.email)));
   Object.values(cfg).forEach(c=>{const k=c.email.toLowerCase();seen[k]=Object.assign({},seen[k]||{},{name:c.name||(seen[k]||{}).name,email:c.email});});
   PEOPLE=Object.values(seen).map(s=>{const c=cfg[String(s.email||'').toLowerCase()]||{};
-    return{name:c.name||s.name,email:s.email,role:c.role||'Onboarding',org:c.org||'Zuper',capacity:Number(c.capacity)||SET.targets.capacity_default,weekly_hours:Number(c.weekly_hours)||40,active:c.active!==false,configured:!!c.email};});
+    return{name:c.name||s.name,email:s.email,role:c.role||'Onboarding',org:c.org||'Zuper',capacity:Number(c.capacity)||SET.targets.capacity_default,weekly_hours:Number(c.weekly_hours)||null,active:c.active!==false,configured:!!c.email};});
   deriveTimelogs();
   ACCOUNTS=(RAW.accounts||[]).map(a=>{
     const rows=(RAW.adoption||[]).filter(r=>r.account_id===a.id).sort((x,y)=>x.snap_date<y.snap_date?-1:1);
@@ -1325,17 +1331,22 @@ const PHASE_WEIGHT={'Sold':.25,'Kick-off':.5,'Onboarding':1,'On Hold':.25,'Hyper
 // ─── Time logs → capacity ───────────────────────────────────────
 // Every Zoho time-log entry is put in one bucket. Customer work = roofing projects, other customer
 // projects, and generic "Training [date]" / "Implementation [date]" entries in the CX activities project.
+// Time off = any log whose task matches the leave keywords (Settings), plus leave entered here and
+// public holidays — it reduces available hours instead of counting as work.
 const TL_GROUPS={'Roofing projects':'customer','Other customer projects':'customer','Customer delivery (generic)':'customer',
-  'Internal calls':'internal','Training & L&D':'internal','Content & docs':'internal','Management':'internal','Testing & QA':'internal','Other internal':'internal'};
+  'Internal calls':'internal','Training & L&D':'internal','Content & docs':'internal','Management':'internal','Testing & QA':'internal','Other internal':'internal','Time off':'off'};
 const TL_COLORS={'Roofing projects':'#FD5000','Other customer projects':'#3B82F6','Customer delivery (generic)':'#14B8A6',
-  'Internal calls':'#A855F7','Training & L&D':'#EAB308','Content & docs':'#EC4899','Management':'#64748B','Testing & QA':'#22C55E','Other internal':'#94A3B8'};
+  'Internal calls':'#A855F7','Training & L&D':'#EAB308','Content & docs':'#EC4899','Management':'#64748B','Testing & QA':'#22C55E','Other internal':'#94A3B8','Time off':'#CBD5E1'};
 const TL_RULES=[[/train|learn|l\s*&\s*d|course|certif|onboarding of/i,'Training & L&D'],[/call|meeting|sync|stand.?up|1:1|huddle|cft/i,'Internal calls'],
   [/video|record|content|doc|kb|article|blog/i,'Content & docs'],[/manager|follow.?up|review|hiring|interview|team/i,'Management'],[/test|qa|ui\/ux/i,'Testing & QA']];
-let ROOF_IDS=new Set(),TL=[],teamPeriod='last';
+let ROOF_IDS=new Set(),TL=[],teamPeriod='last',LEAVE_RE=null;
+function leaveRe(s){const w=String(s||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s*'));return w.length?new RegExp('\\b('+w.join('|')+')\\b','i'):null;}
+const isGeneralProject=pn=>/activit/i.test(pn||'')&&/onboarding|cx/i.test(pn||'');
 function tlCat(l){
-  if(l.project_id&&ROOF_IDS.has(String(l.project_id)))return 'Roofing projects';
   const pn=l.project_name||'',tn=l.task_name||'';
-  if(/activit/i.test(pn)&&/onboarding|cx/i.test(pn)){
+  if(LEAVE_RE&&LEAVE_RE.test(tn))return 'Time off';
+  if(l.project_id&&ROOF_IDS.has(String(l.project_id)))return 'Roofing projects';
+  if(isGeneralProject(pn)){
     if(/(training|implementation)\s*\[\s*\d/i.test(tn))return 'Customer delivery (generic)';
     for(const [re,c] of TL_RULES)if(re.test(tn))return c;
     return 'Other internal';
@@ -1353,22 +1364,54 @@ function canonPerson(name){
 function deriveTimelogs(){
   ROOF_IDS=new Set((RAW.projects||[]).map(p=>String(p.id)));
   TL=(RAW.timelogs||[]).map(l=>{let pr=canonPerson(l.owner_name);
-    if(!pr&&l.owner_name){pr={name:l.owner_name,email:null,role:'Onboarding',org:'Zuper',capacity:SET.targets.capacity_default,weekly_hours:40,active:true,configured:false,fromLogs:true};PEOPLE.push(pr);}
-    const cat=tlCat(l);return Object.assign({},l,{person:pr?pr.name:l.owner_name,cat,group:TL_GROUPS[cat]||'internal',h:(Number(l.minutes)||0)/60,d:pd(l.log_date)});});
+    if(!pr&&l.owner_name){pr={name:l.owner_name,email:null,role:'Onboarding',org:'Zuper',capacity:SET.targets.capacity_default,weekly_hours:null,active:true,configured:false,fromLogs:true};PEOPLE.push(pr);}
+    const cat=tlCat(l);
+    return Object.assign({},l,{person:pr?pr.name:l.owner_name,cat,group:TL_GROUPS[cat]||'internal',src:isGeneralProject(l.project_name)?'general':'project',h:(Number(l.minutes)||0)/60,d:pd(l.log_date)});});
 }
 function mondayOf(d){const x=new Date(d);x.setHours(0,0,0,0);const wd=(x.getDay()+6)%7;x.setDate(x.getDate()-wd);return x;}
-// [from, to (exclusive), weeks of capacity] for the selected Team period.
+// [from, to (exclusive), weeks, label] for the selected Team period. "This week" runs to today.
 function teamRange(){
   const thisMon=mondayOf(new Date());
   if(teamPeriod==='this'){const wd=Math.min(5,((new Date().getDay()+6)%7)+1);return[thisMon,new Date(thisMon.getTime()+7*DAY),wd/5,'This week'];}
   if(teamPeriod==='4w')return[new Date(thisMon.getTime()-28*DAY),thisMon,4,'Last 4 weeks'];
   return[new Date(thisMon.getTime()-7*DAY),thisMon,1,'Last week'];
 }
+// Work hours only (time off is kept apart): project = any project except CX activities; general = CX activities.
 function hoursOf(name,from,to){
-  const r={total:0,customer:0,internal:0,byCat:{},byProject:{},last:null,logs:[]};
-  TL.forEach(l=>{if(l.person!==name||!l.d)return;if(!r.last||l.d>r.last)r.last=l.d;if(l.d<from||l.d>=to)return;
-    r.total+=l.h;r[l.group]+=l.h;r.byCat[l.cat]=(r.byCat[l.cat]||0)+l.h;const pk=l.project_name||'—';r.byProject[pk]=(r.byProject[pk]||0)+l.h;r.logs.push(l);});
+  const r={total:0,customer:0,internal:0,project:0,general:0,off:0,offByDay:{},byCat:{},byProject:{},last:null,logs:[]};
+  TL.forEach(l=>{if(l.person!==name||!l.d)return;
+    if(l.group==='off'){if(l.d>=from&&l.d<to){r.off+=l.h;const k=ymd(l.d);r.offByDay[k]=(r.offByDay[k]||0)+l.h;}return;}
+    if(!r.last||l.d>r.last)r.last=l.d;if(l.d<from||l.d>=to)return;
+    r.total+=l.h;r[l.group]+=l.h;r[l.src]+=l.h;r.byCat[l.cat]=(r.byCat[l.cat]||0)+l.h;const pk=l.project_name||'—';r.byProject[pk]=(r.byProject[pk]||0)+l.h;r.logs.push(l);});
   return r;
+}
+const whOf=pr=>Number(pr&&pr.weekly_hours)||Number(SET.capacity.weekly_hours)||45;
+const pubHolidays=()=>new Map((SET.capacity.public_holidays||[]).map(s=>{const m=String(s).match(/^(\d{4}-\d{2}-\d{2})\s*(.*)$/);return m?[m[1],m[2]||'Holiday']:null;}).filter(Boolean));
+// Leave entered in the tool: SET.timeoff = { "Person name": [{from:'YYYY-MM-DD', to:'YYYY-MM-DD', half:bool, note}] }.
+function leaveOn(name,key){return (SET.timeoff[name]||[]).find(x=>x.from<=key&&key<=(x.to||x.from));}
+// Available hours = weekday hours (weekly ÷ 5) up to today, minus public holidays and time off
+// (the larger of leave entered here and leave logged in Zoho, per day).
+function availOf(pr,from,to,hrs){
+  const daily=whOf(pr)/5,hol=pubHolidays(),end=new Date(Math.min(to.getTime(),t0().getTime()+DAY));
+  hrs=hrs||hoursOf(pr.name,from,to);
+  const out={base:0,off:0,holidayH:0,leaveH:0,days:0,offDays:0,avail:0};
+  for(let d=new Date(from);d<end;d=new Date(d.getTime()+DAY)){
+    const wd=d.getDay();if(wd===0||wd===6)continue;const k=ymd(d);out.days++;out.base+=daily;
+    if(hol.has(k)){out.holidayH+=daily;out.offDays++;continue;}
+    const lv=leaveOn(pr.name,k),entered=lv?(lv.half?daily/2:daily):0,logged=Math.min(daily,hrs.offByDay[k]||0),o=Math.max(entered,logged);
+    if(o){out.leaveH+=o;out.offDays+=o/daily;}
+  }
+  out.off=out.holidayH+out.leaveH;out.avail=Math.max(0,out.base-out.off);return out;
+}
+// Status from hours utilisation and forward-looking project load (thresholds in Settings).
+function utilStatus(l){
+  const c=SET.capacity;
+  if(!l.tracked)return{k:'none',t:'Not logging',cls:'bgr'};
+  if((l.hUtil||0)>100||l.pUtil>100)return{k:'over',t:'Overloaded',cls:'br'};
+  if(l.hUtil>c.healthy_high)return{k:'stretch',t:'Stretched',cls:'ba'};
+  if(l.hUtil>=c.healthy_low)return{k:'ok',t:'Healthy',cls:'bg'};
+  if(l.hUtil<c.under)return{k:'under',t:'Under-utilised',cls:'bb'};
+  return{k:'light',t:'Has room',cls:'bt'};
 }
 function loadOf(pr){
   const vp=VP();const key=(pr.email||'').toLowerCase(),nm=pr.name;
@@ -1380,14 +1423,16 @@ function loadOf(pr){
   const mine=(RAW.tasks||[]).filter(t=>!t.is_completed&&ids.has(t.project_id)&&(t.owners||[]).some(o=>isMe(o.name,o.email)));
   const overdue=mine.filter(t=>t.end_date&&pd(t.end_date)<now).length;
   const due7=mine.filter(t=>t.end_date&&pd(t.end_date)>=now&&pd(t.end_date)<=in7).length;
-  const wh=Number(pr.weekly_hours)||40;
-  const [from,to,weeks]=teamRange();const hrs=hoursOf(nm,from,to);
-  const thisMon=mondayOf(new Date());const h4=hoursOf(nm,new Date(thisMon.getTime()-28*DAY),thisMon);
+  const wh=whOf(pr);
+  const [from,to]=teamRange();const hrs=hoursOf(nm,from,to),av=availOf(pr,from,to,hrs);
+  const thisMon=mondayOf(new Date()),f4=new Date(thisMon.getTime()-28*DAY);const h4=hoursOf(nm,f4,thisMon),av4=availOf(pr,f4,thisMon,h4);
   const tracked=!!(h4.total||(hrs.last&&(Date.now()-hrs.last)<28*DAY));
-  const hUtil=Math.round(hrs.total/(wh*weeks)*100),h4Util=Math.round(h4.total/(wh*4)*100);
+  const pc=(n,d)=>d?Math.round(n/d*100):0;
+  const hUtil=pc(hrs.total,av.avail),h4Util=pc(h4.total,av4.avail),custUtil=pc(hrs.customer,av.avail);
   const pUtil=pr.capacity?Math.round(weighted/pr.capacity*100):0;
-  return Object.assign({},pr,{owned,second,weighted:Math.round(weighted*10)/10,open:mine.length,overdue,due7,mine,wh,hrs,h4,tracked,
-    avail:wh*weeks,hUtil,h4Util,pUtil,util:tracked?hUtil:pUtil});
+  const l=Object.assign({},pr,{owned,second,weighted:Math.round(weighted*10)/10,open:mine.length,overdue,due7,mine,wh,hrs,h4,av,av4,tracked,
+    avail:av.avail,hUtil,h4Util,custUtil,pUtil,util:tracked?hUtil:pUtil});
+  l.status=utilStatus(l);return l;
 }
 function renderTeam(){
   const roles=['All'].concat(ROLES.filter(r=>PEOPLE.some(p=>p.role===r)));
@@ -1395,61 +1440,121 @@ function renderTeam(){
   $('teamSeg').innerHTML=roles.map(r=>`<button class="${r===teamRole?'active':''}" onclick="teamRole='${r}';renderTeam()">${r}</button>`).join('');
   $('teamPeriodSeg').innerHTML=[['this','This week'],['last','Last week'],['4w','Last 4 weeks']].map(([k,l])=>`<button class="${teamPeriod===k?'active':''}" onclick="teamPeriod='${k}';renderTeam()">${l}</button>`).join('');
   const [from,to,weeks,plabel]=teamRange();
-  const s=(RAW.sync||{});
+  const s=(RAW.sync||{}),C=SET.capacity;
   const L=PEOPLE.filter(p=>p.active&&(teamRole==='All'||p.role===teamRole)).map(loadOf).filter(l=>l.tracked||l.owned.length||l.second.length||l.open||l.configured)
     .sort((a,b)=>b.hrs.total-a.hrs.total||b.open-a.open);
   const T=L.filter(l=>l.tracked);
-  const logged=T.reduce((t,l)=>t+l.hrs.total,0),avail=T.reduce((t,l)=>t+l.avail,0),cust=T.reduce((t,l)=>t+l.hrs.customer,0),intl=T.reduce((t,l)=>t+l.hrs.internal,0);
-  const lastMon=new Date(mondayOf(new Date()).getTime()-7*DAY);
-  const gaps=L.filter(l=>(l.tracked||l.owned.length||l.open)&&hoursOf(l.name,lastMon,mondayOf(new Date())).total<l.wh*.5);
+  const sum=(arr,f)=>arr.reduce((t,l)=>t+f(l),0);
+  const logged=sum(T,l=>l.hrs.total),avail=sum(T,l=>l.avail),cust=sum(T,l=>l.hrs.customer),proj=sum(T,l=>l.hrs.project),gen=sum(T,l=>l.hrs.general),off=sum(T,l=>l.av.off);
+  const lastMon=new Date(mondayOf(new Date()).getTime()-7*DAY),thisMon=mondayOf(new Date());
+  const gaps=L.filter(l=>{if(!(l.tracked||l.owned.length||l.open))return false;const h=hoursOf(l.name,lastMon,thisMon);const a=availOf(l,lastMon,thisMon,h).avail;return a>0&&h.total<a*.5;});
   const noLogs=!(RAW.timelogs||[]).length;
-  $('teamNotice').innerHTML=noLogs?(s.timelogs_error==='scope'?`<div class="notice warn"><b>Time logs need one more Zoho permission.</b> Go to <a href="#" onclick="showPage('settings');return false">Settings → Zoho connection → Reconnect</a> and generate a new code — the scope list now includes <code>ZohoProjects.timesheets.READ</code>. Until then, Team Load shows workload from Zoho projects and tasks until then.</div>`
+  $('teamNotice').innerHTML=noLogs?(s.timelogs_error==='scope'?`<div class="notice warn"><b>Time logs need one more Zoho permission.</b> Go to <a href="#" onclick="showPage('settings');return false">Settings → Zoho connection → Reconnect</a> and generate a new code — the scope list now includes <code>ZohoProjects.timesheets.READ</code>. Until then, Team Load shows workload from Zoho projects and tasks.</div>`
       :`<div class="notice">Time logs haven't synced yet${s.timelogs_error?` (last error: ${esc(s.timelogs_error)})`:''}. Press <b>Sync</b> — the first run pulls the last 6 months.</div>`)
-    :gaps.length?`<div class="notice warn"><b>Logging gaps last week:</b> ${gaps.slice(0,12).map(l=>`<a href="#" onclick="openPerson('${jsq(l.name)}');return false">${esc(l.name)}</a> (${hoursOf(l.name,lastMon,mondayOf(new Date())).total.toFixed(1)}h)`).join(', ')}${gaps.length>12?` +${gaps.length-12} more`:''} logged under half of their ${gaps[0].wh}h week — capacity numbers for them are understated.</div>`:'';
+    :gaps.length?`<div class="notice warn"><b>Logging gaps last week:</b> ${gaps.slice(0,12).map(l=>`<a href="#" onclick="openPerson('${jsq(l.name)}');return false">${esc(l.name)}</a> (${hoursOf(l.name,lastMon,thisMon).total.toFixed(1)}h)`).join(', ')}${gaps.length>12?` +${gaps.length-12} more`:''} logged under half of their available hours (after time off) — their utilisation is understated.</div>`:'';
   if(noLogs)return renderTeamTasks(L,plabel);
   if(TEAM_HEAD_HOURS!==null){document.querySelector('#teamTable thead tr').innerHTML=TEAM_HEAD_HOURS;}
+  const util=avail?Math.round(logged/avail*100):0,cu=avail?Math.round(cust/avail*100):0;
+  const band=util>100?'over capacity':util>C.healthy_high?'stretched':util>=C.healthy_low?'healthy':util<C.under?'under-utilised':'has room';
   $('teamKpi').innerHTML=kpiEnhHtml([
-    {label:'Hours logged',val:Math.round(logged).toLocaleString()+'h',cls:'orange',sub:`${plabel} · ${T.length} people logging`},
-    {id:'tm-hutil',label:'Team utilisation',val:(avail?Math.round(logged/avail*100):0)+'%',raw:avail?Math.round(logged/avail*100):0,cls:'blue',sub:`of ${Math.round(avail)}h available (${L[0]?L[0].wh:40}h/wk)`},
-    {label:'Customer work',val:(logged?Math.round(cust/logged*100):0)+'%',cls:'green',sub:Math.round(cust)+'h on customer projects'},
-    {label:'Internal',val:(logged?Math.round(intl/logged*100):0)+'%',cls:'purple',sub:Math.round(intl)+'h calls, training, content…'},
-    {label:'Over 100%',val:T.filter(l=>l.hUtil>100).length,cls:'red',sub:'people logged more than capacity'},
-    {label:'Logging gaps',val:gaps.length,cls:'amber',sub:'under 50% logged last week'},
+    {label:'Hours logged',val:Math.round(logged).toLocaleString()+'h',cls:'orange',sub:`${plabel} · project ${Math.round(proj)}h · general ${Math.round(gen)}h`},
+    {id:'tm-hutil',label:'Team utilisation',val:util+'%',raw:util,cls:util>100?'red':util>C.healthy_high?'amber':util>=C.healthy_low?'green':'blue',sub:`${band} · ${Math.round(avail)}h available (healthy ${C.healthy_low}–${C.healthy_high}%)`},
+    {label:'Customer utilisation',val:cu+'%',cls:cu>=C.customer_target?'green':'amber',sub:`project + customer training · target ${C.customer_target}%`},
+    {label:'Time off',val:Math.round(off)+'h',cls:'purple',sub:'holidays & leave, taken out of available'},
+    {label:'Overloaded',val:L.filter(l=>l.status.k==='over').length,cls:'red',sub:'over 100% hours or project load'},
+    {label:'Under-utilised',val:L.filter(l=>l.status.k==='under').length,cls:'blue',sub:`below ${C.under}% · ${gaps.length} logging gap${gaps.length===1?'':'s'}`},
   ]);
   // charts
-  const top=L.filter(l=>l.hrs.total>0).slice(0,18);
-  const groups=['Roofing projects','Other customer projects','Customer delivery (generic)'];
-  const weeks12=[];for(let i=11;i>=0;i--)weeks12.push(new Date(mondayOf(new Date()).getTime()-i*7*DAY));
-  const wkCust=weeks12.map(w=>TL.filter(l=>l.d&&l.d>=w&&l.d<new Date(w.getTime()+7*DAY)&&l.group==='customer'&&L.some(x=>x.name===l.person)).reduce((t,l)=>t+l.h,0));
-  const wkInt=weeks12.map(w=>TL.filter(l=>l.d&&l.d>=w&&l.d<new Date(w.getTime()+7*DAY)&&l.group==='internal'&&L.some(x=>x.name===l.person)).reduce((t,l)=>t+l.h,0));
+  const top=L.filter(l=>l.hrs.total>0||l.av.off>0).slice(0,18);
+  const weeks12=[];for(let i=11;i>=0;i--)weeks12.push(new Date(thisMon.getTime()-i*7*DAY));
+  const inWk=(l,w)=>l.d&&l.d>=w&&l.d<new Date(w.getTime()+7*DAY)&&L.some(x=>x.name===l.person);
+  const wkProj=weeks12.map(w=>TL.filter(l=>inWk(l,w)&&l.group!=='off'&&l.src==='project').reduce((t,l)=>t+l.h,0));
+  const wkGen=weeks12.map(w=>TL.filter(l=>inWk(l,w)&&l.group!=='off'&&l.src==='general').reduce((t,l)=>t+l.h,0));
+  const wkAvail=weeks12.map(w=>Math.round(T.reduce((t,l)=>t+availOf(l,w,new Date(w.getTime()+7*DAY)).avail,0)));
   const intCats={};T.forEach(l=>Object.entries(l.hrs.byCat).forEach(([c,h])=>{if(TL_GROUPS[c]==='internal')intCats[c]=(intCats[c]||0)+h;}));const ik=Object.keys(intCats).sort((a,b)=>intCats[b]-intCats[a]);
-  $('teamCharts').innerHTML=chartCard('tmHours',`Hours by person · ${plabel}`,top.length+' people',Math.max(220,top.length*26),null,true,'Bars stack customer work and internal time; the % is hours logged ÷ available hours.')+
-    chartCard('tmTrend','Team hours per week','last 12 weeks',230,null,false,'Line = available hours of people currently logging.')+chartCard('tmInt','Where internal time goes',plabel,230,'tmIntLeg')+
-    `<div class="chart-card wide"><div class="chart-title">Utilisation by week<span class="chart-badge">hours logged ÷ available</span></div><div class="tbl-wrap heat" id="tmHeat"></div></div>`;
+  $('teamCharts').innerHTML=chartCard('tmHours',`Hours by person · ${plabel}`,top.length+' people',Math.max(220,top.length*26),null,true,'Bars stack work by type plus time off; the % is work hours ÷ available hours (weekly hours minus holidays and leave).')+
+    chartCard('tmTrend','Project vs general hours per week','last 12 weeks',230,null,false,'General = CX - Onboarding - Activities. Line = available hours after time off.')+chartCard('tmInt','Where general (internal) time goes',plabel,230,'tmIntLeg')+
+    `<div class="chart-card wide"><div class="chart-title">Utilisation by week<span class="chart-badge">work hours ÷ available · grey = mostly off</span></div><div class="tbl-wrap heat" id="tmHeat"></div></div>`;
   later(()=>{
-    const cats=Object.keys(TL_GROUPS);
-    makeStackH('tmHours',top.map(l=>`${l.name} · ${l.hUtil}%`),cats.filter(c=>top.some(l=>l.hrs.byCat[c])).map(c=>({label:c,data:top.map(l=>Math.round((l.hrs.byCat[c]||0)*10)/10),backgroundColor:TL_COLORS[c],borderRadius:3})),
-      i=>openPerson(top[i].name));
-    const availLine=weeks12.map(()=>T.reduce((t,l)=>t+l.wh,0));
+    const cats=Object.keys(TL_GROUPS).filter(c=>c!=='Time off');
+    const ds=cats.filter(c=>top.some(l=>l.hrs.byCat[c])).map(c=>({label:c,data:top.map(l=>Math.round((l.hrs.byCat[c]||0)*10)/10),backgroundColor:TL_COLORS[c],borderRadius:3}));
+    if(top.some(l=>l.av.off))ds.push({label:'Time off',data:top.map(l=>Math.round(l.av.off*10)/10),backgroundColor:TL_COLORS['Time off'],borderRadius:3});
+    makeStackH('tmHours',top.map(l=>`${l.name} · ${l.hUtil}%`),ds,i=>openPerson(top[i].name));
     makeCombo('tmTrend',weeks12.map(d=>d.toLocaleDateString(undefined,{month:'short',day:'numeric'})),[
-      {type:'bar',label:'Customer',data:wkCust.map(v=>Math.round(v)),backgroundColor:'#FD5000',borderRadius:3,stack:'s'},
-      {type:'bar',label:'Internal',data:wkInt.map(v=>Math.round(v)),backgroundColor:'#A855F7',borderRadius:3,stack:'s'},
-      {type:'line',label:'Available',data:availLine,borderColor:'#94A3B8',borderDash:[5,4],pointRadius:0,borderWidth:1.5}],true);
+      {type:'bar',label:'Project hours',data:wkProj.map(v=>Math.round(v)),backgroundColor:'#FD5000',borderRadius:3,stack:'s'},
+      {type:'bar',label:'General (CX activities)',data:wkGen.map(v=>Math.round(v)),backgroundColor:'#A855F7',borderRadius:3,stack:'s'},
+      {type:'line',label:'Available',data:wkAvail,borderColor:'#94A3B8',borderDash:[5,4],pointRadius:0,borderWidth:1.5}],true);
     if(ik.length){makeDoughnut('tmInt',ik,ik.map(k=>Math.round(intCats[k])),ik.map(k=>TL_COLORS[k]));legend('tmIntLeg',ik.map(k=>`${k} (${Math.round(intCats[k])}h)`),ik.map(k=>TL_COLORS[k]));}
   });
   // utilisation heatmap: person × last 8 full weeks (+ current)
-  const wk8=[];for(let i=8;i>=0;i--)wk8.push(new Date(mondayOf(new Date()).getTime()-i*7*DAY));
+  const wk8=[];for(let i=8;i>=0;i--)wk8.push(new Date(thisMon.getTime()-i*7*DAY));
   const heatRows=L.filter(l=>l.tracked).slice(0,30).map(l=>`<tr class="click" onclick="openPerson('${jsq(l.name)}')"><td style="white-space:nowrap">${who(l.name)}</td>${wk8.map((w,i)=>{
-      const h=hoursOf(l.name,w,new Date(w.getTime()+7*DAY)).total;const isCur=i===wk8.length-1;const cap=l.wh*(isCur?Math.min(5,((new Date().getDay()+6)%7)+1)/5:1);
-      const u=cap?Math.round(h/cap*100):0;const bg=!h?'transparent':u>110?`rgba(239,68,68,${Math.min(.9,.35+(u-110)/150)})`:u>=80?`rgba(34,197,94,${.35+.4*Math.min(1,(u-80)/30)})`:u>=50?'rgba(234,179,8,.45)':'rgba(234,179,8,.18)';
-      return `<td class="hc" style="background:${bg};color:${u>110||u>=95?'#fff':'var(--text2)'};${isCur?'outline:1px dashed var(--border2)':''}" title="${Math.round(h*10)/10}h of ${Math.round(cap)}h">${h?u+'%':''}</td>`;}).join('')}</tr>`).join('');
+      const we=new Date(w.getTime()+7*DAY),hh=hoursOf(l.name,w,we),a=availOf(l,w,we,hh),h=hh.total,isCur=i===wk8.length-1;
+      const mostlyOff=a.base&&a.off>=a.base*.6;const u=a.avail?Math.round(h/a.avail*100):0;
+      const bg=mostlyOff?'rgba(148,163,184,.35)':!h?'transparent':u>100?`rgba(239,68,68,${Math.min(.9,.35+(u-100)/150)})`:u>SET.capacity.healthy_high?'rgba(234,179,8,.55)':u>=SET.capacity.healthy_low?'rgba(34,197,94,.6)':u>=SET.capacity.under?'rgba(20,184,166,.3)':'rgba(59,130,246,.22)';
+      return `<td class="hc" style="background:${bg};color:${u>100||(u>=SET.capacity.healthy_low&&!mostlyOff)?'#fff':'var(--text2)'};${isCur?'outline:1px dashed var(--border2)':''}" title="${Math.round(h*10)/10}h of ${Math.round(a.avail)}h available${a.off?` · ${Math.round(a.off)}h off`:''}">${mostlyOff?'off':h?u+'%':''}</td>`;}).join('')}</tr>`).join('');
   later(()=>{const h=$('tmHeat');if(h)h.innerHTML=heatRows?`<table><thead><tr><th class="nosort">Person</th>${wk8.map((d,i)=>`<th class="nosort hc">${i===wk8.length-1?'This wk':d.toLocaleDateString(undefined,{month:'short',day:'numeric'})}</th>`).join('')}</tr></thead><tbody>${heatRows}</tbody></table>`:'<div class="empty">No time logs yet.</div>';});
   $('teamPill').textContent=L.length+' people';
-  setTable('teamTbl',L.map(l=>({cells:`<td>${who(l.name)}${l.fromLogs?' <span class="dim" title="Only seen in time logs">·</span>':''}</td><td class="dim">${esc(l.role)}</td><td class="num">${l.hrs.total?l.hrs.total.toFixed(1)+'h':'<span class="dim">0</span>'}</td><td class="num">${l.hrs.customer.toFixed(1)}</td><td class="num">${l.hrs.internal.toFixed(1)}</td>
-      <td>${l.tracked?pctCell(l.hUtil,l.hUtil>110?'red':l.hUtil>=80?'green':'amber'):'<span class="dim">not logging</span>'}</td><td>${l.tracked?l.h4Util+'%':'—'}</td><td>${l.owned.length} / ${l.second.length}</td><td>${l.open}</td><td>${l.overdue?`<span class="slip pos">${l.overdue}</span>`:0}</td><td class="dim">${l.hrs.last?ago(l.hrs.last):'never'}</td>`,
-    sort:{name:l.name,role:l.role,hours:l.hrs.total,cust:l.hrs.customer,int:l.hrs.internal,util:l.tracked?l.hUtil:-1,u4:l.h4Util,proj:l.owned.length+l.second.length,open:l.open,overdue:l.overdue,last:l.hrs.last},
-    csv:[l.name,l.email,l.role,l.org,l.wh,l.hrs.total.toFixed(1),l.hrs.customer.toFixed(1),l.hrs.internal.toFixed(1),l.hUtil,l.h4Util,l.owned.length,l.second.length,l.open,l.overdue,l.hrs.last?ymd(l.hrs.last):''],onclick:`openPerson('${jsq(l.name)}')`})),
-    ['Person','Email','Role','Org','Weekly hours','Hours logged','Customer h','Internal h','Utilisation %','4-wk avg %','Owner of','Secondary on','Open tasks','Overdue','Last log'],{sortK:'hours',dir:-1,title:'team-load-'+teamPeriod});
+  setTable('teamTbl',L.map(l=>({cells:`<td>${who(l.name)}${l.fromLogs?' <span class="dim" title="Only seen in time logs">·</span>':''}</td><td class="dim">${esc(l.role)}</td><td class="num" title="${l.wh}h/week${l.av.off?` − ${Math.round(l.av.off)}h off`:''}">${Math.round(l.avail)}h</td>
+      <td class="num">${l.hrs.project.toFixed(1)}</td><td class="num">${l.hrs.general.toFixed(1)}</td><td class="num">${l.av.off?l.av.off.toFixed(1):'<span class="dim">0</span>'}</td>
+      <td>${l.tracked?pctCell(l.hUtil,l.hUtil>100?'red':l.hUtil>C.healthy_high?'amber':l.hUtil>=C.healthy_low?'green':'blue'):'<span class="dim">not logging</span>'}</td><td>${l.tracked?l.custUtil+'%':'—'}</td>
+      <td title="${l.weighted} weighted projects of ${l.capacity}">${l.owned.length}/${l.second.length} · ${l.pUtil}%</td><td><span class="badge ${l.status.cls}">${l.status.t}</span></td><td>${l.open}</td><td>${l.overdue?`<span class="slip pos">${l.overdue}</span>`:0}</td><td class="dim">${l.hrs.last?ago(l.hrs.last):'never'}</td>`,
+    sort:{name:l.name,role:l.role,avail:l.avail,proj:l.hrs.project,gen:l.hrs.general,off:l.av.off,util:l.tracked?l.hUtil:-1,cust:l.custUtil,load:l.pUtil,status:l.status.t,open:l.open,overdue:l.overdue,last:l.hrs.last},
+    csv:[l.name,l.email,l.role,l.org,l.wh,Math.round(l.avail*10)/10,l.hrs.project.toFixed(1),l.hrs.general.toFixed(1),l.av.off.toFixed(1),l.hrs.total.toFixed(1),l.hUtil,l.custUtil,l.h4Util,l.owned.length,l.second.length,l.pUtil,l.status.t,l.open,l.overdue,l.hrs.last?ymd(l.hrs.last):''],onclick:`openPerson('${jsq(l.name)}')`})),
+    ['Person','Email','Role','Org','Weekly hours','Available h','Project h','General h','Time off h','Work h','Utilisation %','Customer util %','4-wk avg %','Owner of','Secondary on','Project load %','Status','Open tasks','Overdue','Last log'],{sortK:'util',dir:-1,title:'team-load-'+teamPeriod});
+}
+// ─── Time off (leave entered in the tool) + utilisation rules ──────────────
+function timeoffHtml(pr){
+  const today=ymd(t0()),list=(SET.timeoff[pr.name]||[]).slice().sort((a,b)=>a.from.localeCompare(b.from));
+  const upcoming=list.filter(x=>(x.to||x.from)>=ymd(new Date(Date.now()-60*DAY)));
+  return `<div class="card" style="margin-bottom:14px"><div class="card-title">Time off <span class="chart-badge">reduces available hours</span></div>
+    ${upcoming.map(x=>{const i=list.indexOf(x);return `<div class="info-row"><span class="info-key">${fmtD(pd(x.from))}${x.to&&x.to!==x.from?' → '+fmtD(pd(x.to)):''}${x.half?' · half day':''}${x.note?` · <span class="dim">${esc(x.note)}</span>`:''}${(x.to||x.from)<today?' <span class="dim">(past)</span>':''}</span><span class="info-val"><button class="top-btn" style="padding:2px 8px" onclick="removeLeave('${jsq(pr.name)}',${i})">Remove</button></span></div>`;}).join('')||'<div class="dim" style="font-size:12px;margin-bottom:6px">No leave entered. Leave logged in Zoho (task names like Holiday, Leave, PTO, Sick) is picked up automatically.</div>'}
+    <div class="form-grid" style="grid-template-columns:1fr 1fr auto 1.4fr auto;align-items:end;margin-top:8px">
+      <div class="fld"><label>From</label><input type="date" id="lvFrom" value="${today}"></div>
+      <div class="fld"><label>To</label><input type="date" id="lvTo"></div>
+      <label style="font-size:12px;display:flex;gap:5px;align-items:center;padding-bottom:9px"><input type="checkbox" id="lvHalf">Half day</label>
+      <div class="fld"><label>Note</label><input id="lvNote" placeholder="Vacation, sick…"></div>
+      <button class="cta sm" onclick="addLeave('${jsq(pr.name)}')">Add</button></div></div>`;
+}
+async function saveTimeoff(map,msg){
+  try{await saveSetting('timeoff',map);await loadData();toast(msg);}catch(e){toast(e.message,4000);}
+}
+async function addLeave(name){
+  const from=$('lvFrom').value,to=$('lvTo').value||from;if(!from){toast('Pick a start date.');return;}
+  if(to<from){toast('End date is before the start date.');return;}
+  const map=JSON.parse(JSON.stringify(SET.timeoff||{}));(map[name]=map[name]||[]).push({from,to,half:$('lvHalf').checked,note:$('lvNote').value.trim().slice(0,80)});
+  await saveTimeoff(map,'Time off added.');openPerson(name);
+}
+async function removeLeave(name,i){
+  const map=JSON.parse(JSON.stringify(SET.timeoff||{}));const arr=(map[name]||[]).slice().sort((a,b)=>a.from.localeCompare(b.from));arr.splice(i,1);
+  if(arr.length)map[name]=arr;else delete map[name];await saveTimeoff(map,'Time off removed.');openPerson(name);
+}
+function capacityCardHtml(){
+  const c=SET.capacity;const n=Object.values(SET.timeoff||{}).reduce((t,a)=>t+a.length,0);
+  return `<div class="card set-sec" id="setCapacity"><div class="card-title">Utilisation rules <span class="chart-badge">how Team Load is calculated</span></div>
+    <div class="chart-note" style="margin:0 0 10px"><b>Available hours</b> = weekly hours ÷ 5 per weekday, minus public holidays and time off (leave entered on a person, or logged in Zoho under a leave keyword — whichever is larger that day).
+      <b>Utilisation</b> = work hours logged (project + general CX activities) ÷ available. <b>Customer utilisation</b> = project hours + customer training/implementation ÷ available.
+      <b>Project load</b> = active projects (owner 1, secondary ½, by phase) ÷ project capacity. A person is <b>Overloaded</b> if either utilisation or project load is over 100%.</div>
+    <div class="form-grid">
+      <div class="fld"><label>Default weekly hours (per-person override in People)</label><input type="number" id="cWh" value="${c.weekly_hours}"></div>
+      <div class="fld"><label>Healthy utilisation from (%)</label><input type="number" id="cLo" value="${c.healthy_low}"></div>
+      <div class="fld"><label>Healthy utilisation up to (%) — above = Stretched</label><input type="number" id="cHi" value="${c.healthy_high}"></div>
+      <div class="fld"><label>Under-utilised below (%)</label><input type="number" id="cUnder" value="${c.under}"></div>
+      <div class="fld"><label>Customer utilisation target (%)</label><input type="number" id="cCust" value="${c.customer_target}"></div>
+      <div class="fld"><label>Default project capacity (weighted projects)</label><input type="number" id="cCap" value="${SET.targets.capacity_default}"></div>
+      <div class="fld" style="grid-column:1/-1"><label>Time-off keywords in Zoho log task names (comma separated)</label><input id="cKw" value="${esc(c.leave_keywords)}"></div>
+      <div class="fld" style="grid-column:1/-1"><label>Public holidays — one per line: YYYY-MM-DD Name</label><textarea id="cHol" rows="4" style="width:100%;font-family:inherit;font-size:12px;padding:8px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text)" placeholder="2026-11-26 Thanksgiving&#10;2026-12-25 Christmas">${esc((c.public_holidays||[]).join('\n'))}</textarea></div>
+    </div>
+    <div class="chart-note">${n} time-off entr${n===1?'y':'ies'} entered — add or remove leave from a person's drawer on Team Load.</div>
+    <div style="margin-top:10px"><button class="cta sm" onclick="saveCapacity()">Save utilisation rules</button></div></div>`;
+}
+async function saveCapacity(){
+  const num=(id,d)=>{const v=Number($(id).value);return Number.isFinite(v)&&v>0?v:d;};
+  const hol=$('cHol').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const bad=hol.filter(s=>!/^\d{4}-\d{2}-\d{2}\b/.test(s));if(bad.length){toast('Holiday lines must start with YYYY-MM-DD: '+bad[0],5000);return;}
+  const cap={weekly_hours:num('cWh',45),healthy_low:num('cLo',75),healthy_high:num('cHi',90),under:num('cUnder',60),customer_target:num('cCust',65),leave_keywords:$('cKw').value.trim(),public_holidays:hol};
+  if(cap.healthy_low>cap.healthy_high){toast('“Healthy from” must be below “healthy up to”.',4000);return;}
+  try{await saveSetting('capacity',cap);await saveSetting('targets',Object.assign({},SET.targets,{capacity_default:num('cCap',8)}));await loadData();renderSettings();toast('Utilisation rules saved.');}catch(e){toast(e.message,4000);}
 }
 // Team Load without time logs (Zoho timesheets not connected yet): workload from projects and tasks.
 let TEAM_HEAD_HOURS=null;
@@ -1626,11 +1731,12 @@ function renderSettings(){
       <div class="fld"><label>Amber when go-live confidence below (out of 5)</label><input type="number" step="0.5" id="rConf" value="${SET.rag.low_conf}"></div>
       <div class="fld"><label>Statuses that are always red</label><input id="rStatuses" value="${esc((SET.rag.risk_statuses||[]).join(', '))}"></div>
       <div class="fld"><label>Go-live target per month</label><input type="number" id="tGl" value="${SET.targets.golives_per_month}"></div>
-      <div class="fld"><label>Default capacity (projects per person)</label><input type="number" id="tCap" value="${SET.targets.capacity_default}"></div>
-      <div class="fld"><label>Hide projects named (internal/test)</label><input id="tExcl" value="${esc(SET.exclude.join(', '))}"></div>
+            <div class="fld"><label>Hide projects named (internal/test)</label><input id="tExcl" value="${esc(SET.exclude.join(', '))}"></div>
       <div class="fld"><label>Sync only this Zoho industry ("all" = every project)</label><input id="tInd" value="${esc(SET.general.industry===undefined?'Roofing':SET.general.industry)}"></div>
     </div>
     <div style="margin-top:12px"><button class="cta sm" onclick="saveRules()">Save rules</button></div></div>
+
+  ${capacityCardHtml()}
 
   <div class="card set-sec"><div class="card-title">Team password</div>
     <div class="form-grid" style="grid-template-columns:1fr 1fr auto;align-items:end">
@@ -1645,7 +1751,7 @@ function renderSettings(){
     <div class="tbl-wrap" style="max-height:480px"><table><thead><tr><th class="nosort">Name</th><th class="nosort">Email</th><th class="nosort">Role</th><th class="nosort">Org</th><th class="nosort">Projects capacity</th><th class="nosort">Weekly hours</th><th class="nosort">Active</th></tr></thead><tbody id="peopleTbl">
     ${peopleRows.map((p,i)=>`<tr data-email="${esc(p.email||'')}"><td><input class="cell-inp" data-f="name" value="${esc(p.name)}"></td><td class="mono">${esc(p.email||'(no email in Zoho)')}</td>
       <td><select class="filter-select" data-f="role">${ROLES.map(r=>`<option${p.role===r?' selected':''}>${r}</option>`).join('')}</select></td>
-      <td><input class="cell-inp" data-f="org" value="${esc(p.org)}" style="width:110px"></td><td><input class="cell-inp" type="number" data-f="capacity" value="${p.capacity}" style="width:70px"></td><td><input class="cell-inp" type="number" data-f="weekly_hours" value="${p.weekly_hours||40}" style="width:70px"></td>
+      <td><input class="cell-inp" data-f="org" value="${esc(p.org)}" style="width:110px"></td><td><input class="cell-inp" type="number" data-f="capacity" value="${p.capacity}" style="width:70px"></td><td><input class="cell-inp" type="number" data-f="weekly_hours" value="${p.weekly_hours||''}" placeholder="${SET.capacity.weekly_hours}" style="width:70px" title="Blank = team default (${SET.capacity.weekly_hours}h)"></td>
       <td><input type="checkbox" data-f="active"${p.active?' checked':''}></td></tr>`).join('')}
     </tbody></table></div>
     <div style="margin-top:10px"><button class="cta sm" onclick="savePeople()">Save people</button></div></div>`;
@@ -1665,7 +1771,7 @@ async function savePhaseMap(){
 }
 async function saveRules(){
   const rag={slip_days:+$('rSlip').value||14,overdue_pct:+$('rOver').value||20,stall_days:+$('rStall').value||7,low_conf:+$('rConf').value||3,risk_statuses:$('rStatuses').value.split(',').map(s=>s.trim()).filter(Boolean)};
-  const targets={golives_per_month:+$('tGl').value||10,capacity_default:+$('tCap').value||8};
+  const targets=Object.assign({},SET.targets,{golives_per_month:+$('tGl').value||10});
   const exclude=$('tExcl').value.split(',').map(s=>s.trim()).filter(Boolean);
   const ind=$('tInd').value.trim()||'Roofing';const indChanged=ind!==(SET.general.industry===undefined?'Roofing':SET.general.industry);
   try{await saveSetting('rag',rag);await saveSetting('targets',targets);await saveSetting('exclude',exclude);
@@ -1680,7 +1786,7 @@ async function changePassword(){
 }
 async function savePeople(){
   const rows=[];document.querySelectorAll('#peopleTbl tr').forEach(tr=>{const email=tr.dataset.email;if(!email)return;
-    const g=f=>tr.querySelector(`[data-f="${f}"]`);rows.push({email,name:g('name').value,role:g('role').value,org:g('org').value||'Zuper',capacity:+g('capacity').value||SET.targets.capacity_default,weekly_hours:+g('weekly_hours').value||40,active:g('active').checked});});
+    const g=f=>tr.querySelector(`[data-f="${f}"]`);rows.push({email,name:g('name').value,role:g('role').value,org:g('org').value||'Zuper',capacity:+g('capacity').value||SET.targets.capacity_default,weekly_hours:+g('weekly_hours').value||null,active:g('active').checked});});
   try{const r=await api('people_save',{rows});await loadData();renderSettings();toast(`Saved ${r.saved} people.`);}catch(e){toast(e.message,4000);}
 }
 
@@ -1983,16 +2089,17 @@ function ganttSvg(p){
 }
 function openPerson(name){
   const pr=PEOPLE.find(p=>p.name===name);if(!pr)return;const l=loadOf(pr);const now=new Date();
-  const thisMon=mondayOf(now),h4=l.h4;const hw=hoursOf(name,thisMon,new Date(thisMon.getTime()+7*DAY)),hl=hoursOf(name,new Date(thisMon.getTime()-7*DAY),thisMon);
+  const thisMon=mondayOf(now),h4=l.h4,lm=new Date(thisMon.getTime()-7*DAY);const hw=hoursOf(name,thisMon,new Date(thisMon.getTime()+7*DAY)),hl=hoursOf(name,lm,thisMon),al=availOf(pr,lm,thisMon,hl);
   const catRows=Object.entries(h4.byCat).sort((a,b)=>b[1]-a[1]),projRows=Object.entries(h4.byProject).sort((a,b)=>b[1]-a[1]).slice(0,12);
   const recent=TL.filter(x=>x.person===name).sort((a,b)=>(b.d||0)-(a.d||0)).slice(0,25);
   $('drawer').innerHTML=`<div class="drawer-hd"><div class="drawer-title">${who(l.name)} <span class="badge bb">${esc(l.role)}</span> <span class="badge bgr">${esc(l.org)}</span><button class="drawer-close" onclick="closeDrawer()">✕</button></div>
-    <div class="drawer-meta"><span>This week <b>${hw.total.toFixed(1)}h</b></span><span>Last week <b>${hl.total.toFixed(1)}h / ${l.wh}h</b> (${Math.round(hl.total/l.wh*100)}%)</span><span>4-wk avg <b>${l.h4Util}%</b></span><span>Open tasks <b>${l.open}</b></span><span>Overdue <b>${l.overdue}</b></span><span>Projects <b>${l.owned.length}</b> owner · <b>${l.second.length}</b> 2nd</span></div><div style="height:12px"></div></div>
+    <div class="drawer-meta"><span>This week <b>${hw.total.toFixed(1)}h</b></span><span>Last week <b>${hl.total.toFixed(1)}h / ${Math.round(al.avail)}h</b> available (${al.avail?Math.round(hl.total/al.avail*100):0}%)${al.off?` · ${Math.round(al.off)}h off`:''}</span><span>4-wk avg <b>${l.h4Util}%</b></span><span><span class="badge ${l.status.cls}">${l.status.t}</span> · ${l.wh}h/week</span><span>Open tasks <b>${l.open}</b></span><span>Overdue <b>${l.overdue}</b></span><span>Projects <b>${l.owned.length}</b> owner · <b>${l.second.length}</b> 2nd</span></div><div style="height:12px"></div></div>
     <div class="drawer-body">
     ${h4.total?`<div class="split" style="grid-template-columns:1fr 1fr;margin-bottom:14px">
       <div class="card"><div class="card-title">Last 4 weeks by type <span class="chart-badge">${h4.total.toFixed(1)}h</span></div>${catRows.map(([c,h])=>`<div class="info-row"><span class="info-key"><span class="leg-dot" style="display:inline-block;background:${TL_COLORS[c]};margin-right:6px"></span>${esc(c)}</span><span class="info-val">${h.toFixed(1)}h · ${Math.round(h/h4.total*100)}%</span></div>`).join('')}</div>
       <div class="card"><div class="card-title">Last 4 weeks by project</div>${projRows.map(([n,h])=>`<div class="info-row"><span class="info-key">${esc(n)}</span><span class="info-val">${h.toFixed(1)}h</span></div>`).join('')}</div></div>`
       :`<div class="notice">${(RAW.timelogs||[]).length?'No time logged in the last 4 weeks.':'Time logs are not synced yet.'}</div>`}
+    ${timeoffHtml(pr)}
     <div class="task-gh">Projects (${l.owned.length} owner · ${l.second.length} secondary)</div>
     ${l.owned.concat(l.second).map(p=>`<div class="task-row" style="cursor:pointer" onclick="openProject('${jsq(p.id)}')">${ragDot(p.rag)}<span class="tn"><b>${esc(p.name)}</b> <span class="dim">${l.owned.includes(p)?'owner':'secondary'}</span></span>${phaseBadge(p.phase)}<span class="dim" style="font-size:11px">ETA ${fmtD(p.etaD)}</span><span style="width:110px">${pctCell(p.pct)}</span></div>`).join('')||'<div class="empty">No active projects.</div>'}
     <div class="task-gh" style="margin-top:16px">Open tasks by due date</div>
@@ -2140,9 +2247,14 @@ function buildDemo(){
         metrics:{jobs_30d:jobs,jobs_7d:Math.round(jobs/4),jobs_total:400+jobs*6+d,field_users_30d:Math.round(level*12),users_active:14,quotes_30d:Math.round(jobs*.6),quotes_total:300+jobs*3,invoices_30d:Math.round(jobs*.5),invoices_total:200+jobs*2,customers_total:900,last_job_at:new Date(today.getTime()-(level<.25?18:Math.floor(r()*3))*DAY).toISOString()}});}}
   }
   // Sample time logs: 10 weeks of weekday entries per person — project work + internal activities.
+  // Jordan logs a 2-day vacation in Zoho last week; Sam's leave is entered in the tool; one public holiday.
+  const demoLastMon=new Date(mondayOf(today).getTime()-7*DAY),demoHoliday=ymd(new Date(mondayOf(today).getTime()-14*DAY));
   const timelogs=[];let tlid=1;const INT=['Internal Calls-Roofing Team & Non Roofing Team','Learning & Development','Video recording for Roofing topics','Training [01-10-2026]','Implementation [02-10-2026]'];
   owners.forEach(([nm],oi)=>{const mine=projects.filter(p=>p.owner_name===nm);const lazy=oi===6;
     for(let d=70;d>=0;d--){const day=new Date(today.getTime()-d*DAY);if(day.getDay()===0||day.getDay()===6)continue;if(lazy&&d<10)continue;
+      if(oi===2&&day>=demoLastMon&&day<new Date(demoLastMon.getTime()+2*DAY)){timelogs.push({log_date:ymd(day),owner_name:nm,project_id:'act1',project_name:'CX - Onboarding - Activities',task_name:'Holiday - Vacation',minutes:540,bill_status:'Non Billable'});continue;}
+      if(oi===3&&day>=new Date(demoLastMon.getTime()+3*DAY)&&day<new Date(demoLastMon.getTime()+5*DAY))continue;
+      if(ymd(day)===demoHoliday)continue;
       const target=(6+r()*3.5)*(oi===0?1.25:1);let left=target;
       while(left>0.4){const internal=r()<.3||!mine.length;const h=Math.min(left,.5+Math.round(r()*6)/2);left-=h;
         const p=internal?null:pick(mine);
@@ -2157,7 +2269,7 @@ function buildDemo(){
       hs_link:p.deal_url,report_date:ymd(today)};});
   billing_sheet.push({deal_id:'91111111111',deal_name:'Orphan Roofing Co',zoho_status:'Churned',payment_status:'Partially Paid',amount:9000,amount_due:1500,amount_paid:3000,first_unpaid_due:ymd(new Date(today.getTime()-45*DAY)),days_due:45,deal_owner:'Nick Schmidt',report_date:ymd(today)},
     {deal_id:'91111111112',deal_name:'Not Synced Exteriors',zoho_status:'Configuration',payment_status:'Unpaid',amount:12000,amount_due:2000,amount_paid:0,first_unpaid_due:ymd(new Date(today.getTime()-12*DAY)),days_due:12,deal_owner:'Shane Carey',report_date:ymd(today)});
-  return{projects,tasks,milestones:[],snapshots:snaps,people:[],settings:{billing_import:{file:'Roofing Payments (demo).csv',rows:billing_sheet.length,report_date:ymd(today),at:new Date().toISOString()}},accounts,adoption,billing_sheet,timelogs,sync:{zoho_connected:true,projects_at:new Date().toISOString(),tasks_at:new Date().toISOString(),last:null}};
+  return{projects,tasks,milestones:[],snapshots:snaps,people:[],settings:{capacity:{public_holidays:[demoHoliday+' Demo public holiday']},timeoff:{[owners[3][0]]:[{from:ymd(new Date(demoLastMon.getTime()+3*DAY)),to:ymd(new Date(demoLastMon.getTime()+4*DAY)),note:'Family trip'}]},billing_import:{file:'Roofing Payments (demo).csv',rows:billing_sheet.length,report_date:ymd(today),at:new Date().toISOString()}},accounts,adoption,billing_sheet,timelogs,sync:{zoho_connected:true,projects_at:new Date().toISOString(),tasks_at:new Date().toISOString(),last:null}};
 }
 function demoApi(action,body){
   if(!DEMO_DB)DEMO_DB=buildDemo();
@@ -2217,9 +2329,9 @@ const GUIDE={
   ],
   team:[
     {sel:'#teamPeriodSeg',title:'Pick the period',body:'This week, last week or the last 4 weeks.'},
-    {sel:'#teamKpi',title:'Capacity from time logs',body:'Hours logged in Zoho against each person’s weekly hours (40h by default): utilisation, customer vs internal time, people over 100% and logging gaps.'},
+    {sel:'#teamKpi',title:'Capacity from time logs',body:'Utilisation = hours logged in Zoho (project + general CX activities) ÷ available hours. Available = weekly hours (45h default) minus public holidays and time off. Also customer utilisation, time off, overloaded and under-utilised people.'},
     {sel:'#teamCharts',title:'Where the hours go',body:'Hours by person split by work type, the weekly trend, internal time breakdown and a person × week utilisation heatmap.'},
-    {sel:'#teamTable',title:'People',body:'Hours, utilisation, 4-week average, projects owned and open/overdue tasks. Click a person for their hours by type, by project and recent logs.'},
+    {sel:'#teamTable',title:'People',body:'Available, project, general and time-off hours, utilisation, project load and a status (Healthy, Stretched, Overloaded, Under-utilised). Click a person to see their breakdown and to add leave.'},
     {sel:'#page-team .hdr-right .top-btn',title:'Edit people & hours',body:'Change roles and weekly hours (e.g. part-time) in Settings.'},
   ],
   adoption:[
@@ -2243,6 +2355,7 @@ const GUIDE={
     {el:()=>cardByTitle('Lifecycle mapping'),title:'Lifecycle mapping',body:'Map each Zoho status to a lifecycle phase (Kick-off, Onboarding, Live, Hypercare…).'},
     {el:()=>cardByTitle('Health rules'),title:'Health rules & targets',body:'Tune what makes a project At risk or Off track, and set go-live targets.'},
     {el:()=>cardByTitle('People'),title:'People & capacity',body:'Roles and weekly hours per person — this drives Team Load utilisation.'},
+    {el:()=>cardByTitle('Utilisation rules'),title:'Utilisation rules',body:'Weekly hours, healthy utilisation band, under-utilised threshold, customer target, time-off keywords and public holidays — every Team Load number follows these.'},
     {el:()=>cardByTitle('Team password'),title:'Team password',body:'Change the shared team password.'},
   ],
   dashboard:[

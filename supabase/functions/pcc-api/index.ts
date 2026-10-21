@@ -110,7 +110,7 @@ async function setSetting(key: string, value: unknown) {
   if (error) throw new Error(error.message);
 }
 // Keys the browser may read/write. zoho_* / sync_state / cron_secret / auth are server-only.
-const PUBLIC_SETTINGS = new Set(["phase_map", "rag", "targets", "general", "exclude", "billing_import"]);
+const PUBLIC_SETTINGS = new Set(["phase_map", "rag", "targets", "general", "exclude", "billing_import", "capacity", "timeoff"]);
 
 // Zoho Self Client credentials: Edge secrets win; otherwise the pair saved from Settings →
 // Connect Zoho (server-only row, never returned to the browser).
@@ -874,7 +874,7 @@ Deno.serve(async (req) => {
         const rows = (Array.isArray(body.rows) ? body.rows : []).filter((r: any) => r && r.email).map((r: any) => ({
           email: String(r.email).toLowerCase(), name: r.name || null, role: r.role || "Onboarding",
           org: r.org || "Zuper", capacity: Number(r.capacity) || 8, active: r.active !== false,
-          weekly_hours: Number(r.weekly_hours) > 0 ? Number(r.weekly_hours) : 40,
+          weekly_hours: Number(r.weekly_hours) > 0 ? Number(r.weekly_hours) : null, // null = team default (Settings → Utilisation rules)
         }));
         if (rows.length) {
           const { error } = await db.from("pcc_people").upsert(rows);
