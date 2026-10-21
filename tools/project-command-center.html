@@ -389,6 +389,7 @@ body.gt-on .drawer,body.gt-on .drawer-ov{display:none}
 .gt-foot{display:flex;align-items:center;justify-content:space-between;margin-top:14px;gap:10px}
 .gt-dots{display:flex;gap:4px;flex-wrap:wrap}.gt-dots span{width:6px;height:6px;border-radius:50%;background:var(--border2)}.gt-dots span.on{background:var(--blue);width:16px;border-radius:3px}
 .gt-btns{display:flex;gap:6px;flex-shrink:0}
+.gt-never{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:12px;color:var(--text2);cursor:pointer;user-select:none}.gt-never input{margin:0;accent-color:var(--blue)}
 </style>
 </head>
 <body data-theme="light">
@@ -903,7 +904,7 @@ function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const pg=$('page-'+id);if(pg)pg.classList.add('active');
   activePage=id;try{history.replaceState(null,'','#'+id);}catch(e){}
-  renderSidebar();renderPage(id);guideAuto(id);
+  renderSidebar();try{renderPage(id);}finally{guideAuto(id);}
   $('mainContent').scrollTop=0;
 }
 function renderPage(id){
@@ -1402,9 +1403,11 @@ function renderTeam(){
   const lastMon=new Date(mondayOf(new Date()).getTime()-7*DAY);
   const gaps=L.filter(l=>(l.tracked||l.owned.length||l.open)&&hoursOf(l.name,lastMon,mondayOf(new Date())).total<l.wh*.5);
   const noLogs=!(RAW.timelogs||[]).length;
-  $('teamNotice').innerHTML=noLogs?(s.timelogs_error==='scope'?`<div class="notice warn"><b>Time logs need one more Zoho permission.</b> Go to <a href="#" onclick="showPage('settings');return false">Settings → Zoho connection → Reconnect</a> and generate a new code — the scope list now includes <code>ZohoProjects.timesheets.READ</code>. Until then, load below is based on projects and tasks only.</div>`
+  $('teamNotice').innerHTML=noLogs?(s.timelogs_error==='scope'?`<div class="notice warn"><b>Time logs need one more Zoho permission.</b> Go to <a href="#" onclick="showPage('settings');return false">Settings → Zoho connection → Reconnect</a> and generate a new code — the scope list now includes <code>ZohoProjects.timesheets.READ</code>. Until then, Team Load shows workload from Zoho projects and tasks until then.</div>`
       :`<div class="notice">Time logs haven't synced yet${s.timelogs_error?` (last error: ${esc(s.timelogs_error)})`:''}. Press <b>Sync</b> — the first run pulls the last 6 months.</div>`)
     :gaps.length?`<div class="notice warn"><b>Logging gaps last week:</b> ${gaps.slice(0,12).map(l=>`<a href="#" onclick="openPerson('${jsq(l.name)}');return false">${esc(l.name)}</a> (${hoursOf(l.name,lastMon,mondayOf(new Date())).total.toFixed(1)}h)`).join(', ')}${gaps.length>12?` +${gaps.length-12} more`:''} logged under half of their ${gaps[0].wh}h week — capacity numbers for them are understated.</div>`:'';
+  if(noLogs)return renderTeamTasks(L,plabel);
+  if(TEAM_HEAD_HOURS!==null){document.querySelector('#teamTable thead tr').innerHTML=TEAM_HEAD_HOURS;}
   $('teamKpi').innerHTML=kpiEnhHtml([
     {label:'Hours logged',val:Math.round(logged).toLocaleString()+'h',cls:'orange',sub:`${plabel} · ${T.length} people logging`},
     {id:'tm-hutil',label:'Team utilisation',val:(avail?Math.round(logged/avail*100):0)+'%',raw:avail?Math.round(logged/avail*100):0,cls:'blue',sub:`of ${Math.round(avail)}h available (${L[0]?L[0].wh:40}h/wk)`},
@@ -1447,6 +1450,46 @@ function renderTeam(){
     sort:{name:l.name,role:l.role,hours:l.hrs.total,cust:l.hrs.customer,int:l.hrs.internal,util:l.tracked?l.hUtil:-1,u4:l.h4Util,proj:l.owned.length+l.second.length,open:l.open,overdue:l.overdue,last:l.hrs.last},
     csv:[l.name,l.email,l.role,l.org,l.wh,l.hrs.total.toFixed(1),l.hrs.customer.toFixed(1),l.hrs.internal.toFixed(1),l.hUtil,l.h4Util,l.owned.length,l.second.length,l.open,l.overdue,l.hrs.last?ymd(l.hrs.last):''],onclick:`openPerson('${jsq(l.name)}')`})),
     ['Person','Email','Role','Org','Weekly hours','Hours logged','Customer h','Internal h','Utilisation %','4-wk avg %','Owner of','Secondary on','Open tasks','Overdue','Last log'],{sortK:'hours',dir:-1,title:'team-load-'+teamPeriod});
+}
+// Team Load without time logs (Zoho timesheets not connected yet): workload from projects and tasks.
+let TEAM_HEAD_HOURS=null;
+function renderTeamTasks(L,plabel){
+  const head=document.querySelector('#teamTable thead tr');if(TEAM_HEAD_HOURS===null)TEAM_HEAD_HOURS=head.innerHTML;
+  head.innerHTML='<th data-k="name">Person</th><th data-k="role">Role</th><th data-k="own">Owner of</th><th data-k="sec">Secondary on</th><th data-k="w">Weighted load</th><th data-k="util">Project load</th><th data-k="open">Open tasks</th><th data-k="overdue">Overdue</th><th data-k="due7">Due 7 days</th>';
+  L=L.slice().sort((a,b)=>b.weighted-a.weighted||b.open-a.open);
+  const sum=k=>L.reduce((t,l)=>t+l[k],0);
+  $('teamKpi').innerHTML=kpiEnhHtml([
+    {label:'People with work',val:L.length,cls:'orange',sub:'owners, secondaries and task owners'},
+    {label:'Active projects',val:VP().filter(p=>PHASE_WEIGHT[p.phase]>0).length,cls:'blue',sub:'Sold → Hypercare, weighted by phase'},
+    {label:'Over capacity',val:L.filter(l=>l.pUtil>100).length,cls:'red',sub:'weighted projects above their capacity'},
+    {label:'Open tasks',val:sum('open').toLocaleString(),cls:'purple',sub:'on pre go-live projects'},
+    {label:'Overdue',val:sum('overdue').toLocaleString(),cls:'red',sub:'past their Zoho due date'},
+    {label:'Due in 7 days',val:sum('due7').toLocaleString(),cls:'amber',sub:'coming up this week'},
+  ]);
+  const top=L.slice(0,18);
+  $('teamCharts').innerHTML=chartCard('tmProj','Project load by person','owner = 1 · secondary = ½ · by phase',Math.max(220,top.length*26),null,true,'Kick-off counts ½, Onboarding 1, Hypercare ½. The % is weighted load ÷ the person’s project capacity (Settings).')+
+    chartCard('tmTasks','Open tasks by person','pre go-live projects',Math.max(220,top.length*26),null,false,'Click a bar to see that person’s projects and tasks.')+
+    `<div class="chart-card wide"><div class="chart-title">Tasks due by week<span class="chart-badge">next 8 weeks</span></div><div class="tbl-wrap heat" id="tmHeat"></div></div>`;
+  later(()=>{
+    makeStackH('tmProj',top.map(l=>`${l.name} · ${l.pUtil}%`),[
+      {label:'Owner',data:top.map(l=>l.owned.reduce((t,p)=>t+PHASE_WEIGHT[p.phase],0)),backgroundColor:'#FD5000',borderRadius:3},
+      {label:'Secondary',data:top.map(l=>Math.round(l.second.reduce((t,p)=>t+PHASE_WEIGHT[p.phase]*.5,0)*10)/10),backgroundColor:'#3B82F6',borderRadius:3}],i=>openPerson(top[i].name));
+    makeStackH('tmTasks',top.map(l=>l.name),[
+      {label:'Overdue',data:top.map(l=>l.overdue),backgroundColor:'#EF4444',borderRadius:3},
+      {label:'Due 7 days',data:top.map(l=>l.due7),backgroundColor:'#F59E0B',borderRadius:3},
+      {label:'Later / no date',data:top.map(l=>l.open-l.overdue-l.due7),backgroundColor:'#94A3B8',borderRadius:3}],i=>openPerson(top[i].name));
+  });
+  const mon=mondayOf(new Date()),wks=[];for(let i=0;i<8;i++)wks.push(new Date(mon.getTime()+i*7*DAY));
+  const rows=L.filter(l=>l.open).slice(0,30).map(l=>`<tr class="click" onclick="openPerson('${jsq(l.name)}')"><td style="white-space:nowrap">${who(l.name)}</td><td class="hc" style="background:${l.overdue?'rgba(239,68,68,.55)':'transparent'};color:${l.overdue?'#fff':'var(--text2)'}">${l.overdue||''}</td>${wks.map(w=>{
+      const n=l.mine.filter(t=>t.end_date&&pd(t.end_date)>=w&&pd(t.end_date)<new Date(w.getTime()+7*DAY)).length;
+      return `<td class="hc" style="background:${n?`rgba(253,80,0,${Math.min(.85,.15+n/15)})`:'transparent'};color:${n>8?'#fff':'var(--text2)'}">${n||''}</td>`;}).join('')}</tr>`).join('');
+  later(()=>{const h=$('tmHeat');if(h)h.innerHTML=rows?`<table><thead><tr><th class="nosort">Person</th><th class="nosort hc">Overdue</th>${wks.map((d,i)=>`<th class="nosort hc">${i?d.toLocaleDateString(undefined,{month:'short',day:'numeric'}):'This wk'}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">No open tasks.</div>';});
+  $('teamPill').textContent=L.length+' people';
+  setTable('teamTbl',L.map(l=>({cells:`<td>${who(l.name)}</td><td class="dim">${esc(l.role)}</td><td>${l.owned.length}</td><td>${l.second.length}</td><td class="num">${l.weighted}</td>
+      <td>${pctCell(l.pUtil,l.pUtil>100?'red':l.pUtil>=70?'green':'amber')}</td><td>${l.open}</td><td>${l.overdue?`<span class="slip pos">${l.overdue}</span>`:0}</td><td>${l.due7}</td>`,
+    sort:{name:l.name,role:l.role,own:l.owned.length,sec:l.second.length,w:l.weighted,util:l.pUtil,open:l.open,overdue:l.overdue,due7:l.due7},
+    csv:[l.name,l.email,l.role,l.owned.length,l.second.length,l.weighted,l.pUtil,l.open,l.overdue,l.due7],onclick:`openPerson('${jsq(l.name)}')`})),
+    ['Person','Email','Role','Owner of','Secondary on','Weighted load','Project load %','Open tasks','Overdue','Due 7 days'],{sortK:'w',dir:-1,title:'team-load-projects'});
 }
 // Stacked horizontal bar (Team hours by person).
 function makeStackH(id,labels,datasets,onClick){destroyChart(id);const ctx=$(id);if(!ctx)return;
@@ -2133,7 +2176,8 @@ function demoApi(action,body){
 // Opens automatically the first time someone visits a module; the
 // "Guide" button in the top bar replays it for the current module.
 // ═══════════════════════════════════════════════════════════════
-const GUIDE_SEEN_KEY='pcc_guide_seen';
+const GUIDE_SEEN_KEY='pcc_guide_done';
+const GT_SKIP={}; // modules closed with Skip or the close icon stay quiet until the page is reloaded
 const cardByTitle=t=>{const h=[...document.querySelectorAll('.page.active .card-title,.page.active .tbl-title')].find(e=>e.textContent.trim().toLowerCase().startsWith(t.toLowerCase()));return h?h.closest('.card,.tbl-card'):null;};
 const GUIDE={
   overview:[
@@ -2217,15 +2261,15 @@ function guideStart(page){
   const steps=(GUIDE[page]||[]).filter(guideTarget);
   if(!steps.length){toast('No guide for this page yet');return;}
   if(typeof closeDrawer==='function')try{closeDrawer();}catch(e){}
-  GT={page,steps,i:0};guideMark(page);
+  GT={page,steps,i:0,never:false};
   document.body.classList.add('gt-on');guideShow();
 }
-function guideAuto(page){if(guideSeen()[page]||GT||!GUIDE[page])return;setTimeout(()=>{if(activePage===page&&!GT&&$('appShell').offsetParent!==null)guideStart(page);},450);}
-function guideClose(){GT=null;document.body.classList.remove('gt-on');['gtSpot','gtPop'].forEach(id=>{const e=$(id);if(e)e.style.display='none';});}
-function guideGo(d){if(!GT)return;const n=GT.i+d;if(n<0)return;if(n>=GT.steps.length){guideClose();return;}GT.i=n;guideShow();}
+function guideAuto(page){if(guideSeen()[page]||GT_SKIP[page]||GT||!GUIDE[page])return;setTimeout(()=>{if(activePage===page&&!GT&&$('appShell').offsetParent!==null)guideStart(page);},450);}
+function guideClose(finished){if(GT){if(finished||GT.never)guideMark(GT.page);else GT_SKIP[GT.page]=1;}GT=null;document.body.classList.remove('gt-on');['gtSpot','gtPop'].forEach(id=>{const e=$(id);if(e)e.style.display='none';});}
+function guideGo(d){if(!GT)return;const n=GT.i+d;if(n<0)return;if(n>=GT.steps.length){guideClose(true);return;}GT.i=n;guideShow();}
 function guideShow(){
   const st=GT.steps[GT.i],el=guideTarget(st);
-  if(!el){GT.steps.splice(GT.i,1);if(GT.i>=GT.steps.length){guideClose();return;}return guideShow();}
+  if(!el){GT.steps.splice(GT.i,1);if(GT.i>=GT.steps.length){guideClose(true);return;}return guideShow();}
   el.scrollIntoView({block:'nearest',behavior:'auto'});
   const r=el.getBoundingClientRect(),pad=6,spot=$('gtSpot'),pop=$('gtPop');
   Object.assign(spot.style,{display:'block',left:(r.left-pad)+'px',top:(r.top-pad)+'px',width:(r.width+pad*2)+'px',height:(Math.min(r.height,innerHeight-r.top-12)+pad*2)+'px'});
@@ -2233,6 +2277,7 @@ function guideShow(){
   pop.innerHTML=`<button class="gt-x" onclick="guideClose()" title="Close guide" aria-label="Close guide">✕</button>
     <div class="gt-step">${esc((document.querySelector('#page-'+GT.page+' .page-title')||{}).textContent||'Guide')} · ${GT.i+1} of ${n}</div>
     <div class="gt-title">${esc(st.title)}</div><div class="gt-body">${esc(st.body)}</div>
+    <label class="gt-never"><input type="checkbox" ${GT.never?"checked":""} onchange="GT.never=this.checked"> Don't show this guide again</label>
     <div class="gt-foot"><div class="gt-dots">${GT.steps.map((_,k)=>`<span class="${k===GT.i?'on':''}"></span>`).join('')}</div>
       <div class="gt-btns">${GT.i?`<button class="top-btn" onclick="guideGo(-1)">Back</button>`:`<button class="top-btn" onclick="guideClose()">Skip</button>`}<button class="cta sm" onclick="guideGo(1)">${last?'Done':'Next'}</button></div></div>`;
   pop.style.display='block';
