@@ -684,7 +684,7 @@ async function readAll(table: string, cols: string, filter?: (q: any) => any) {
 async function readData() {
   const since = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
   const tlSince = new Date(Date.now() - 98 * 86400000).toISOString().slice(0, 10); // 14 weeks
-  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing, billing_sheet, timelogs] = await Promise.all([
+  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing, billing_sheet, timelogs, native_tasks] = await Promise.all([
     readAll("pcc_projects", "id,key,name,status,status_closed,owner_name,owner_email,secondary_name,secondary_email,ba_name,pm_name,csm_name,extra,team,partner,industry,arr,potential_arr,confidence,start_date,current_eta,baseline_eta,actual_go_live,zuper_company_id,company_login_name,deal_url,comments,tech_stack,business_tag,percent_complete,tasks_open,tasks_closed,milestones_open,milestones_closed,created_time,modified_time,first_seen,tasks_synced_at"),
     readAll("pcc_tasks", "id,project_id,pipeline,stage,tasklist_name,name,status,is_completed,owners,start_date,end_date,modified_time,created_time"),
     readAll("pcc_milestones", "id,project_id,name,pipeline,start_date,end_date,status,is_closed"),
@@ -697,6 +697,7 @@ async function readData() {
     readAll("pcc_billing", "*"),
     readAll("pcc_billing_sheet", "*"),
     readAll("pcc_timelogs", "log_date,owner_name,owner_id,project_id,project_name,task_name,minutes,bill_status", (q) => q.gte("log_date", tlSince)),
+    readAll("pcc_native_tasks", "*"),
   ]);
   const settings: any = {};
   let syncState: any = {}, zohoConnected = false;
@@ -707,7 +708,7 @@ async function readData() {
   });
   const { data: lastLog } = await db.from("pcc_sync_log").select("at,ok,detail").order("id", { ascending: false }).limit(1);
   return {
-    projects, tasks, milestones, snapshots, people, settings, accounts, adoption, overrides, billing, billing_sheet, timelogs,
+    projects, tasks, milestones, snapshots, people, settings, accounts, adoption, overrides, billing, billing_sheet, timelogs, native_tasks,
     sync: {
       ...syncState,
       zoho_connected: zohoConnected,
@@ -916,6 +917,50 @@ Deno.serve(async (req) => {
         if (typeof body.company_name === "string") patch.company_name = body.company_name.slice(0, 120);
         if (typeof body.zuper_company_id === "string") patch.zuper_company_id = body.zuper_company_id.slice(0, 40);
         await db.from("pcc_accounts").update(patch).eq("id", String(body.id || ""));
+        return json({ ok: true });
+      }
+
+      // Tasks created in the Command Center (Zoho stays read-only). Upsert by id; Done ⇔ completed.
+      case "task_save": {
+        const pid = String(body.project_id || "").trim();
+        const name = String(body.name || "").trim().slice(0, 300);
+        if (!pid || !name) return json({ error: "Project and task name are required." }, 400);
+        const { data: proj } = await db.from("pcc_projects").select("id").eq("id", pid).maybeSingle();
+        if (!proj) return json({ error: "Unknown project." }, 400);
+        const d = (v: any) => (v && /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? String(v) : null);
+        const s = (v: any, max = 120) => (v === null || v === undefined || String(v).trim() === "" ? null : String(v).trim().slice(0, max));
+        const status = s(body.status, 40) || "Open";
+        const done = /^(done|completed|closed)$/i.test(status);
+        const id = body.id && /^[0-9a-f-]{36}$/i.test(String(body.id)) ? String(body.id) : null;
+        let prevDone = false;
+        if (id) {
+          const { data: prev } = await db.from("pcc_native_tasks").select("is_completed").eq("id", id).maybeSingle();
+          if (!prev) return json({ error: "That task no longer exists." }, 404);
+          prevDone = !!prev.is_completed;
+        }
+        const pipe = /^P[1-9]$/.test(String(body.pipeline || "")) ? String(body.pipeline) : null;
+        const stage = Number(body.stage) >= 1 && Number(body.stage) <= 9 ? Math.round(Number(body.stage)) : null;
+        const row: any = {
+          project_id: pid, name, pipeline: pipe, stage, tasklist_name: s(body.tasklist_name, 200),
+          status, is_completed: done, owner_name: s(body.owner_name), owner_email: s(body.owner_email, 200),
+          start_date: d(body.start_date), end_date: d(body.end_date), priority: s(body.priority, 20),
+          notes: s(body.notes, 4000), updated_by: s(body.by, 80), updated_at: new Date().toISOString(),
+        };
+        if (done && !prevDone) row.completed_at = new Date().toISOString();
+        if (!done) row.completed_at = null;
+        const q = id
+          ? db.from("pcc_native_tasks").update(row).eq("id", id)
+          : db.from("pcc_native_tasks").insert({ ...row, created_by: row.updated_by });
+        const { data, error } = await q.select("*").single();
+        if (error) throw new Error(error.message);
+        return json({ ok: true, task: data });
+      }
+
+      case "task_delete": {
+        const id = String(body.id || "");
+        if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "id required" }, 400);
+        const { error } = await db.from("pcc_native_tasks").delete().eq("id", id);
+        if (error) throw new Error(error.message);
         return json({ ok: true });
       }
 

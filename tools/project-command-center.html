@@ -263,6 +263,11 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .task-row.over{border-left:3px solid var(--red)}
 .chk{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff}
 .chk.on{background:var(--green);border-color:var(--green)}
+.chk.click{cursor:pointer}.chk.click:hover{border-color:var(--green)}
+.task-row.native{cursor:pointer}.task-row.native:hover{border-color:var(--blue)}
+.src-tag{font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:1px}.src-tag.cc{background:var(--blue-bg);color:var(--blue)}
+.tf-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;font-size:12px}
+.tf-card{margin-bottom:14px;border-color:var(--blue)}
 .gantt text{font-size:10px;fill:var(--text2)}
 
 /* SETTINGS / FORMS */
@@ -716,6 +721,7 @@ function derive(){
   };
   LEAVE_RE=leaveRe(SET.capacity.leave_keywords);
   const excl=new Set(SET.exclude.map(s=>s.toLowerCase().trim()));
+  RAW.tasks=(RAW.tasks||[]).filter(t=>!t.native).concat((RAW.native_tasks||[]).map(nativeTask));
   TBY={};(RAW.tasks||[]).forEach(t=>{(TBY[t.project_id]=TBY[t.project_id]||[]).push(t);});
   OVBY={};(RAW.overrides||[]).forEach(o=>{(OVBY[o.project_id]=OVBY[o.project_id]||[]).push(o);});
   BILLBY={};(RAW.billing||[]).forEach(b=>BILLBY[b.project_id]=b);
@@ -1273,12 +1279,12 @@ function renderTaskList(){
         <div style="width:150px">${pctCell(p.pct)}</div>
         <div class="tp-chips"><span class="tp-chip">${g.open} open</span>${g.overdue?`<span class="tp-chip red">${g.overdue} overdue</span>`:''}${g.due7?`<span class="tp-chip amber">${g.due7} due 7d</span>`:''}</div>
         <div class="tp-next">${nx?`<span class="dim">Next:</span> ${esc(nx.name)} <span class="${nxDue<now?'slip pos':'dim'}">${fmtD(nxDue)}</span>`:'<span class="dim">No dated open tasks</span>'}</div>
+        <button class="top-btn" onclick="event.stopPropagation();openTaskForm('${jsq(p.id)}')" title="Add a task to this project">+ Task</button>
         <button class="top-btn" onclick="event.stopPropagation();openProject('${jsq(p.id)}','pipelines')" title="Update pipeline progress">✎ Pipelines</button>
       </div>
       ${open?`<div class="tp-body">${Object.keys(byGrp).sort().map(k=>{const [pk,st,tl]=k.split('|');const ts=byGrp[k];
         return `<div class="task-group"><div class="task-gh"><span style="color:${PIPE_COLORS[pk]||'var(--text2)'}">${esc(pk)}${st?' · Stage '+esc(st):''} <span class="dim" style="text-transform:none;font-weight:400">${esc(tl.replace(/^stage\s*\d+\s*/i,''))}</span></span><span>${ts.length}</span></div>
-        ${ts.sort((a,b)=>(pd(a.end_date)||9e15)-(pd(b.end_date)||9e15)).map(t=>{const due=pd(t.end_date);const over=!t.is_completed&&due&&due<now;const late=over?ddiff(t0(),due):0;
-          return `<div class="task-row${t.is_completed?' done':''}${over?' over':''}"><span class="chk${t.is_completed?' on':''}">${t.is_completed?'✓':''}</span><span class="tn">${esc(t.name)}</span><span class="dim" style="font-size:11px">${(t.owners||[]).length?esc(ownerNames(t)):'<span class="badge ba">Unassigned</span>'}</span><span class="dim" style="font-size:11px;width:72px;text-align:right">${fmtD(due)}</span><span class="badge ${t.is_completed?'bg':over?'br':badgeFor(t.status)}" style="min-width:74px;justify-content:center">${over?late+'d late':esc(t.status||'')}</span></div>`;}).join('')}</div>`;}).join('')}</div>`:''}
+        ${ts.sort((a,b)=>(pd(a.end_date)||9e15)-(pd(b.end_date)||9e15)).map(t=>taskRowHtml(t,now)).join('')}</div>`;}).join('')}</div>`:''}
     </div>`;}).join(''):`<div class="empty">No ${view==='done'?'completed':'matching'} tasks${q?' for “'+esc(q)+'”':''}.</div>`;
 }
 function csvTasks(){const rows=[];TASK_LIST.forEach(g=>g.ts.forEach(t=>{const due=pd(t.end_date);rows.push([g.p.name,g.p.status,g.p.owner,g.p.pm,t.pipeline,t.stage,t.tasklist_name,t.name,ownerNames(t),t.end_date?String(t.end_date).slice(0,10):'',t.status,!t.is_completed&&due&&due<new Date()?ddiff(t0(),due):'']);}));
@@ -2045,12 +2051,7 @@ function renderDrawer(){
   }else if(drawerTab==='timeline'){
     b.innerHTML=ganttSvg(p);
   }else if(drawerTab==='tasks'){
-    const now=new Date();
-    if(!p.tasks.length){b.innerHTML='<div class="empty">No tasks synced for this project yet.</div>';return;}
-    const groups={};p.tasks.forEach(t=>{const k=(t.pipeline||'Other')+'|'+(t.tasklist_name||'');(groups[k]=groups[k]||[]).push(t);});
-    b.innerHTML=Object.keys(groups).sort().map(k=>{const [pk,tl]=k.split('|');const ts=groups[k];const d=ts.filter(t=>t.is_completed).length;
-      return `<div class="task-group"><div class="task-gh"><span style="color:${PIPE_COLORS[pk]||'var(--text2)'}">${esc(pk)} · ${esc(tl)}</span><span>${d}/${ts.length}</span></div>${ts.map(t=>{const due=pd(t.end_date);const over=!t.is_completed&&due&&due<now;
-        return `<div class="task-row${t.is_completed?' done':''}${over?' over':''}"><span class="chk${t.is_completed?' on':''}">${t.is_completed?'✓':''}</span><span class="tn">${esc(t.name)}</span><span class="dim" style="font-size:11px">${esc(ownerNames(t)||'Unassigned')}</span><span class="dim" style="font-size:11px;width:70px;text-align:right">${fmtD(due)}</span><span class="badge ${t.is_completed?'bg':over?'br':badgeFor(t.status)}">${esc(over?'Overdue':t.status||'')}</span></div>`;}).join('')}</div>`;}).join('');
+    renderDrawerTasks(p,b);
   }else if(drawerTab==='adoption'){
     if(!acc){b.innerHTML=`<div class="empty">${p.postLive?'No adoption data — add this customer\'s Zuper API key under Accounts.':'Adoption tracking starts after go-live.'}${p.zuper_company_id?`<br><span class="dim">Accounts are matched on Zuper company id ${esc(p.zuper_company_id)}.</span>`:''}<br><button class="top-btn" style="margin-top:8px" onclick="closeDrawer();showPage('accounts')">Go to Accounts</button></div>`;return;}
     const m=acc.m;b.innerHTML=`<div class="notice">${healthBadge(acc.health)} score ${acc.score}/100 · pulled ${ago(acc.last_pulled)}</div><div class="kpi-grid">${kpiEnhHtml([{label:'Jobs (30d)',val:m.jobs_30d??'—',cls:'orange'},{label:'Field users',val:m.field_users_30d??'—',cls:'blue',sub:`of ${m.users_active??'—'}`},{label:'Quotes (30d)',val:m.quotes_30d??'—',cls:'purple'},{label:'Invoices (30d)',val:m.invoices_30d??'—',cls:'green'},{label:'Last job',val:acc.idle!=null?acc.idle+'d ago':'—',cls:'teal'}])}</div>
@@ -2064,6 +2065,88 @@ function renderDrawer(){
       (ev.length?ev.sort((a,b)=>a.d<b.d?1:-1).map(e=>`<div class="task-row"><span class="dim mono" style="width:80px">${fmtD(e.d)}</span><span class="tn">${esc(e.t)}</span></div>`).join(''):'<div class="empty">History builds from daily snapshots — changes will appear here.</div>');
     if(s.length>1)later(()=>makeLine('drBurn',s.map(x=>fmtD(x.snap_date)),[{label:'Done',data:s.map(x=>x.tasks_closed),borderColor:'#22C55E',backgroundColor:'rgba(34,197,94,.1)',fill:true,tension:.3,pointRadius:1},{label:'Open',data:s.map(x=>x.tasks_open),borderColor:'#FD5000',pointRadius:1,tension:.3}]));
   }
+}
+// ═══════════════════════════════════════════════════════════════
+// TASKS ADDED IN THE COMMAND CENTER — stored in pcc_native_tasks (Zoho stays read-only).
+// Merged into RAW.tasks by derive(), so they count everywhere Zoho tasks do.
+// ═══════════════════════════════════════════════════════════════
+const TASK_STATUSES=['Open','In Progress','Waiting on customer','Done'];
+const TASK_PRIORITIES=['Low','Medium','High'];
+let TASK_EDIT=null; // {pid, nid|null} — the add/edit form open in the project drawer
+function nativeTask(r){
+  return{id:'pcc:'+r.id,nid:r.id,native:true,project_id:r.project_id,pipeline:r.pipeline||null,stage:r.stage||null,
+    tasklist_name:r.tasklist_name||(r.stage?'Stage '+r.stage:'Added in Command Center'),name:r.name,status:r.status,is_completed:!!r.is_completed,
+    owners:r.owner_name?[{name:r.owner_name,email:r.owner_email||null}]:[],start_date:r.start_date,end_date:r.end_date,
+    modified_time:r.completed_at||r.updated_at,created_time:r.created_at,priority:r.priority,notes:r.notes,created_by:r.created_by,updated_by:r.updated_by};
+}
+const nativeRow=nid=>(RAW.native_tasks||[]).find(r=>r.id===nid);
+function myName(){try{return localStorage.getItem('pcc_me')||'';}catch(e){return '';}}
+function openTaskForm(pid,nid){
+  TASK_EDIT={pid,nid:nid||null};
+  if(drawerProject&&drawerProject.id===pid&&$('drawer').classList.contains('open')){drawerTab='tasks';renderDrawer();}
+  else openProject(pid,'tasks');
+  later(()=>{const e=$('tfName');if(e){e.focus();e.scrollIntoView({block:'nearest'});}});
+}
+function taskFormHtml(p){
+  const r=TASK_EDIT.nid?nativeRow(TASK_EDIT.nid):null;
+  const curPipe=r?r.pipeline:((p.stage||'').match(/^P[1-9]/)||['P1'])[0];
+  const people=PEOPLE.filter(x=>x.active).map(x=>x.name).sort((a,b)=>a.localeCompare(b));
+  const opt=(v,cur,l)=>`<option value="${esc(v)}"${String(v)===String(cur??'')?' selected':''}>${esc(l||v)}</option>`;
+  return `<div class="card tf-card"><div class="card-title">${r?'Edit task':'Add a task'} <span class="chart-badge">saved in Command Center — not written to Zoho</span></div>
+    <div class="form-grid" style="grid-template-columns:2fr 1fr 1fr">
+      <div class="fld" style="grid-column:1/-1"><label>Task *</label><input id="tfName" maxlength="300" value="${esc(r?r.name:'')}" placeholder="e.g. Configure inspection checklist" onkeydown="if(event.key==='Enter')saveTask()"></div>
+      <div class="fld"><label>Assignee</label><select id="tfOwner">${opt('',r&&r.owner_name,'Unassigned')}${people.map(n=>opt(n,r&&r.owner_name)).join('')}${r&&r.owner_name&&!people.includes(r.owner_name)?opt(r.owner_name,r.owner_name):''}</select></div>
+      <div class="fld"><label>Pipeline</label><select id="tfPipe">${PIPES.map(pp=>opt(pp.k,curPipe,pp.k+' '+pp.n)).join('')}${opt('',curPipe,'No pipeline')}</select></div>
+      <div class="fld"><label>Stage</label><select id="tfStage">${opt('',r&&r.stage,'—')}${[1,2,3,4,5].map(n=>opt(n,r&&r.stage,'Stage '+n)).join('')}</select></div>
+      <div class="fld"><label>Status</label><select id="tfStatus">${TASK_STATUSES.map(s=>opt(s,r?r.status:'Open')).join('')}</select></div>
+      <div class="fld"><label>Start</label><input type="date" id="tfStart" value="${r&&r.start_date||''}"></div>
+      <div class="fld"><label>Due</label><input type="date" id="tfDue" value="${r&&r.end_date||''}"></div>
+      <div class="fld"><label>Priority</label><select id="tfPri">${opt('',r&&r.priority,'—')}${TASK_PRIORITIES.map(s=>opt(s,r&&r.priority)).join('')}</select></div>
+      <div class="fld"><label>Your name</label><input id="tfBy" maxlength="80" value="${esc(myName())}" placeholder="Shown as who changed it"></div>
+      <div class="fld" style="grid-column:1/-1"><label>Notes</label><textarea id="tfNotes" rows="2" maxlength="4000" style="width:100%;font-family:inherit;font-size:12px;padding:8px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text)">${esc(r&&r.notes||'')}</textarea></div>
+    </div>
+    ${r?`<div class="chart-note">Added ${r.created_by?'by '+esc(r.created_by)+' ':''}${ago(r.created_at)}${r.updated_by&&r.updated_at!==r.created_at?` · last changed by ${esc(r.updated_by)} ${ago(r.updated_at)}`:''}</div>`:''}
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="cta sm" id="tfSave" onclick="saveTask()">${r?'Save changes':'Add task'}</button><button class="top-btn" onclick="TASK_EDIT=null;renderDrawer()">Cancel</button>
+      ${r?`<span style="flex:1"></span><button class="top-btn danger" onclick="deleteTask('${r.id}')">Delete</button>`:''}</div></div>`;
+}
+async function saveTask(){
+  if(!TASK_EDIT)return;const name=$('tfName').value.trim();if(!name){toast('Give the task a name.');$('tfName').focus();return;}
+  const owner=$('tfOwner').value,pr=PEOPLE.find(x=>x.name===owner),by=$('tfBy').value.trim();
+  const start=$('tfStart').value,due=$('tfDue').value;if(start&&due&&due<start){toast('Due date is before the start date.');return;}
+  try{localStorage.setItem('pcc_me',by);}catch(e){}
+  const body={id:TASK_EDIT.nid||undefined,project_id:TASK_EDIT.pid,name,owner_name:owner||null,owner_email:pr&&pr.email||null,pipeline:$('tfPipe').value||null,
+    stage:$('tfStage').value?+$('tfStage').value:null,status:$('tfStatus').value,start_date:start||null,end_date:due||null,priority:$('tfPri').value||null,notes:$('tfNotes').value.trim()||null,by:by||null};
+  $('tfSave').disabled=true;
+  try{const pid=TASK_EDIT.pid,edit=!!TASK_EDIT.nid;await api('task_save',body);TASK_EDIT=null;await reloadKeepDrawer(pid);toast(edit?'Task updated.':'Task added.');}
+  catch(e){toast(e.message,4000);const b=$('tfSave');if(b)b.disabled=false;}
+}
+async function toggleTask(nid){
+  const r=nativeRow(nid);if(!r)return;const done=!r.is_completed;
+  try{await api('task_save',Object.assign({},r,{status:done?'Done':(r.status==='Done'?'Open':r.status),by:myName()||null}));await reloadKeepDrawer(r.project_id);toast(done?'Marked done.':'Reopened.');}
+  catch(e){toast(e.message,4000);}
+}
+async function deleteTask(nid){
+  const r=nativeRow(nid);if(!r||!confirm(`Delete “${r.name}”? This can't be undone.`))return;
+  try{await api('task_delete',{id:nid});TASK_EDIT=null;await reloadKeepDrawer(r.project_id);toast('Task deleted.');}catch(e){toast(e.message,4000);}
+}
+// Reload data and redraw the current page, keeping the project drawer open on Tasks.
+async function reloadKeepDrawer(pid){
+  const wasOpen=$('drawer').classList.contains('open')&&drawerProject&&drawerProject.id===pid;
+  await loadData();renderPage(activePage);
+  if(wasOpen&&PBYID[pid]){drawerProject=PBYID[pid];drawerTab='tasks';renderDrawer();}
+}
+function taskRowHtml(t,now){
+  const due=pd(t.end_date),over=!t.is_completed&&due&&due<now;
+  const chk=t.native?`<span class="chk click${t.is_completed?' on':''}" title="${t.is_completed?'Reopen':'Mark done'}" onclick="event.stopPropagation();toggleTask('${t.nid}')">${t.is_completed?'✓':''}</span>`:`<span class="chk${t.is_completed?' on':''}" title="Zoho task — update it in Zoho">${t.is_completed?'✓':''}</span>`;
+  return `<div class="task-row${t.is_completed?' done':''}${over?' over':''}${t.native?' native':''}"${t.native?` onclick="openTaskForm('${jsq(t.project_id)}','${t.nid}')" title="Click to edit"`:''}>${chk}<span class="tn">${esc(t.name)}${t.native?' <span class="src-tag cc">Command Center</span>':''}${t.priority==='High'?' <span class="badge br">High</span>':''}${t.notes?` <span class="dim" title="${esc(t.notes)}">📝</span>`:''}</span><span class="dim" style="font-size:11px">${esc(ownerNames(t)||'Unassigned')}</span><span class="dim" style="font-size:11px;width:70px;text-align:right">${fmtD(due)}</span><span class="badge ${t.is_completed?'bg':over?'br':badgeFor(t.status)}">${esc(over?'Overdue':t.status||'')}</span></div>`;
+}
+function renderDrawerTasks(p,b){
+  const now=new Date(),nat=p.tasks.filter(t=>t.native).length,form=TASK_EDIT&&TASK_EDIT.pid===p.id;
+  const head=`<div class="tf-bar"><span class="dim">${p.tasks.length-nat} from Zoho (read-only) · ${nat} added here</span>${form?'':`<button class="cta sm" onclick="openTaskForm('${jsq(p.id)}')">+ Add task</button>`}</div>`;
+  if(!p.tasks.length){b.innerHTML=head+(form?taskFormHtml(p):'<div class="empty">No tasks yet. Add the first one above.</div>');return;}
+  const groups={};p.tasks.forEach(t=>{const k=(t.pipeline||'Other')+'|'+(t.tasklist_name||'');(groups[k]=groups[k]||[]).push(t);});
+  b.innerHTML=head+(form?taskFormHtml(p):'')+Object.keys(groups).sort().map(k=>{const [pk,tl]=k.split('|');const ts=groups[k];const d=ts.filter(t=>t.is_completed).length;
+    return `<div class="task-group"><div class="task-gh"><span style="color:${PIPE_COLORS[pk]||'var(--text2)'}">${esc(pk)} · ${esc(tl)}</span><span>${d}/${ts.length}</span></div>${ts.map(t=>taskRowHtml(t,now)).join('')}</div>`;}).join('');
 }
 function ganttSvg(p){
   const rows=PIPES.map(pp=>{const ts=p.tasks.filter(t=>t.pipeline===pp.k);const st=ts.map(t=>pd(t.start_date)).filter(Boolean),en=ts.map(t=>pd(t.end_date)).filter(Boolean);
@@ -2269,7 +2352,10 @@ function buildDemo(){
       hs_link:p.deal_url,report_date:ymd(today)};});
   billing_sheet.push({deal_id:'91111111111',deal_name:'Orphan Roofing Co',zoho_status:'Churned',payment_status:'Partially Paid',amount:9000,amount_due:1500,amount_paid:3000,first_unpaid_due:ymd(new Date(today.getTime()-45*DAY)),days_due:45,deal_owner:'Nick Schmidt',report_date:ymd(today)},
     {deal_id:'91111111112',deal_name:'Not Synced Exteriors',zoho_status:'Configuration',payment_status:'Unpaid',amount:12000,amount_due:2000,amount_paid:0,first_unpaid_due:ymd(new Date(today.getTime()-12*DAY)),days_due:12,deal_owner:'Shane Carey',report_date:ymd(today)});
-  return{projects,tasks,milestones:[],snapshots:snaps,people:[],settings:{capacity:{public_holidays:[demoHoliday+' Demo public holiday']},timeoff:{[owners[3][0]]:[{from:ymd(new Date(demoLastMon.getTime()+3*DAY)),to:ymd(new Date(demoLastMon.getTime()+4*DAY)),note:'Family trip'}]},billing_import:{file:'Roofing Payments (demo).csv',rows:billing_sheet.length,report_date:ymd(today),at:new Date().toISOString()}},accounts,adoption,billing_sheet,timelogs,sync:{zoho_connected:true,projects_at:new Date().toISOString(),tasks_at:new Date().toISOString(),last:null}};
+  const np=projects.find(p=>p.status==='Configuration')||projects[0];
+  const native_tasks=[{id:'b1c2d3e4-0000-4000-8000-000000000001',project_id:np.id,name:'Walk customer through new inspection checklist',pipeline:'P2',stage:3,status:'In Progress',is_completed:false,owner_name:np.owner_name,owner_email:np.owner_email,end_date:ymd(new Date(today.getTime()+3*DAY)),priority:'High',notes:'Customer asked for a second session.',created_by:'Demo user',updated_by:'Demo user',created_at:new Date(today.getTime()-2*DAY).toISOString(),updated_at:new Date(today.getTime()-2*DAY).toISOString()},
+    {id:'b1c2d3e4-0000-4000-8000-000000000002',project_id:np.id,name:'Confirm QuickBooks sync settings',pipeline:'P4',stage:2,status:'Open',is_completed:false,owner_name:null,end_date:ymd(new Date(today.getTime()-4*DAY)),created_by:'Demo user',created_at:new Date(today.getTime()-9*DAY).toISOString(),updated_at:new Date(today.getTime()-9*DAY).toISOString()}];
+  return{projects,tasks,milestones:[],snapshots:snaps,people:[],native_tasks,settings:{capacity:{public_holidays:[demoHoliday+' Demo public holiday']},timeoff:{[owners[3][0]]:[{from:ymd(new Date(demoLastMon.getTime()+3*DAY)),to:ymd(new Date(demoLastMon.getTime()+4*DAY)),note:'Family trip'}]},billing_import:{file:'Roofing Payments (demo).csv',rows:billing_sheet.length,report_date:ymd(today),at:new Date().toISOString()}},accounts,adoption,billing_sheet,timelogs,sync:{zoho_connected:true,projects_at:new Date().toISOString(),tasks_at:new Date().toISOString(),last:null}};
 }
 function demoApi(action,body){
   if(!DEMO_DB)DEMO_DB=buildDemo();
@@ -2281,6 +2367,10 @@ function demoApi(action,body){
     DEMO_DB.overrides.push({project_id:body.project_id,pipeline:body.pipeline,manual_pct:body.manual_pct,status:body.status,note:body.note,items:body.items||[]});return Promise.resolve({ok:true});}
   if(action==='billing_import'){DEMO_DB.billing_sheet=body.rows;DEMO_DB.settings.billing_import={file:body.file,rows:body.rows.length,report_date:body.rows[0].report_date,at:new Date().toISOString()};return Promise.resolve({ok:true,rows:body.rows.length});}
   if(action==='billing_save'){DEMO_DB.billing=(DEMO_DB.billing||[]).filter(b=>b.project_id!==body.project_id);DEMO_DB.billing.push(Object.assign({},body,{updated_at:new Date().toISOString()}));return Promise.resolve({ok:true});}
+  if(action==='task_save'){const L=DEMO_DB.native_tasks=DEMO_DB.native_tasks||[];const done=/^done$/i.test(body.status||'');const now=new Date().toISOString();
+    if(body.id){const r=L.find(x=>x.id===body.id);if(!r)return Promise.reject(new Error('That task no longer exists.'));Object.assign(r,body,{is_completed:done,updated_by:body.by,updated_at:now,completed_at:done?(r.completed_at||now):null});return Promise.resolve({ok:true,task:r});}
+    const r=Object.assign({},body,{id:crypto.randomUUID(),is_completed:done,created_by:body.by,updated_by:body.by,created_at:now,updated_at:now,completed_at:done?now:null});L.push(r);return Promise.resolve({ok:true,task:r});}
+  if(action==='task_delete'){DEMO_DB.native_tasks=(DEMO_DB.native_tasks||[]).filter(x=>x.id!==body.id);return Promise.resolve({ok:true});}
   return Promise.reject(new Error('Not available with demo data.'));
 }
 // ═══════════════════════════════════════════════════════════════
@@ -2320,6 +2410,7 @@ const GUIDE={
     {sel:'#taskKpi',title:'Task KPIs',body:'Open, overdue and due-soon task counts across onboarding projects.'},
     {sel:'#taskCharts',title:'Trends',body:'Overdue work by owner and tasks completed per week.'},
     {sel:'#taskProjects',title:'Tasks grouped by project',body:'Each card is one project with its open/overdue counts and next task. Click to expand; use Expand all / Collapse all, search, or download a CSV.'},
+    {sel:'#taskProjects .tp-hd .top-btn',title:'Add your own tasks',body:'“+ Task” adds a task to that project right here — assignee, pipeline, stage, due date, priority and notes. Tasks added here count in progress, health and Team Load just like Zoho tasks, and are never written to Zoho. Click one to edit it or tick it done.'},
   ],
   golives:[
     {sel:'#glKpi',title:'Go-live scorecard',body:'This month vs the target, next month’s pipeline, missed ETAs and pulled-in go-lives.'},
