@@ -263,6 +263,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .task-row.over{border-left:3px solid var(--red)}
 .chk{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff}
 .chk.on{background:var(--green);border-color:var(--green)}
+.oi-link{font-size:10px;font-weight:600;color:var(--blue);text-decoration:none;margin-left:4px;white-space:nowrap}.oi-link:hover{text-decoration:underline}
 .chk.click{cursor:pointer}.chk.click:hover{border-color:var(--green)}
 .task-row.native{cursor:pointer}.task-row.native:hover{border-color:var(--blue)}
 .src-tag{font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:1px}.src-tag.cc{background:var(--blue-bg);color:var(--blue)}
@@ -455,16 +456,14 @@ body.gt-on .drawer,body.gt-on .drawer-ov{display:none}
         <div id="ovNotice"></div>
         <div class="kpi-grid" id="ovKpi"></div>
         <div class="charts-grid ov-grid" id="ovCharts"></div>
-        <div class="split">
-          <div class="tbl-card" style="margin:0"><div class="tbl-hdr"><span class="tbl-title">Needs attention</span><span class="tbl-pill" id="ovAttnPill">—</span></div>
-            <div class="tbl-wrap"><table><thead><tr><th class="nosort"></th><th class="nosort">Project</th><th class="nosort">Stage</th><th class="nosort">Progress</th><th class="nosort">ETA</th><th class="nosort">Slip</th><th class="nosort">Owner</th><th class="nosort">Why</th></tr></thead><tbody id="ovAttn"></tbody></table></div></div>
-          <div class="card"><div class="card-title">What changed <span class="chart-badge" id="chgBadge">last 7 days</span></div><div id="ovChanges"></div></div>
-        </div>
+        <div class="tbl-card" id="ovLiveCard"><div class="tbl-hdr"><span class="tbl-title">Went live</span><span class="tbl-pill" id="ovLivePill">—</span></div>
+          <div class="tbl-wrap"><table id="ovLiveTable"><thead><tr id="ovLiveHead"></tr></thead><tbody id="ovLiveTbl"></tbody></table></div></div>
+        <div class="chart-note" style="margin-top:4px">The at-risk worklist, ETA changes and the go-lives expected this week and this month are in <a href="https://onboarding-intel.zuperops.com/horizon" target="_blank" rel="noopener">Onboarding Intelligence → Go-Live Horizon ↗</a>.</div>
       </div>
 
       <div class="page" id="page-projects">
-        <div class="page-hdr"><div><div class="page-title">Projects</div><div class="page-sub">All projects with health, progress, ETA and forecast</div></div>
-          <div class="hdr-right"><select class="filter-select" id="projPhaseSel" onchange="renderProjects()"></select><select class="filter-select" id="projRagSel" onchange="renderProjects()"><option value="">All health</option><option value="R">🔴 Off track</option><option value="A">🟡 At risk</option><option value="G">🟢 On track</option></select></div></div>
+        <div class="page-hdr"><div><div class="page-title">Projects</div><div class="page-sub">All projects with health, task progress and ETA. Hours, ETA history, staffing and risk detail are in <a href="https://onboarding-intel.zuperops.com/onboarding-intelligence" target="_blank" rel="noopener">Onboarding Intelligence ↗</a></div></div>
+          <div class="hdr-right"><select class="filter-select" id="projPhaseSel" onchange="renderProjects()"></select><select class="filter-select" id="projRagSel" onchange="renderProjects()"><option value="">All health</option><option value="R">🔴 At risk</option><option value="A">🟡 Watch</option><option value="G">🟢 On track</option></select></div></div>
         <div class="kpi-grid" id="projKpi"></div>
         <div class="charts-grid" id="projCharts"></div>
         <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">All projects</span><span class="tbl-pill" id="projPill">—</span></div>
@@ -593,6 +592,12 @@ const DEFAULT_EXCLUDE=['Golden Account','MVP','RBP Internal Use'];
 const ROLES=['Onboarding','CSM','Support','Adoption','Sales','Other'];
 const CL=['#FD5000','#3B82F6','#22C55E','#A855F7','#EAB308','#14B8A6','#EF4444','#B5271C','#64748B','#EC4899'];
 const DAY=864e5;
+// Modules hidden because Onboarding Intelligence (onboarding-intel.zuperops.com) already covers them.
+// The code is intact: set a switch to true to show that module again.
+//   team    -> Resource Allocation in OI
+//   golives -> Go-Live Horizon in OI (go-live target tracking now lives on Overview)
+const FEATURES={team:false,golives:false};
+const OI_URL='https://onboarding-intel.zuperops.com';
 
 let token='',DEMO=false,RAW=null,isDark=false,charts={},activePage='overview';
 let P=[],PBYID={},TBY={},OVBY={},PEOPLE=[],ACCOUNTS=[],SET={},STATUSES=[];
@@ -631,6 +636,8 @@ function badgeFor(status){const s=(status||'').toLowerCase();
   if(/hold|wait|pending/.test(s))return'ba';if(/hyper/.test(s))return'bt';if(/new/.test(s))return'bgr';return'bb';}
 function phaseBadge(ph){const c={'Sold':'bgr','Kick-off':'bb','Onboarding':'bz','On Hold':'ba','Hypercare':'bt','Live':'bg','Churned':'br'}[ph]||'bgr';return `<span class="badge ${c}">${esc(ph)}</span>`;}
 function ragDot(r,why){return `<span class="rag ${r||'N'}" title="${esc(why||'')}"></span>`;}
+// Tooltip: the level rule, the counted reasons, then any data gaps (which never count).
+function ragTip(p){if(p.rag==='N')return 'Live / not scored';const lvl={R:'At risk: 2+ signals',A:'Watch: 1 signal',G:'On track: no signals'}[p.rag];return [lvl].concat(p.why).concat((p.gaps||[]).map(g=>g+' (data gap, not counted)')).join(' · ');}
 
 // ═══════════════════════════════════════════════════════════════
 // THEME
@@ -780,20 +787,21 @@ function derive(){
     x.forecastD=x.preLive&&x.open>0&&rate>0?new Date(today.getTime()+Math.ceil(x.open/rate)*DAY):null;
     if(x.preLive&&x.open===0&&x.total>0)x.forecastD=today;
     x.forecastGap=(x.forecastD&&x.etaD)?ddiff(x.forecastD,x.etaD):null;
-    // health
-    const why=[];let r='G';
-    const bump=(lvl,msg)=>{why.push(msg);if(lvl==='R'||(lvl==='A'&&r==='G'))r=lvl;};
+    // Health follows Onboarding Intelligence's flag (Scoring Methodology 9.5) so both tools agree:
+    // counted signals -> At risk (2+) / Watch (1) / On track (0). Data gaps are shown but never count;
+    // task progress is deliberately not a signal.
+    const why=[],gaps=[];let r='N';
     if(x.preLive){
-      if(x.etaD&&x.etaD<today)bump('R',`ETA passed ${ddiff(today,x.etaD)}d ago`);
-      if(x.slip!=null&&x.slip>SET.rag.slip_days)bump('R',`ETA slipped ${x.slip}d`);else if(x.slip>0)bump('A',`ETA slipped ${x.slip}d`);
-      if(riskSt.has(String(p.status||'').toLowerCase()))bump('R',`Status: ${p.status}`);
-      if(x.overduePct>SET.rag.overdue_pct*2)bump('R',`${x.overdue} tasks overdue (${x.overduePct}%)`);else if(x.overduePct>SET.rag.overdue_pct)bump('A',`${x.overdue} tasks overdue (${x.overduePct}%)`);
-      if(x.stall!=null&&x.stall>SET.rag.stall_days)bump('A',`No Zoho update for ${x.stall}d`);
-      if(x.conf!=null&&x.conf<SET.rag.low_conf)bump('A',`Confidence ${x.conf}/5`);
-      if(x.phase==='On Hold')bump('A','On hold');
-      if(x.forecastGap!=null&&x.forecastGap>SET.rag.slip_days)bump('A',`Pace says ${x.forecastGap}d after ETA`);
-      if(!x.etaD&&(x.phase==='Onboarding'))bump('A','No ETA set');
-    }else r='N';
+      const st=String(p.status||'').trim().toLowerCase(),created=pd(p.created_time)||x.startD,ageD=created?ddiff(today,created):null;
+      const etaPassed=!!(x.etaD&&x.etaD<today);
+      if(st==='at risk')why.push('Marked At Risk in Zoho');
+      if(st==='on hold')why.push('On Hold in Zoho');
+      if(etaPassed)why.push(`ETA passed ${ddiff(today,x.etaD)}d ago and not yet live`);
+      if(!etaPassed&&ageD!=null&&ageD>90)why.push(`Over 90 days in onboarding (${ageD}d)`);
+      if(!x.etaD){gaps.push('No ETA set in Zoho');if(ageD!=null&&ageD>365)gaps.push(`Open for over a year (${ageD}d)`);}
+      r=why.length>=2?'R':why.length===1?'A':'G';
+    }
+    x.gaps=gaps;
     x.rag=r;x.why=why;x.ragRank={R:0,A:1,G:2,N:3}[r];
     return x;
   });
@@ -894,13 +902,14 @@ function renderSidebar(){
   const s=(RAW&&RAW.sync)||{};
   $('sidebar').innerHTML=
     `<div class="sidebar-section">Overview</div>`+navItem('overview','Overview')+navItem('dashboard','My Dashboard')+
-    `<div class="sidebar-section">Delivery</div>`+navItem('projects','Projects',vp.filter(p=>p.preLive).length)+navItem('pipelines','Pipelines')+navItem('tasks','Tasks',overdue||null,true)+navItem('golives','Go-Lives')+
-    `<div class="sidebar-section">People</div>`+navItem('team','Team Load')+
+    `<div class="sidebar-section">Delivery</div>`+navItem('projects','Projects',vp.filter(p=>p.preLive).length)+navItem('pipelines','Pipelines')+navItem('tasks','Tasks',overdue||null,true)+(FEATURES.golives?navItem('golives','Go-Lives'):'')+
+    (FEATURES.team?`<div class="sidebar-section">People</div>`+navItem('team','Team Load'):'')+
     `<div class="sidebar-section">Post go-live</div>`+navItem('adoption','Adoption',ACCOUNTS.length||null)+
     `<div class="sidebar-section">Admin</div>`+navItem('accounts','Accounts')+navItem('settings','Settings',(!DEMO&&!s.zoho_connected)?'!':null,true)+
-    `<div class="side-foot">${DEMO?'Demo data':`Projects synced ${ago(s.projects_at)}<br>Tasks synced ${ago(s.tasks_at)}`}${atRisk?`<br><b style="color:var(--red)">${atRisk} off track</b>`:''}</div>`;
+    `<div class="side-foot">${DEMO?'Demo data':`Projects synced ${ago(s.projects_at)}<br>Tasks synced ${ago(s.tasks_at)}`}${atRisk?`<br><b style="color:var(--red)">${atRisk} at risk</b>`:''}</div>`;
 }
 function showPage(id){
+  if(FEATURES[id]===false)id='overview';
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const pg=$('page-'+id);if(pg)pg.classList.add('active');
   activePage=id;try{history.replaceState(null,'','#'+id);}catch(e){}
@@ -1024,11 +1033,11 @@ function projectRow(p,dateMode){
   const d=dateMode==='golive'?p.liveD:p.etaD;
   const dCell=dateMode==='golive'?`<td class="dim">${fmtD(d)}</td>`
     :`<td class="dim">${fmtD(d)}${p.preLive&&p.etaD&&p.etaD<t0()?' <span class="badge br">passed</span>':p.slip>0?` <span class="slip pos" title="vs first ETA seen">+${p.slip}d</span>`:''}</td>`;
-  return{cells:`<td>${ragDot(p.rag,p.why.join(' · ')||({N:'Live / not scored'}[p.rag]||'On track'))}</td><td><b>${esc(p.name)}</b> <span class="dim mono">${esc(p.key||'')}</span></td><td><span class="badge ${badgeFor(p.status)}">${esc(p.status||'—')}</span></td>
+  return{cells:`<td>${ragDot(p.rag,ragTip(p))}</td><td><b>${esc(p.name)}</b> <span class="dim mono">${esc(p.key||'')}</span>${dealIdOf(p)?` <a class="oi-link" href="${OI_URL}/deal/${dealIdOf(p)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Deal brief in Onboarding Intelligence: AI handover, stakeholders, staffing">brief ↗</a>`:''}</td><td><span class="badge ${badgeFor(p.status)}">${esc(p.status||'—')}</span></td>
     <td title="P1–P4: ${PIPES.map(pp=>pp.k+' '+(p.pipe[pp.k].pct==null?'–':p.pipe[pp.k].pct+'%')).join(' · ')}">${pctCell(p.pct)}${p.hasManual?' <span class="dim" title="Includes manual pipeline updates">✎</span>':''}</td>${dCell}
     <td class="num">${p.arr?fmt$(p.arr):'—'}</td><td>${who(p.owner)}</td><td>${p.pm?who(p.pm):'<span class="dim">—</span>'}</td><td>${p.ba?who(p.ba):'<span class="dim">—</span>'}</td><td>${p.second?who(p.second):'<span class="dim">—</span>'}</td>`,
     sort:{rag:p.ragRank,name:p.name,status:p.status,pct:p.pct,date:d,arr:p.arr,owner:p.owner,pm:p.pm,ba:p.ba,sa:p.second},
-    csv:[p.name,p.key,{R:'Off track',A:'At risk',G:'On track',N:''}[p.rag],p.why.join('; '),p.status,p.phase,p.pct,...PIPES.map(pp=>p.pipe[pp.k].pct),p.current_eta,p.baseline_eta,p.actual_go_live,p.arr,p.owner,p.pm,p.ba,p.second,p.csm,p.team,partnerKind(p)],
+    csv:[p.name,p.key,{R:'At risk',A:'Watch',G:'On track',N:''}[p.rag],p.why.join('; '),p.status,p.phase,p.pct,...PIPES.map(pp=>p.pipe[pp.k].pct),p.current_eta,p.baseline_eta,p.actual_go_live,p.arr,p.owner,p.pm,p.ba,p.second,p.csm,p.team,partnerKind(p)],
     onclick:`openProject('${jsq(p.id)}')`};
 }
 const PROJ_CSV=['Project','Key','Health','Why','Status','Phase','% done','P1 %','P2 %','P3 %','P4 %','Current ETA','Baseline ETA','Go-live','ARR','Owner','Project Manager','BA','SA','CSM','Team','Direct/Partner'];
@@ -1055,8 +1064,8 @@ function renderOverview(){
   const healthy=ACCOUNTS.length?Math.round(ACCOUNTS.filter(a=>a.health==='G').length/ACCOUNTS.length*100):null;
   $('ovKpi').innerHTML=kpiEnhHtml([
     {id:'ov-active',label:'In onboarding',val:pre.length,raw:pre.length,cls:'orange',sub:`${vp.filter(p=>p.phase==='Sold'||p.phase==='Kick-off').length} not yet kicked off`,click:"showPage('projects')"},
-    {id:'ov-golives',label:'Go-lives this month',val:glMonth,raw:glMonth,cls:'green',sub:glPeriod!=null?`${glPeriod} in selected period`:`${pre.filter(p=>p.etaD&&ym(p.etaD)===cm).length} more due by ETA`,delta:glPeriod!=null?calcDelta(glPeriod,glPrev):null,click:"showPage('golives')"},
-    {id:'ov-risk',label:'Off track',val:atRisk,raw:atRisk,cls:'red',lower:true,sub:`${amber} more at risk`,click:"projRag='R';showPage('projects')"},
+    {id:'ov-golives',label:'Go-lives this month',val:glMonth,raw:glMonth,cls:'green',sub:glPeriod!=null?`${glPeriod} in selected period`:'went live since the 1st',delta:glPeriod!=null?calcDelta(glPeriod,glPrev):null,click:"$('ovLiveCard').scrollIntoView({behavior:'smooth'})"},
+    {id:'ov-risk',label:'At risk',val:atRisk,raw:atRisk,cls:'red',lower:true,sub:`${amber} on watch · same flag as Onboarding Intelligence`,click:"projRag='R';showPage('projects')"},
     {id:'ov-arr',label:'ARR in onboarding',val:fmt$(arr),raw:arr,cls:'blue',sub:'not yet live'},
     {id:'ov-dtl',label:'Avg days to go-live',val:avgDtl!=null?avgDtl:'—',raw:avgDtl||0,cls:'purple',lower:true,sub:`${lived.length} go-lives measured`},
     {id:'ov-ontime',label:'On-time vs baseline',val:onTime!=null?onTime+'%':'—',raw:onTime||0,cls:'teal',sub:withBase.length?`${withBase.length} with a baseline ETA`:'needs baseline history'},
@@ -1065,28 +1074,27 @@ function renderOverview(){
   // charts
   const phaseCounts=PHASES.map(ph=>vp.filter(p=>p.phase===ph).length);
   const rag=[pre.filter(p=>p.rag==='R').length,pre.filter(p=>p.rag==='A').length,pre.filter(p=>p.rag==='G').length];
-  const months=monthKeys(-5,3);const tgt=SET.targets.golives_per_month;
+  const months=monthKeys(-11,0);const tgt=SET.targets.golives_per_month;
   const actual=months.map(k=>goLivesIn(vp,d=>ym(d)===k).length);
-  const planned=months.map(k=>k>=cm?pre.filter(p=>p.etaD&&ym(p.etaD)===k).length:0);
+  let cum=0,plan=0;const cumA=actual.map(v=>cum+=v),cumT=months.map(()=>plan+=tgt);
   const stageCounts=PIPES.map((pp,i)=>pre.filter(p=>p.stageIdx>=i*10&&p.stageIdx<i*10+10).length);
   $('ovCharts').innerHTML=chartCard('ovPhase','Lifecycle',vp.length+' projects',210,null)+chartCard('ovRag','Onboarding health',pre.length+' in flight',210,'ovRagLeg')+
-    chartCard('ovGl','Go-lives by month',`target ${tgt}/mo`,210,null)+chartCard('ovStage','Where onboarding projects are',null,210,null);
+    chartCard('ovGl','Go-lives vs target — last 12 months',`target ${tgt}/mo`,210,null)+chartCard('ovCum','Cumulative go-lives vs plan','last 12 months',210,null)+chartCard('ovStage','Where onboarding projects are',null,210,null);
   later(()=>{
     makeHBar('ovPhase',PHASES,phaseCounts,PHASES.map(ph=>PHASE_COLORS[ph]),l=>{projPhase=l;showPage('projects');});
-    makeDoughnut('ovRag',['Off track','At risk','On track'],rag,['#EF4444','#EAB308','#22C55E'],l=>{projRag={'Off track':'R','At risk':'A','On track':'G'}[l];showPage('projects');});
-    legend('ovRagLeg',[`Off track (${rag[0]})`,`At risk (${rag[1]})`,`On track (${rag[2]})`],['#EF4444','#EAB308','#22C55E']);
+    makeDoughnut('ovRag',['At risk','Watch','On track'],rag,['#EF4444','#EAB308','#22C55E'],l=>{projRag={'At risk':'R','Watch':'A','On track':'G'}[l];showPage('projects');});
+    legend('ovRagLeg',[`At risk (${rag[0]})`,`Watch (${rag[1]})`,`On track (${rag[2]})`],['#EF4444','#EAB308','#22C55E']);
     makeCombo('ovGl',months.map(monLbl),[
-      {type:'bar',label:'Went live',data:actual,backgroundColor:'#22C55E',borderRadius:4,stack:'s'},
-      {type:'bar',label:'Due by ETA',data:planned,backgroundColor:isDark?'rgba(253,80,0,.45)':'rgba(253,80,0,.35)',borderRadius:4,stack:'s'},
-      {type:'line',label:'Target',data:months.map(()=>tgt),borderColor:'#EF4444',borderDash:[5,4],pointRadius:0,borderWidth:1.5}],true);
+      {type:'bar',label:'Went live',data:actual,backgroundColor:'#22C55E',borderRadius:4},
+      {type:'line',label:'Target',data:months.map(()=>tgt),borderColor:'#EF4444',borderDash:[5,4],pointRadius:0,borderWidth:1.5}]);
+    makeLine('ovCum',months.map(monLbl),[{label:'Actual',data:cumA,borderColor:'#22C55E',backgroundColor:'rgba(34,197,94,.1)',fill:true,tension:.3,pointRadius:2},{label:'Plan',data:cumT,borderColor:'#FD5000',borderDash:[5,4],pointRadius:0}]);
     makeBar('ovStage',PIPES.map(pp=>pp.k+' '+pp.n),stageCounts,PIPES.map(pp=>PIPE_COLORS[pp.k]));
   });
-  // needs attention
-  const attn=pre.filter(p=>p.rag!=='G').sort((a,b)=>a.ragRank-b.ragRank||(b.arr||0)-(a.arr||0)).slice(0,12);
-  $('ovAttnPill').textContent=pre.filter(p=>p.rag!=='G').length+' flagged';
-  $('ovAttn').innerHTML=attn.length?attn.map(p=>`<tr class="click" onclick="openProject('${jsq(p.id)}')"><td>${ragDot(p.rag)}</td><td><b>${esc(p.name)}</b></td><td class="mono">${esc(p.stage||'—')}</td><td>${pctCell(p.pct)}</td><td class="dim">${fmtD(p.etaD)}</td><td>${slipCell(p.slip)}</td><td>${who(p.owner)}</td><td class="dim wrap" style="max-width:260px">${esc(p.why.slice(0,2).join(' · '))}</td></tr>`).join('')
-    :`<tr><td colspan="8"><div class="empty">Nothing flagged — every onboarding project is on track.</div></td></tr>`;
-  $('ovChanges').innerHTML=changesHtml(vp);
+  // went live in the selected period (the list that used to be on the Go-Lives page)
+  const went=goLivesIn(vp,d=>F.period==='all'?true:inPeriod(d));
+  $('ovLivePill').textContent=went.length+' go-lives';
+  if(!$('ovLiveHead').innerHTML)$('ovLiveHead').innerHTML=PROJ_HEAD('Go-live');
+  setTable('ovLiveTbl',went.map(p=>projectRow(p,'golive')),PROJ_CSV,{sortK:'date',dir:-1,title:'went-live'});
 }
 function monthKeys(from,to){const out=[],n=new Date();for(let i=from;i<=to;i++){out.push(ym(new Date(n.getFullYear(),n.getMonth()+i,1)));}return out;}
 function weekChanges(vp){
@@ -1113,10 +1121,10 @@ function changesHtml(vp){
 function copyDigest(){
   const vp=VP(),pre=vp.filter(p=>p.preLive),c=weekChanges(vp);
   const L=[];L.push(`*Project Command Center — weekly digest (${fmtD(new Date())})*`);
-  L.push(`In onboarding: ${pre.length} · Off track: ${pre.filter(p=>p.rag==='R').length} · At risk: ${pre.filter(p=>p.rag==='A').length} · Go-lives this month: ${goLivesIn(vp,d=>ym(d)===ym(new Date())).length}/${SET.targets.golives_per_month}`);
+  L.push(`In onboarding: ${pre.length} · At risk: ${pre.filter(p=>p.rag==='R').length} · Watch: ${pre.filter(p=>p.rag==='A').length} · Go-lives this month: ${goLivesIn(vp,d=>ym(d)===ym(new Date())).length}/${SET.targets.golives_per_month}`);
   const sec=(t,a,f)=>{if(a.length){L.push('');L.push(`*${t}* (${a.length})`);a.slice(0,15).forEach(x=>L.push('• '+f(x)));}};
   sec('Went live',c.live,x=>x.p.name);sec('ETA slipped',c.slip,x=>`${x.p.name} ${x.meta} → ${fmtD(x.p.etaD)}`);
-  sec('Off track',pre.filter(p=>p.rag==='R'),p=>`${p.name} (${p.owner||'no owner'}) — ${p.why.join('; ')}`);
+  sec('At risk',pre.filter(p=>p.rag==='R'),p=>`${p.name} (${p.owner||'no owner'}) — ${p.why.join('; ')}`);
   const over=PEOPLE.map(pr=>loadOf(pr)).filter(l=>l.util>100);sec('Over capacity',over,l=>`${l.name}: ${l.util}%`);
   navigator.clipboard.writeText(L.join('\n')).then(()=>toast('Digest copied — paste into Slack or email.'),()=>toast('Could not copy to clipboard.'));
 }
@@ -1136,7 +1144,7 @@ function renderProjects(){
   const pre=rows.filter(p=>p.preLive);
   $('projKpi').innerHTML=kpiEnhHtml([
     {label:'Projects',val:rows.length,cls:'orange',sub:`${pre.length} pre go-live`},
-    {label:'Off track',val:rows.filter(p=>p.rag==='R').length,cls:'red',sub:`${rows.filter(p=>p.rag==='A').length} at risk`},
+    {label:'At risk',val:rows.filter(p=>p.rag==='R').length,cls:'red',sub:`${rows.filter(p=>p.rag==='A').length} on watch`},
     {label:'Avg completion',val:(pre.length?Math.round(pre.reduce((t,p)=>t+p.pct,0)/pre.length):0)+'%',cls:'blue',sub:'pre go-live, avg of P1–P4'},
     {label:'ETA slipped',val:pre.filter(p=>p.slip>0).length,cls:'amber',sub:'vs first ETA seen'},
     {label:'No ETA',val:pre.filter(p=>!p.etaD).length,cls:'purple',sub:'pre go-live'},
@@ -1717,20 +1725,16 @@ function renderSettings(){
     </tbody></table></div>
     <div style="margin-top:10px"><button class="cta sm" onclick="savePhaseMap()">Save mapping</button></div></div>
 
-  <div class="card set-sec"><div class="card-title">Health rules &amp; targets</div>
+  <div class="card set-sec"><div class="card-title">Health rules &amp; targets <span class="chart-badge">health matches Onboarding Intelligence</span></div>
+    <div class="chart-note" style="margin:0 0 10px">Health uses the same flag as <a href="${OI_URL}/scoring-methodology" target="_blank" rel="noopener">Onboarding Intelligence</a>, so a project reads the same in both tools. Signals that count: <b>Marked At Risk in Zoho</b>, <b>On Hold in Zoho</b>, <b>ETA passed and not yet live</b>, <b>over 90 days in onboarding</b> (only when the ETA hasn't passed). <b>At risk</b> = 2 or more signals · <b>Watch</b> = 1 · <b>On track</b> = none. A missing ETA is shown as a data gap and never counts; task progress is not a signal.</div>
     <div class="form-grid">
-      <div class="fld"><label>Red when ETA slipped more than (days)</label><input type="number" id="rSlip" value="${SET.rag.slip_days}"></div>
-      <div class="fld"><label>Amber when overdue tasks exceed (% of open; red at 2×)</label><input type="number" id="rOver" value="${SET.rag.overdue_pct}"></div>
-      <div class="fld"><label>Amber when no Zoho update for (days)</label><input type="number" id="rStall" value="${SET.rag.stall_days}"></div>
-      <div class="fld"><label>Amber when go-live confidence below (out of 5)</label><input type="number" step="0.5" id="rConf" value="${SET.rag.low_conf}"></div>
-      <div class="fld"><label>Statuses that are always red</label><input id="rStatuses" value="${esc((SET.rag.risk_statuses||[]).join(', '))}"></div>
       <div class="fld"><label>Go-live target per month</label><input type="number" id="tGl" value="${SET.targets.golives_per_month}"></div>
             <div class="fld"><label>Hide projects named (internal/test)</label><input id="tExcl" value="${esc(SET.exclude.join(', '))}"></div>
       <div class="fld"><label>Sync only this Zoho industry ("all" = every project)</label><input id="tInd" value="${esc(SET.general.industry===undefined?'Roofing':SET.general.industry)}"></div>
     </div>
     <div style="margin-top:12px"><button class="cta sm" onclick="saveRules()">Save rules</button></div></div>
 
-  ${capacityCardHtml()}
+  ${FEATURES.team?capacityCardHtml():''}
 
   <div class="card set-sec"><div class="card-title">Team password</div>
     <div class="form-grid" style="grid-template-columns:1fr 1fr auto;align-items:end">
@@ -1764,7 +1768,7 @@ async function savePhaseMap(){
   try{await saveSetting('phase_map',map);await loadData();renderSettings();toast('Lifecycle mapping saved.');}catch(e){toast(e.message,4000);}
 }
 async function saveRules(){
-  const rag={slip_days:+$('rSlip').value||14,overdue_pct:+$('rOver').value||20,stall_days:+$('rStall').value||7,low_conf:+$('rConf').value||3,risk_statuses:$('rStatuses').value.split(',').map(s=>s.trim()).filter(Boolean)};
+  const rag=SET.rag; // health rules follow Onboarding Intelligence and are not edited here
   const targets=Object.assign({},SET.targets,{golives_per_month:+$('tGl').value||10});
   const exclude=$('tExcl').value.split(',').map(s=>s.trim()).filter(Boolean);
   const ind=$('tInd').value.trim()||'Roofing';const indChanged=ind!==(SET.general.industry===undefined?'Roofing':SET.general.industry);
@@ -1843,7 +1847,7 @@ function renderDrawer(){
   $('drawer').innerHTML=`<div class="drawer-hd"><div class="drawer-title">${ragDot(p.rag)} ${esc(p.name)} <span class="dim mono" style="font-size:12px">${esc(p.key||'')}</span> ${phaseBadge(p.phase)} <span class="badge ${badgeFor(p.status)}">${esc(p.status)}</span><button class="drawer-close" onclick="closeDrawer()">✕</button></div>
     <div class="drawer-meta"><span>Owner <b>${esc(p.owner||'—')}</b></span><span>PM <b>${esc(p.pm||'—')}</b></span><span>BA <b>${esc(p.ba||'—')}</b></span><span>SA <b>${esc(p.second||'—')}</b></span>${p.csm?`<span>CSM <b>${esc(p.csm)}</b></span>`:''}<span>Team <b>${esc(p.team||'—')}</b></span><span>${esc(partnerKind(p))}</span><span>ARR <b>${p.arr?fmt$(p.arr):'—'}</b></span>${p.conf!=null?`<span>Confidence <b>${p.conf}/5</b></span>`:''}</div>
     ${p.why.length?`<div class="drawer-meta" style="color:${p.rag==='R'?'var(--red)':'var(--amber)'}">${esc(p.why.join(' · '))}</div>`:''}
-    <div class="drawer-links">${DEMO?'':`<a class="top-btn" target="_blank" rel="noopener" href="https://projects.zoho.com/portal/zuperinc#project/${encodeURIComponent(p.id)}">Open in Zoho ↗</a>`}${p.deal_url?`<a class="top-btn" target="_blank" rel="noopener" href="${esc(p.deal_url)}">HubSpot deal ↗</a>`:''}${p.zuper_company_id?`<span class="company-pill">Zuper acct ${esc(p.zuper_company_id)}</span>`:''}</div>
+    <div class="drawer-links">${DEMO?'':`<a class="top-btn" target="_blank" rel="noopener" href="https://projects.zoho.com/portal/zuperinc#project/${encodeURIComponent(p.id)}">Open in Zoho ↗</a>`}${dealIdOf(p)?`<a class="top-btn" target="_blank" rel="noopener" href="${OI_URL}/deal/${dealIdOf(p)}" title="AI handover brief, staffing and go-live prediction">Deal brief (Onboarding Intelligence) ↗</a>`:''}${p.deal_url?`<a class="top-btn" target="_blank" rel="noopener" href="${esc(p.deal_url)}">HubSpot deal ↗</a>`:''}${p.zuper_company_id?`<span class="company-pill">Zuper acct ${esc(p.zuper_company_id)}</span>`:''}</div>
     <div class="drawer-tabs">${tabs.map(([k,l])=>`<div class="dtab${drawerTab===k?' active':''}" onclick="drawerTab='${k}';renderDrawer()">${l}</div>`).join('')}</div></div>
     <div class="drawer-body" id="drawerBody"></div>`;
   const b=$('drawerBody');
@@ -2175,11 +2179,11 @@ const TYPE_LABELS={doughnut:'Donut',pie:'Pie',bar:'Bar',hbar:'H-Bar',table:'Tabl
 function cnt(arr,fn,keys){const m=countBy(arr,fn);const k=keys||Object.keys(m).sort((a,b)=>m[b]-m[a]);return{labels:k,values:k.map(x=>m[x]||0)};}
 const WIDGET_DEFS=[
   {id:'w-kpis',title:'Delivery KPIs',module:'Delivery',icon:'🔢',render(el){const vp=VP(),pre=vp.filter(p=>p.preLive);const gl=goLivesIn(vp,d=>ym(d)===ym(new Date())).length;
-    el.innerHTML=`<div class="wkpi-row"><div class="wkpi-item"><div class="wkpi-val" style="color:var(--zuper)">${pre.length}</div><div class="wkpi-lbl">In onboarding</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--green)">${gl}/${SET.targets.golives_per_month}</div><div class="wkpi-lbl">Go-lives this month</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--red)">${pre.filter(p=>p.rag==='R').length}</div><div class="wkpi-lbl">Off track</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--blue)">${fmt$(pre.reduce((t,p)=>t+(p.arr||0),0))}</div><div class="wkpi-lbl">ARR in flight</div></div></div>`;}},
+    el.innerHTML=`<div class="wkpi-row"><div class="wkpi-item"><div class="wkpi-val" style="color:var(--zuper)">${pre.length}</div><div class="wkpi-lbl">In onboarding</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--green)">${gl}/${SET.targets.golives_per_month}</div><div class="wkpi-lbl">Go-lives this month</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--red)">${pre.filter(p=>p.rag==='R').length}</div><div class="wkpi-lbl">At risk</div></div><div class="wkpi-item"><div class="wkpi-val" style="color:var(--blue)">${fmt$(pre.reduce((t,p)=>t+(p.arr||0),0))}</div><div class="wkpi-lbl">ARR in flight</div></div></div>`;}},
   {id:'w-phase',title:'Projects by lifecycle phase',module:'Delivery',icon:'📊',supportedTypes:['hbar','bar','doughnut','pie','table'],defaultType:'hbar',
    getData(){const c=cnt(VP(),p=>p.phase,PHASES);return{labels:c.labels,values:c.values,colors:c.labels.map(l=>PHASE_COLORS[l]),heads:['Phase','Projects']};}},
   {id:'w-rag',title:'Onboarding health',module:'Delivery',icon:'🚦',supportedTypes:['doughnut','pie','bar','table'],defaultType:'doughnut',
-   getData(){const pre=VP().filter(p=>p.preLive);return{labels:['Off track','At risk','On track'],values:['R','A','G'].map(r=>pre.filter(p=>p.rag===r).length),colors:['#EF4444','#EAB308','#22C55E'],heads:['Health','Projects']};}},
+   getData(){const pre=VP().filter(p=>p.preLive);return{labels:['At risk','Watch','On track'],values:['R','A','G'].map(r=>pre.filter(p=>p.rag===r).length),colors:['#EF4444','#EAB308','#22C55E'],heads:['Health','Projects']};}},
   {id:'w-status',title:'Projects by Zoho status',module:'Delivery',icon:'📊',supportedTypes:['hbar','bar','doughnut','table'],defaultType:'hbar',
    getData(){const c=cnt(VP(),p=>p.status);return{labels:c.labels.slice(0,12),values:c.values.slice(0,12),colors:c.labels.map((_,i)=>CL[i%CL.length]),heads:['Status','Projects']};}},
   {id:'w-stage',title:'Current pipeline stage',module:'Delivery',icon:'🧭',supportedTypes:['bar','hbar','doughnut','table'],defaultType:'bar',
@@ -2203,6 +2207,7 @@ const WIDGET_DEFS=[
   {id:'w-adopt-jobs',title:'Jobs created (30d) by customer',module:'Adoption',icon:'🛠',supportedTypes:['hbar','bar','table'],defaultType:'hbar',
    getData(){const A=ACCOUNTS.slice().sort((a,b)=>(b.m.jobs_30d||0)-(a.m.jobs_30d||0)).slice(0,12);return{labels:A.map(a=>a.company_name),values:A.map(a=>a.m.jobs_30d||0),colors:A.map(()=>'#3B82F6'),heads:['Customer','Jobs 30d']};}},
 ];
+if(!FEATURES.team){const i=WIDGET_DEFS.findIndex(w=>w.id==='w-load');if(i>=0)WIDGET_DEFS.splice(i,1);}
 const WIDGET_MAP={};WIDGET_DEFS.forEach(w=>WIDGET_MAP[w.id]=w);
 const DASH_PAGES_KEY='pcc_dash_pages_v1';
 let dashPages=[],activeDashPageId='',dashLayout=[],dashSizes={},dashTypes={},libOpen=true,dragWid=null,dragSrc=null;
@@ -2350,17 +2355,16 @@ const GT_SKIP={}; // modules closed with Skip or the close icon stay quiet until
 const cardByTitle=t=>{const h=[...document.querySelectorAll('.page.active .card-title,.page.active .tbl-title')].find(e=>e.textContent.trim().toLowerCase().startsWith(t.toLowerCase()));return h?h.closest('.card,.tbl-card'):null;};
 const GUIDE={
   overview:[
-    {sel:'#sidebar',title:'Modules',body:'Every module lives here: Delivery (Projects, Pipelines, Tasks, Go-Lives), People (Team Load), Post go-live (Adoption) and Admin. Red badges flag things that need attention.'},
+    {sel:'#sidebar',title:'Modules',body:'Every module lives here: Delivery (Projects, Pipelines, Tasks), Post go-live (Adoption) and Admin. Deals, staffing, capacity and risk worklists are in Onboarding Intelligence. Red badges flag things that need attention.'},
     {sel:'#filterBar',title:'Filters apply everywhere',body:'Pick a date range, team, Direct vs Partner and owner. Every module, KPI and chart follows these filters.'},
     {sel:'#syncBtn',title:'Live from Zoho',body:'Data syncs from Zoho Projects every 10 minutes (read-only — nothing is written back). Press Sync to pull the latest right now.'},
     {sel:'#ovKpi',title:'Headline KPIs',body:'Active projects, go-lives vs target, at-risk count, ARR in onboarding and more. Click “+ Set target” on a card to set a goal; ▲▼ compares with the previous period.'},
     {sel:'#ovCharts',title:'Lifecycle at a glance',body:'Where every project sits from Sold → Kick-off → Onboarding → Live → Adoption, plus health mix and go-lives by month.'},
-    {sel:'#page-overview .split .tbl-card',title:'Needs attention',body:'The riskiest projects first, with the reasons (ETA slipped, overdue tasks, stalled, low confidence). Click a row to open the project.'},
-    {sel:'#ovChanges',title:'What changed',body:'Went live, ETA moved, new projects and stalled ones over the last 7 days — a quick weekly catch-up.'},
+    {sel:'#ovLiveCard',title:'Went live',body:'Every go-live in the selected period with health, ARR and the team. The at-risk worklist and ETA changes are in Onboarding Intelligence → Go-Live Horizon (linked below the table).'},
     {sel:'#page-overview .hdr-right',title:'Share with leadership',body:'Copy a ready-to-paste weekly digest, or export this page as a PDF.'},
   ],
   projects:[
-    {sel:'#page-projects .hdr-right',title:'Filter by phase & health',body:'Narrow the list to a lifecycle phase or to Off track / At risk / On track projects.'},
+    {sel:'#page-projects .hdr-right',title:'Filter by phase & health',body:'Narrow the list to a lifecycle phase or to At risk / Watch / On track projects (same flag as Onboarding Intelligence).'},
     {sel:'#projKpi',title:'Project KPIs',body:'Totals for onboarding, live and at-risk projects plus average completion.'},
     {sel:'#projCharts',title:'Breakdowns',body:'Projects by status, by team and Direct vs Partner.'},
     {sel:'#projTable',title:'All projects',body:'Health, status, % done, current ETA, ARR, Owner, Project Manager, BA and SA. Click a column to sort, use search, and click any row to open the project drawer (overview, pipelines, timeline, tasks, adoption, history).'},
@@ -2404,7 +2408,7 @@ const GUIDE={
   settings:[
     {el:()=>cardByTitle('Zoho Projects connection'),title:'Zoho connection',body:'Connect or reconnect Zoho (read-only). If a new permission is needed, a notice here tells you to reconnect.'},
     {el:()=>cardByTitle('Lifecycle mapping'),title:'Lifecycle mapping',body:'Map each Zoho status to a lifecycle phase (Kick-off, Onboarding, Live, Hypercare…).'},
-    {el:()=>cardByTitle('Health rules'),title:'Health rules & targets',body:'Tune what makes a project At risk or Off track, and set go-live targets.'},
+    {el:()=>cardByTitle('Health rules'),title:'Health rules & targets',body:'Health follows the Onboarding Intelligence flag so both tools agree. Set the monthly go-live target and which projects to hide here.'},
     {el:()=>cardByTitle('People'),title:'People & capacity',body:'Roles and weekly hours per person — this drives Team Load utilisation.'},
     {el:()=>cardByTitle('Utilisation rules'),title:'Utilisation rules',body:'Weekly hours, healthy utilisation band, under-utilised threshold, customer target, time-off keywords and public holidays — every Team Load number follows these.'},
     {el:()=>cardByTitle('Team password'),title:'Team password',body:'Change the shared team password.'},
