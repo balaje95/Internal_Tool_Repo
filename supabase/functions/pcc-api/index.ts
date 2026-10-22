@@ -1049,6 +1049,8 @@ Deno.serve(async (req) => {
           if ("done" in x) { r.done = x.done === null ? null : !!x.done; r.done_at = x.done ? (p.done ? p.done_at : now) : null; }
           r.edits = p.edits ?? null;
           if ("edits" in x) r.edits = cleanEdits(x.edits);
+          r.checks = p.checks ?? null;
+          if ("checks" in x) r.checks = Array.isArray(x.checks) && x.checks.length ? x.checks.slice(0, 60).map((c: any) => String(c).slice(0, 300)) : null;
           return r;
         }).filter((r: any) => r.project_id);
         const { error } = await db.from("pcc_task_meta").upsert(rows);

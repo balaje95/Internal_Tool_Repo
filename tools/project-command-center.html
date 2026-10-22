@@ -263,6 +263,11 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .task-row.over{border-left:3px solid var(--red)}
 .chk{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff}
 .chk.on{background:var(--green);border-color:var(--green)}
+.pb-step{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45;padding:5px 2px;cursor:pointer;border-bottom:1px solid var(--border)}.pb-step input{margin-top:3px;accent-color:var(--green)}.pb-step.on span{color:var(--text2);text-decoration:line-through}
+.step-chip{font-size:10px;font-weight:600;padding:1px 6px;border-radius:9px;background:var(--surface3);color:var(--text2);margin-left:4px}.step-chip.full{background:rgba(34,197,94,.15);color:var(--green)}
+.pb-pipe{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px}.pb-pipe summary{cursor:pointer;font-size:12px;line-height:1.5}
+.pb-stage{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}.pb-st{font-size:11px;font-weight:600;color:var(--text2);min-width:200px}
+.pb-task{font-size:11px;padding:3px 8px;border-radius:12px;border:1px solid var(--border2);cursor:pointer}.pb-task.done{background:rgba(34,197,94,.12);border-color:transparent;color:var(--green)}.pb-task.open:hover{border-color:var(--blue)}.pb-task.miss{border-style:dashed;color:var(--text3);cursor:default}.pb-task small{color:var(--text2)}
 .oi-link{font-size:10px;font-weight:600;color:var(--blue);text-decoration:none;margin-left:4px;white-space:nowrap}.oi-link:hover{text-decoration:underline}
 .chk.click{cursor:pointer}.chk.click:hover{border-color:var(--green)}
 .task-row.native{cursor:pointer}.task-row.native:hover{border-color:var(--blue)}
@@ -1820,7 +1825,7 @@ async function ovReset(k){if(!confirm(`Clear manual updates for ${k}? Progress g
 function renderPipeEditor(){
   const b=$('drawerBody');if(!b||drawerTab!=='pipelines')return;const p=drawerProject;
   const keep=document.activeElement&&document.activeElement.id;
-  b.innerHTML=`<div class="chart-note" style="margin:0 0 12px">Progress for each pipeline comes from its Zoho tasks plus any checklist items you add here. Switch to <b>Manual</b> to set the % yourself. Overall project progress is the average of P1–P4.</div>`+
+  b.innerHTML=playbookOutlineHtml(p)+`<div class="chart-note" style="margin:0 0 12px">Progress for each pipeline comes from its Zoho tasks plus any checklist items you add here. Switch to <b>Manual</b> to set the % yourself. Overall project progress is the average of P1–P4.</div>`+
   PIPES.map(pp=>{const k=pp.k,g=p.pipe[k],d=ovDraft(k),pv=ovPreview(k);const col=PIPE_COLORS[k];
     return `<div class="ov-card" id="ovc-${k}" style="border-top-color:${col}">
       <div class="ov-hd"><span style="color:${col};font-weight:700">${k} ${pp.n}</span><span class="ov-pct">${pv==null?'–':pv+'%'}</span>${d.dirty?'<span class="badge ba">unsaved</span>':g.manual?'<span class="badge bz">manual</span>':''}</div>
@@ -1969,6 +1974,7 @@ function prepTasks(){
     .concat((RAW.native_tasks||[]).map(nativeTask)).filter(t=>{
       if(!t.native)t.is_completed=t.zohoDone;
       const m=TMETA[t.id];t.ord=m&&m.sort_order!=null?m.sort_order:null;
+      t.checks=m&&Array.isArray(m.checks)?m.checks:[];
       if(m&&m.edits&&!t.native)applyEdits(t,m.edits);
       if(m&&m.done!=null&&!t.native){t.is_completed=!!m.done;t.doneHere=m.done!==t.zohoDone;if(t.doneHere){t.status=m.done?'Done':'Reopened';t.modified_time=m.done_at||m.updated_at;}}
       if(m&&m.hidden){HIDDEN_TASKS.push(t);return false;}
@@ -2103,6 +2109,7 @@ function taskViewHtml(p){
       ${t.edited?row('Edited here',t.edited.map(k=>`${esc(EDIT_LABEL[k])} <span class="dim">(Zoho: ${esc(fmtEditVal(k,t.zo[k]))})</span>`).join('<br>')):''}
       ${t.doneHere?row('Changed here',`${esc((TMETA[tid]||{}).updated_by||'someone')} · ${ago((TMETA[tid]||{}).updated_at)}`):''}
     </div></div>
+    ${stepsHtml(t)}
     <div class="card" style="margin-bottom:14px"><div class="card-title">${t.native?'Notes':'Description'}</div>
       ${!t.native&&!d?'<div class="dim">Loading from Zoho…</div>':d&&d._error?`<div class="dim">Couldn't load details: ${esc(d._error)}</div>`:desc?`<div class="td-desc">${linkify(desc)}</div>`:`<div class="dim">No ${t.native?'notes':'description'}.</div>`}</div>
     ${extra.length?`<div class="card"><div class="card-title">More details <span class="chart-badge">from Zoho</span></div><div class="info-rows">${extra.map(([k,v])=>row(esc(humanKey(k)),linkify(Array.isArray(v)?v.join(', '):String(v)))).join('')}</div></div>`:''}`;
@@ -2111,7 +2118,7 @@ function taskRowHtml(t,now,grp){
   const due=pd(t.end_date),over=!t.is_completed&&due&&due<now,tid=jsq(t.id);
   return `<div class="task-row${t.is_completed?' done':''}${over?' over':''}" data-tid="${esc(t.id)}" data-grp="${esc(grp||'')}"${grp?` draggable="true" ondragstart="tdStart(event,'${tid}')" ondragend="tdEnd(event)" ondragover="tdOver(event)" ondragleave="tdLeave(event)" ondrop="tdDrop(event)"`:''} onclick="openTaskView('${jsq(t.project_id)}','${tid}')" title="Open task">
     ${grp?'<span class="drag-h" title="Drag to re-order">⋮⋮</span>':''}<span class="chk click${t.is_completed?' on':''}" title="${t.is_completed?'Reopen':'Mark done'}" onclick="event.stopPropagation();tickTask('${tid}')">${t.is_completed?'✓':''}</span>
-    <span class="tn">${t.prefix?`<span class="dim mono" style="font-size:10px">${esc(t.prefix)}</span> `:''}${esc(t.name)}${t.native?' <span class="src-tag cc">Command Center</span>':''}${t.edited?' <span class="src-tag cc" title="Edited in Command Center">edited</span>':''}${t.doneHere?` <span class="src-tag cc" title="Zoho still shows ${t.zohoDone?'done':'open'}">${t.is_completed?'done':'reopened'} here</span>`:''}${/high/i.test(t.priority||'')?' <span class="badge br">High</span>':''}</span>
+    <span class="tn">${t.prefix?`<span class="dim mono" style="font-size:10px">${esc(t.prefix)}</span> `:''}${esc(t.name)}${stepChip(t)}${t.native?' <span class="src-tag cc">Command Center</span>':''}${t.edited?' <span class="src-tag cc" title="Edited in Command Center">edited</span>':''}${t.doneHere?` <span class="src-tag cc" title="Zoho still shows ${t.zohoDone?'done':'open'}">${t.is_completed?'done':'reopened'} here</span>`:''}${/high/i.test(t.priority||'')?' <span class="badge br">High</span>':''}</span>
     <span class="dim" style="font-size:11px">${esc(ownerNames(t)||'Unassigned')}</span><span class="dim" style="font-size:11px;width:70px;text-align:right">${fmtD(due)}</span>
     <span class="badge ${t.is_completed?'bg':over?'br':badgeFor(t.status)}">${esc(over?ddiff(t0(),due)+'d late':t.status||'')}</span>
     <button class="row-x" title="Edit task" onclick="event.stopPropagation();editTask('${tid}')">✎</button>
@@ -2127,6 +2134,119 @@ function renderDrawerTasks(p,b){
   b.innerHTML=head+(form?taskFormHtml(p):'')+Object.keys(groups).sort().map(k=>{const [pk,tl]=k.split('|');const ts=groups[k].slice().sort(taskOrder);const d=ts.filter(t=>t.is_completed).length;
     const g=p.pipe[pk],man=g&&g.manual?` <span class="badge ba" title="Pipeline progress is set manually — tasks don't move it">manual %</span>`:'';
     return `<div class="task-group"><div class="task-gh"><span style="color:${PIPE_COLORS[pk]||'var(--text2)'}">${esc(pk)} · ${esc(tl)}${man}</span><span>${d}/${ts.length}</span></div>${ts.map(t=>taskRowHtml(t,now,p.id+'|'+k)).join('')}</div>`;}).join('')+hidHtml;
+}
+// ═══════════════════════════════════════════════════════════════
+// PLAYBOOK — "Pipeline Tasks - Project Managers (April 2026)".
+// Default definition of done, stages, tasks and steps for each pipeline. Tasks are matched to a
+// project's Zoho / Command Center tasks by name; steps become a tickable checklist on the task.
+// ═══════════════════════════════════════════════════════════════
+const PLAYBOOK={
+  P1:{done:'Call → AI creates lead → auto-assigned to rep → follow-up task → inspection scheduled. All analytics populating.',stages:[
+    {n:1,name:'Pre-Kickoff',tasks:[
+      {name:'Discovery Form Complete',aka:['1.1 Discovery Form Complete'],steps:['Send discovery form within 24h of contract signature','Customer completes all fields: team roster, service types, software stack, pain points','Onboarding Lead reviews form, flags guardrail violations','Map primary pain point to north star analytics metric']},
+      {name:'Golden Account Cloned & Configured',steps:['Select correct Golden Account version based on service type','Clone into customer environment; verify no errors','Customize job types and categories to match discovery form','Configure Lead Intake status flow + custom fields','Set up 4 role-based permission levels','Generate and test admin credentials; compile docs']},
+      {name:'Connect Pre-Setup',steps:['Provision Connect phone number (matching market area code)','Document business hours, after-hours rules, emergency criteria','Compile CSR Agent training content: services, FAQs, pricing, scheduling']}]},
+    {n:2,name:'Activation',tasks:[
+      {name:'Zuper Connect Live',steps:['Configure call routing + business hours schedule','Activate voicemail-to-text; record greeting','Configure SMS (note 10DLC pending)','End-to-end test call: route → call summary auto-created in Zuper']},
+      {name:'CSR Agent Trained & Active',steps:['Input all training content (services, area, pricing, 10+ FAQs)','Run 10 QA test scenarios — 100% pass rate required before go-live','Activate for live calls; brief office manager on monitoring']}]},
+    {n:3,name:'Data Foundation',tasks:[
+      {name:'Customer Data Imported',steps:["Request data export from customer's current system",'Clean and map to Zuper import schema','Import; verify record count; spot-check 10 records']},
+      {name:'CRM Integration (HubSpot)',steps:['Authenticate HubSpot; map deal stages to Zuper lead statuses','Test bidirectional sync (Zuper → HubSpot and HubSpot → Zuper)','Configure sync error notifications']}]},
+    {n:4,name:'Training & Go-Live',tasks:[
+      {name:'Kickoff & Metrics Review',aka:['Day 8 Kickoff & Metrics Review'],steps:['Review Days 1–7 lead pipeline analytics with decision-maker','Present north star metric progress (before/after comparison)']},
+      {name:'Office Staff Full Activation',steps:['Verify 100% of office accounts created and logged in','Apply CSR Agent refinements from Day 8 feedback (within 24h)','Train office manager on CSR Agent day-to-day management']},
+      {name:'Field Tech App Activated',steps:['Create mobile app accounts for all field techs','Office manager sends app download SMS to all techs','Confirm 100% of techs logged in and can view assigned jobs']}]},
+    {n:5,name:'Pipeline Validated',tasks:[
+      {name:'Lead Intake Pipeline LIVE',steps:['End-to-end flow test: call → Human → assigned → follow-up task → inspection scheduled','Test web form lead intake (if applicable)','Verify CRM bidirectional sync','Confirm all 4 lead analytics populating (capture rate, AI answer rate, conversion, time-to-inspection)','Customer + office manager operating independently','Communicate Inspection Pipeline begins']}]}]},
+  P2:{done:'Inspection → dispatch → checklist + photos → aerial data → proposal → e-signed → Approved → production job auto-created. Analytics populating.',stages:[
+    {n:1,name:'Pre-Inspection Setup',tasks:[
+      {name:'Inspection Dispatch Configured',steps:['Configure dispatch rules: auto-assign by GPS proximity + skill tag','Create inspection job type with required mobile checklist (photos, measurements, damage assessment)','Configure 6-step inspection status flow with notification triggers','Test dispatch-to-mobile: job visible on app with checklist']},
+      {name:'EagleView / HOVER Integration',aka:['Measurement Integration'],steps:['Confirm integration scope from discovery form (EagleView / HOVER / neither)','Authenticate API credentials; confirm Active status','Test order on known address; confirm aerial data populates job record','Map aerial output fields to CPQ proposal line items']}]},
+    {n:2,name:'Proposal Engine Setup',tasks:[
+      {name:'CPQ Proposal Templates Configured',steps:['Load service line pricing into CPQ (labor, materials, markup, margin)','Configure proposal template with customer branding (logo, address, license, T&C)','Create 3+ proposal templates (one per primary service type)','Test CPQ: enter sample measurements; verify pricing calculates correctly']},
+      {name:'E-Signature Configured',steps:['Configure e-signature (Zuper native); set up branded delivery email','Test full e-sign flow end-to-end; confirm signed PDF attaches to job record','Configure post-signature automation: job → Approved; production job auto-created']}]},
+    {n:3,name:'Inspection-to-Approval Workflow',tasks:[
+      {name:'Field Tech Inspection Flow Validated',steps:['End-to-end test: dispatch → tech completes checklist + photos → data in office dashboard','Confirm aerial data auto-populates proposal','Train office manager on reviewing inspection data and initiating proposal']},
+      {name:'Proposal-to-Approval Flow Validated',steps:['Generate test proposal from inspection: confirm CPQ + aerial data populate correctly','Send test proposal via e-sign; confirm homeowner-facing email is branded and professional','Confirm approved-job trigger: e-sign → Approved status → production job created']}]},
+    {n:4,name:'Team Adoption',tasks:[
+      {name:'Field Tech Training Complete',steps:['Train all techs on inspection mobile workflow (checklist, photos, status updates)','Confirm 100% of techs can complete an inspection independently','Train office manager on dispatching inspections and monitoring real-time status']},
+      {name:'Sales & Office Adoption for Proposals',steps:['Train sales reps on generating proposals from inspection data','Train office staff on tracking proposal status and sending reminders','At least 1 full proposal cycle observed by office manager during training']}]},
+    {n:5,name:'Pipeline Validated',tasks:[
+      {name:'Inspection Pipeline LIVE',steps:['End-to-end flow test: inspection → dispatch → checklist → proposal → e-sign → Approved → production job','Confirm all 4 inspection analytics populating (inspections completed, conversion, avg proposal value, time-to-approval)','Verify aerial data accuracy ±5% tolerance (if in scope)','Customer confirms team operates inspection pipeline independently','Inspection Pipeline live and approved']}]}]},
+  P3:{done:'Approved job → PO auto-generated → crew scheduled → production day → quality check → job complete → invoice generated + completion docs delivered. Analytics populating.',stages:[
+    {n:1,name:'Pre-Production',tasks:[
+      {name:'Material & Supplier Configuration',steps:['Load preferred suppliers + materials catalog (names, costs, lead times)','Configure PO template (line items, approval threshold, job-address auto-population)','Set up auto-PO rules by job type: correct materials auto-populate on approved job','Confirm PO approval workflow + test notification delivery']},
+      {name:'Crew Management Configuration',steps:['Set up crew profiles: crew lead + members, skill tags, service zones','Configure scheduling rules: working hours, max jobs/day, blackout dates','Create production job type with required fields (crew, materials, safety checklist, sign-off)','Configure 24h crew notification automation']}]},
+    {n:2,name:'Production Job Workflow',tasks:[
+      {name:'Approved Job → Production Initiation',steps:['Configure 8-step production status flow with automation triggers',"Configure auto-PO trigger on 'Material Ordered' status",'Configure crew scheduling from job record + 24h crew notification']},
+      {name:'Production Day Workflow',steps:['Configure crew mobile checklist (safety check, material delivery, 3+ photos, sign-off)','Configure 3 homeowner notifications (day-before, job-start, completion)','Configure quality check step: supervisor sign-off, punch list, re-work workflow']}]},
+    {n:3,name:'Invoice & Completion',tasks:[
+      {name:'Invoice Auto-Generation',steps:["Configure invoice auto-trigger on 'Job Complete' status",'Set up invoice template with customer branding + payment link embedded','Configure deposit / progress billing rules (if applicable)','Test: complete test job → invoice auto-generates with correct amounts']},
+      {name:'Job Completion Documentation',steps:['Configure completion docs package (final photos, completion certificate, warranty info)','Configure customer satisfaction survey trigger (if in scope)','Test: complete job → confirm completion package delivered to homeowner']}]},
+    {n:4,name:'Team Adoption',tasks:[
+      {name:'Crew App Training',steps:['Train crew leads on production day mobile workflow','Run simulated production job: dispatch → checklist → photos → completion → quality check','Confirm 100% of crew leads operate production workflow independently']},
+      {name:'Office & Manager Production Oversight',steps:['Train office manager on production dashboard (active jobs, crew status, delays)','Train on PO management (approve, confirm delivery, handle discrepancies)','Train on invoice review, adjustments, and sending']}]},
+    {n:5,name:'Pipeline Validated',tasks:[
+      {name:'Production Pipeline LIVE',steps:['End-to-end flow test: approved job → PO → crew scheduled → production day → quality check → job complete → invoice generated','Confirm all 4 production analytics populating (jobs completed, cycle time, material cost, re-work rate)','Confirm 100% of crew leads completed at least 1 production job from mobile app','Customer confirms production pipeline is operational and team is independent','Communicate Revenue Pipeline begins']}]}]},
+  P4:{done:'Invoice auto-generated → payment link sent → payment collected → QB synced → aging updated → receipt sent. All 4 pipelines LIVE.',stages:[
+    {n:1,name:'Pre-Revenue QuickBooks',tasks:[
+      {name:'QuickBooks Integration',steps:['Confirm QB version (Online vs Desktop); authenticate in Zuper','Map Zuper income types to QB chart of accounts','Test sync: Zuper invoice → QB with correct GL coding','Configure sync error notifications + resolution procedure']},
+      {name:'Payment Gateway Setup',steps:['Configure merchant account (Zuper Payments / Stripe / Square)','Set up payment link in invoice template; test routing to correct payment page','Test full payment flow: invoice → pay → recorded in Zuper + QB','Configure payment receipt auto-send on successful payment']}]},
+    {n:2,name:'Collections & Aging Setup',tasks:[
+      {name:'Aging Dashboard & Collections Automation',steps:['Configure AR aging dashboard: Current / 30 / 60 / 90+ day buckets','Set up 3-stage payment reminder sequence (Day 3, Day 7, Day 14)','Define + configure collections escalation rule (e.g., 30+ days → manager alert)','Train office manager on daily collections workflow']},
+      {name:'Revenue Reporting Configuration',steps:['Configure revenue dashboard (daily collected, monthly, pipeline, outstanding AR)','Set up cash flow forecast (expected collections by week from open invoices + approved jobs)','Configure month-end reconciliation report (QB-compatible export)']}]},
+    {n:3,name:'Revenue Workflow Validation',tasks:[
+      {name:'Invoice-to-Collection Flow Validated',steps:['End-to-end test: job complete → invoice → payment link → payment → QB sync → aging updated → receipt sent','Test reminder automation: overdue invoice → Day 3 reminder fires correctly','Reconciliation check: Zuper and QB totals match for all test transactions']},
+      {name:'Revenue Analytics Validated',steps:['Confirm 5 revenue metrics populating (invoiced, collected, days-to-payment, collection rate, AR balance)','Verify QB GL posting to correct accounts (spot-check 3 transactions)','Customer reviews dashboard; confirms data accuracy with known transactions']}]},
+    {n:4,name:'Team Adoption',tasks:[
+      {name:'Office Staff Revenue Training',steps:['Train office manager on collections workflow (monitoring, reminders, manual payments, disputes)','Train on QB sync review (check status, re-trigger, escalate errors)','Train on revenue reporting (weekly, monthly, AR aging exports)']},
+      {name:'Owner Revenue Visibility',steps:['Train owner on revenue dashboard (10-min daily review habit)','Confirm owner can pull revenue report and interpret aging buckets independently','Set up recurring weekly email report (if requested)']}]},
+    {n:5,name:'Pipeline Validated + Graduation',tasks:[
+      {name:'Revenue Pipeline LIVE + Full Graduation',steps:['End-to-end flow test: job complete → invoice → payment → QB sync → aging → receipt','Confirm all 4 pipeline analytics populating across P1–P4','Zero manual workaround audit across all pipelines','Customer executive sign-off: all 4 pipelines LIVE','CSM introduction; 30-day check-in scheduled; handoff notes filed','Archive all onboarding docs; customer record updated with go-live date']}]}]},
+};
+const pbKey=s=>String(s||'').toLowerCase().replace(/&amp;/g,'&').replace(/[^a-z0-9]/g,'');
+const PB_BY_NAME={};Object.entries(PLAYBOOK).forEach(([pk,pp])=>pp.stages.forEach(st=>st.tasks.forEach(tk=>{const e=Object.assign({pipeline:pk,stage:st.n,stageName:st.name},tk);[tk.name].concat(tk.aka||[]).forEach(nm=>PB_BY_NAME[pbKey(nm)]=e);})));
+// The playbook entry for a task (matched by name; tasks renamed in the tool keep their Zoho name's entry).
+const playbookFor=t=>PB_BY_NAME[pbKey(t.name)]||(t.zo&&PB_BY_NAME[pbKey(t.zo.name)])||null;
+// Tick / untick one playbook step. Ticking the last step completes the task, which moves pipeline progress.
+async function toggleStep(tid,i){
+  const t=(RAW.tasks||[]).find(x=>x.id===tid);const pb=t&&playbookFor(t);if(!pb)return;
+  const step=pb.steps[i];const cur=new Set((t.checks||[]).filter(s=>pb.steps.includes(s)));
+  cur.has(step)?cur.delete(step):cur.add(step);
+  const checks=pb.steps.filter(s=>cur.has(s)),all=checks.length===pb.steps.length;
+  const item={task_id:tid,project_id:t.project_id,checks};
+  if(all&&!t.is_completed&&!t.native)item.done=t.zohoDone?null:true;
+  await saveTaskMeta([item],all&&!t.is_completed?'All steps done — task marked complete.':null);
+  if(all&&!t.is_completed&&t.native)await toggleTask(t.nid);
+  if(TASK_VIEW)openTaskView(t.project_id,tid);
+}
+function stepsHtml(t){
+  const pb=playbookFor(t);if(!pb)return '';
+  const done=new Set(t.checks||[]),n=pb.steps.filter(s=>done.has(s)).length;
+  return `<div class="card" style="margin-bottom:14px"><div class="card-title">Playbook steps <span class="chart-badge">${n}/${pb.steps.length} · ${esc(pb.pipeline)} Stage ${pb.stage} ${esc(pb.stageName)}</span></div>
+    ${pb.steps.map((s,i)=>`<label class="pb-step${done.has(s)?' on':''}"><input type="checkbox"${done.has(s)?' checked':''} onchange="toggleStep('${jsq(t.id)}',${i})"> <span>${esc(s)}</span></label>`).join('')}
+    <div class="chart-note">From the PM pipeline playbook. Ticking every step marks the task done.</div></div>`;
+}
+const stepChip=t=>{const pb=playbookFor(t);if(!pb)return '';const n=pb.steps.filter(s=>(t.checks||[]).includes(s)).length;return ` <span class="step-chip${n===pb.steps.length?' full':''}" title="Playbook steps done">${n}/${pb.steps.length}</span>`;};
+// Pipelines tab: definition of done + the playbook outline against this project's tasks.
+function playbookOutlineHtml(p){
+  const byKey={};p.tasks.forEach(t=>{const e=playbookFor(t);if(e&&!byKey[pbKey(e.name)])byKey[pbKey(e.name)]=t;});
+  let missing=0;
+  const html=PIPES.map(pp=>{const pb=PLAYBOOK[pp.k];
+    const rows=pb.stages.map(st=>`<div class="pb-stage"><span class="pb-st">Stage ${st.n} · ${esc(st.name)}</span>${st.tasks.map(tk=>{const t=byKey[pbKey(tk.name)];if(!t)missing++;
+      const n=t?tk.steps.filter(s=>(t.checks||[]).includes(s)).length:0;
+      return `<span class="pb-task ${t?(t.is_completed?'done':'open'):'miss'}"${t?` onclick="openTaskView('${jsq(p.id)}','${jsq(t.id)}')" title="Open task"`:' title="Not in this project"'}>${t?(t.is_completed?'✓':'○'):'＋'} ${esc(tk.name)}${t&&!t.is_completed&&n?` <small>${n}/${tk.steps.length}</small>`:''}</span>`;}).join('')}</div>`).join('');
+    return `<details class="pb-pipe"><summary><b style="color:${PIPE_COLORS[pp.k]}">${pp.k} ${esc(pp.n)}</b> <span class="dim">· complete when: ${esc(pb.done)}</span></summary>${rows}</details>`;}).join('');
+  return `<div class="card" style="margin-bottom:14px"><div class="card-title">Pipeline playbook <span class="chart-badge">PM pipeline tasks · April 2026</span></div>${html}
+    ${missing?`<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><span class="dim" style="font-size:12px">${missing} playbook task${missing===1?' is':'s are'} not in this project.</span><button class="top-btn" onclick="addMissingPlaybook('${jsq(p.id)}')">＋ Add missing tasks</button></div>`:'<div class="chart-note">Every playbook task is in this project.</div>'}</div>`;
+}
+async function addMissingPlaybook(pid){
+  const p=PBYID[pid];if(!p)return;const have=new Set();p.tasks.forEach(t=>{const e=playbookFor(t);if(e)have.add(pbKey(e.name));});
+  const todo=[];Object.entries(PLAYBOOK).forEach(([pk,pp])=>pp.stages.forEach(st=>st.tasks.forEach(tk=>{if(!have.has(pbKey(tk.name)))todo.push({pk,st,tk});})));
+  if(!todo.length)return;if(!confirm(`Add ${todo.length} playbook task${todo.length===1?'':'s'} to ${p.name}?\n\nThey are created in the Command Center (not in Zoho) and count toward progress.`))return;
+  setStatus('loading',`Adding ${todo.length} tasks…`);
+  try{for(const x of todo)await api('task_save',{project_id:pid,name:x.tk.name,pipeline:x.pk,stage:x.st.n,tasklist_name:`Stage ${x.st.n} ${x.st.name}`,status:'Open',by:myName()||null});
+    await refreshKeepDrawer();toast(`Added ${todo.length} playbook tasks.`);}catch(e){toast(e.message,5000);await refreshKeepDrawer();}
 }
 function ganttSvg(p){
   const rows=PIPES.map(pp=>{const ts=p.tasks.filter(t=>t.pipeline===pp.k);const st=ts.map(t=>pd(t.start_date)).filter(Boolean),en=ts.map(t=>pd(t.end_date)).filter(Boolean);
@@ -2341,7 +2461,7 @@ function demoApi(action,body){
     const r=Object.assign({},body,{id:crypto.randomUUID(),is_completed:done,created_by:body.by,updated_by:body.by,created_at:now,updated_at:now,completed_at:done?now:null});L.push(r);return Promise.resolve({ok:true,task:r});}
   if(action==='task_detail'){const t=(DEMO_DB.tasks||[]).find(x=>String(x.id)===String(body.id));return Promise.resolve({ok:true,task:Object.assign({},t,{description:'<p><b>Goal:</b> '+(t?t.name:'')+' for the customer.</p><ul><li>Confirm requirements on the kick-off call</li><li>Configure in the golden account and test</li></ul><p>Reference: https://linear.app/zuperinc/issue/CX-0000</p>',created_by_name:'Demo Lead',updated_by_name:'Demo Lead',log_hours:'02:30',extra:{type:'Configuration',business_critical:'Critical for Go Live',modules:['Quotes/Invoice']}})});}
   if(action==='task_meta_save'){const L=DEMO_DB.task_meta=DEMO_DB.task_meta||[];(body.items||[]).forEach(x=>{let m=L.find(r=>r.task_id===x.task_id);if(!m){m={task_id:x.task_id,project_id:x.project_id,sort_order:null,hidden:false,done:null};L.push(m);}
-    if('sort_order' in x)m.sort_order=x.sort_order;if('hidden' in x)m.hidden=!!x.hidden;if('done' in x){m.done=x.done;m.done_at=x.done?new Date().toISOString():null;}if('edits' in x)m.edits=x.edits;m.updated_by=body.by;m.updated_at=new Date().toISOString();});return Promise.resolve({ok:true});}
+    if('sort_order' in x)m.sort_order=x.sort_order;if('hidden' in x)m.hidden=!!x.hidden;if('done' in x){m.done=x.done;m.done_at=x.done?new Date().toISOString():null;}if('edits' in x)m.edits=x.edits;if('checks' in x)m.checks=x.checks;m.updated_by=body.by;m.updated_at=new Date().toISOString();});return Promise.resolve({ok:true});}
   if(action==='task_delete'){DEMO_DB.native_tasks=(DEMO_DB.native_tasks||[]).filter(x=>x.id!==body.id);return Promise.resolve({ok:true});}
   return Promise.reject(new Error('Not available with demo data.'));
 }
