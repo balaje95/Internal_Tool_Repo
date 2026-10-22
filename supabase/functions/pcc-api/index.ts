@@ -267,6 +267,23 @@ function taskExtra(t: any) {
   return Object.keys(out).length ? out : null;
 }
 
+// Edits to a Zoho task made in the Command Center: only these fields, sanitised; empty → null (no edits).
+function cleanEdits(e: any) {
+  if (!e || typeof e !== "object") return null;
+  const s = (v: any, max: number) => (v === null || v === undefined ? null : String(v).trim().slice(0, max));
+  const d = (v: any) => (v === null || v === "" ? null : /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? String(v) : undefined);
+  const out: any = {};
+  if ("name" in e && s(e.name, 300)) out.name = s(e.name, 300);
+  if ("owner_name" in e) { out.owner_name = s(e.owner_name, 120) || null; out.owner_email = s(e.owner_email, 200) || null; }
+  if ("status" in e && s(e.status, 40)) out.status = s(e.status, 40);
+  if ("priority" in e) out.priority = s(e.priority, 20) || null;
+  if ("pipeline" in e) out.pipeline = /^P[1-9]$/.test(String(e.pipeline || "")) ? String(e.pipeline) : null;
+  if ("stage" in e) out.stage = Number(e.stage) >= 1 && Number(e.stage) <= 9 ? Math.round(Number(e.stage)) : null;
+  for (const k of ["start_date", "end_date"]) if (k in e && d(e[k]) !== undefined) out[k] = d(e[k]);
+  if ("notes" in e) out.notes = s(e.notes, 4000) || null;
+  return Object.keys(out).length ? out : null;
+}
+
 function normTask(t: any, projectId: string) {
   const owners = (t.owners_and_work?.owners || [])
     .filter((o: any) => o && o.name && !/unassigned/i.test(o.name))
@@ -1030,6 +1047,8 @@ Deno.serve(async (req) => {
           if ("sort_order" in x) r.sort_order = Number.isFinite(Number(x.sort_order)) ? Number(x.sort_order) : null;
           if ("hidden" in x) r.hidden = !!x.hidden;
           if ("done" in x) { r.done = x.done === null ? null : !!x.done; r.done_at = x.done ? (p.done ? p.done_at : now) : null; }
+          r.edits = p.edits ?? null;
+          if ("edits" in x) r.edits = cleanEdits(x.edits);
           return r;
         }).filter((r: any) => r.project_id);
         const { error } = await db.from("pcc_task_meta").upsert(rows);
