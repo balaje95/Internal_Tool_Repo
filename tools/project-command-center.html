@@ -519,18 +519,6 @@ body.gt-on .drawer,body.gt-on .drawer-ov{display:none}
         <div id="adoptBody"></div>
       </div>
 
-      <div class="page" id="page-billing">
-        <div class="page-hdr"><div><div class="page-title">Billing &amp; Renewals</div><div class="page-sub">What's owed, how overdue, and which renewals are coming up — from the RevOps payments sheet</div></div>
-          <div class="hdr-right"><select class="filter-select" id="billPhase" onchange="renderBilling()"><option value="">All active accounts</option><option value="post">Live (incl. hypercare)</option><option value="pre">Pre go-live</option><option value="dead">Churned / cancelled</option><option value="orphan">In sheet, not in Zoho sync</option></select>
-            <select class="filter-select" id="billShow" onchange="renderBilling()"><option value="">Show all</option><option value="due">Owes money</option><option value="overdue">Overdue</option><option value="over90">90+ days overdue</option><option value="paused">Paused</option><option value="future">Future billing</option><option value="renew90">Renewing in 90 days</option><option value="nosheet">Not in payments sheet</option></select>
-            <input type="file" id="billFile" accept=".csv,.xlsx,.xls" style="display:none" onchange="importBillingFile(this.files[0])">
-            <button class="cta sm" onclick="$('billFile').click()">⬆ Import billing sheet</button></div></div>
-        <div id="billNotice"></div>
-        <div class="kpi-grid" id="billKpi"></div>
-        <div class="charts-grid" id="billCharts"></div>
-        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">Accounts</span><span class="tbl-pill" id="billPill">—</span></div>
-          <div class="tbl-wrap"><table id="billTable"><thead><tr><th data-k="name">Project</th><th data-k="status">Zoho status</th><th data-k="pay">Payment</th><th data-k="contract">Contract</th><th data-k="paid">Paid</th><th data-k="due">Amount due</th><th data-k="days">Days overdue</th><th data-k="first">First unpaid due</th><th data-k="latest">Latest invoice</th><th data-k="renew">Renewal</th><th data-k="rdays">Days to renewal</th><th data-k="plan">Plan</th><th data-k="downer">Deal owner</th><th data-k="owner">Owner</th></tr></thead><tbody id="billTbl"></tbody></table></div></div>
-      </div>
       <div class="page" id="page-accounts">
         <div class="page-hdr"><div><div class="page-title">Accounts</div><div class="page-sub">Customer Zuper accounts used for adoption tracking</div></div></div>
         <div class="card" style="margin-bottom:16px">
@@ -607,7 +595,7 @@ const CL=['#FD5000','#3B82F6','#22C55E','#A855F7','#EAB308','#14B8A6','#EF4444',
 const DAY=864e5;
 
 let token='',DEMO=false,RAW=null,isDark=false,charts={},activePage='overview';
-let P=[],PBYID={},TBY={},OVBY={},BILLBY={},SHEETBY={},SHEET_MATCHED=new Set(),PEOPLE=[],ACCOUNTS=[],SET={},STATUSES=[];
+let P=[],PBYID={},TBY={},OVBY={},PEOPLE=[],ACCOUNTS=[],SET={},STATUSES=[];
 // HubSpot deal id from the Zoho project's deal link (…/record/0-3/<id>).
 function dealIdOf(p){const m=String(p.deal_url||'').match(/(\d{6,})\/?(?:\?.*)?$/);return m?m[1]:null;}
 // Company name key for fuzzy matching: lowercase, no punctuation or legal suffixes.
@@ -731,10 +719,6 @@ function derive(){
   prepTasks();
   TBY={};(RAW.tasks||[]).forEach(t=>{(TBY[t.project_id]=TBY[t.project_id]||[]).push(t);});
   OVBY={};(RAW.overrides||[]).forEach(o=>{(OVBY[o.project_id]=OVBY[o.project_id]||[]).push(o);});
-  BILLBY={};(RAW.billing||[]).forEach(b=>BILLBY[b.project_id]=b);
-  // RevOps payments sheet rows by HubSpot deal id, and by normalised company name as a fallback.
-  SHEETBY={};const sheetByName={};(RAW.billing_sheet||[]).forEach(s=>{SHEETBY[s.deal_id]=s;const k=coKey(s.deal_name);if(k&&!sheetByName[k])sheetByName[k]=s;});
-  SHEET_MATCHED=new Set();
   const snapBy={};(RAW.snapshots||[]).forEach(s=>{(snapBy[s.project_id]=snapBy[s.project_id]||[]).push(s);});
   const now=new Date(),today=t0();
   const riskSt=new Set((SET.rag.risk_statuses||[]).map(s=>s.toLowerCase()));
@@ -772,8 +756,6 @@ function derive(){
     if(pps.length)x.pct=Math.round(pps.reduce((a,b)=>a+b,0)/pps.length);
     x.hasManual=PIPES.some(pp=>x.pipe[pp.k].manual||x.pipe[pp.k].items.length||x.pipe[pp.k].status);
     x.pm=p.pm_name||'';x.ba=p.ba_name||'';x.csm=p.csm_name||'';
-    const did=dealIdOf(p);x.sheet=(did&&SHEETBY[did])||sheetByName[coKey(p.name)]||null;
-    if(x.sheet)SHEET_MATCHED.add(x.sheet.deal_id);
     // current stage = first pipeline/stage with open work
     x.stage='';x.stageIdx=99;
     for(let i=0;i<PIPES.length;i++){const pp=x.pipe[PIPES[i].k];
@@ -903,7 +885,6 @@ const ICON={
   team:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   adoption:'<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
   accounts:'<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-  billing:'<rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>',
   settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
 };
 function navItem(id,label,count,red){return `<div class="nav-item${activePage===id?' active':''}" id="nav-${id}" onclick="showPage('${id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${ICON[id]}</svg><span class="nav-lbl">${label}</span>${count!=null?`<span class="nav-count${red?' red':''}">${count}</span>`:''}</div>`;}
@@ -915,7 +896,7 @@ function renderSidebar(){
     `<div class="sidebar-section">Overview</div>`+navItem('overview','Overview')+navItem('dashboard','My Dashboard')+
     `<div class="sidebar-section">Delivery</div>`+navItem('projects','Projects',vp.filter(p=>p.preLive).length)+navItem('pipelines','Pipelines')+navItem('tasks','Tasks',overdue||null,true)+navItem('golives','Go-Lives')+
     `<div class="sidebar-section">People</div>`+navItem('team','Team Load')+
-    `<div class="sidebar-section">Post go-live</div>`+navItem('adoption','Adoption',ACCOUNTS.length||null)+navItem('billing','Billing &amp; Renewals',billAlerts()||null,true)+
+    `<div class="sidebar-section">Post go-live</div>`+navItem('adoption','Adoption',ACCOUNTS.length||null)+
     `<div class="sidebar-section">Admin</div>`+navItem('accounts','Accounts')+navItem('settings','Settings',(!DEMO&&!s.zoho_connected)?'!':null,true)+
     `<div class="side-foot">${DEMO?'Demo data':`Projects synced ${ago(s.projects_at)}<br>Tasks synced ${ago(s.tasks_at)}`}${atRisk?`<br><b style="color:var(--red)">${atRisk} off track</b>`:''}</div>`;
 }
@@ -929,7 +910,7 @@ function showPage(id){
 function renderPage(id){
   Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}});charts={};
   const fn={overview:renderOverview,projects:renderProjects,pipelines:renderPipelines,tasks:renderTasks,golives:renderGoLives,
-    team:renderTeam,adoption:renderAdoption,billing:renderBilling,accounts:renderAccounts,settings:renderSettings,dashboard:renderDashboardPage}[id];
+    team:renderTeam,adoption:renderAdoption,accounts:renderAccounts,settings:renderSettings,dashboard:renderDashboardPage}[id];
   if(fn)fn();
 }
 
@@ -1854,184 +1835,11 @@ function renderPipeEditor(){
   if(keep&&$(keep))$(keep).focus();
 }
 
-// ─── Billing (drawer tab + page) ────────────────────────────────
-const PAY_STATUSES=['','Paid','Partially Paid','Unpaid','Overdue','Paused','Future','Cancelled','Disputed','Invoice sent'];
-function addMonths(d,m){const x=new Date(d);x.setMonth(x.getMonth()+m);return x;}
-// Billing for a project = RevOps payments sheet row (matched on HubSpot deal id, else name)
-// + anything the team entered in the Billing tab (entered values win).
-function billingOf(p){
-  const b=BILLBY[p.id]||{},s=p.sheet||{},ex=p.ex||{},today=t0();
-  const term=Number(b.term_months)||12;
-  const startD=pd(b.billing_start)||pd(s.oldest_invoice)||pd(ex.bill_from)||p.liveD||null;
-  let renewD=pd(b.renewal_date),renewEst=false;
-  if(!renewD&&startD){renewD=addMonths(startD,term);while(renewD<today)renewD=addMonths(renewD,term);renewEst=true;}
-  const amountDue=b.amount_due!=null?Number(b.amount_due):Number(s.amount_due)||0;
-  const firstUnpaid=pd(s.first_unpaid_due);
-  const daysOverdue=amountDue>0?(firstUnpaid?Math.max(0,ddiff(today,firstUnpaid)):(Number(s.days_due)||0)):0;
-  let status=b.payment_status||s.payment_status||'';
-  if(!status){if(amountDue>0)status=daysOverdue>0?'Overdue':'Due';else if(/^yes$/i.test(ex.payment_collected||''))status='Paid';else if(/^no$/i.test(ex.payment_collected||''))status='Not collected';}
-  return{b,s,startD,term,renewD,renewEst,daysToRenew:renewD?ddiff(renewD,today):null,nextInv:pd(b.next_invoice_date),amountDue,daysOverdue,firstUnpaid,
-    paid:Number(s.amount_paid)||0,contract:s.amount!=null?Number(s.amount):null,latestInv:pd(s.latest_invoice),oldestInv:pd(s.oldest_invoice),
-    plan:[s.connect_plan,s.csr_agent].filter(Boolean).join(' + '),dealOwner:s.deal_owner||ex.deal_closed_by||'',
-    partner:s.solution_partner||s.partner||'',status,inSheet:!!p.sheet,
-    collected:ex.payment_collected||'',readyToInvoice:ex.ready_to_invoice||'',hasRecord:!!BILLBY[p.id]};
-}
-function agingBucket(d){return d<=0?'Current':d<=30?'1–30 days':d<=60?'31–60 days':d<=90?'61–90 days':'90+ days';}
-function payBadge(s,days){if(!s)return'<span class="dim">—</span>';
-  const c=/overdue|disput|unpaid/i.test(s)?'br':/partial|due|not collected|invoice sent|paused/i.test(s)?'ba':/^paid|current/i.test(s)?'bg':/future/i.test(s)?'bb':'bgr';
-  return`<span class="badge ${c}">${esc(s)}</span>${days>0?` <span class="slip pos" title="Days since the first unpaid invoice was due">${days}d</span>`:''}`;}
-function billingForm(p){const bi=billingOf(p),b=bi.b,s=bi.s,ex=p.ex||{};
-  const v=x=>x?String(x).slice(0,10):'';
-  const sheetRows=bi.inSheet?[['Payment status',s.payment_status||'—'],['Contract amount',bi.contract!=null?fmt$(bi.contract):'—'],['Total paid',fmt$(bi.paid)],['Amount due',bi.amountDue?fmt$(bi.amountDue):'$0'],
-    ['First unpaid invoice due',bi.firstUnpaid?fmtD(bi.firstUnpaid)+` (${bi.daysOverdue}d)`:'—'],['Oldest invoice',fmtD(bi.oldestInv)],['Latest invoice',fmtD(bi.latestInv)],['Plan',bi.plan||'—'],
-    ['Deal owner',s.deal_owner||'—'],['Solution partner',s.solution_partner||'—'],['Lead source partner',s.partner||'—'],['Close year',s.close_year||'—']]:null;
-  const meta=(RAW.settings||{}).billing_import;
-  return `${sheetRows?`<div class="card" style="margin-bottom:14px"><div class="card-title">From the RevOps payments sheet <span class="chart-badge">${meta?'report '+fmtD(meta.report_date):''}</span></div>
-      <div class="info-rows">${sheetRows.map(([k,x])=>`<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${esc(x)}</span></div>`).join('')}</div>
-      <div class="drawer-links" style="margin-top:10px">${s.hs_link?`<a class="top-btn" target="_blank" rel="noopener" href="${esc(s.hs_link)}">HubSpot deal ↗</a>`:''}${s.zoho_account_link?`<a class="top-btn" target="_blank" rel="noopener" href="${esc(s.zoho_account_link)}">Zoho CRM account ↗</a>`:''}</div></div>`
-    :`<div class="notice warn">This project isn't in the RevOps payments sheet${meta?` (${esc(meta.file||'')})`:''}. Matching uses the HubSpot deal ID, then the company name.</div>`}
-  <div class="info-rows" style="margin-bottom:14px">${[['ARR (Zoho)',p.arr?fmt$(p.arr):'—'],['Payment collected (Zoho)',ex.payment_collected||'—'],['Ready to invoice (Zoho)',ex.ready_to_invoice||'—'],['Renewal',bi.renewD?fmtD(bi.renewD)+(bi.renewEst?' (estimated)':''):'—']]
-    .map(([k,x])=>`<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${esc(x)}</span></div>`).join('')}</div>
-  <div class="card"><div class="card-title">Team-entered details <span class="chart-badge">${bi.hasRecord?'updated '+ago(b.updated_at):'override the sheet when needed'}</span></div>
-  <div class="form-grid">
-    <div class="fld"><label>Billing / contract start</label><input type="date" id="bl-start" value="${v(b.billing_start)}"></div>
-    <div class="fld"><label>Frequency</label><select id="bl-freq">${['','Monthly','Quarterly','Semi-annual','Annual'].map(f=>`<option${b.frequency===f?' selected':''}>${f}</option>`).join('')}</select></div>
-    <div class="fld"><label>Contract term (months)</label><input type="number" id="bl-term" value="${b.term_months??''}" placeholder="12"></div>
-    <div class="fld"><label>Renewal date</label><input type="date" id="bl-renew" value="${v(b.renewal_date)}"></div>
-    <div class="fld"><label>Next invoice date</label><input type="date" id="bl-next" value="${v(b.next_invoice_date)}"></div>
-    <div class="fld"><label>Amount due ($) — overrides sheet</label><input type="number" step="0.01" id="bl-due" value="${b.amount_due??''}"></div>
-    <div class="fld"><label>Payment status — overrides sheet</label><select id="bl-status">${PAY_STATUSES.map(x=>`<option value="${x}"${(b.payment_status||'')===x?' selected':''}>${x||'From sheet'}</option>`).join('')}</select></div>
-    <div class="fld"><label>Last payment date</label><input type="date" id="bl-last" value="${v(b.last_payment_date)}"></div>
-  </div>
-  <div class="fld" style="margin-top:12px"><label>Notes</label><textarea id="bl-notes" rows="3">${esc(b.notes||'')}</textarea></div>
-  <div class="chart-note">Renewal is estimated as first invoice (or go-live) + contract term until you enter the real date. Leave amount/status blank to use the RevOps sheet.</div>
-  <div style="margin-top:12px;display:flex;justify-content:flex-end"><button class="cta sm" onclick="saveBilling('${jsq(p.id)}')">Save billing</button></div></div>`;}
-async function saveBilling(id){
-  const g=x=>$(x).value;
-  try{await api('billing_save',{project_id:id,billing_start:g('bl-start'),frequency:g('bl-freq'),term_months:g('bl-term'),renewal_date:g('bl-renew'),next_invoice_date:g('bl-next'),amount_due:g('bl-due'),payment_status:g('bl-status'),last_payment_date:g('bl-last'),notes:g('bl-notes')});
-    toast('Billing saved.');await refreshKeepDrawer();}catch(e){toast(e.message,4000);}
-}
-// Rows for the Billing page: every Zoho project + sheet deals that match no synced project.
-function billingRows(){
-  const rows=VP().map(p=>({p,bi:billingOf(p)}));
-  if(!F.team&&!F.owner&&!F.industry){
-    (RAW.billing_sheet||[]).filter(s=>!SHEET_MATCHED.has(s.deal_id)).forEach(s=>{
-      const p={id:'deal:'+s.deal_id,name:s.deal_name||('Deal '+s.deal_id),status:s.zoho_status||'Not in Zoho sync',phase:/churn/i.test(s.zoho_status||'')?'Churned':'Unknown',
-        rag:'N',arr:null,owner:'',csm:'',sheet:s,ex:{},orphan:true,deal_url:s.hs_link,postLive:false,preLive:false};
-      if(F.partner&&(F.partner==='__partner'?!s.partner_driven:s.partner_driven!==F.partner))return;
-      rows.push({p,bi:billingOf(p)});});
-  }
-  return rows;
-}
-// Sidebar badge: overdue payments + renewals in the next 30 days.
-function billAlerts(){if(!P.length)return 0;return billingRows().filter(r=>r.p.phase!=='Churned'&&!/cancel/i.test(r.bi.status)&&(r.bi.daysOverdue>0||(r.bi.daysToRenew!=null&&r.bi.daysToRenew>=0&&r.bi.daysToRenew<=30))).length;}
-function renderBilling(){
-  const ph=$('billPhase').value,show=$('billShow').value;
-  const all=billingRows();
-  const dead=r=>r.p.phase==='Churned'||/cancel/i.test(r.bi.status);
-  const scoped=all.filter(r=>ph==='dead'?dead(r):ph==='orphan'?r.p.orphan:dead(r)?false:(!ph||(ph==='post'?r.p.postLive:ph==='pre'?r.p.preLive:true)));
-  const rows=scoped.filter(({bi})=>!show||(show==='overdue'?bi.daysOverdue>0:show==='due'?bi.amountDue>0:show==='over90'?bi.daysOverdue>90
-    :show==='renew90'?bi.daysToRenew!=null&&bi.daysToRenew>=0&&bi.daysToRenew<=90:show==='paused'?/paused/i.test(bi.status):show==='future'?/future/i.test(bi.status)
-    :show==='nosheet'?!bi.inSheet:true));
-  const owed=scoped.filter(r=>r.bi.amountDue>0),overdue=owed.filter(r=>r.bi.daysOverdue>0),over90=owed.filter(r=>r.bi.daysOverdue>90);
-  const r90=scoped.filter(r=>r.bi.daysToRenew!=null&&r.bi.daysToRenew>=0&&r.bi.daysToRenew<=90);
-  const paused=scoped.filter(r=>/paused/i.test(r.bi.status));
-  const sum=(a,f)=>a.reduce((t,r)=>t+(f(r)||0),0);
-  const meta=(RAW.settings||{}).billing_import;const sheetN=(RAW.billing_sheet||[]).length;
-  $('billNotice').innerHTML=meta?`<div class="notice"><b>Billing data:</b> ${esc(meta.file||'RevOps sheet')} · report date ${fmtD(meta.report_date)} · imported ${ago(meta.at)} · ${sheetN} deals, <b>${SHEET_MATCHED.size}</b> matched to Zoho projects${sheetN-SHEET_MATCHED.size?`, ${sheetN-SHEET_MATCHED.size} not in the Zoho sync (shown with a grey dot)`:''}. Renewals are <i>estimated</i> as first invoice + 12 months until real dates are entered.</div>`
-    :`<div class="notice warn"><b>No payments sheet imported yet.</b> Use <b>Import billing sheet</b> (CSV or Excel export of the RevOps "Roofing Payments" sheet).</div>`;
-  $('billKpi').innerHTML=kpiEnhHtml([
-    {id:'bl-out',label:'Outstanding',val:fmt$(sum(owed,r=>r.bi.amountDue)),raw:sum(owed,r=>r.bi.amountDue),lower:true,cls:'red',sub:`${owed.length} accounts owe money`,click:"$('billShow').value='due';renderBilling()"},
-    {label:'Overdue',val:overdue.length,cls:'red',sub:fmt$(sum(overdue,r=>r.bi.amountDue))+' past due',click:"$('billShow').value='overdue';renderBilling()"},
-    {label:'90+ days overdue',val:over90.length,cls:'amber',sub:fmt$(sum(over90,r=>r.bi.amountDue)),click:"$('billShow').value='over90';renderBilling()"},
-    {label:'Collected to date',val:fmt$(sum(scoped,r=>r.bi.paid)),cls:'green',sub:'total paid (sheet)'},
-    {label:'Paused',val:paused.length,cls:'purple',sub:fmt$(sum(paused,r=>r.bi.contract))+' contract value',click:"$('billShow').value='paused';renderBilling()"},
-    {label:'Renewals in 90 days',val:r90.length,cls:'blue',sub:fmt$(sum(r90,r=>r.bi.contract||r.p.arr))+' (estimated)',click:"$('billShow').value='renew90';renderBilling()"},
-  ]);
-  const buckets=['1–30 days','31–60 days','61–90 days','90+ days'];
-  const ag=buckets.map(k=>sum(overdue.filter(r=>agingBucket(r.bi.daysOverdue)===k),r=>r.bi.amountDue));
-  const months=monthKeys(0,11);
-  const byM=months.map(k=>scoped.filter(r=>r.bi.renewD&&ym(r.bi.renewD)===k));
-  const ps=countBy(scoped,r=>r.bi.status||'Unknown'),pk=Object.keys(ps).sort((a,b)=>ps[b]-ps[a]);
-  $('billCharts').innerHTML=chartCard('blAge','Overdue by age ($)',overdue.length+' accounts',220,null,false,'Days since the first unpaid invoice was due.')+chartCard('blPay','Payment status',scoped.length+' accounts',220,'blPayLeg')+chartCard('blRenew','Renewals by month (contract value)','next 12 months',220,null,false,'Lighter = estimated renewal (first invoice + term).');
-  later(()=>{
-    makeBar('blAge',buckets,ag,['#EAB308','#F97316','#EF4444','#B91C1C'],l=>{$('billShow').value='overdue';renderBilling();filterTable('billTbl','');});
-    if(charts.blAge){charts.blAge.options.scales.y.ticks.callback=v=>fmt$(v);charts.blAge.update();}
-    const cols=pk.map(k=>/unpaid|overdue|disput/i.test(k)?'#EF4444':/partial|due|paused/i.test(k)?'#EAB308':/^paid/i.test(k)?'#22C55E':/future/i.test(k)?'#3B82F6':'#94A3B8');
-    makeDoughnut('blPay',pk,pk.map(k=>ps[k]),cols,l=>filterTable('billTbl',l));legend('blPayLeg',pk.map(k=>`${k} (${ps[k]})`),cols);
-    makeCombo('blRenew',months.map(monLbl),[{type:'bar',label:'Confirmed',data:byM.map(a=>sum(a.filter(r=>!r.bi.renewEst),r=>r.bi.contract||r.p.arr)),backgroundColor:'#3B82F6',borderRadius:4,stack:'s'},
-      {type:'bar',label:'Estimated',data:byM.map(a=>sum(a.filter(r=>r.bi.renewEst),r=>r.bi.contract||r.p.arr)),backgroundColor:isDark?'rgba(59,130,246,.35)':'rgba(59,130,246,.3)',borderRadius:4,stack:'s'}],true,v=>fmt$(v));
-  });
-  $('billPill').textContent=rows.length+' accounts';
-  setTable('billTbl',rows.map(({p,bi})=>({cells:`<td>${p.orphan?'<span class="rag N" title="In the payments sheet but not in the Zoho roofing sync"></span>':ragDot(p.rag)} <b>${esc(p.name)}</b></td><td><span class="badge ${badgeFor(p.status)}">${esc(p.status)}</span></td>
-      <td>${payBadge(bi.status)}</td><td class="num">${bi.contract!=null?fmt$(bi.contract):(p.arr?fmt$(p.arr):'—')}</td><td class="num">${bi.paid?fmt$(bi.paid):'—'}</td>
-      <td class="num">${bi.amountDue?`<b style="color:${bi.daysOverdue>0?'var(--red)':'var(--text)'}">${fmt$(bi.amountDue)}</b>`:'—'}</td><td>${bi.daysOverdue>0?`<span class="slip pos">${bi.daysOverdue}d</span>`:'<span class="dim">—</span>'}</td>
-      <td class="dim">${fmtD(bi.firstUnpaid)}</td><td class="dim">${fmtD(bi.latestInv)}</td>
-      <td class="dim">${bi.renewD?fmtD(bi.renewD)+(bi.renewEst?' <span class="dim" title="Estimated: first invoice / go-live + term">est.</span>':''):'—'}</td><td>${bi.daysToRenew!=null?`<span class="${bi.daysToRenew<=30?'slip pos':bi.daysToRenew<=90?'':'dim'}">${bi.daysToRenew}d</span>`:'—'}</td>
-      <td class="dim">${esc(bi.plan||'—')}</td><td class="dim">${esc(bi.dealOwner||'—')}</td><td>${p.owner?who(p.owner):'<span class="dim">—</span>'}</td>`,
-    sort:{name:p.name,status:p.status,pay:bi.status,contract:bi.contract??p.arr,paid:bi.paid,due:bi.amountDue,days:bi.daysOverdue,first:bi.firstUnpaid,latest:bi.latestInv,renew:bi.renewD,rdays:bi.daysToRenew,plan:bi.plan,downer:bi.dealOwner,owner:p.owner},
-    csv:[p.name,p.status,bi.status,bi.contract,bi.paid,bi.amountDue,bi.daysOverdue,bi.firstUnpaid?ymd(bi.firstUnpaid):'',bi.oldestInv?ymd(bi.oldestInv):'',bi.latestInv?ymd(bi.latestInv):'',bi.renewD?ymd(bi.renewD):'',bi.renewEst?'estimated':'confirmed',bi.daysToRenew,bi.plan,bi.partner,bi.dealOwner,p.owner,p.csm,p.arr,bi.s.deal_id||'',bi.b.notes||''],
-    onclick:p.orphan?(p.deal_url?`window.open('${jsq(p.deal_url)}','_blank')`:''):`openProject('${jsq(p.id)}','billing')`})),
-    ['Project','Status','Payment status','Contract amount','Paid','Amount due','Days overdue','First unpaid due','Oldest invoice','Latest invoice','Renewal','Renewal type','Days to renewal','Plan','Partner','Deal owner','Owner','CSM','ARR (Zoho)','HubSpot deal id','Notes'],{sortK:'due',dir:-1,title:'billing-renewals'});
-}
-
-// ─── Import the RevOps payments sheet (CSV or XLSX) ─────────────
-const SHEET_COLS={deal_id:['dealid'],deal_name:['dealname'],deal_type:['dealtype'],zoho_status:['zohocurrentstatus','zohostatus'],payment_status:['paymentstatus'],
-  amount:['amount'],amount_due:['totalamountdue'],amount_paid:['totalamountpaid'],first_unpaid_due:['firstunpaidinvoiceduedate'],days_due:['ofdaysduesinceearliestunpaidinvoice','daysdue'],
-  partner:['dealsourcevendorpartnername'],solution_partner:['solutionpartner'],deal_owner:['dealowner'],close_year:['closeyear'],partner_driven:['partnerdrivenfromzoho','partnerdriven'],
-  oldest_invoice:['oldestinvoiceduesince'],zoho_account_link:['zohoaccountlink'],latest_invoice:['latestinvoiceduesince'],hs_link:['hsdeallink'],connect_plan:['zuperconnectplan'],csr_agent:['csragent']};
-function parseCSV(text){const rows=[];let row=[],cur='',q=false;
-  for(let i=0;i<text.length;i++){const c=text[i];
-    if(q){if(c==='"'){if(text[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=c;}
-    else if(c==='"')q=true;else if(c===','){row.push(cur);cur='';}else if(c==='\n'||c==='\r'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cur);rows.push(row);row=[];cur='';}else cur+=c;}
-  if(cur!==''||row.length){row.push(cur);rows.push(row);}return rows;}
-function sheetNum(v){const s=String(v??'').replace(/[^0-9.\-]/g,'');return s===''||s==='-'||s==='.'?null:Number(s);}
-function sheetDate(v){if(v==null||v==='')return null;if(typeof v==='number'){const d=new Date(Math.round((v-25569)*864e5));return ymd(new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));}
-  const s=String(v).trim();let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);if(m&&+m[3]>=2000)return `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
-  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);return m&&+m[1]>=2000?m[0]:null;}
-function sheetStr(v){const s=String(v??'').replace(/�/g,'').trim();return !s||s==='-'||s==='#N/A'||/^\(no value\)$/i.test(s)?null:s;}
-function sheetRowsFromGrid(grid){
-  const hdr=(grid[0]||[]).map(h=>String(h||'').toLowerCase().replace(/[^a-z0-9]/g,''));
-  const idx={};Object.entries(SHEET_COLS).forEach(([k,al])=>{idx[k]=hdr.findIndex(h=>al.some(a=>h===a||h.startsWith(a)));});
-  if(idx.deal_id<0)throw new Error('No "Deal ID" column found — is this the RevOps payments sheet?');
-  // An unnamed column holding one date for every row is the report ("as of") date.
-  const blank=hdr.map((h,i)=>h===''?i:-1).filter(i=>i>=0);let repCol=-1;
-  for(const i of blank){const vals=grid.slice(1,30).map(r=>sheetDate(r[i])).filter(Boolean);if(vals.length>5&&new Set(vals).size===1){repCol=i;break;}}
-  const out=[];
-  grid.slice(1).forEach(r=>{const g=k=>idx[k]>=0?r[idx[k]]:null;const id=String(g('deal_id')??'').trim();if(!/^\d+$/.test(id))return;
-    let ps=sheetStr(g('payment_status'));if(ps&&/^partially paid$/i.test(ps))ps='Partially Paid';
-    out.push({deal_id:id,deal_name:sheetStr(g('deal_name')),deal_type:sheetStr(g('deal_type')),zoho_status:sheetStr(g('zoho_status')),payment_status:ps,
-      amount:sheetNum(g('amount')),amount_due:sheetNum(g('amount_due'))??0,amount_paid:sheetNum(g('amount_paid'))??0,first_unpaid_due:sheetDate(g('first_unpaid_due')),days_due:sheetNum(g('days_due')),
-      partner:sheetStr(g('partner')),solution_partner:sheetStr(g('solution_partner')),deal_owner:sheetStr(g('deal_owner')),close_year:sheetNum(g('close_year')),partner_driven:sheetStr(g('partner_driven')),
-      oldest_invoice:sheetDate(g('oldest_invoice')),latest_invoice:sheetDate(g('latest_invoice')),zoho_account_link:sheetStr(g('zoho_account_link')),
-      hs_link:sheetStr(g('hs_link'))||('https://app.hubspot.com/contacts/8599304/record/0-3/'+id),connect_plan:sheetStr(g('connect_plan')),csr_agent:sheetStr(g('csr_agent')),
-      report_date:repCol>=0?sheetDate(r[repCol]):null});});
-  return out;
-}
-function loadSheetJS(){return window.XLSX?Promise.resolve():new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=res;s.onerror=()=>rej(new Error('Could not load the Excel reader'));document.head.appendChild(s);});}
-async function importBillingFile(file){
-  if(!file)return;
-  try{
-    let grid;
-    if(/\.xlsx?$/i.test(file.name)){await loadSheetJS();const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
-      const ws=wb.Sheets[wb.SheetNames.find(n=>/roofing/i.test(n))||wb.SheetNames[0]];grid=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''});}
-    else grid=parseCSV((await file.text()).replace(/^﻿/,''));
-    const rows=sheetRowsFromGrid(grid);
-    if(!rows.length)throw new Error('No rows with a numeric Deal ID were found.');
-    const ids=new Set(P.map(p=>dealIdOf(p)).filter(Boolean));const hit=rows.filter(r=>ids.has(r.deal_id)).length;
-    const due=rows.reduce((t,r)=>t+(r.amount_due||0),0);
-    if(!confirm(`${file.name}\n\n${rows.length} deals · ${hit} match a Zoho project by deal ID · ${fmt$(due)} outstanding\n\nReplace the current payments data with this file? (Team-entered billing details are kept.)`))return;
-    setStatus('loading','Importing payments sheet…');
-    const r=await api('billing_import',{rows,file:file.name});
-    toast(`Imported ${r.rows} deals.`);await loadData();renderPage(activePage);
-  }catch(e){toast(e.message,5000);setStatus('warn',e.message);}
-  finally{const f=$('billFile');if(f)f.value='';}
-}
 function closeDrawer(){$('drawer').classList.remove('open');$('drawerOv').style.display='none';Object.keys(charts).filter(k=>k.startsWith('dr')).forEach(destroyChart);}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
 function renderDrawer(){
   const p=drawerProject;const acc=ACCOUNTS.find(a=>a.proj&&a.proj.id===p.id);
-  const tabs=[['overview','Overview'],['pipelines','Pipelines ✎'],['tasks',`Tasks (${p.open} open)`],['timeline','Timeline'],['billing','Billing'],['adoption','Adoption'],['history','History']];
+  const tabs=[['overview','Overview'],['pipelines','Pipelines ✎'],['tasks',`Tasks (${p.open} open)`],['timeline','Timeline'],['adoption','Adoption'],['history','History']];
   $('drawer').innerHTML=`<div class="drawer-hd"><div class="drawer-title">${ragDot(p.rag)} ${esc(p.name)} <span class="dim mono" style="font-size:12px">${esc(p.key||'')}</span> ${phaseBadge(p.phase)} <span class="badge ${badgeFor(p.status)}">${esc(p.status)}</span><button class="drawer-close" onclick="closeDrawer()">✕</button></div>
     <div class="drawer-meta"><span>Owner <b>${esc(p.owner||'—')}</b></span><span>PM <b>${esc(p.pm||'—')}</b></span><span>BA <b>${esc(p.ba||'—')}</b></span><span>SA <b>${esc(p.second||'—')}</b></span>${p.csm?`<span>CSM <b>${esc(p.csm)}</b></span>`:''}<span>Team <b>${esc(p.team||'—')}</b></span><span>${esc(partnerKind(p))}</span><span>ARR <b>${p.arr?fmt$(p.arr):'—'}</b></span>${p.conf!=null?`<span>Confidence <b>${p.conf}/5</b></span>`:''}</div>
     ${p.why.length?`<div class="drawer-meta" style="color:${p.rag==='R'?'var(--red)':'var(--amber)'}">${esc(p.why.join(' · '))}</div>`:''}
@@ -2053,8 +1861,6 @@ function renderDrawer(){
     ${p.comments?`<div class="card" style="margin-top:14px"><div class="card-title">Project comments (Zoho)</div><div style="font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.6">${esc(p.comments)}</div></div>`:''}`;
   }else if(drawerTab==='pipelines'){
     renderPipeEditor();
-  }else if(drawerTab==='billing'){
-    b.innerHTML=billingForm(p);
   }else if(drawerTab==='timeline'){
     b.innerHTML=ganttSvg(p);
   }else if(drawerTab==='tasks'){
@@ -2512,20 +2318,10 @@ function buildDemo(){
       while(left>0.4){const internal=r()<.3||!mine.length;const h=Math.min(left,.5+Math.round(r()*6)/2);left-=h;
         const p=internal?null:pick(mine);
         timelogs.push({log_date:ymd(day),owner_name:nm,project_id:internal?'act1':p.id,project_name:internal?'CX - Onboarding - Activities':p.name,task_name:internal?pick(INT):'Configuration work',minutes:Math.round(h*60),bill_status:internal?'Non Billable':'Billable'});tlid++;}}});
-  // Sample payments sheet: most projects plus two deals that aren't in the Zoho sync.
-  const PS=['Paid','Partially Paid','Partially Paid','Unpaid','Paused','Future','Cancelled'];
-  const billing_sheet=projects.filter((p,i)=>i%5!==3).map((p,i)=>{const ps=p.status==='Churned'?'Cancelled':pick(PS);const amt=Math.round(p.arr*(0.8+r()*.4));
-    const due=/partial|unpaid|paused/i.test(ps)?Math.round(amt*(.05+r()*.3)):0;const dd=due?Math.floor(r()*200):null;
-    return{deal_id:String(90000000000+projects.indexOf(p)),deal_name:p.name,zoho_status:p.status,payment_status:ps,amount:amt,amount_due:due,amount_paid:Math.round(amt*r()),
-      first_unpaid_due:due?ymd(new Date(today.getTime()-dd*DAY)):null,days_due:dd,deal_owner:pick(['Nick Schmidt','Shane Carey','Seth Nesbitt']),
-      oldest_invoice:p.start_date,latest_invoice:ymd(new Date(today.getTime()-Math.floor(r()*120)*DAY)),connect_plan:pick(['Zuper Connect','Zuper Connect Intelligence',null]),
-      hs_link:p.deal_url,report_date:ymd(today)};});
-  billing_sheet.push({deal_id:'91111111111',deal_name:'Orphan Roofing Co',zoho_status:'Churned',payment_status:'Partially Paid',amount:9000,amount_due:1500,amount_paid:3000,first_unpaid_due:ymd(new Date(today.getTime()-45*DAY)),days_due:45,deal_owner:'Nick Schmidt',report_date:ymd(today)},
-    {deal_id:'91111111112',deal_name:'Not Synced Exteriors',zoho_status:'Configuration',payment_status:'Unpaid',amount:12000,amount_due:2000,amount_paid:0,first_unpaid_due:ymd(new Date(today.getTime()-12*DAY)),days_due:12,deal_owner:'Shane Carey',report_date:ymd(today)});
   const np=projects.find(p=>p.status==='Configuration')||projects[0];
   const native_tasks=[{id:'b1c2d3e4-0000-4000-8000-000000000001',project_id:np.id,name:'Walk customer through new inspection checklist',pipeline:'P2',stage:3,status:'In Progress',is_completed:false,owner_name:np.owner_name,owner_email:np.owner_email,end_date:ymd(new Date(today.getTime()+3*DAY)),priority:'High',notes:'Customer asked for a second session.',created_by:'Demo user',updated_by:'Demo user',created_at:new Date(today.getTime()-2*DAY).toISOString(),updated_at:new Date(today.getTime()-2*DAY).toISOString()},
     {id:'b1c2d3e4-0000-4000-8000-000000000002',project_id:np.id,name:'Confirm QuickBooks sync settings',pipeline:'P4',stage:2,status:'Open',is_completed:false,owner_name:null,end_date:ymd(new Date(today.getTime()-4*DAY)),created_by:'Demo user',created_at:new Date(today.getTime()-9*DAY).toISOString(),updated_at:new Date(today.getTime()-9*DAY).toISOString()}];
-  return{projects,tasks,milestones:[],snapshots:snaps,people:[],native_tasks,settings:{capacity:{public_holidays:[demoHoliday+' Demo public holiday']},timeoff:{[owners[3][0]]:[{from:ymd(new Date(demoLastMon.getTime()+3*DAY)),to:ymd(new Date(demoLastMon.getTime()+4*DAY)),note:'Family trip'}]},billing_import:{file:'Roofing Payments (demo).csv',rows:billing_sheet.length,report_date:ymd(today),at:new Date().toISOString()}},accounts,adoption,billing_sheet,timelogs,sync:{zoho_connected:true,projects_at:new Date().toISOString(),tasks_at:new Date().toISOString(),last:null}};
+  return{projects,tasks,milestones:[],snapshots:snaps,people:[],native_tasks,settings:{capacity:{public_holidays:[demoHoliday+' Demo public holiday']},timeoff:{[owners[3][0]]:[{from:ymd(new Date(demoLastMon.getTime()+3*DAY)),to:ymd(new Date(demoLastMon.getTime()+4*DAY)),note:'Family trip'}]}},accounts,adoption,timelogs,sync:{zoho_connected:true,projects_at:new Date().toISOString(),tasks_at:new Date().toISOString(),last:null}};
 }
 function demoApi(action,body){
   if(!DEMO_DB)DEMO_DB=buildDemo();
@@ -2535,8 +2331,6 @@ function demoApi(action,body){
   if(action==='adoption_pull')return Promise.resolve({ok:true});
   if(action==='override_save'){DEMO_DB.overrides=(DEMO_DB.overrides||[]).filter(o=>!(o.project_id===body.project_id&&o.pipeline===body.pipeline));
     DEMO_DB.overrides.push({project_id:body.project_id,pipeline:body.pipeline,manual_pct:body.manual_pct,status:body.status,note:body.note,items:body.items||[]});return Promise.resolve({ok:true});}
-  if(action==='billing_import'){DEMO_DB.billing_sheet=body.rows;DEMO_DB.settings.billing_import={file:body.file,rows:body.rows.length,report_date:body.rows[0].report_date,at:new Date().toISOString()};return Promise.resolve({ok:true,rows:body.rows.length});}
-  if(action==='billing_save'){DEMO_DB.billing=(DEMO_DB.billing||[]).filter(b=>b.project_id!==body.project_id);DEMO_DB.billing.push(Object.assign({},body,{updated_at:new Date().toISOString()}));return Promise.resolve({ok:true});}
   if(action==='task_save'){const L=DEMO_DB.native_tasks=DEMO_DB.native_tasks||[];const done=/^done$/i.test(body.status||'');const now=new Date().toISOString();
     if(body.id){const r=L.find(x=>x.id===body.id);if(!r)return Promise.reject(new Error('That task no longer exists.'));Object.assign(r,body,{is_completed:done,updated_by:body.by,updated_at:now,completed_at:done?(r.completed_at||now):null});return Promise.resolve({ok:true,task:r});}
     const r=Object.assign({},body,{id:crypto.randomUUID(),is_completed:done,created_by:body.by,updated_by:body.by,created_at:now,updated_at:now,completed_at:done?now:null});L.push(r);return Promise.resolve({ok:true,task:r});}
@@ -2556,7 +2350,7 @@ const GT_SKIP={}; // modules closed with Skip or the close icon stay quiet until
 const cardByTitle=t=>{const h=[...document.querySelectorAll('.page.active .card-title,.page.active .tbl-title')].find(e=>e.textContent.trim().toLowerCase().startsWith(t.toLowerCase()));return h?h.closest('.card,.tbl-card'):null;};
 const GUIDE={
   overview:[
-    {sel:'#sidebar',title:'Modules',body:'Every module lives here: Delivery (Projects, Pipelines, Tasks, Go-Lives), People (Team Load), Post go-live (Adoption, Billing) and Admin. Red badges flag things that need attention.'},
+    {sel:'#sidebar',title:'Modules',body:'Every module lives here: Delivery (Projects, Pipelines, Tasks, Go-Lives), People (Team Load), Post go-live (Adoption) and Admin. Red badges flag things that need attention.'},
     {sel:'#filterBar',title:'Filters apply everywhere',body:'Pick a date range, team, Direct vs Partner and owner. Every module, KPI and chart follows these filters.'},
     {sel:'#syncBtn',title:'Live from Zoho',body:'Data syncs from Zoho Projects every 10 minutes (read-only — nothing is written back). Press Sync to pull the latest right now.'},
     {sel:'#ovKpi',title:'Headline KPIs',body:'Active projects, go-lives vs target, at-risk count, ARR in onboarding and more. Click “+ Set target” on a card to set a goal; ▲▼ compares with the previous period.'},
@@ -2569,7 +2363,7 @@ const GUIDE={
     {sel:'#page-projects .hdr-right',title:'Filter by phase & health',body:'Narrow the list to a lifecycle phase or to Off track / At risk / On track projects.'},
     {sel:'#projKpi',title:'Project KPIs',body:'Totals for onboarding, live and at-risk projects plus average completion.'},
     {sel:'#projCharts',title:'Breakdowns',body:'Projects by status, by team and Direct vs Partner.'},
-    {sel:'#projTable',title:'All projects',body:'Health, status, % done, current ETA, ARR, Owner, Project Manager, BA and SA. Click a column to sort, use search, and click any row to open the project drawer (overview, pipelines, billing, timeline, tasks, adoption, history).'},
+    {sel:'#projTable',title:'All projects',body:'Health, status, % done, current ETA, ARR, Owner, Project Manager, BA and SA. Click a column to sort, use search, and click any row to open the project drawer (overview, pipelines, timeline, tasks, adoption, history).'},
   ],
   pipelines:[
     {sel:'#pipeKpi',title:'Pipeline KPIs',body:'How far each pipeline (P1 Lead Intake, P2 Inspection, P3 Production, P4 Revenue) has progressed across all projects.'},
@@ -2602,13 +2396,6 @@ const GUIDE={
     {sel:'#adoptSel',title:'All customers or one',body:'Look across all live customers, or pick one account from the dropdown for its trends.'},
     {sel:'#page-adoption .hdr-right .top-btn',title:'Pull usage',body:'Usage is pulled from each customer’s Zuper account once a day; press this to refresh now.'},
     {sel:'#adoptBody',title:'Usage & health',body:'Jobs created, active users, logins, quotes and invoices per account, linked to its Zoho project.'},
-  ],
-  billing:[
-    {sel:'#page-billing .hdr-right .cta',title:'Import the payments sheet',body:'Upload the RevOps “Roofing Payments” CSV or Excel. Deals match to Zoho projects by HubSpot deal ID, then company name.'},
-    {sel:'#page-billing .hdr-right',title:'Filters',body:'Live vs pre go-live, and quick views: owes money, overdue, 90+ days, paused, future billing or renewing in 90 days.'},
-    {sel:'#billKpi',title:'Money KPIs',body:'Outstanding, overdue, 90+ days, collected, paused contract value and renewals coming up.'},
-    {sel:'#billCharts',title:'Aging',body:'How much is owed and how long it has been overdue.'},
-    {sel:'#billTable',title:'Accounts',body:'Payment status, contract, paid, amount due, days overdue, renewal date and owners. Click a row to add renewal dates and notes for that account.'},
   ],
   accounts:[
     {sel:'#page-accounts .card',title:'Add a customer account',body:'Paste the customer’s Zuper API key. The region and company name are detected automatically; keys are encrypted on the server and never shown again.'},
