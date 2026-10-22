@@ -249,6 +249,24 @@ function normProject(p: any) {
   };
 }
 
+// Zoho statuses named like these are finished work even when the status isn't a "closed type".
+const DONE_STATUS = /^(done|completed?|closed|resolved)$/i;
+// Top-level task keys already modelled; anything else scalar (custom fields such as the Linear link,
+// type, business criticality) is kept in `extra` for the task detail view.
+const TASK_KNOWN = new Set(["project", "milestone", "tasklist", "id", "prefix", "name", "description", "status", "priority", "owners_and_work",
+  "duration", "completion_percentage", "sequence", "depth", "created_time", "last_modified_time", "is_completed", "created_via", "created_by",
+  "updated_by", "billing_type", "log_hours", "association_info", "start_date", "end_date", "completed_on", "tags", "dependency_info", "parental_info"]);
+function taskExtra(t: any) {
+  const out: any = {};
+  for (const [k, v] of Object.entries(t || {})) {
+    if (TASK_KNOWN.has(k) || v === null || v === undefined || v === "") continue;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") out[k] = typeof v === "string" ? v.slice(0, 1000) : v;
+    else if (Array.isArray(v) && v.every((x) => typeof x === "string")) out[k] = v.slice(0, 20);
+    else if (v && typeof v === "object" && (v as any).name) out[k] = String((v as any).name).slice(0, 200);
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 function normTask(t: any, projectId: string) {
   const owners = (t.owners_and_work?.owners || [])
     .filter((o: any) => o && o.name && !/unassigned/i.test(o.name))
@@ -264,13 +282,21 @@ function normTask(t: any, projectId: string) {
     stage: stage ? Number(stage[1]) : null,
     name: String(t.name || "").replace(/&amp;/g, "&").trim(),
     status: t.status?.name || null,
-    is_completed: !!(t.is_completed || t.status?.is_closed_type),
+    is_completed: !!(t.is_completed || t.status?.is_closed_type || DONE_STATUS.test(String(t.status?.name || "").trim())),
     owners,
     start_date: t.start_date || null,
     end_date: t.end_date || null,
     completion: num(t.completion_percentage),
     created_time: t.created_time || null,
     modified_time: t.last_modified_time || null,
+    description: t.description ? String(t.description).slice(0, 20000) : null,
+    prefix: t.prefix || null,
+    priority: t.priority && t.priority !== "none" ? String(t.priority) : null,
+    sequence: Number.isFinite(Number(t.sequence?.sequence)) ? Number(t.sequence.sequence) : null,
+    created_by_name: nm(t.created_by) || null,
+    updated_by_name: nm(t.updated_by) || null,
+    log_hours: t.log_hours?.total_hours && t.log_hours.total_hours !== "00:00" ? String(t.log_hours.total_hours) : null,
+    extra: taskExtra(t),
   };
 }
 
@@ -684,9 +710,9 @@ async function readAll(table: string, cols: string, filter?: (q: any) => any) {
 async function readData() {
   const since = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
   const tlSince = new Date(Date.now() - 98 * 86400000).toISOString().slice(0, 10); // 14 weeks
-  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing, billing_sheet, timelogs, native_tasks] = await Promise.all([
+  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing, billing_sheet, timelogs, native_tasks, task_meta] = await Promise.all([
     readAll("pcc_projects", "id,key,name,status,status_closed,owner_name,owner_email,secondary_name,secondary_email,ba_name,pm_name,csm_name,extra,team,partner,industry,arr,potential_arr,confidence,start_date,current_eta,baseline_eta,actual_go_live,zuper_company_id,company_login_name,deal_url,comments,tech_stack,business_tag,percent_complete,tasks_open,tasks_closed,milestones_open,milestones_closed,created_time,modified_time,first_seen,tasks_synced_at"),
-    readAll("pcc_tasks", "id,project_id,pipeline,stage,tasklist_name,name,status,is_completed,owners,start_date,end_date,modified_time,created_time"),
+    readAll("pcc_tasks", "id,project_id,pipeline,stage,tasklist_name,name,status,is_completed,owners,start_date,end_date,modified_time,created_time,prefix,priority,sequence"),
     readAll("pcc_milestones", "id,project_id,name,pipeline,start_date,end_date,status,is_closed"),
     readAll("pcc_snapshots", "snap_date,project_id,status,current_eta,tasks_open,tasks_closed", (q) => q.gte("snap_date", since)),
     readAll("pcc_people", "*"),
@@ -698,6 +724,7 @@ async function readData() {
     readAll("pcc_billing_sheet", "*"),
     readAll("pcc_timelogs", "log_date,owner_name,owner_id,project_id,project_name,task_name,minutes,bill_status", (q) => q.gte("log_date", tlSince)),
     readAll("pcc_native_tasks", "*"),
+    readAll("pcc_task_meta", "*"),
   ]);
   const settings: any = {};
   let syncState: any = {}, zohoConnected = false;
@@ -708,7 +735,7 @@ async function readData() {
   });
   const { data: lastLog } = await db.from("pcc_sync_log").select("at,ok,detail").order("id", { ascending: false }).limit(1);
   return {
-    projects, tasks, milestones, snapshots, people, settings, accounts, adoption, overrides, billing, billing_sheet, timelogs, native_tasks,
+    projects, tasks, milestones, snapshots, people, settings, accounts, adoption, overrides, billing, billing_sheet, timelogs, native_tasks, task_meta,
     sync: {
       ...syncState,
       zoho_connected: zohoConnected,
@@ -962,6 +989,52 @@ Deno.serve(async (req) => {
         const { error } = await db.from("pcc_native_tasks").delete().eq("id", id);
         if (error) throw new Error(error.message);
         return json({ ok: true });
+      }
+
+      // Full detail for one task (description is kept out of `data` to keep it light). Zoho tasks
+      // synced before details were stored are fetched live once and saved.
+      case "task_detail": {
+        const id = String(body.id || "");
+        if (!/^\d+$/.test(id)) return json({ error: "id required" }, 400);
+        const { data: row } = await db.from("pcc_tasks").select("*").eq("id", id).maybeSingle();
+        if (!row) return json({ error: "Task not found — it may have been removed in Zoho." }, 404);
+        if (row.description === null && row.created_by_name === null) {
+          try {
+            const j = await zget(`/api/v3/portal/${PORTAL_ID}/projects/${row.project_id}/tasks/${id}`);
+            const t = rowsOf(j, "tasks")[0] || j?.task || j?.data || j;
+            if (t && t.id) {
+              const n = normTask(t, row.project_id);
+              const patch = { description: n.description, prefix: n.prefix, priority: n.priority, sequence: n.sequence,
+                created_by_name: n.created_by_name, updated_by_name: n.updated_by_name, log_hours: n.log_hours, extra: n.extra };
+              await db.from("pcc_tasks").update(patch).eq("id", id);
+              Object.assign(row, patch);
+            }
+          } catch (_) { /* show what we have */ }
+        }
+        return json({ ok: true, task: row });
+      }
+
+      // Order / hide / "done here" for any task (Zoho or tool). Batch so a drag re-orders a whole group at once.
+      case "task_meta_save": {
+        const items = (Array.isArray(body.items) ? body.items : []).slice(0, 500);
+        const by = body.by ? String(body.by).slice(0, 80) : null;
+        const ids = items.map((x: any) => String(x.task_id || "")).filter((x: string) => /^(\d+|pcc:[0-9a-f-]{36})$/i.test(x));
+        if (!ids.length) return json({ error: "task_id required" }, 400);
+        const { data: prev } = await db.from("pcc_task_meta").select("*").in("task_id", ids);
+        const pm = new Map((prev || []).map((r: any) => [r.task_id, r]));
+        const now = new Date().toISOString();
+        const rows = items.filter((x: any) => ids.includes(String(x.task_id))).map((x: any) => {
+          const p: any = pm.get(String(x.task_id)) || {};
+          const r: any = { task_id: String(x.task_id), project_id: String(x.project_id || p.project_id || "").slice(0, 40),
+            sort_order: p.sort_order ?? null, hidden: !!p.hidden, done: p.done ?? null, done_at: p.done_at ?? null, updated_by: by ?? p.updated_by ?? null, updated_at: now };
+          if ("sort_order" in x) r.sort_order = Number.isFinite(Number(x.sort_order)) ? Number(x.sort_order) : null;
+          if ("hidden" in x) r.hidden = !!x.hidden;
+          if ("done" in x) { r.done = x.done === null ? null : !!x.done; r.done_at = x.done ? (p.done ? p.done_at : now) : null; }
+          return r;
+        }).filter((r: any) => r.project_id);
+        const { error } = await db.from("pcc_task_meta").upsert(rows);
+        if (error) throw new Error(error.message);
+        return json({ ok: true, saved: rows.length });
       }
 
       // Diagnostic (maintenance credential only): GET a Zoho Projects path and report its shape.
