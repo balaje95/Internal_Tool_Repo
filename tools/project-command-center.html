@@ -263,6 +263,16 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .task-row.over{border-left:3px solid var(--red)}
 .chk{width:14px;height:14px;border-radius:4px;border:1.5px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff}
 .chk.on{background:var(--green);border-color:var(--green)}
+.pl-sec{border:1px solid var(--border);border-left:4px solid;border-radius:10px;margin-bottom:10px;background:var(--surface)}
+.pl-hd{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;font-size:13px}.pl-hd:hover{background:var(--surface2)}.pl-caret{color:var(--text3);width:10px}
+.pl-bar{flex:1;height:6px;border-radius:3px;background:var(--surface3);overflow:hidden;min-width:60px}.pl-bar i{display:block;height:100%}.pl-pct{width:40px;text-align:right}
+.pl-body{padding:0 12px 12px}.pl-doneq{font-size:12px;color:var(--text2);background:var(--surface2);border-radius:6px;padding:6px 10px;margin-bottom:6px}
+.pl-stage{display:flex;justify-content:space-between;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.03em;margin:12px 0 4px}
+.pl-row{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:5px 6px;border-radius:6px}.pl-row:hover{background:var(--surface2)}.pl-row input{width:15px;height:15px;accent-color:var(--green);cursor:pointer;flex-shrink:0}
+.pl-name{cursor:pointer;flex:1}.pl-name:hover{color:var(--blue);text-decoration:underline}.pl-row.done .pl-name{color:var(--text2);text-decoration:line-through}.pl-row.miss .pl-name{color:var(--text3);cursor:default;text-decoration:none}
+.pl-meta{font-size:11px;color:var(--text2);white-space:nowrap}.pl-tag{font-size:10px;color:var(--text3);border:1px dashed var(--border2);border-radius:9px;padding:0 6px}
+.pl-add{display:flex;gap:6px;margin-top:10px}.pl-add .tbl-search{flex:1}.pl-miss{font-size:12px;color:var(--text2);margin-top:8px}
+.pl-settings{margin-top:10px;font-size:12px}.pl-settings summary{cursor:pointer;color:var(--text2)}
 .pb-step{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45;padding:5px 2px;cursor:pointer;border-bottom:1px solid var(--border)}.pb-step input{margin-top:3px;accent-color:var(--green)}.pb-step.on span{color:var(--text2);text-decoration:line-through}
 .step-chip{font-size:10px;font-weight:600;padding:1px 6px;border-radius:9px;background:var(--surface3);color:var(--text2);margin-left:4px}.step-chip.full{background:rgba(34,197,94,.15);color:var(--green)}
 .pb-pipe{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px}.pb-pipe summary{cursor:pointer;font-size:12px;line-height:1.5}
@@ -1822,27 +1832,6 @@ async function ovSave(k){const d=ovDraft(k);
     delete OVDRAFT[k];toast(`${k} saved.`);await refreshKeepDrawer();}catch(e){toast(e.message,4000);}}
 async function ovReset(k){if(!confirm(`Clear manual updates for ${k}? Progress goes back to Zoho tasks only.`))return;
   try{await api('override_save',{project_id:drawerProject.id,pipeline:k,manual_pct:null,status:null,note:null,items:[]});delete OVDRAFT[k];toast(`${k} reset.`);await refreshKeepDrawer();}catch(e){toast(e.message,4000);}}
-function renderPipeEditor(){
-  const b=$('drawerBody');if(!b||drawerTab!=='pipelines')return;const p=drawerProject;
-  const keep=document.activeElement&&document.activeElement.id;
-  b.innerHTML=playbookOutlineHtml(p)+`<div class="chart-note" style="margin:0 0 12px">Progress for each pipeline comes from its Zoho tasks plus any checklist items you add here. Switch to <b>Manual</b> to set the % yourself. Overall project progress is the average of P1–P4.</div>`+
-  PIPES.map(pp=>{const k=pp.k,g=p.pipe[k],d=ovDraft(k),pv=ovPreview(k);const col=PIPE_COLORS[k];
-    return `<div class="ov-card" id="ovc-${k}" style="border-top-color:${col}">
-      <div class="ov-hd"><span style="color:${col};font-weight:700">${k} ${pp.n}</span><span class="ov-pct">${pv==null?'–':pv+'%'}</span>${d.dirty?'<span class="badge ba">unsaved</span>':g.manual?'<span class="badge bz">manual</span>':''}</div>
-      <div class="pbar" style="margin:6px 0 10px"><i style="width:${pv||0}%;background:${col}"></i></div>
-      <div class="ov-meta">Zoho tasks: <b>${g.done}/${g.total}</b> done${g.zohoStatus?` · Zoho status: <b>${esc(g.zohoStatus)}</b>`:''}${g.zohoEta?` · Zoho ETA: <b>${fmtD(g.zohoEta)}</b>`:''}</div>
-      <div class="ov-row">
-        <div class="seg" style="margin:0"><button class="${d.mode==='auto'?'active':''}" onclick="ovSet('${k}','mode','auto')">Auto (tasks + items)</button><button class="${d.mode==='manual'?'active':''}" onclick="ovSet('${k}','mode','manual')">Manual %</button></div>
-        ${d.mode==='manual'?`<input type="range" min="0" max="100" step="5" value="${d.manual_pct}" oninput="ovDraft('${k}').manual_pct=+this.value;ovDraft('${k}').dirty=true;this.nextElementSibling.value=this.value;this.closest('.ov-card').querySelector('.ov-pct').textContent=this.value+'%'" style="flex:1;min-width:120px"><input type="number" min="0" max="100" value="${d.manual_pct}" class="cell-inp" style="width:64px;border-color:var(--border2)" onchange="ovSet('${k}','manual_pct',Math.max(0,Math.min(100,+this.value||0)))">`:''}
-        <select class="filter-select" onchange="ovSet('${k}','status',this.value)">${OV_STATUSES.map(s=>`<option value="${s}"${d.status===s?' selected':''}>${s||'Status…'}</option>`).join('')}</select>
-      </div>
-      <div class="ov-items">${d.items.map(it=>`<div class="task-row${it.done?' done':''}"><span class="chk${it.done?' on':''}" style="cursor:pointer" onclick="ovItemToggle('${k}','${it.id}')">${it.done?'✓':''}</span><span class="tn">${esc(it.text)}</span><button class="cw-btn rm" onclick="ovItemDel('${k}','${it.id}')" title="Remove">✕</button></div>`).join('')}
-        <div class="ov-add"><input id="ovi-${k}" class="tbl-search" placeholder="Add a checklist item to ${k} and press Enter…" onkeydown="if(event.key==='Enter')ovItemAdd('${k}')"><button class="top-btn" onclick="ovItemAdd('${k}')">+ Add</button></div></div>
-      <textarea class="ov-note" placeholder="Note (blockers, what's left, who's waiting on whom)…" onchange="ovSet('${k}','note',this.value)">${esc(d.note)}</textarea>
-      <div class="ov-row" style="justify-content:flex-end"><button class="top-btn" onclick="ovReset('${k}')">Reset</button><button class="cta sm" onclick="ovSave('${k}')"${d.dirty?'':' disabled'}>Save ${k}</button></div>
-    </div>`;}).join('');
-  if(keep&&$(keep))$(keep).focus();
-}
 
 function closeDrawer(){$('drawer').classList.remove('open');$('drawerOv').style.display='none';Object.keys(charts).filter(k=>k.startsWith('dr')).forEach(destroyChart);}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
@@ -1959,7 +1948,7 @@ async function deleteTask(nid){
 async function reloadKeepDrawer(pid){
   const wasOpen=$('drawer').classList.contains('open')&&drawerProject&&drawerProject.id===pid;
   await loadData();renderPage(activePage);
-  if(wasOpen&&PBYID[pid]){drawerProject=PBYID[pid];drawerTab='tasks';renderDrawer();}
+  if(wasOpen&&PBYID[pid]){drawerProject=PBYID[pid];drawerTab=drawerTab==='pipelines'?'pipelines':'tasks';renderDrawer();}
 }
 // ─── Task order, hide, "done here" and detail view ──────────────────────────
 // pcc_task_meta holds choices made in the tool for ANY task (Zoho or tool-created): display order,
@@ -2229,25 +2218,97 @@ function stepsHtml(t){
 }
 const stepChip=t=>{const pb=playbookFor(t);if(!pb)return '';const n=pb.steps.filter(s=>(t.checks||[]).includes(s)).length;return ` <span class="step-chip${n===pb.steps.length?' full':''}" title="Playbook steps done">${n}/${pb.steps.length}</span>`;};
 // Pipelines tab: definition of done + the playbook outline against this project's tasks.
-function playbookOutlineHtml(p){
-  const byKey={};p.tasks.forEach(t=>{const e=playbookFor(t);if(e&&!byKey[pbKey(e.name)])byKey[pbKey(e.name)]=t;});
-  let missing=0;
-  const html=PIPES.map(pp=>{const pb=PLAYBOOK[pp.k];
-    const rows=pb.stages.map(st=>`<div class="pb-stage"><span class="pb-st">Stage ${st.n} · ${esc(st.name)}</span>${st.tasks.map(tk=>{const t=byKey[pbKey(tk.name)];if(!t)missing++;
-      const n=t?tk.steps.filter(s=>(t.checks||[]).includes(s)).length:0;
-      return `<span class="pb-task ${t?(t.is_completed?'done':'open'):'miss'}"${t?` onclick="openTaskView('${jsq(p.id)}','${jsq(t.id)}')" title="Open task"`:' title="Not in this project"'}>${t?(t.is_completed?'✓':'○'):'＋'} ${esc(tk.name)}${t&&!t.is_completed&&n?` <small>${n}/${tk.steps.length}</small>`:''}</span>`;}).join('')}</div>`).join('');
-    return `<details class="pb-pipe"><summary><b style="color:${PIPE_COLORS[pp.k]}">${pp.k} ${esc(pp.n)}</b> <span class="dim">· complete when: ${esc(pb.done)}</span></summary>${rows}</details>`;}).join('');
-  return `<div class="card" style="margin-bottom:14px"><div class="card-title">Pipeline playbook <span class="chart-badge">PM pipeline tasks · April 2026</span></div>${html}
-    ${missing?`<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><span class="dim" style="font-size:12px">${missing} playbook task${missing===1?' is':'s are'} not in this project.</span><button class="top-btn" onclick="addMissingPlaybook('${jsq(p.id)}')">＋ Add missing tasks</button></div>`:'<div class="chart-note">Every playbook task is in this project.</div>'}</div>`;
+// ─── Pipelines tab: one list per pipeline ───────────────────────────────────
+// Every task in the pipeline (playbook tasks, other Zoho tasks, tasks added here) sits under its
+// stage with a checkbox: one click marks it done or open. Missing playbook tasks can be ticked
+// straight away (created as done). New tasks are added inline. Manual %, status and note are
+// folded into "Progress settings".
+let PL_OPEN=null,PL_FOCUS=null;
+function renderPipeEditor(){
+  const b=$('drawerBody');if(!b||drawerTab!=='pipelines')return;const p=drawerProject;
+  if(!PL_OPEN||PL_OPEN.pid!==p.id){const first=PIPES.find(pp=>(p.pipe[pp.k].pct??0)<100);PL_OPEN={pid:p.id,k:new Set(first?[first.k]:[])};}
+  b.innerHTML=`<div class="chart-note" style="margin:0 0 12px">Tick a task to mark it done — pipeline progress updates straight away. Click a task name for its steps and details. Overall progress is the average of P1–P4.</div>`+
+    PIPES.map(pp=>pipelineSectionHtml(p,pp)).join('');
+  if(PL_FOCUS){const e=$('pla-'+PL_FOCUS);if(e)e.focus();PL_FOCUS=null;}
 }
-async function addMissingPlaybook(pid){
+function plToggle(k){PL_OPEN.k.has(k)?PL_OPEN.k.delete(k):PL_OPEN.k.add(k);renderPipeEditor();}
+function plRow(p,t,pbName){
+  // t = a project task, or null for a playbook task that isn't in the project yet
+  const now=new Date(),due=t&&pd(t.end_date),over=t&&!t.is_completed&&due&&due<now;
+  const pb=t?playbookFor(t):PB_BY_NAME[pbKey(pbName)],n=t&&pb?pb.steps.filter(s=>(t.checks||[]).includes(s)).length:0;
+  if(!t)return `<div class="pl-row miss"><input type="checkbox" title="Mark done (adds it to this project)" onchange="plCreate('${jsq(p.id)}','${jsq(pbName)}',true)"><span class="pl-name" title="Not in this project yet">${esc(pbName)}</span><span class="pl-tag">not in project</span></div>`;
+  return `<div class="pl-row${t.is_completed?' done':''}${over?' over':''}"><input type="checkbox"${t.is_completed?' checked':''} title="${t.is_completed?'Reopen':'Mark done'}" onchange="tickTask('${jsq(t.id)}')">
+    <span class="pl-name" onclick="openTaskView('${jsq(p.id)}','${jsq(t.id)}')" title="Open steps and details">${esc(t.name)}</span>
+    ${pb?`<span class="step-chip${n===pb.steps.length?' full':''}" title="Playbook steps done">${n}/${pb.steps.length}</span>`:''}${t.native?'<span class="src-tag cc">added here</span>':''}
+    <span class="pl-meta">${esc(ownerNames(t)||'')}${due?` · <span class="${over?'slip pos':''}">${fmtD(due)}</span>`:''}</span></div>`;
+}
+function pipelineSectionHtml(p,pp){
+  const k=pp.k,g=p.pipe[k],pb=PLAYBOOK[k],col=PIPE_COLORS[k],open=PL_OPEN.k.has(k);
+  const tasks=p.tasks.filter(t=>t.pipeline===k).sort(taskOrder);
+  const byPb={};tasks.forEach(t=>{const e=playbookFor(t);if(e&&e.pipeline===k&&!byPb[pbKey(e.name)])byPb[pbKey(e.name)]=t;});
+  const used=new Set(Object.values(byPb).map(t=>t.id));
+  const pct=g.pct??(g.total?Math.round(g.done/g.total*100):null);let missing=0;
+  const stages=pb.stages.map(st=>{
+    const rows=st.tasks.map(tk=>{const t=byPb[pbKey(tk.name)];if(!t)missing++;return plRow(p,t||null,tk.name);});
+    tasks.filter(t=>!used.has(t.id)&&t.stage===st.n).forEach(t=>{used.add(t.id);rows.push(plRow(p,t));});
+    const done=st.tasks.filter(tk=>byPb[pbKey(tk.name)]&&byPb[pbKey(tk.name)].is_completed).length+tasks.filter(t=>t.stage===st.n&&!playbookFor(t)&&t.is_completed).length;
+    const all=st.tasks.length+tasks.filter(t=>t.stage===st.n&&!playbookFor(t)).length;
+    return `<div class="pl-stage"><span>Stage ${st.n} · ${esc(st.name)}</span><span>${done}/${all}</span></div>${rows.join('')}`;}).join('');
+  const others=tasks.filter(t=>!used.has(t.id));const items=(g.items||[]);
+  const otherHtml=others.length||items.length?`<div class="pl-stage"><span>Other ${k} tasks</span><span>${others.filter(t=>t.is_completed).length+items.filter(i=>i.done).length}/${others.length+items.length}</span></div>${others.map(t=>plRow(p,t)).join('')}
+    ${items.map(it=>`<div class="pl-row${it.done?' done':''}"><input type="checkbox"${it.done?' checked':''} onchange="plItemToggle('${k}','${jsq(it.id)}')"><span class="pl-name">${esc(it.text)}</span><span class="pl-tag">checklist item</span><button class="cw-btn rm" onclick="plItemDel('${k}','${jsq(it.id)}')" title="Remove">✕</button></div>`).join('')}`:'';
+  const curStage=(pb.stages.find(st=>tasks.some(t=>t.stage===st.n&&!t.is_completed))||pb.stages[0]).n;
+  const d=ovDraft(k);
+  return `<div class="pl-sec" style="border-left-color:${col}">
+    <div class="pl-hd" onclick="plToggle('${k}')"><span class="pl-caret">${open?'▾':'▸'}</span><b style="color:${col}">${k} ${esc(pp.n)}</b>
+      <span class="dim">${g.done}/${g.total} tasks</span>${g.manual?'<span class="badge bz">manual %</span>':''}${g.status?`<span class="badge bgr">${esc(g.status)}</span>`:''}
+      <span class="pl-bar"><i style="width:${pct||0}%;background:${col}"></i></span><b class="pl-pct">${pct==null?'–':pct+'%'}</b></div>
+    ${open?`<div class="pl-body">
+      <div class="pl-doneq"><b>Complete when:</b> ${esc(pb.done)}</div>
+      ${stages}${otherHtml}
+      <div class="pl-add"><input id="pla-${k}" class="tbl-search" placeholder="Add a task to ${k} and press Enter…" onkeydown="if(event.key==='Enter')plAdd('${jsq(p.id)}','${k}')">
+        <select id="plas-${k}" class="filter-select">${pb.stages.map(st=>`<option value="${st.n}"${st.n===curStage?' selected':''}>Stage ${st.n} · ${esc(st.name)}</option>`).join('')}</select>
+        <button class="top-btn" onclick="plAdd('${jsq(p.id)}','${k}')">+ Add</button></div>
+      ${missing?`<div class="pl-miss">${missing} playbook task${missing===1?' is':'s are'} not in this project. <a href="#" onclick="plAddMissing('${jsq(p.id)}','${k}');return false">Add ${missing===1?'it':'them'}</a></div>`:''}
+      <details class="pl-settings"${d.dirty?' open':''}><summary>Progress settings — manual %, status, note${d.dirty?' <span class="badge ba">unsaved</span>':''}</summary>
+        <div class="ov-row">
+          <div class="seg" style="margin:0"><button class="${d.mode==='auto'?'active':''}" onclick="ovSet('${k}','mode','auto')">Auto (from tasks)</button><button class="${d.mode==='manual'?'active':''}" onclick="ovSet('${k}','mode','manual')">Manual %</button></div>
+          ${d.mode==='manual'?`<input type="number" min="0" max="100" value="${d.manual_pct}" class="cell-inp" style="width:64px;border-color:var(--border2)" onchange="ovSet('${k}','manual_pct',Math.max(0,Math.min(100,+this.value||0)))">%`:''}
+          <select class="filter-select" onchange="ovSet('${k}','status',this.value)">${OV_STATUSES.map(s=>`<option value="${s}"${d.status===s?' selected':''}>${s||'Status…'}</option>`).join('')}</select>
+        </div>
+        <textarea class="ov-note" placeholder="Note (blockers, what's left, who's waiting on whom)…" onchange="ovSet('${k}','note',this.value)">${esc(d.note)}</textarea>
+        <div class="ov-row" style="justify-content:flex-end"><button class="top-btn" onclick="ovReset('${k}')">Reset</button><button class="cta sm" onclick="ovSave('${k}')"${d.dirty?'':' disabled'}>Save ${k}</button></div>
+      </details></div>`:''}
+  </div>`;
+}
+// Add a task inline (created in the Command Center, counts toward progress immediately).
+async function plAdd(pid,k){
+  const inp=$('pla-'+k),name=(inp&&inp.value||'').trim();if(!name){inp&&inp.focus();return;}
+  const sn=+$('plas-'+k).value,st=PLAYBOOK[k].stages.find(s=>s.n===sn);
+  try{await api('task_save',{project_id:pid,name,pipeline:k,stage:sn,tasklist_name:`Stage ${sn} ${st?st.name:''}`.trim(),status:'Open',by:myName()||null});
+    PL_FOCUS=k;await refreshKeepDrawer();toast('Task added.');}catch(e){toast(e.message,4000);}
+}
+// Tick a playbook task that isn't in the project: create it (done) in one click.
+async function plCreate(pid,name,done){
+  const e=PB_BY_NAME[pbKey(name)];if(!e)return;
+  try{await api('task_save',{project_id:pid,name:e.name,pipeline:e.pipeline,stage:e.stage,tasklist_name:`Stage ${e.stage} ${e.stageName}`,status:done?'Done':'Open',by:myName()||null});
+    await refreshKeepDrawer();toast(done?'Marked done.':'Task added.');}catch(err){toast(err.message,4000);}
+}
+async function plAddMissing(pid,k){
   const p=PBYID[pid];if(!p)return;const have=new Set();p.tasks.forEach(t=>{const e=playbookFor(t);if(e)have.add(pbKey(e.name));});
-  const todo=[];Object.entries(PLAYBOOK).forEach(([pk,pp])=>pp.stages.forEach(st=>st.tasks.forEach(tk=>{if(!have.has(pbKey(tk.name)))todo.push({pk,st,tk});})));
-  if(!todo.length)return;if(!confirm(`Add ${todo.length} playbook task${todo.length===1?'':'s'} to ${p.name}?\n\nThey are created in the Command Center (not in Zoho) and count toward progress.`))return;
-  setStatus('loading',`Adding ${todo.length} tasks…`);
-  try{for(const x of todo)await api('task_save',{project_id:pid,name:x.tk.name,pipeline:x.pk,stage:x.st.n,tasklist_name:`Stage ${x.st.n} ${x.st.name}`,status:'Open',by:myName()||null});
-    await refreshKeepDrawer();toast(`Added ${todo.length} playbook tasks.`);}catch(e){toast(e.message,5000);await refreshKeepDrawer();}
+  const todo=[];PLAYBOOK[k].stages.forEach(st=>st.tasks.forEach(tk=>{if(!have.has(pbKey(tk.name)))todo.push({st,tk});}));
+  if(!todo.length)return;setStatus('loading',`Adding ${todo.length} tasks…`);
+  try{for(const x of todo)await api('task_save',{project_id:pid,name:x.tk.name,pipeline:k,stage:x.st.n,tasklist_name:`Stage ${x.st.n} ${x.st.name}`,status:'Open',by:myName()||null});
+    await refreshKeepDrawer();toast(`Added ${todo.length} playbook task${todo.length===1?'':'s'}.`);}catch(e){toast(e.message,5000);await refreshKeepDrawer();}
 }
+// Older checklist items (added before tasks could be created here): one-click tick / remove, saved at once.
+async function plItemSave(k,items){
+  const o=(drawerProject.ov||{})[k]||{};
+  try{await api('override_save',{project_id:drawerProject.id,pipeline:k,manual_pct:o.manual_pct??null,status:o.status||null,note:o.note||null,items});delete OVDRAFT[k];await refreshKeepDrawer();}
+  catch(e){toast(e.message,4000);}
+}
+function plItemToggle(k,id){const items=((drawerProject.ov||{})[k]||{}).items||[];plItemSave(k,items.map(i=>i.id===id?Object.assign({},i,{done:!i.done}):i));}
+function plItemDel(k,id){const items=((drawerProject.ov||{})[k]||{}).items||[];plItemSave(k,items.filter(i=>i.id!==id));}
 function ganttSvg(p){
   const rows=PIPES.map(pp=>{const ts=p.tasks.filter(t=>t.pipeline===pp.k);const st=ts.map(t=>pd(t.start_date)).filter(Boolean),en=ts.map(t=>pd(t.end_date)).filter(Boolean);
     const x=p.pipe[pp.k];return{pp,s:st.length?new Date(Math.min(...st)):null,e:en.length?new Date(Math.max(...en)):null,pct:x.total?x.done/x.total:0,
