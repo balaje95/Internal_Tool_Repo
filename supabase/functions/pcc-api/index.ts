@@ -336,9 +336,12 @@ async function syncProjects() {
     .filter((p) => !industry || String(p.industry || "").trim().toLowerCase() === industry.toLowerCase())
     .map(normProject);
   // Drop anything outside the industry (e.g. synced before the filter changed); tasks cascade.
+  // Guard: a mistyped industry returns nothing from Zoho, which would otherwise wipe every project
+  // and its snapshot history — so never drop when nothing matched, or when most rows would go.
   if (industry) {
     const { data: off } = await db.from("pcc_projects").select("id,industry");
-    const drop = (off || []).filter((r: any) => String(r.industry || "").toLowerCase() !== industry.toLowerCase()).map((r: any) => r.id);
+    let drop = (off || []).filter((r: any) => String(r.industry || "").toLowerCase() !== industry.toLowerCase()).map((r: any) => r.id);
+    if (!rows.length || drop.length > Math.max(5, (off || []).length * 0.2)) drop = [];
     for (let i = 0; i < drop.length; i += 200) {
       await db.from("pcc_snapshots").delete().in("project_id", drop.slice(i, i + 200));
       await db.from("pcc_projects").delete().in("id", drop.slice(i, i + 200));
@@ -395,11 +398,15 @@ async function syncProjectTasks(projectId: string) {
     status: m.status?.name || null, is_closed: !!(m.status?.is_closed || m.status_type === "closed"),
     owner_name: m.owner ? [m.owner.first_name, m.owner.last_name].filter(Boolean).join(" ") : null,
   }));
-  await db.from("pcc_tasks").delete().eq("project_id", projectId);
+  // Write the new rows first, then remove tasks Zoho no longer has — a failed write leaves the old list intact.
   for (let i = 0; i < tRows.length; i += 300) {
     const { error } = await db.from("pcc_tasks").upsert(tRows.slice(i, i + 300));
     if (error) throw new Error("upsert tasks: " + error.message);
   }
+  const keep = new Set(tRows.map((r) => r.id));
+  const { data: had } = await db.from("pcc_tasks").select("id").eq("project_id", projectId);
+  const gone = (had || []).map((r: any) => r.id).filter((id: string) => !keep.has(id));
+  for (let i = 0; i < gone.length; i += 200) await db.from("pcc_tasks").delete().in("id", gone.slice(i, i + 200));
   if (mRows.length) {
     await db.from("pcc_milestones").delete().eq("project_id", projectId);
     await db.from("pcc_milestones").upsert(mRows);
@@ -911,7 +918,13 @@ Deno.serve(async (req) => {
 
       case "settings_save": {
         if (!PUBLIC_SETTINGS.has(body.key) || body.key === "billing_import") return json({ error: "unknown setting" }, 400);
-        await setSetting(body.key, body.value);
+        // Shape checks: a wrong shape here would break loading for everyone.
+        const v = body.value, isObj = v && typeof v === "object" && !Array.isArray(v);
+        const okShape = body.key === "exclude" ? Array.isArray(v) && v.every((x: any) => typeof x === "string")
+          : body.key === "capacity" ? isObj && (v.public_holidays === undefined || Array.isArray(v.public_holidays))
+          : isObj;
+        if (!okShape) return json({ error: `Invalid value for ${body.key}.` }, 400);
+        await setSetting(body.key, v);
         return json({ ok: true });
       }
 
@@ -938,7 +951,7 @@ Deno.serve(async (req) => {
           if ((await decrypt(a.api_key_enc).catch(() => "")) === key) return json({ error: `Already added as “${a.company_name}”.` }, 409);
         }
         const { data, error } = await db.from("pcc_accounts").insert({
-          company_name: body.company_name || info.name || "Unnamed account",
+          company_name: (String(body.company_name || "").trim() || info.name || "Unnamed account").slice(0, 120),
           zuper_company_id: info.companyId || null,
           company_login_name: info.loginName || null,
           base_url: info.base,
@@ -952,15 +965,18 @@ Deno.serve(async (req) => {
       }
 
       case "account_delete": {
-        await db.from("pcc_accounts").delete().eq("id", String(body.id || ""));
+        const { error } = await db.from("pcc_accounts").delete().eq("id", String(body.id || ""));
+        if (error) throw new Error(error.message);
         return json({ ok: true });
       }
 
       case "account_update": {
         const patch: any = {};
-        if (typeof body.company_name === "string") patch.company_name = body.company_name.slice(0, 120);
-        if (typeof body.zuper_company_id === "string") patch.zuper_company_id = body.zuper_company_id.slice(0, 40);
-        await db.from("pcc_accounts").update(patch).eq("id", String(body.id || ""));
+        if (typeof body.company_name === "string" && body.company_name.trim()) patch.company_name = body.company_name.trim().slice(0, 120);
+        if (typeof body.zuper_company_id === "string") patch.zuper_company_id = body.zuper_company_id.trim().slice(0, 40);
+        if (!Object.keys(patch).length) return json({ error: "Nothing to update." }, 400);
+        const { error } = await db.from("pcc_accounts").update(patch).eq("id", String(body.id || ""));
+        if (error) throw new Error(error.message);
         return json({ ok: true });
       }
 
@@ -985,7 +1001,8 @@ Deno.serve(async (req) => {
         const pipe = /^P[1-9]$/.test(String(body.pipeline || "")) ? String(body.pipeline) : null;
         const stage = Number(body.stage) >= 1 && Number(body.stage) <= 9 ? Math.round(Number(body.stage)) : null;
         const row: any = {
-          project_id: pid, name, pipeline: pipe, stage, tasklist_name: s(body.tasklist_name, 200),
+          // tasklist_name only changes when sent (an edit without it keeps the task in its stage group)
+          project_id: pid, name, pipeline: pipe, stage, tasklist_name: "tasklist_name" in body ? s(body.tasklist_name, 200) : undefined,
           status, is_completed: done, owner_name: s(body.owner_name), owner_email: s(body.owner_email, 200),
           start_date: d(body.start_date), end_date: d(body.end_date), priority: s(body.priority, 20),
           notes: s(body.notes, 4000), updated_by: s(body.by, 80), updated_at: new Date().toISOString(),

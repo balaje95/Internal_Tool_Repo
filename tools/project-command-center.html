@@ -191,9 +191,6 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .bz{background:rgba(253,80,0,.1);color:var(--zuper)}.bgr{background:var(--gray-bg);color:var(--gray)}
 .rag{display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0;vertical-align:middle}
 .rag.R{background:var(--red)}.rag.A{background:var(--amber)}.rag.G{background:var(--green)}.rag.N{background:var(--surface3);border:1px solid var(--border2)}
-.minibars{display:inline-flex;gap:3px;vertical-align:middle}
-.minibar{width:26px;height:6px;background:var(--surface3);border-radius:99px;overflow:hidden}
-.minibar>i{display:block;height:100%;border-radius:99px}
 .pbar{height:6px;background:var(--surface3);border-radius:99px;overflow:hidden;min-width:60px}
 .pbar>i{display:block;height:100%;background:var(--zuper);border-radius:99px}
 .pbar.green>i{background:var(--green)}.pbar.amber>i{background:var(--amber)}.pbar.red>i{background:var(--red)}
@@ -213,12 +210,6 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .split{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:14px;margin-bottom:16px}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:16px;min-width:0}
 .card-title{font-size:13px;font-weight:600;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
-.chg-group{margin-bottom:12px}
-.chg-hd{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;display:flex;align-items:center;gap:6px}
-.chg-item{font-size:12px;padding:4px 0;border-bottom:1px dashed var(--border);display:flex;justify-content:space-between;gap:8px;cursor:pointer}
-.chg-item:hover{color:var(--zuper)}
-.chg-item:last-child{border-bottom:none}
-.chg-meta{color:var(--text3);white-space:nowrap}
 
 /* HEATMAP */
 .heat td.hc{padding:0;text-align:center;font-size:10px;width:34px;min-width:34px;height:26px;border-left:1px solid var(--surface)}
@@ -275,12 +266,8 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .pl-settings{margin-top:10px;font-size:12px}.pl-settings summary{cursor:pointer;color:var(--text2)}
 .pb-step{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45;padding:5px 2px;cursor:pointer;border-bottom:1px solid var(--border)}.pb-step input{margin-top:3px;accent-color:var(--green)}.pb-step.on span{color:var(--text2);text-decoration:line-through}
 .step-chip{font-size:10px;font-weight:600;padding:1px 6px;border-radius:9px;background:var(--surface3);color:var(--text2);margin-left:4px}.step-chip.full{background:rgba(34,197,94,.15);color:var(--green)}
-.pb-pipe{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px}.pb-pipe summary{cursor:pointer;font-size:12px;line-height:1.5}
-.pb-stage{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}.pb-st{font-size:11px;font-weight:600;color:var(--text2);min-width:200px}
-.pb-task{font-size:11px;padding:3px 8px;border-radius:12px;border:1px solid var(--border2);cursor:pointer}.pb-task.done{background:rgba(34,197,94,.12);border-color:transparent;color:var(--green)}.pb-task.open:hover{border-color:var(--blue)}.pb-task.miss{border-style:dashed;color:var(--text3);cursor:default}.pb-task small{color:var(--text2)}
 .oi-link{font-size:10px;font-weight:600;color:var(--blue);text-decoration:none;margin-left:4px;white-space:nowrap}.oi-link:hover{text-decoration:underline}
 .chk.click{cursor:pointer}.chk.click:hover{border-color:var(--green)}
-.task-row.native{cursor:pointer}.task-row.native:hover{border-color:var(--blue)}
 .src-tag{font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:1px}.src-tag.cc{background:var(--blue-bg);color:var(--blue)}
 .tf-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;font-size:12px}
 .tf-card{margin-bottom:14px;border-color:var(--blue)}
@@ -354,13 +341,7 @@ td.pcell{cursor:pointer;min-width:150px}
 td.pcell:hover{background:var(--surface3)!important}
 .psub{font-size:10px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
 .mtag{font-size:11px;color:var(--zuper)}
-.ov-card{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--zuper);border-radius:10px;padding:14px;margin-bottom:12px;scroll-margin-top:10px}
-.ov-hd{display:flex;align-items:center;gap:10px}
-.ov-pct{font-size:18px;font-weight:700;margin-left:auto}
-.ov-meta{font-size:11px;color:var(--text2);margin-bottom:10px}
 .ov-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-.ov-items{margin-bottom:10px}
-.ov-add{display:flex;gap:6px;margin-top:6px}
 .ov-note{width:100%;min-height:54px;background:var(--surface2);border:1.5px solid var(--border2);border-radius:7px;padding:7px 10px;font-size:12px;color:var(--text);font-family:inherit;margin-bottom:10px;resize:vertical}
 .ov-note:focus{outline:none;border-color:var(--zuper)}
 .cta.sm:disabled{opacity:.45}
@@ -598,7 +579,7 @@ const DEFAULT_PHASE_MAP={
   'Training Scheduled':'Onboarding','Configuration':'Onboarding','Onboarding Slippage':'Churned','At Risk':'Onboarding',
   'On Hold':'On Hold','Hyper Care':'Hypercare','Completed':'Live','Moved to Support':'Live','Phase 2':'Live','Churned':'Churned'
 };
-const DEFAULT_RAG={slip_days:14,overdue_pct:20,stall_days:7,low_conf:3,risk_statuses:['At Risk']};
+const DEFAULT_RAG={}; // health rules are fixed (Onboarding Intelligence flag); kept so saved settings still load
 // Utilisation rules (Settings → Utilisation rules). Per-person weekly hours override weekly_hours.
 const DEFAULT_CAPACITY={weekly_hours:45,healthy_low:75,healthy_high:90,under:60,customer_target:65,
   leave_keywords:'holiday, leave, pto, vacation, sick, time off, ooo, comp off',public_holidays:[]};
@@ -619,7 +600,6 @@ let P=[],PBYID={},TBY={},OVBY={},PEOPLE=[],ACCOUNTS=[],SET={},STATUSES=[];
 // HubSpot deal id from the Zoho project's deal link (…/record/0-3/<id>).
 function dealIdOf(p){const m=String(p.deal_url||'').match(/(\d{6,})\/?(?:\?.*)?$/);return m?m[1]:null;}
 // Company name key for fuzzy matching: lowercase, no punctuation or legal suffixes.
-function coKey(s){return String(s||'').toLowerCase().replace(/&/g,' and ').replace(/\b(llc|inc|ltd|co|corp|company|the)\b/g,' ').replace(/[^a-z0-9]/g,'');}
 let F={team:'',partner:'',owner:'',industry:'',period:'all'};
 let teamRole='All';
 
@@ -628,7 +608,8 @@ let teamRole='All';
 // ═══════════════════════════════════════════════════════════════
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const jsq=s=>String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+// For values inside inline handlers: onclick="fn('${jsq(x)}')". Escapes the JS string AND the HTML attribute.
+const jsq=s=>String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\x22').replace(/&/g,'\\x26').replace(/</g,'\\x3c').replace(/\n/g,'\\n');
 function pd(s){if(!s)return null;const d=new Date(String(s).length===10?s+'T00:00:00':s);return isNaN(d)?null:d;}
 function t0(){const d=new Date();d.setHours(0,0,0,0);return d;}
 function ddiff(a,b){return Math.round((a-b)/DAY);}
@@ -641,7 +622,6 @@ function ago(s){const d=pd(s);if(!d)return '—';const m=Math.round((Date.now()-
 function initials(n){return String(n||'?').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('')||'?';}
 function who(n){return n?`<span class="who"><span class="avatar">${esc(initials(n))}</span>${esc(n)}</span>`:'<span class="dim">—</span>';}
 function countBy(arr,fn){const m={};arr.forEach(x=>{const k=fn(x);if(k==null||k==='')return;m[k]=(m[k]||0)+1;});return m;}
-function gc(){return CL;}
 function gGrid(){return isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';}
 function gTick(){return isDark?'#7a8091':'#9ca3af';}
 function toast(msg,ms){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),ms||2600);}
@@ -680,7 +660,7 @@ async function doLogin(){
   const pw=$('pwInp').value;if(!pw){$('loginErr').textContent='Enter the team password.';return;}
   $('loginBtn').disabled=true;$('loginTxt').innerHTML='<div class="spinner"></div>';$('loginErr').textContent='';
   try{const j=await api('login',{password:pw});token=j.token;try{localStorage.setItem(TOKEN_KEY,token);}catch(e){}await enterApp();}
-  catch(e){$('loginErr').textContent=e.message;}
+  catch(e){$('appShell').style.display='none';$('loginScreen').style.display='flex';$('loginErr').textContent=e.message;}
   finally{$('loginBtn').disabled=false;$('loginTxt').textContent='Open Command Center';}
 }
 function logout(silent){
@@ -743,7 +723,6 @@ function derive(){
   OVBY={};(RAW.overrides||[]).forEach(o=>{(OVBY[o.project_id]=OVBY[o.project_id]||[]).push(o);});
   const snapBy={};(RAW.snapshots||[]).forEach(s=>{(snapBy[s.project_id]=snapBy[s.project_id]||[]).push(s);});
   const now=new Date(),today=t0();
-  const riskSt=new Set((SET.rag.risk_statuses||[]).map(s=>s.toLowerCase()));
   P=(RAW.projects||[]).filter(p=>!excl.has(String(p.name||'').toLowerCase().trim())).map(p=>{
     const tasks=TBY[p.id]||[];
     const x=Object.assign({},p);
@@ -756,8 +735,7 @@ function derive(){
     x.done=tasks.length?done:(p.tasks_closed||0);
     x.open=x.total-x.done;
     x.pct=x.total?Math.round(x.done/x.total*100):(p.percent_complete||0);
-    x.overdue=tasks.filter(t=>!t.is_completed&&t.end_date&&pd(t.end_date)<now).length;
-    x.overduePct=x.open?Math.round(x.overdue/Math.max(1,x.open)*100):0;
+    x.overdue=tasks.filter(t=>!t.is_completed&&t.end_date&&pd(t.end_date)<t0()).length;
     // pipeline + stage grid
     x.pipe={};PIPES.forEach(pp=>{x.pipe[pp.k]={total:0,done:0,stages:{}};});
     tasks.forEach(t=>{const pp=x.pipe[t.pipeline];if(!pp)return;pp.total++;if(t.is_completed)pp.done++;
@@ -787,7 +765,7 @@ function derive(){
     // dates
     x.etaD=pd(p.current_eta);x.baseD=pd(p.baseline_eta);x.startD=pd(p.start_date)||pd(p.created_time);
     x.slip=(x.etaD&&x.baseD)?ddiff(x.etaD,x.baseD):null;
-    x.modD=pd(p.modified_time);x.stall=x.modD?ddiff(today,x.modD):null;
+    x.modD=pd(p.modified_time);
     x.conf=confNum(p.confidence);
     // go-live date: Zoho actual, else the ETA once the project reached a live phase
     const snaps=(snapBy[p.id]||[]).sort((a,b)=>a.snap_date<b.snap_date?-1:1);
@@ -801,7 +779,6 @@ function derive(){
     const rate=recent/21;
     x.forecastD=x.preLive&&x.open>0&&rate>0?new Date(today.getTime()+Math.ceil(x.open/rate)*DAY):null;
     if(x.preLive&&x.open===0&&x.total>0)x.forecastD=today;
-    x.forecastGap=(x.forecastD&&x.etaD)?ddiff(x.forecastD,x.etaD):null;
     // Health follows Onboarding Intelligence's flag (Scoring Methodology 9.5) so both tools agree:
     // counted signals -> At risk (2+) / Watch (1) / On track (0). Data gaps are shown but never count;
     // task progress is deliberately not a signal.
@@ -995,16 +972,16 @@ function kpiEnhHtml(items){loadKpiTargets();return items.map(k=>{
 // ═══════════════════════════════════════════════════════════════
 const TBL={};// id -> {rows:[{cells,sort:{},csv:[],onclick}], heads, csvHeads, sortK, dir, page, size, q}
 function setTable(id,rows,csvHeads,opts){
-  const prev=TBL[id]||{};TBL[id]=Object.assign({page:1,size:25,q:'',sortK:prev.sortK||(opts&&opts.sortK)||null,dir:prev.dir||(opts&&opts.dir)||1},{rows,csvHeads,title:(opts&&opts.title)||id});
+  const prev=TBL[id]||{};TBL[id]=Object.assign({page:prev.page||1,size:prev.size||25,q:prev.q||'',sortK:prev.sortK||(opts&&opts.sortK)||null,dir:prev.dir||(opts&&opts.dir)||1},{rows,csvHeads,title:(opts&&opts.title)||id});
   const tb=$(id);if(!tb)return;const card=tb.closest('.tbl-card');
   if(card&&!card.querySelector('.tbl-toolbar')){
     const bar=document.createElement('div');bar.className='tbl-toolbar';
     bar.innerHTML=`<input class="tbl-search" placeholder="Search…" oninput="TBL['${id}'].q=this.value;TBL['${id}'].page=1;drawTable('${id}')"><button class="tbl-csv-btn" onclick="csvTable('${id}')">⬇ CSV</button>`;
     const wrap=card.querySelector('.tbl-wrap');card.insertBefore(bar,wrap);
     const pg=document.createElement('div');pg.className='tbl-pagination';pg.id='pgn_'+id;wrap.after(pg);
-    const thead=tb.closest('table')&&tb.closest('table').querySelector('thead');
-    if(thead)thead.querySelectorAll('th[data-k]').forEach(th=>{th.onclick=()=>{const st=TBL[id];if(st.sortK===th.dataset.k)st.dir=-st.dir;else{st.sortK=th.dataset.k;st.dir=1;}drawTable(id);};});
-  }else if(card){const s=card.querySelector('.tbl-search');if(s)s.value='';}
+  }else if(card){const s=card.querySelector('.tbl-search');if(s)s.value=TBL[id].q;}
+  const thead=tb.closest('table')&&tb.closest('table').querySelector('thead');
+  if(thead)thead.querySelectorAll('th[data-k]').forEach(th=>{th.onclick=()=>{const st=TBL[id];if(st.sortK===th.dataset.k)st.dir=-st.dir;else{st.sortK=th.dataset.k;st.dir=1;}drawTable(id);};});
   drawTable(id);
 }
 function drawTable(id){
@@ -1037,10 +1014,7 @@ function csvDownload(headers,rows,filename){
 function filterTable(id,q){const st=TBL[id];if(!st)return;st.q=q;st.page=1;const tb=$(id);const s=tb&&tb.closest('.tbl-card').querySelector('.tbl-search');if(s)s.value=q;drawTable(id);tb.closest('.tbl-card').scrollIntoView({behavior:'smooth',block:'nearest'});}
 
 // shared cell renderers
-function minibars(p){return `<span class="minibars">${PIPES.map(pp=>{const x=p.pipe[pp.k];const pc=x.pct||0;
-  return `<span class="minibar" title="${pp.k} ${pp.n}: ${x.pct==null?'no tasks':pc+'%'}${x.manual?' (manual)':''}"><i style="width:${pc}%;background:${PIPE_COLORS[pp.k]}"></i></span>`;}).join('')}</span>`;}
 function pctCell(pct,cls){return `<div class="pct-cell"><div class="pbar ${cls||''}"><i style="width:${Math.max(0,Math.min(100,pct))}%"></i></div><span>${pct}%</span></div>`;}
-function slipCell(s){return s==null?'<span class="dim">—</span>':s>0?`<span class="slip pos">+${s}d</span>`:s<0?`<span class="slip neg">${s}d</span>`:'<span class="dim">0</span>';}
 // Standard project row used by Projects and Go-Lives:
 // Health · Project · Status · Done · Current ETA (or Go-live) · ARR · Owner · Project Manager · BA · SA
 const PROJ_HEAD=dateLbl=>`<th data-k="rag">Health</th><th data-k="name">Project</th><th data-k="status">Status</th><th data-k="pct">Done</th><th data-k="date">${dateLbl}</th><th data-k="arr">ARR</th><th data-k="owner">Owner</th><th data-k="pm">Project Manager</th><th data-k="ba">BA</th><th data-k="sa">SA</th>`;
@@ -1114,24 +1088,15 @@ function renderOverview(){
 function monthKeys(from,to){const out=[],n=new Date();for(let i=from;i<=to;i++){out.push(ym(new Date(n.getFullYear(),n.getMonth()+i,1)));}return out;}
 function weekChanges(vp){
   const cutoff=ymd(new Date(Date.now()-7*DAY));
-  const out={live:[],slip:[],pull:[],status:[],added:[],stalled:[]};
+  const out={live:[],slip:[]};
   vp.forEach(p=>{
     const s=p.snaps;const cur=s[s.length-1];const base=s.filter(x=>x.snap_date<=cutoff).pop();
-    if(p.first_seen&&pd(p.first_seen)>new Date(Date.now()-7*DAY)&&RAW.snapshots&&RAW.snapshots.some(x=>x.snap_date<=cutoff))out.added.push({p});
-    if(p.preLive&&p.stall!=null&&p.stall>SET.rag.stall_days)out.stalled.push({p,meta:p.stall+'d'});
     if(!cur||!base)return;
     const was=SET.phase_map[base.status]||'Onboarding';
     if(POST_LIVE.has(p.phase)&&!POST_LIVE.has(was))out.live.push({p,meta:fmtD(p.liveD)});
-    else if(cur.status!==base.status)out.status.push({p,meta:`${base.status} → ${cur.status}`});
-    if(cur.current_eta&&base.current_eta&&cur.current_eta!==base.current_eta){const d=ddiff(pd(cur.current_eta),pd(base.current_eta));(d>0?out.slip:out.pull).push({p,meta:(d>0?'+':'')+d+'d'});}
+    if(cur.current_eta&&base.current_eta&&cur.current_eta!==base.current_eta){const d=ddiff(pd(cur.current_eta),pd(base.current_eta));if(d>0)out.slip.push({p,meta:'+'+d+'d'});}
   });
   return out;
-}
-function changesHtml(vp){
-  const c=weekChanges(vp);const hasHist=(RAW.snapshots||[]).some(x=>x.snap_date<=ymd(new Date(Date.now()-7*DAY)));
-  const grp=(icon,title,arr)=>arr.length?`<div class="chg-group"><div class="chg-hd">${icon} ${title} <span class="tbl-pill">${arr.length}</span></div>${arr.slice(0,6).map(x=>`<div class="chg-item" onclick="openProject('${jsq(x.p.id)}')"><span>${esc(x.p.name)}</span><span class="chg-meta">${esc(x.meta||'')}</span></div>`).join('')}${arr.length>6?`<div class="chart-note">+${arr.length-6} more</div>`:''}</div>`:'';
-  const html=grp('✅','Went live',c.live)+grp('⏩','ETA slipped',c.slip)+grp('⏪','ETA pulled in',c.pull)+grp('🔁','Status changed',c.status)+grp('🆕','New projects',c.added)+grp('⚠️','Stalled (no Zoho update)',c.stalled);
-  return html||`<div class="empty">${hasHist?'No changes in the last 7 days.':'Week-over-week changes appear once a week of daily snapshots has built up.'}</div>`;
 }
 function copyDigest(){
   const vp=VP(),pre=vp.filter(p=>p.preLive),c=weekChanges(vp);
@@ -1140,7 +1105,7 @@ function copyDigest(){
   const sec=(t,a,f)=>{if(a.length){L.push('');L.push(`*${t}* (${a.length})`);a.slice(0,15).forEach(x=>L.push('• '+f(x)));}};
   sec('Went live',c.live,x=>x.p.name);sec('ETA slipped',c.slip,x=>`${x.p.name} ${x.meta} → ${fmtD(x.p.etaD)}`);
   sec('At risk',pre.filter(p=>p.rag==='R'),p=>`${p.name} (${p.owner||'no owner'}) — ${p.why.join('; ')}`);
-  const over=PEOPLE.map(pr=>loadOf(pr)).filter(l=>l.util>100);sec('Over capacity',over,l=>`${l.name}: ${l.util}%`);
+  if(FEATURES.team){const over=PEOPLE.map(pr=>loadOf(pr)).filter(l=>l.util>100);sec('Over capacity',over,l=>`${l.name}: ${l.util}%`);}
   navigator.clipboard.writeText(L.join('\n')).then(()=>toast('Digest copied — paste into Slack or email.'),()=>toast('Could not copy to clipboard.'));
 }
 
@@ -1209,7 +1174,7 @@ function renderPipelines(){
     .concat([{label:'Most projects at',val:busiest||'—',cls:'orange',sub:busiest?sitting[busiest]+' projects':''},{label:'Slowest stage',val:slowest||'—',cls:'red',sub:slowest?Math.round(ageSum[slowest]/ageN[slowest])+'d avg open':''}]));
   $('pipeCharts').innerHTML=chartCard('ppSit','Projects by current stage',pre.length+' projects',220,null,true)+chartCard('ppAge','Avg days the current stage has been open',null,220,null,true);
   later(()=>{
-    const kk=keys.filter(k=>sitting[k]);makeBar('ppSit',kk,kk.map(k=>sitting[k]),kk.map(k=>PIPE_COLORS[k.slice(0,2)]),l=>filterTable('projTbl',l));
+    const kk=keys.filter(k=>sitting[k]);makeBar('ppSit',kk,kk.map(k=>sitting[k]),kk.map(k=>PIPE_COLORS[k.slice(0,2)]));
     const ka=keys.filter(k=>ageN[k]);makeBar('ppAge',ka,ka.map(k=>Math.round(ageSum[k]/ageN[k])),ka.map(k=>PIPE_COLORS[k.slice(0,2)]));
   });
   $('pipePill').textContent=pre.length+' projects';
@@ -1238,8 +1203,8 @@ function renderTasks(){
   const all=(RAW.tasks||[]).filter(t=>ids.has(t.project_id));
   const now=new Date(),in7=new Date(Date.now()+7*DAY);
   const openT=all.filter(t=>!t.is_completed&&PBYID[t.project_id]&&PBYID[t.project_id].preLive);
-  const over=openT.filter(t=>t.end_date&&pd(t.end_date)<now);
-  const due7=openT.filter(t=>t.end_date&&pd(t.end_date)>=now&&pd(t.end_date)<=in7);
+  const over=openT.filter(t=>t.end_date&&pd(t.end_date)<t0());
+  const due7=openT.filter(t=>t.end_date&&pd(t.end_date)>=t0()&&pd(t.end_date)<=in7);
   const unassigned=openT.filter(t=>!(t.owners||[]).length);
   const doneP=all.filter(t=>t.is_completed&&inPeriod(pd(t.modified_time))||(F.period==='all'&&t.is_completed));
   const donePrev=F.period==='all'?null:all.filter(t=>t.is_completed&&inPrev(pd(t.modified_time))).length;
@@ -1272,7 +1237,7 @@ function renderTaskList(){
     if(q&&!p.name.toLowerCase().includes(q))ts=ts.filter(t=>t.name.toLowerCase().includes(q));
     if(!ts.length)return null;
     const openAll=p.tasks.filter(t=>!t.is_completed);
-    return{p,ts,overdue:openAll.filter(t=>t.end_date&&pd(t.end_date)<now).length,due7:openAll.filter(t=>t.end_date&&pd(t.end_date)>=now&&pd(t.end_date)<=in7).length,open:openAll.length,
+    return{p,ts,overdue:openAll.filter(t=>t.end_date&&pd(t.end_date)<t0()).length,due7:openAll.filter(t=>t.end_date&&pd(t.end_date)>=t0()&&pd(t.end_date)<=in7).length,open:openAll.length,
       next:openAll.filter(t=>t.end_date).sort((a,b)=>pd(a.end_date)-pd(b.end_date))[0]};}).filter(Boolean);
   const srt=$('taskSort').value;
   groups.sort(srt==='open'?(a,b)=>b.open-a.open:srt==='eta'?(a,b)=>(a.p.etaD||9e15)-(b.p.etaD||9e15):srt==='name'?(a,b)=>a.p.name.localeCompare(b.p.name):(a,b)=>b.overdue-a.overdue||b.open-a.open);
@@ -1289,7 +1254,7 @@ function renderTaskList(){
         <div class="tp-name"><b>${esc(p.name)}</b><div class="tp-sub">${esc(p.status)} · ${esc(p.owner||'no owner')}${p.pm?' · PM '+esc(p.pm):''}${p.etaD?' · ETA '+fmtD(p.etaD):''}</div></div>
         <div style="width:150px">${pctCell(p.pct)}</div>
         <div class="tp-chips"><span class="tp-chip">${g.open} open</span>${g.overdue?`<span class="tp-chip red">${g.overdue} overdue</span>`:''}${g.due7?`<span class="tp-chip amber">${g.due7} due 7d</span>`:''}</div>
-        <div class="tp-next">${nx?`<span class="dim">Next:</span> ${esc(nx.name)} <span class="${nxDue<now?'slip pos':'dim'}">${fmtD(nxDue)}</span>`:'<span class="dim">No dated open tasks</span>'}</div>
+        <div class="tp-next">${nx?`<span class="dim">Next:</span> ${esc(nx.name)} <span class="${nxDue<t0()?'slip pos':'dim'}">${fmtD(nxDue)}</span>`:'<span class="dim">No dated open tasks</span>'}</div>
         <button class="top-btn" onclick="event.stopPropagation();openTaskForm('${jsq(p.id)}')" title="Add a task to this project">+ Task</button>
         <button class="top-btn" onclick="event.stopPropagation();openProject('${jsq(p.id)}','pipelines')" title="Update pipeline progress">✎ Pipelines</button>
       </div>
@@ -1298,7 +1263,7 @@ function renderTaskList(){
         ${ts.sort(taskOrder).map(t=>taskRowHtml(t,now)).join('')}</div>`;}).join('')}</div>`:''}
     </div>`;}).join(''):`<div class="empty">No ${view==='done'?'completed':'matching'} tasks${q?' for “'+esc(q)+'”':''}.</div>`;
 }
-function csvTasks(){const rows=[];TASK_LIST.forEach(g=>g.ts.forEach(t=>{const due=pd(t.end_date);rows.push([g.p.name,g.p.status,g.p.owner,g.p.pm,t.pipeline,t.stage,t.tasklist_name,t.name,ownerNames(t),t.end_date?String(t.end_date).slice(0,10):'',t.status,!t.is_completed&&due&&due<new Date()?ddiff(t0(),due):'']);}));
+function csvTasks(){const rows=[];TASK_LIST.forEach(g=>g.ts.forEach(t=>{const due=pd(t.end_date);rows.push([g.p.name,g.p.status,g.p.owner,g.p.pm,t.pipeline,t.stage,t.tasklist_name,t.name,ownerNames(t),t.end_date?String(t.end_date).slice(0,10):'',t.status,!t.is_completed&&due&&due<t0()?ddiff(t0(),due):'']);}));
   csvDownload(['Project','Project status','Owner','Project Manager','Pipeline','Stage','Task list','Task','Assignee','Due','Status','Days late'],rows,'tasks-by-project.csv');}
 
 // ═══════════════════════════════════════════════════════════════
@@ -1438,8 +1403,8 @@ function loadOf(pr){
   const weighted=owned.reduce((t,p)=>t+PHASE_WEIGHT[p.phase],0)+second.reduce((t,p)=>t+PHASE_WEIGHT[p.phase]*.5,0);
   const now=new Date(),in7=new Date(Date.now()+7*DAY);const ids=new Set(vp.filter(p=>p.preLive).map(p=>p.id));
   const mine=(RAW.tasks||[]).filter(t=>!t.is_completed&&ids.has(t.project_id)&&(t.owners||[]).some(o=>isMe(o.name,o.email)));
-  const overdue=mine.filter(t=>t.end_date&&pd(t.end_date)<now).length;
-  const due7=mine.filter(t=>t.end_date&&pd(t.end_date)>=now&&pd(t.end_date)<=in7).length;
+  const overdue=mine.filter(t=>t.end_date&&pd(t.end_date)<t0()).length;
+  const due7=mine.filter(t=>t.end_date&&pd(t.end_date)>=t0()&&pd(t.end_date)<=in7).length;
   const wh=whOf(pr);
   const [from,to]=teamRange();const hrs=hoursOf(nm,from,to),av=availOf(pr,from,to,hrs);
   const thisMon=mondayOf(new Date()),f4=new Date(thisMon.getTime()-28*DAY);const h4=hoursOf(nm,f4,thisMon),av4=availOf(pr,f4,thisMon,h4);
@@ -1762,7 +1727,7 @@ function renderSettings(){
   <div class="card set-sec" id="setPeople"><div class="card-title">People &amp; capacity <span class="chart-badge">${PEOPLE.length} people from Zoho</span></div>
     <div class="chart-note" style="margin:0 0 10px">Everyone who owns a project or task in Zoho is listed. Set their team role (drives the Team Load tabs), whether they are Zuper staff or a partner, and how many onboarding projects they can carry.</div>
     <div class="tbl-wrap" style="max-height:480px"><table><thead><tr><th class="nosort">Name</th><th class="nosort">Email</th><th class="nosort">Role</th><th class="nosort">Org</th><th class="nosort">Projects capacity</th><th class="nosort">Weekly hours</th><th class="nosort">Active</th></tr></thead><tbody id="peopleTbl">
-    ${peopleRows.map((p,i)=>`<tr data-email="${esc(p.email||'')}"><td><input class="cell-inp" data-f="name" value="${esc(p.name)}"></td><td class="mono">${esc(p.email||'(no email in Zoho)')}</td>
+    ${peopleRows.map((p,i)=>`<tr data-email="${esc(p.email||'')}"${p.email?'':' class="dim" title="No email in Zoho — this person can\'t be saved"'}><td><input class="cell-inp" data-f="name" value="${esc(p.name)}"></td><td class="mono">${esc(p.email||'(no email in Zoho)')}</td>
       <td><select class="filter-select" data-f="role">${ROLES.map(r=>`<option${p.role===r?' selected':''}>${r}</option>`).join('')}</select></td>
       <td><input class="cell-inp" data-f="org" value="${esc(p.org)}" style="width:110px"></td><td><input class="cell-inp" type="number" data-f="capacity" value="${p.capacity}" style="width:70px"></td><td><input class="cell-inp" type="number" data-f="weekly_hours" value="${p.weekly_hours||''}" placeholder="${SET.capacity.weekly_hours}" style="width:70px" title="Blank = team default (${SET.capacity.weekly_hours}h)"></td>
       <td><input type="checkbox" data-f="active"${p.active?' checked':''}></td></tr>`).join('')}
@@ -1771,9 +1736,9 @@ function renderSettings(){
 }
 async function connectZoho(){
   const code=$('zohoCode').value.trim();if(!code){toast('Paste the grant code first.');return;}
-  setStatus('loading','Connecting to Zoho…');
   const client_id=$('zohoCid').value.trim(),client_secret=$('zohoCsec').value.trim();
   if(!RAW.sync.zoho_client_set&&(!client_id||!client_secret)){toast('Enter the Client ID and Client Secret too.');return;}
+  setStatus('loading','Connecting to Zoho…');
   try{const r=await api('zoho_connect',Object.assign({code},client_id&&client_secret?{client_id,client_secret}:{}));toast('Zoho connected'+(r.portals&&r.portals.length?' — portal '+r.portals.map(p=>p.name).join(', '):'')+'. First sync starting…',4000);await loadData();renderSettings();syncNow();}
   catch(e){setStatus('warn',e.message);toast(e.message,6000);}
 }
@@ -1787,7 +1752,7 @@ async function saveRules(){
   const targets=Object.assign({},SET.targets,{golives_per_month:+$('tGl').value||10});
   const exclude=$('tExcl').value.split(',').map(s=>s.trim()).filter(Boolean);
   const ind=$('tInd').value.trim()||'Roofing';const indChanged=ind!==(SET.general.industry===undefined?'Roofing':SET.general.industry);
-  try{await saveSetting('rag',rag);await saveSetting('targets',targets);await saveSetting('exclude',exclude);
+  try{await saveSetting('targets',targets);await saveSetting('exclude',exclude);
     await saveSetting('general',Object.assign({},SET.general,{industry:ind}));
     if(indChanged)toast('Industry changed — press Sync to re-pull projects.',4000);
     try{const t=JSON.parse(localStorage.getItem('pcc_kpi_targets')||'{}');t['ov-golives']=targets.golives_per_month;localStorage.setItem('pcc_kpi_targets',JSON.stringify(t));}catch(e){}
@@ -1806,11 +1771,34 @@ async function savePeople(){
 // ═══════════════════════════════════════════════════════════════
 // DRAWERS — project + person
 // ═══════════════════════════════════════════════════════════════
-let drawerProject=null,drawerTab='overview',drawerFocus=null;
-function openProject(id,tab,focus){TASK_VIEW=null;const p=PBYID[id];if(!p){toast('Project is hidden by the current filters or settings.');return;}drawerProject=p;drawerTab=tab||'overview';drawerFocus=focus||null;OVDRAFT={};renderDrawer();$('drawerOv').style.display='block';requestAnimationFrame(()=>$('drawer').classList.add('open'));
-  if(focus)setTimeout(()=>{const el=$('ovc-'+focus);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},260);}
+let drawerProject=null,drawerTab='overview';
+function openProject(id,tab,focus){
+  const p=PBYID[id];if(!p){toast('Project is hidden by the current filters or settings.');return;}
+  TASK_VIEW=null;TASK_EDIT=null;OVDRAFT={};drawerProject=p;drawerTab=tab||'overview';
+  if(drawerTab==='pipelines'&&/^P[1-9]$/.test(focus||''))PL_OPEN={pid:id,k:new Set([focus])};
+  renderDrawer();$('drawerOv').style.display='block';requestAnimationFrame(()=>$('drawer').classList.add('open'));
+  if(focus)setTimeout(()=>{const el=$('pls-'+focus);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},260);
+}
 // Re-derive and keep the same drawer open after a save.
-async function refreshKeepDrawer(){const id=drawerProject&&drawerProject.id,tab=drawerTab;await loadData();renderPage(activePage);if(id&&PBYID[id]){drawerProject=PBYID[id];drawerTab=tab;renderDrawer();}}
+// Full reload from the server, keeping the open drawer and its tab. Only needed when a save fails.
+async function refreshKeepDrawer(){const id=drawerProject&&drawerProject.id,tab=drawerTab,open=drawerIsOpen();await loadData();renderPage(activePage);if(open&&id&&PBYID[id]){drawerProject=PBYID[id];drawerTab=tab;renderDrawer();}}
+// Local-first saves: a change is applied to RAW and redrawn straight away; the request runs in the
+// background and a failure reloads from the server. The page behind the drawer redraws a moment later.
+let PAGE_REDRAW=null;
+// The overlay is shown synchronously on open (the slide-in class is added a frame later).
+const drawerIsOpen=()=>$('drawerOv').style.display==='block';
+function redrawLocal(){
+  const id=drawerProject&&drawerProject.id,open=drawerIsOpen();
+  derive();renderSidebar();
+  if(open&&id&&PBYID[id]){drawerProject=PBYID[id];renderDrawer();}
+  clearTimeout(PAGE_REDRAW);PAGE_REDRAW=setTimeout(()=>renderPage(activePage),300);
+}
+async function saveInBackground(promise,undo){
+  try{return await promise;}
+  catch(e){if(undo)undo();toast("Couldn't save: "+e.message,5000);await refreshKeepDrawer();return null;}
+}
+function upsertNative(row){if(!row||!row.id)return;const L=RAW.native_tasks=RAW.native_tasks||[];const i=L.findIndex(r=>r.id===row.id);if(i>=0)L[i]=Object.assign({},row);else L.push(Object.assign({},row));}
+function upsertOverride(row){if(!row)return;const L=RAW.overrides=RAW.overrides||[];const i=L.findIndex(o=>o.project_id===row.project_id&&o.pipeline===row.pipeline);if(i>=0)L[i]=row;else L.push(row);}
 
 // ─── Pipeline editor (drawer tab) ───────────────────────────────
 // Draft per pipeline: {mode:'auto'|'manual', manual_pct, status, note, items:[{id,text,done}]}
@@ -1821,19 +1809,13 @@ function ovDraft(k){
     OVDRAFT[k]={mode:g.manual?'manual':'auto',manual_pct:g.manual?g.pct:(g.autoPct??0),status:g.status||'',note:g.note||'',items:JSON.parse(JSON.stringify(g.items||[])),dirty:false};}
   return OVDRAFT[k];}
 function ovSet(k,f,v){const d=ovDraft(k);d[f]=v;d.dirty=true;renderPipeEditor();}
-function ovItemAdd(k){const inp=$('ovi-'+k);const t=(inp.value||'').trim();if(!t)return;const d=ovDraft(k);d.items.push({id:'i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),text:t,done:false});d.dirty=true;renderPipeEditor();setTimeout(()=>{const n=$('ovi-'+k);if(n)n.focus();},0);}
-function ovItemToggle(k,id){const d=ovDraft(k);const it=d.items.find(i=>i.id===id);if(it){it.done=!it.done;d.dirty=true;renderPipeEditor();}}
-function ovItemDel(k,id){const d=ovDraft(k);d.items=d.items.filter(i=>i.id!==id);d.dirty=true;renderPipeEditor();}
-function ovPreview(k){const g=drawerProject.pipe[k],d=ovDraft(k);
-  if(d.mode==='manual')return Number(d.manual_pct)||0;if(d.status==='Done')return 100;
-  const tot=g.total+d.items.length,dn=g.done+d.items.filter(i=>i.done).length;return tot?Math.round(dn/tot*100):(/complet/i.test(g.zohoStatus||'')?100:null);}
 async function ovSave(k){const d=ovDraft(k);
-  try{await api('override_save',{project_id:drawerProject.id,pipeline:k,manual_pct:d.mode==='manual'?Number(d.manual_pct):null,status:d.status||null,note:d.note||null,items:d.items});
-    delete OVDRAFT[k];toast(`${k} saved.`);await refreshKeepDrawer();}catch(e){toast(e.message,4000);}}
+  try{const r=await api('override_save',{project_id:drawerProject.id,pipeline:k,manual_pct:d.mode==='manual'?Number(d.manual_pct):null,status:d.status||null,note:d.note||null,items:d.items});
+    delete OVDRAFT[k];upsertOverride(r&&r.row);redrawLocal();toast(`${k} saved.`);}catch(e){toast(e.message,4000);}}
 async function ovReset(k){if(!confirm(`Clear manual updates for ${k}? Progress goes back to Zoho tasks only.`))return;
-  try{await api('override_save',{project_id:drawerProject.id,pipeline:k,manual_pct:null,status:null,note:null,items:[]});delete OVDRAFT[k];toast(`${k} reset.`);await refreshKeepDrawer();}catch(e){toast(e.message,4000);}}
+  try{const r=await api('override_save',{project_id:drawerProject.id,pipeline:k,manual_pct:null,status:null,note:null,items:[]});delete OVDRAFT[k];upsertOverride(r&&r.row);redrawLocal();toast(`${k} reset.`);}catch(e){toast(e.message,4000);}}
 
-function closeDrawer(){$('drawer').classList.remove('open');$('drawerOv').style.display='none';Object.keys(charts).filter(k=>k.startsWith('dr')).forEach(destroyChart);}
+function closeDrawer(){TASK_EDIT=null;TASK_VIEW=null;$('drawer').classList.remove('open');$('drawerOv').style.display='none';Object.keys(charts).filter(k=>k.startsWith('dr')).forEach(destroyChart);}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
 function renderDrawer(){
   const p=drawerProject;const acc=ACCOUNTS.find(a=>a.proj&&a.proj.id===p.id);
@@ -1893,14 +1875,13 @@ function nativeTask(r){
 const nativeRow=nid=>(RAW.native_tasks||[]).find(r=>r.id===nid);
 function myName(){try{return localStorage.getItem('pcc_me')||'';}catch(e){return '';}}
 function openTaskForm(pid,nid,tid){
-  TASK_EDIT={pid,nid:nid||null,tid:tid||null};TASK_VIEW=null;
-  if(drawerProject&&drawerProject.id===pid&&$('drawer').classList.contains('open')){drawerTab='tasks';renderDrawer();}
-  else openProject(pid,'tasks');
+  if(!(drawerProject&&drawerProject.id===pid&&drawerIsOpen()))openProject(pid,'tasks'); // opening resets drawer state, so it goes first
+  TASK_EDIT={pid,nid:nid||null,tid:tid||null};TASK_VIEW=null;drawerTab='tasks';renderDrawer();
   later(()=>{const e=$('tfName');if(e){e.focus();e.scrollIntoView({block:'nearest'});}});
 }
 function taskFormHtml(p){
   const zt=TASK_EDIT.tid?(RAW.tasks||[]).find(x=>x.id===TASK_EDIT.tid):null;
-  const r=TASK_EDIT.nid?nativeRow(TASK_EDIT.nid):zt?{name:zt.name,owner_name:(zt.owners[0]||{}).name||null,pipeline:zt.pipeline,stage:zt.stage,status:zt.status,start_date:zt.start_date?String(zt.start_date).slice(0,10):null,end_date:zt.end_date?String(zt.end_date).slice(0,10):null,priority:zt.priority?zt.priority.replace(/^w/,c=>c.toUpperCase()):null,notes:zt.notes||null}:null;
+  const r=TASK_EDIT.nid?nativeRow(TASK_EDIT.nid):zt?{name:zt.name,owner_name:(zt.owners[0]||{}).name||null,pipeline:zt.pipeline,stage:zt.stage,status:zt.status,start_date:zt.start_date?String(zt.start_date).slice(0,10):null,end_date:zt.end_date?String(zt.end_date).slice(0,10):null,priority:zt.priority?zt.priority.replace(/^\w/,c=>c.toUpperCase()):null,notes:zt.notes||null}:null;
   const sts=r&&r.status&&!TASK_STATUSES.includes(r.status)?[r.status].concat(TASK_STATUSES):TASK_STATUSES;
   const curPipe=r?r.pipeline:((p.stage||'').match(/^P[1-9]/)||['P1'])[0];
   const people=PEOPLE.filter(x=>x.active).map(x=>x.name).sort((a,b)=>a.localeCompare(b));
@@ -1928,27 +1909,26 @@ async function saveTask(){
   const owner=$('tfOwner').value,pr=PEOPLE.find(x=>x.name===owner),by=$('tfBy').value.trim();
   const start=$('tfStart').value,due=$('tfDue').value;if(start&&due&&due<start){toast('Due date is before the start date.');return;}
   try{localStorage.setItem('pcc_me',by);}catch(e){}
-  const body={id:TASK_EDIT.nid||undefined,project_id:TASK_EDIT.pid,name,owner_name:owner||null,owner_email:pr&&pr.email||null,pipeline:$('tfPipe').value||null,
+  const nr=TASK_EDIT.nid?nativeRow(TASK_EDIT.nid):null,stg=$('tfStage').value?+$('tfStage').value:null,pk=$('tfPipe').value||null;
+  const pst=pk&&stg&&PLAYBOOK[pk]?PLAYBOOK[pk].stages.find(s=>s.n===stg):null;
+  const tasklist_name=nr&&Number(nr.stage||0)===Number(stg||0)&&(nr.pipeline||null)===pk?nr.tasklist_name:(stg?`Stage ${stg}${pst?' '+pst.name:''}`:null);
+  const body={id:TASK_EDIT.nid||undefined,project_id:TASK_EDIT.pid,tasklist_name,name,owner_name:owner||null,owner_email:pr&&pr.email||null,pipeline:$('tfPipe').value||null,
     stage:$('tfStage').value?+$('tfStage').value:null,status:$('tfStatus').value,start_date:start||null,end_date:due||null,priority:$('tfPri').value||null,notes:$('tfNotes').value.trim()||null,by:by||null};
   if(TASK_EDIT.tid)return saveZohoEdits(body);
   $('tfSave').disabled=true;
-  try{const pid=TASK_EDIT.pid,edit=!!TASK_EDIT.nid;await api('task_save',body);TASK_EDIT=null;await reloadKeepDrawer(pid);toast(edit?'Task updated.':'Task added.');}
+  try{const edit=!!TASK_EDIT.nid,r=await api('task_save',body);TASK_EDIT=null;upsertNative(r&&r.task);redrawLocal();toast(edit?'Task updated.':'Task added.');}
   catch(e){toast(e.message,4000);const b=$('tfSave');if(b)b.disabled=false;}
 }
 async function toggleTask(nid){
-  const r=nativeRow(nid);if(!r)return;const done=!r.is_completed;
-  try{await api('task_save',Object.assign({},r,{status:done?'Done':(r.status==='Done'?'Open':r.status),by:myName()||null}));await reloadKeepDrawer(r.project_id);toast(done?'Marked done.':'Reopened.');}
-  catch(e){toast(e.message,4000);}
+  const r=nativeRow(nid);if(!r)return;const prev=Object.assign({},r),done=!r.is_completed,now=new Date().toISOString();
+  Object.assign(r,{status:done?'Done':(r.status==='Done'?'Open':r.status),is_completed:done,completed_at:done?now:null,updated_at:now,updated_by:myName()||r.updated_by});
+  redrawLocal();toast(done?'Marked done.':'Reopened.');
+  const res=await saveInBackground(api('task_save',Object.assign({},r,{by:myName()||null})),()=>Object.assign(r,prev));
+  if(res&&res.task)upsertNative(res.task);
 }
 async function deleteTask(nid){
   const r=nativeRow(nid);if(!r||!confirm(`Delete “${r.name}”? This can't be undone.`))return;
-  try{await api('task_delete',{id:nid});TASK_EDIT=null;TASK_VIEW=null;await reloadKeepDrawer(r.project_id);toast('Task deleted.');}catch(e){toast(e.message,4000);}
-}
-// Reload data and redraw the current page, keeping the project drawer open on Tasks.
-async function reloadKeepDrawer(pid){
-  const wasOpen=$('drawer').classList.contains('open')&&drawerProject&&drawerProject.id===pid;
-  await loadData();renderPage(activePage);
-  if(wasOpen&&PBYID[pid]){drawerProject=PBYID[pid];drawerTab=drawerTab==='pipelines'?'pipelines':'tasks';renderDrawer();}
+  try{await api('task_delete',{id:nid});TASK_EDIT=null;TASK_VIEW=null;RAW.native_tasks=(RAW.native_tasks||[]).filter(x=>x.id!==nid);RAW.task_meta=(RAW.task_meta||[]).filter(m=>m.task_id!=='pcc:'+nid);redrawLocal();toast('Task deleted.');}catch(e){toast(e.message,4000);}
 }
 // ─── Task order, hide, "done here" and detail view ──────────────────────────
 // pcc_task_meta holds choices made in the tool for ANY task (Zoho or tool-created): display order,
@@ -2014,9 +1994,21 @@ function taskOrder(a,b){
   const ka=a.ord!=null?a.ord:(a.sequence!=null?1e6+a.sequence:2e6),kb=b.ord!=null?b.ord:(b.sequence!=null?1e6+b.sequence:2e6);
   return ka-kb||(pd(a.end_date)||9e15)-(pd(b.end_date)||9e15)||String(a.name).localeCompare(String(b.name));
 }
+function applyMetaLocal(items){
+  const by=myName()||null,now=new Date().toISOString(),L=RAW.task_meta=RAW.task_meta||[];
+  items.forEach(x=>{let m=L.find(r=>r.task_id===x.task_id);
+    if(!m){m={task_id:x.task_id,project_id:x.project_id,sort_order:null,hidden:false,done:null,done_at:null,edits:null,checks:null};L.push(m);}
+    if('sort_order' in x)m.sort_order=x.sort_order;
+    if('hidden' in x)m.hidden=!!x.hidden;
+    if('done' in x){m.done=x.done;m.done_at=x.done?(m.done_at||now):null;}
+    if('edits' in x)m.edits=x.edits&&Object.keys(x.edits).length?x.edits:null;
+    if('checks' in x)m.checks=x.checks&&x.checks.length?x.checks:null;
+    m.updated_by=by||m.updated_by;m.updated_at=now;});
+}
 async function saveTaskMeta(items,msg){
-  try{await api('task_meta_save',{items,by:myName()||null});await reloadKeepDrawer(items[0].project_id);if(msg)toast(msg);}
-  catch(e){toast(e.message,4000);}
+  const before=JSON.stringify(RAW.task_meta||[]);
+  applyMetaLocal(items);redrawLocal();if(msg)toast(msg);
+  await saveInBackground(api('task_meta_save',{items,by:myName()||null}),()=>{RAW.task_meta=JSON.parse(before);});
 }
 // Tick any task. Tool tasks change their own status; Zoho tasks get a "done here" override
 // (cleared again when it matches Zoho), so pipeline progress moves without writing to Zoho.
@@ -2054,7 +2046,7 @@ async function tdDrop(e){
 }
 function openTaskView(pid,tid){
   TASK_EDIT=null;
-  if(!(drawerProject&&drawerProject.id===pid&&$('drawer').classList.contains('open')))openProject(pid,'tasks');
+  if(!(drawerProject&&drawerProject.id===pid&&drawerIsOpen()))openProject(pid,'tasks');
   TASK_VIEW={pid,tid};drawerTab='tasks';renderDrawer();
   const t=(RAW.tasks||[]).concat(HIDDEN_TASKS).find(x=>x.id===tid);
   if(t&&!t.native&&!TDETAIL[tid]){
@@ -2074,7 +2066,7 @@ function taskViewHtml(p){
   const tid=TASK_VIEW.tid,t=(RAW.tasks||[]).concat(HIDDEN_TASKS).find(x=>x.id===tid);
   const back=`<div class="tf-bar"><a href="#" onclick="TASK_VIEW=null;renderDrawer();return false">← All tasks</a></div>`;
   if(!t)return back+'<div class="empty">This task no longer exists.</div>';
-  const d=t.native?(nativeRow(t.nid)||{}):(TDETAIL[tid]||null),now=new Date(),due=pd(t.end_date),over=!t.is_completed&&due&&due<now;
+  const d=t.native?(nativeRow(t.nid)||{}):(TDETAIL[tid]||null),now=new Date(),due=pd(t.end_date),over=!t.is_completed&&due&&due<t0();
   const row=(k,v)=>v?`<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${v}</span></div>`:'';
   const desc=t.native?(d.notes||''):(d&&d.description?htmlToText(d.description):'');
   const extra=!t.native&&d&&d.extra?Object.entries(d.extra):[];
@@ -2104,7 +2096,7 @@ function taskViewHtml(p){
     ${extra.length?`<div class="card"><div class="card-title">More details <span class="chart-badge">from Zoho</span></div><div class="info-rows">${extra.map(([k,v])=>row(esc(humanKey(k)),linkify(Array.isArray(v)?v.join(', '):String(v)))).join('')}</div></div>`:''}`;
 }
 function taskRowHtml(t,now,grp){
-  const due=pd(t.end_date),over=!t.is_completed&&due&&due<now,tid=jsq(t.id);
+  const due=pd(t.end_date),over=!t.is_completed&&due&&due<t0(),tid=jsq(t.id);
   return `<div class="task-row${t.is_completed?' done':''}${over?' over':''}" data-tid="${esc(t.id)}" data-grp="${esc(grp||'')}"${grp?` draggable="true" ondragstart="tdStart(event,'${tid}')" ondragend="tdEnd(event)" ondragover="tdOver(event)" ondragleave="tdLeave(event)" ondrop="tdDrop(event)"`:''} onclick="openTaskView('${jsq(t.project_id)}','${tid}')" title="Open task">
     ${grp?'<span class="drag-h" title="Drag to re-order">⋮⋮</span>':''}<span class="chk click${t.is_completed?' on':''}" title="${t.is_completed?'Reopen':'Mark done'}" onclick="event.stopPropagation();tickTask('${tid}')">${t.is_completed?'✓':''}</span>
     <span class="tn">${t.prefix?`<span class="dim mono" style="font-size:10px">${esc(t.prefix)}</span> `:''}${esc(t.name)}${stepChip(t)}${t.native?' <span class="src-tag cc">Command Center</span>':''}${t.edited?' <span class="src-tag cc" title="Edited in Command Center">edited</span>':''}${t.doneHere?` <span class="src-tag cc" title="Zoho still shows ${t.zohoDone?'done':'open'}">${t.is_completed?'done':'reopened'} here</span>`:''}${/high/i.test(t.priority||'')?' <span class="badge br">High</span>':''}</span>
@@ -2234,7 +2226,7 @@ function renderPipeEditor(){
 function plToggle(k){PL_OPEN.k.has(k)?PL_OPEN.k.delete(k):PL_OPEN.k.add(k);renderPipeEditor();}
 function plRow(p,t,pbName){
   // t = a project task, or null for a playbook task that isn't in the project yet
-  const now=new Date(),due=t&&pd(t.end_date),over=t&&!t.is_completed&&due&&due<now;
+  const now=new Date(),due=t&&pd(t.end_date),over=t&&!t.is_completed&&due&&due<t0();
   const pb=t?playbookFor(t):PB_BY_NAME[pbKey(pbName)],n=t&&pb?pb.steps.filter(s=>(t.checks||[]).includes(s)).length:0;
   if(!t)return `<div class="pl-row miss"><input type="checkbox" title="Mark done (adds it to this project)" onchange="plCreate('${jsq(p.id)}','${jsq(pbName)}',true)"><span class="pl-name" title="Not in this project yet">${esc(pbName)}</span><span class="pl-tag">not in project</span></div>`;
   return `<div class="pl-row${t.is_completed?' done':''}${over?' over':''}"><input type="checkbox"${t.is_completed?' checked':''} title="${t.is_completed?'Reopen':'Mark done'}" onchange="tickTask('${jsq(t.id)}')">
@@ -2259,7 +2251,7 @@ function pipelineSectionHtml(p,pp){
     ${items.map(it=>`<div class="pl-row${it.done?' done':''}"><input type="checkbox"${it.done?' checked':''} onchange="plItemToggle('${k}','${jsq(it.id)}')"><span class="pl-name">${esc(it.text)}</span><span class="pl-tag">checklist item</span><button class="cw-btn rm" onclick="plItemDel('${k}','${jsq(it.id)}')" title="Remove">✕</button></div>`).join('')}`:'';
   const curStage=(pb.stages.find(st=>tasks.some(t=>t.stage===st.n&&!t.is_completed))||pb.stages[0]).n;
   const d=ovDraft(k);
-  return `<div class="pl-sec" style="border-left-color:${col}">
+  return `<div class="pl-sec" id="pls-${k}" style="border-left-color:${col}">
     <div class="pl-hd" onclick="plToggle('${k}')"><span class="pl-caret">${open?'▾':'▸'}</span><b style="color:${col}">${k} ${esc(pp.n)}</b>
       <span class="dim">${g.done}/${g.total} tasks</span>${g.manual?'<span class="badge bz">manual %</span>':''}${g.status?`<span class="badge bgr">${esc(g.status)}</span>`:''}
       <span class="pl-bar"><i style="width:${pct||0}%;background:${col}"></i></span><b class="pl-pct">${pct==null?'–':pct+'%'}</b></div>
@@ -2285,27 +2277,28 @@ function pipelineSectionHtml(p,pp){
 async function plAdd(pid,k){
   const inp=$('pla-'+k),name=(inp&&inp.value||'').trim();if(!name){inp&&inp.focus();return;}
   const sn=+$('plas-'+k).value,st=PLAYBOOK[k].stages.find(s=>s.n===sn);
-  try{await api('task_save',{project_id:pid,name,pipeline:k,stage:sn,tasklist_name:`Stage ${sn} ${st?st.name:''}`.trim(),status:'Open',by:myName()||null});
-    PL_FOCUS=k;await refreshKeepDrawer();toast('Task added.');}catch(e){toast(e.message,4000);}
+  try{const r=await api('task_save',{project_id:pid,name,pipeline:k,stage:sn,tasklist_name:`Stage ${sn} ${st?st.name:''}`.trim(),status:'Open',by:myName()||null});
+    upsertNative(r&&r.task);PL_FOCUS=k;redrawLocal();toast('Task added.');}catch(e){toast(e.message,4000);}
 }
 // Tick a playbook task that isn't in the project: create it (done) in one click.
 async function plCreate(pid,name,done){
   const e=PB_BY_NAME[pbKey(name)];if(!e)return;
-  try{await api('task_save',{project_id:pid,name:e.name,pipeline:e.pipeline,stage:e.stage,tasklist_name:`Stage ${e.stage} ${e.stageName}`,status:done?'Done':'Open',by:myName()||null});
-    await refreshKeepDrawer();toast(done?'Marked done.':'Task added.');}catch(err){toast(err.message,4000);}
+  try{const r=await api('task_save',{project_id:pid,name:e.name,pipeline:e.pipeline,stage:e.stage,tasklist_name:`Stage ${e.stage} ${e.stageName}`,status:done?'Done':'Open',by:myName()||null});
+    upsertNative(r&&r.task);redrawLocal();toast(done?'Marked done.':'Task added.');}catch(err){toast(err.message,4000);}
 }
 async function plAddMissing(pid,k){
   const p=PBYID[pid];if(!p)return;const have=new Set();p.tasks.forEach(t=>{const e=playbookFor(t);if(e)have.add(pbKey(e.name));});
   const todo=[];PLAYBOOK[k].stages.forEach(st=>st.tasks.forEach(tk=>{if(!have.has(pbKey(tk.name)))todo.push({st,tk});}));
   if(!todo.length)return;setStatus('loading',`Adding ${todo.length} tasks…`);
-  try{for(const x of todo)await api('task_save',{project_id:pid,name:x.tk.name,pipeline:k,stage:x.st.n,tasklist_name:`Stage ${x.st.n} ${x.st.name}`,status:'Open',by:myName()||null});
-    await refreshKeepDrawer();toast(`Added ${todo.length} playbook task${todo.length===1?'':'s'}.`);}catch(e){toast(e.message,5000);await refreshKeepDrawer();}
+  try{const rows=await Promise.all(todo.map(x=>api('task_save',{project_id:pid,name:x.tk.name,pipeline:k,stage:x.st.n,tasklist_name:`Stage ${x.st.n} ${x.st.name}`,status:'Open',by:myName()||null})));
+    rows.forEach(r=>upsertNative(r&&r.task));redrawLocal();setStatus('ok','Saved');toast(`Added ${todo.length} playbook task${todo.length===1?'':'s'}.`);}catch(e){toast(e.message,5000);await refreshKeepDrawer();}
 }
 // Older checklist items (added before tasks could be created here): one-click tick / remove, saved at once.
 async function plItemSave(k,items){
-  const o=(drawerProject.ov||{})[k]||{};
-  try{await api('override_save',{project_id:drawerProject.id,pipeline:k,manual_pct:o.manual_pct??null,status:o.status||null,note:o.note||null,items});delete OVDRAFT[k];await refreshKeepDrawer();}
-  catch(e){toast(e.message,4000);}
+  const pid=drawerProject.id,o=(drawerProject.ov||{})[k]||{},prev=(RAW.overrides||[]).find(x=>x.project_id===pid&&x.pipeline===k);
+  const row={project_id:pid,pipeline:k,manual_pct:o.manual_pct??null,status:o.status||null,note:o.note||null,items};
+  upsertOverride(Object.assign({},prev||{},row));if(OVDRAFT[k])OVDRAFT[k].items=items;redrawLocal();
+  await saveInBackground(api('override_save',row),()=>{RAW.overrides=(RAW.overrides||[]).filter(x=>!(x.project_id===pid&&x.pipeline===k));if(prev)RAW.overrides.push(prev);});
 }
 function plItemToggle(k,id){const items=((drawerProject.ov||{})[k]||{}).items||[];plItemSave(k,items.map(i=>i.id===id?Object.assign({},i,{done:!i.done}):i));}
 function plItemDel(k,id){const items=((drawerProject.ov||{})[k]||{}).items||[];plItemSave(k,items.filter(i=>i.id!==id));}
@@ -2332,6 +2325,7 @@ function ganttSvg(p){
   return `<div class="card" style="overflow-x:auto"><svg class="gantt" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${svg}</svg></div><div class="chart-note">Bars span the earliest task start to the latest task due date; the filled part is the share of tasks done.</div>`;
 }
 function openPerson(name){
+  drawerProject=null;
   const pr=PEOPLE.find(p=>p.name===name);if(!pr)return;const l=loadOf(pr);const now=new Date();
   const thisMon=mondayOf(now),h4=l.h4,lm=new Date(thisMon.getTime()-7*DAY);const hw=hoursOf(name,thisMon,new Date(thisMon.getTime()+7*DAY)),hl=hoursOf(name,lm,thisMon),al=availOf(pr,lm,thisMon,hl);
   const catRows=Object.entries(h4.byCat).sort((a,b)=>b[1]-a[1]),projRows=Object.entries(h4.byProject).sort((a,b)=>b[1]-a[1]).slice(0,12);
@@ -2347,7 +2341,7 @@ function openPerson(name){
     <div class="task-gh">Projects (${l.owned.length} owner · ${l.second.length} secondary)</div>
     ${l.owned.concat(l.second).map(p=>`<div class="task-row" style="cursor:pointer" onclick="openProject('${jsq(p.id)}')">${ragDot(p.rag)}<span class="tn"><b>${esc(p.name)}</b> <span class="dim">${l.owned.includes(p)?'owner':'secondary'}</span></span>${phaseBadge(p.phase)}<span class="dim" style="font-size:11px">ETA ${fmtD(p.etaD)}</span><span style="width:110px">${pctCell(p.pct)}</span></div>`).join('')||'<div class="empty">No active projects.</div>'}
     <div class="task-gh" style="margin-top:16px">Open tasks by due date</div>
-    ${l.mine.slice().sort((a,b)=>(pd(a.end_date)||9e15)-(pd(b.end_date)||9e15)).slice(0,80).map(t=>{const due=pd(t.end_date);const over=due&&due<now;return `<div class="task-row${over?' over':''}"><span class="tn">${esc(t.name)} <span class="dim">· ${esc((PBYID[t.project_id]||{}).name||'')}</span></span><span class="dim" style="font-size:11px">${fmtD(due)}</span>${over?'<span class="badge br">Overdue</span>':''}</div>`;}).join('')||'<div class="empty">No open tasks.</div>'}
+    ${l.mine.slice().sort((a,b)=>(pd(a.end_date)||9e15)-(pd(b.end_date)||9e15)).slice(0,80).map(t=>{const due=pd(t.end_date);const over=due&&due<t0();return `<div class="task-row${over?' over':''}"><span class="tn">${esc(t.name)} <span class="dim">· ${esc((PBYID[t.project_id]||{}).name||'')}</span></span><span class="dim" style="font-size:11px">${fmtD(due)}</span>${over?'<span class="badge br">Overdue</span>':''}</div>`;}).join('')||'<div class="empty">No open tasks.</div>'}
     ${recent.length?`<div class="task-gh" style="margin-top:16px">Recent time logs</div>${recent.map(x=>`<div class="task-row"><span class="dim mono" style="width:70px">${fmtD(x.d)}</span><span class="tn">${esc(x.task_name||'—')} <span class="dim">· ${esc(x.project_name||'')}</span></span><span class="badge" style="background:${TL_COLORS[x.cat]}22;color:${TL_COLORS[x.cat]}">${esc(x.cat)}</span><b style="width:44px;text-align:right">${x.h.toFixed(1)}h</b></div>`).join('')}`:''}
     </div>`;
   $('drawerOv').style.display='block';requestAnimationFrame(()=>$('drawer').classList.add('open'));
@@ -2379,7 +2373,7 @@ const WIDGET_DEFS=[
   {id:'w-attn',title:'Needs attention',module:'Delivery',icon:'⚠️',defaultWide:true,render(el){const pre=VP().filter(p=>p.preLive&&p.rag!=='G').sort((a,b)=>a.ragRank-b.ragRank).slice(0,12);
     el.innerHTML=`<div class="tbl-wrap" style="max-height:280px"><table><thead><tr><th class="nosort"></th><th class="nosort">Project</th><th class="nosort">Stage</th><th class="nosort">ETA</th><th class="nosort">Owner</th><th class="nosort">Why</th></tr></thead><tbody>${pre.map(p=>`<tr class="click" onclick="openProject('${jsq(p.id)}')"><td>${ragDot(p.rag)}</td><td><b>${esc(p.name)}</b></td><td class="mono">${esc(p.stage)}</td><td class="dim">${fmtD(p.etaD)}</td><td class="dim">${esc(p.owner)}</td><td class="dim">${esc(p.why[0]||'')}</td></tr>`).join('')||'<tr><td colspan="6"><div class="empty">Nothing flagged.</div></td></tr>'}</tbody></table></div>`;}},
   {id:'w-overdue',title:'Overdue tasks by owner',module:'People',icon:'⏰',supportedTypes:['hbar','bar','table'],defaultType:'hbar',
-   getData(){const now=new Date(),ids=new Set(VP().filter(p=>p.preLive).map(p=>p.id));const m={};(RAW.tasks||[]).filter(t=>!t.is_completed&&ids.has(t.project_id)&&t.end_date&&pd(t.end_date)<now).forEach(t=>{const n=(t.owners||[]).map(o=>o.name);(n.length?n:['Unassigned']).forEach(x=>m[x]=(m[x]||0)+1);});
+   getData(){const now=new Date(),ids=new Set(VP().filter(p=>p.preLive).map(p=>p.id));const m={};(RAW.tasks||[]).filter(t=>!t.is_completed&&ids.has(t.project_id)&&t.end_date&&pd(t.end_date)<t0()).forEach(t=>{const n=(t.owners||[]).map(o=>o.name);(n.length?n:['Unassigned']).forEach(x=>m[x]=(m[x]||0)+1);});
      const k=Object.keys(m).sort((a,b)=>m[b]-m[a]).slice(0,12);return{labels:k,values:k.map(x=>m[x]),colors:k.map(()=>'#EF4444'),heads:['Owner','Overdue']};}},
   {id:'w-load',title:'Utilisation by person',module:'People',icon:'⚖️',supportedTypes:['hbar','bar','table'],defaultType:'hbar',
    getData(){const L=PEOPLE.filter(p=>p.active).map(loadOf).filter(l=>l.weighted>0).sort((a,b)=>b.util-a.util).slice(0,12);return{labels:L.map(l=>l.name),values:L.map(l=>l.util),colors:L.map(l=>l.util>100?'#EF4444':l.util>80?'#EAB308':'#22C55E'),heads:['Person','Utilisation %']};}},
@@ -2450,7 +2444,6 @@ const DEMO_TEMPLATE={
   P3:[['Stage 1 Pre-Production Setup',['Material & Supplier Configuration','Crew Management Configuration']],['Stage 2 Production Job Workflow',['Approved Job → Production Initiation','Production Day Workflow']],['Stage 3 Invoice & Completion',['Invoice Auto-Generation','Job Completion Documentation']],['Stage 4 Team Adoption',['Crew App Training','Office & Manager Production Oversight']],['Stage 5 Pipeline Validated',['Production Pipeline LIVE']]],
   P4:[['Stage 1 Pre-Revenue Setup',['QuickBooks Integration','Payment Gateway Setup']],['Stage 2 Collections & Aging Setup',['Aging Dashboard & Collections Automation','Revenue Reporting Configuration']],['Stage 3 Revenue Workflow Validation',['Invoice-to-Collection Flow Validated','Revenue Analytics Validated']],['Stage 4 Team Adoption',['Office Staff Revenue Training','Owner Revenue Visibility']],['Stage 5 Revenue Pipeline',['Revenue Pipeline LIVE + Full Graduation']]],
 };
-const PIPE_NAMES={P1:'P1- Lead Intake',P2:'P2- Inspection',P3:'P3- Production',P4:'P4- Revenue'};
 let DEMO_DB=null;
 function rnd(seed){let s=seed;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
 function buildDemo(){
@@ -2516,7 +2509,7 @@ function demoApi(action,body){
   if(action==='people_save'){(body.rows||[]).forEach(r=>{const i=DEMO_DB.people.findIndex(p=>p.email===r.email);if(i>=0)DEMO_DB.people[i]=r;else DEMO_DB.people.push(r);});return Promise.resolve({ok:true,saved:(body.rows||[]).length});}
   if(action==='adoption_pull')return Promise.resolve({ok:true});
   if(action==='override_save'){DEMO_DB.overrides=(DEMO_DB.overrides||[]).filter(o=>!(o.project_id===body.project_id&&o.pipeline===body.pipeline));
-    DEMO_DB.overrides.push({project_id:body.project_id,pipeline:body.pipeline,manual_pct:body.manual_pct,status:body.status,note:body.note,items:body.items||[]});return Promise.resolve({ok:true});}
+    const row={project_id:body.project_id,pipeline:body.pipeline,manual_pct:body.manual_pct,status:body.status,note:body.note,items:body.items||[]};DEMO_DB.overrides.push(row);return Promise.resolve({ok:true,row:JSON.parse(JSON.stringify(row))});}
   if(action==='task_save'){const L=DEMO_DB.native_tasks=DEMO_DB.native_tasks||[];const done=/^done$/i.test(body.status||'');const now=new Date().toISOString();
     if(body.id){const r=L.find(x=>x.id===body.id);if(!r)return Promise.reject(new Error('That task no longer exists.'));Object.assign(r,body,{is_completed:done,updated_by:body.by,updated_at:now,completed_at:done?(r.completed_at||now):null});return Promise.resolve({ok:true,task:r});}
     const r=Object.assign({},body,{id:crypto.randomUUID(),is_completed:done,created_by:body.by,updated_by:body.by,created_at:now,updated_at:now,completed_at:done?now:null});L.push(r);return Promise.resolve({ok:true,task:r});}
