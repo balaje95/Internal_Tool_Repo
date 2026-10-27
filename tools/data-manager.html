@@ -10698,6 +10698,34 @@ body:has(#jt-modal.open) .back-link{display:none!important}
 .jt-field code{flex:1;min-width:0;background:#fff3e0;color:#b45309;border:1px dashed #f59e0b;border-radius:4px;padding:1px 5px;word-break:break-all;font-size:.7rem}
 .jt-note{font-size:.72rem;color:var(--text-sub);line-height:1.4}
 .jt-ins{display:flex;gap:5px}
+.jt-databar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 12px;border-bottom:1px solid var(--border);background:var(--card);font-size:.74rem;color:var(--text-sub)}
+.jt-databar select,.jt-databar input,.jt-right select{padding:4px 7px;border:1px solid var(--border-inp);border-radius:7px;background:var(--inp-bg);color:var(--text);font-size:.74rem;max-width:100%}
+.jt-databar select{max-width:340px}.jt-databar input{width:200px}
+#jt-data-note{flex-basis:100%;display:none}
+.jt-grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.jt-grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.jt-lab{display:flex;flex-direction:column;gap:2px;font-size:.66rem;color:var(--text-sub)}
+.jt-lab input,.jt-lab select{width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid var(--border-inp);border-radius:7px;background:var(--inp-bg);color:var(--text);font-size:.74rem}
+.jt-colrow{display:flex;align-items:center;gap:4px;padding:4px 6px;border:1px solid var(--border);border-radius:8px;margin-bottom:4px;font-size:.74rem;cursor:pointer}
+.jt-colrow:hover{border-color:var(--primary)}
+.jt-colrow.on{border-color:var(--primary);background:var(--primary-tint)}
+.jt-colrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jt-colrow .fd{font-family:ui-monospace,Consolas,monospace;font-size:.66rem;color:#b45309;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jt-colrow button{border:none;background:transparent;cursor:pointer;color:var(--text-sub);padding:0 3px;border-radius:5px;font-size:.75rem}
+.jt-colrow button:hover{background:var(--tr-hover);color:var(--text)}
+.jt-colrow button.x:hover{color:var(--red)}
+.jt-cond{font-size:.74rem;padding:6px 8px;border-radius:8px;background:var(--primary-tint);border:1px solid var(--primary);margin-bottom:6px}
+.jt-ver{display:flex;align-items:center;gap:4px;font-size:.72rem;padding:3px 0}
+.jt-ver span{flex:1;min-width:0}
+.jt-ver button{font-size:.68rem;padding:2px 7px}
+#jt-diff{flex:1;overflow:auto;display:none;background:var(--card);font:11.5px/1.5 ui-monospace,Consolas,monospace}
+.jt-diffbar{position:sticky;top:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--border);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:.74rem;font-weight:600;line-height:1.3;color:var(--text-sub)}
+.jt-diffbar select,.jt-databar select{width:auto;padding:4px 7px;border:1px solid var(--border-inp);border-radius:7px;background:var(--inp-bg);color:var(--text);font:inherit;font-weight:500}
+.jt-dl{display:flex;white-space:pre-wrap;word-break:break-all;padding:0 12px}
+.jt-dl i{flex:none;width:44px;color:var(--text-sub);font-style:normal;opacity:.6;user-select:none}
+.jt-dl.add{background:rgba(22,163,74,.12)}.jt-dl.add i::after{content:' +'}
+.jt-dl.del{background:rgba(220,38,38,.12)}.jt-dl.del i::after{content:' −'}
+.jt-dl.gap{color:var(--text-sub);background:var(--th-bg);padding:2px 12px;font-style:italic}
 @media (max-width:1100px){.jt-body{grid-template-columns:240px 1fr 280px}}
 </style>
 <div id="jt-modal" role="dialog" aria-label="Job card template editor">
@@ -10712,7 +10740,7 @@ body:has(#jt-modal.open) .back-link{display:none!important}
       <span class="jt-chk ok" id="jt-chk">✓ Tags balanced</span>
       <button class="btn btn-o" onclick="jtUndo()" id="jt-undo" title="Undo (Ctrl+Z)">↶ Undo</button>
       <button class="btn btn-o" onclick="jtRedo()" id="jt-redo" title="Redo (Ctrl+Y)">↷ Redo</button>
-      <span class="jt-tabs"><button id="jt-tab-visual" class="on" onclick="jtSetTab('visual')">Visual</button><button id="jt-tab-code" onclick="jtSetTab('code')">HTML</button></span>
+      <span class="jt-tabs"><button id="jt-tab-visual" class="on" onclick="jtSetTab('visual')">Visual</button><button id="jt-tab-code" onclick="jtSetTab('code')">HTML</button><button id="jt-tab-diff" onclick="jtSetTab('diff')" title="What changed, line by line">Changes</button></span>
       <button class="btn btn-o" onclick="jtReset()" title="Discard every change since the template was opened">⟲ Reset</button>
       <button class="btn btn-o" onclick="jtCopy()">📋 Copy HTML</button>
       <button class="btn btn-o" onclick="jtDownload()">⬇ Download</button>
@@ -10724,6 +10752,13 @@ body:has(#jt-modal.open) .back-link{display:none!important}
   <div class="jt-body">
     <aside class="jt-left"><div class="jt-ph">Sections</div><div id="jt-outline"></div></aside>
     <main class="jt-center">
+      <div class="jt-databar" id="jt-databar">
+        <span>Preview with</span>
+        <select id="jt-data-pick" onchange="jtPickRecord(this.value)" title="Fill the preview with a real record's data"><option value="">Field placeholders</option></select>
+        <input id="jt-data-uid" placeholder="…or paste a UID and press Enter" onkeydown="if(event.key==='Enter')jtPickRecord(this.value.trim())">
+        <span id="jt-data-note" class="jt-note"></span>
+      </div>
+      <div id="jt-diff"></div>
       <iframe id="jt-frame" sandbox="allow-same-origin" title="Template preview"></iframe>
       <textarea id="jt-code" spellcheck="false"></textarea>
       <div class="jt-codebar" id="jt-codebar"><button class="btn btn-p" style="font-size:.74rem;padding:5px 11px" onclick="jtApplyCode()">Apply HTML</button><span>Edits here replace the whole template. Switching back to Visual applies them too.</span></div>
@@ -10950,14 +10985,19 @@ function jtLineRange(src,a,b){
 function jtIndentOf(src,pos){let k=pos;while(k>0&&(src[k-1]===' '||src[k-1]==='\t'))k--;return (k===0||src[k-1]==='\n')?src.slice(k,pos):null;}
 
 // ── Preview ─────────────────────────────────────────────────────────────────
-function jtPreviewBody(P){
-  const {src,nodes,hbs}=P,edits=[];
-  for(const nd of nodes){
+// data-zid on every element ties a click in the preview back to its source node.
+function jtZidEdits(P){
+  const edits=[];
+  for(const nd of P.nodes){
     if(nd.id===0||nd.tag==='#comment') continue;
     let attr=' data-zid="'+nd.id+'"';
     if(nd.tag==='tr'){const loop=jtLoopFor(P,nd);if(loop) attr+=' data-zloop="'+esc(loop)+'"';}
     edits.push({start:nd.nameEnd,end:nd.nameEnd,text:attr});
   }
+  return edits;
+}
+function jtPreviewBody(P){
+  const {src,hbs}=P,edits=jtZidEdits(P);
   const stack=[];
   for(const h of hbs){
     const kind=jtHbKind(h.inner);
@@ -10973,7 +11013,7 @@ function jtPreviewBody(P){
   return jtSplice(src,edits);
 }
 function jtPaper(){
-  const o=(JT.detail&&JT.detail.template_options)||{};
+  const o=JT.opts||(JT.detail&&JT.detail.template_options)||{};
   const sizes={a3:['297mm','420mm'],a4:['210mm','297mm'],a5:['148mm','210mm'],letter:['8.5in','11in'],legal:['8.5in','14in'],tabloid:['11in','17in']};
   let [w,h]=sizes[String(o.format||'A4').toLowerCase()]||sizes.a4;
   if(String(o.orientation||'').toLowerCase()==='landscape') [w,h]=[h,w];
@@ -11005,14 +11045,16 @@ function jtRenderFrame(){
     d.addEventListener('keydown',jtKeys);
     jtMarkFrameSel();
   };
-  f.srcdoc='<!doctype html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body><div class="zpage">'+jtPreviewBody(JT.P)+'</div></body></html>';
+  f.srcdoc='<!doctype html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body><div class="zpage">'+jtFrameBody()+'</div></body></html>';
 }
 function jtMarkFrameSel(scroll){
   const d=$('jt-frame').contentDocument;if(!d) return;
   d.querySelectorAll('.zsel').forEach(e=>e.classList.remove('zsel'));
   if(!JT||JT.sel==null) return; // the frame also reloads (Loading…) while no template is open
-  const el=d.querySelector('[data-zid="'+JT.sel+'"]');
-  if(el){el.classList.add('zsel');if(scroll&&el.scrollIntoView) el.scrollIntoView({block:'nearest'});}
+  // With real data a loop row renders once per item — mark every copy.
+  const els=d.querySelectorAll('[data-zid="'+JT.sel+'"]');
+  els.forEach(el=>el.classList.add('zsel'));
+  if(els[0]&&scroll&&els[0].scrollIntoView) els[0].scrollIntoView({block:'nearest'});
 }
 
 // ── Labels ──────────────────────────────────────────────────────────────────
@@ -11071,8 +11113,11 @@ async function openJobTplEditor(uid,kind){
     const d=await K.read(uid);
     if(!d||typeof d.template!=='string') throw new Error('The response has no template HTML (data.template).');
     let auto=false;try{auto=localStorage.getItem('zdm_jt_autosave')==='1';}catch(e){}
-    JT={uid,kind,detail:d,original:d.template,saved:d.template,src:d.template,P:jtParse(d.template),undo:[],redo:[],sel:null,tab:'visual',autosave:auto,saveState:'',saveMsg:'',savedAt:null};
+    const opts=jtOptsOf(d);
+    JT={uid,kind,detail:d,original:d.template,saved:d.template,src:d.template,P:jtParse(d.template),undo:[],redo:[],sel:null,tab:'visual',autosave:auto,saveState:'',saveMsg:'',savedAt:null,
+        opts,savedOpts:JSON.parse(JSON.stringify(opts)),data:null,dataLabel:'',recs:null,cmp:null};
     $('jt-autosave').checked=auto;
+    jtResetDataBar();jtLoadRecordList();
     jtBackup(d);
     $('jt-title').textContent=d.template_name||'Untitled template';
     $('jt-modal').setAttribute('aria-label',K.noun+' editor');
@@ -11087,11 +11132,11 @@ async function openJobTplEditor(uid,kind){
   }
 }
 async function jtClose(){
-  if(JT&&JT.autosave&&JT.src!==JT.saved&&!jtBlockIssues(JT.src).length){
+  if(JT&&JT.autosave&&jtDirty()&&!jtBlockIssues(JT.src).length){
     clearTimeout(_jtAutoTimer);_jtAutoTimer=null;
     await jtSave(true);
   }
-  if(JT&&JT.src!==JT.saved&&!confirm('You have unsaved changes to this template. Close anyway?')) return;
+  if(JT&&jtDirty()&&!confirm('You have unsaved changes to this template. Close anyway?')) return;
   clearTimeout(_jtAutoTimer);_jtAutoTimer=null;
   $('jt-modal').classList.remove('open');
   document.removeEventListener('keydown',jtKeys);
@@ -11285,6 +11330,7 @@ function jtRenderAll(){
   $('jt-undo').disabled=!JT.undo.length;$('jt-redo').disabled=!JT.redo.length;
   jtPaintSave();
   if(JT.tab==='code') $('jt-code').value=JT.src;
+  if(JT.tab==='diff') jtRenderDiff();
   jtRenderFrame();jtRenderOutline();jtRenderInspector();
 }
 function jtRenderOutline(){
@@ -11333,7 +11379,9 @@ function jtRenderInspector(){
     box.innerHTML='<div class="jt-note">Click anything in the preview — a heading, a cell, a field, a whole table — or pick a section on the left.<br><br>'+
       '<b>Orange chips</b> are fields Zuper fills in when the PDF is generated. Rows with a <span style="outline:1px dashed #6366f1;padding:0 3px">dashed blue outline</span> repeat once per item.<br><br>'+
       'Keyboard: <b>Delete</b> removes the selection, <b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo and redo, <b>Esc</b> clears the selection.</div>'+
-      '<div class="jt-sec"><div class="jt-ph">All fields in this template</div>'+jtAllFieldsHtml()+'</div>';
+      jtPageHtml()+
+      '<div class="jt-sec"><div class="jt-ph">All fields in this template</div>'+jtAllFieldsHtml()+'</div>'+
+      jtVersionsHtml();
     return;
   }
   const P=JT.P,h=[];
@@ -11357,6 +11405,8 @@ function jtRenderInspector(){
       '<button class="btn btn-o" onclick="jtMoveColumn('+cell.id+',1)">Right ▶</button>'+
       '<button class="btn btn-o" onclick="jtDuplicateColumn('+cell.id+')">⧉ Duplicate</button></div></div>');
   }
+  h.push(jtColumnsHtml(nd));
+  h.push(jtShowWhenHtml(nd));
   // Plain-text labels (the bits between tags and {{fields}})
   const segs=jtTextSegments(P,nd).slice(0,15);
   if(segs.length){
@@ -11400,6 +11450,7 @@ function jtTextSegments(P,nd){
 function jtKnownFields(){
   const s=new Set();
   for(const t of JT.P.hbs){if(jtHbKind(t.inner)==='expr'&&/^[\w@.\/]+$/.test(t.inner)) s.add(t.inner);}
+  if(JT.data) jtPaths(JT.data,'',3).forEach(p=>s.add(p));
   if(JT.kind==='job') ['customer.customer_email','customer.customer_contact_no.mobile','job_title','job_priority','job_description','scheduled_start_time','scheduled_end_time','work_order_number','company.company_name','company.company_phone','customer_address.street','customer_address.city'].forEach(f=>s.add(f));
   return [...s].sort();
 }
@@ -11425,13 +11476,17 @@ function jtSelectToken(pos){
 function jtSetTab(tab){
   if(!JT) return;
   if(JT.tab==='code'&&tab==='visual') jtApplyCode(true);
+  if(JT.tab==='code'&&tab==='diff') jtApplyCode(true);
   JT.tab=tab;
-  const code=tab==='code';
-  $('jt-tab-visual').classList.toggle('on',!code);$('jt-tab-code').classList.toggle('on',code);
-  $('jt-frame').style.display=code?'none':'block';
+  const code=tab==='code',diff=tab==='diff',vis=tab==='visual';
+  $('jt-tab-visual').classList.toggle('on',vis);$('jt-tab-code').classList.toggle('on',code);$('jt-tab-diff').classList.toggle('on',diff);
+  $('jt-frame').style.display=vis?'block':'none';
+  $('jt-databar').style.display=vis?'flex':'none';
   $('jt-code').style.display=code?'block':'none';
   $('jt-codebar').style.display=code?'flex':'none';
+  $('jt-diff').style.display=diff?'block':'none';
   if(code) $('jt-code').value=JT.src;
+  if(diff) jtRenderDiff();
 }
 function jtApplyCode(silent){
   if(!JT) return;
@@ -11492,7 +11547,7 @@ async function jtApi(method,path,body){
 function jtSaveState(state,msg){if(!JT)return;JT.saveState=state;JT.saveMsg=msg||'';jtPaintSave();}
 function jtPaintSave(){
   if(!JT) return;
-  const el=$('jt-dirty'),sv=$('jt-save'),dirty=JT.src!==JT.saved;
+  const el=$('jt-dirty'),sv=$('jt-save'),dirty=jtDirty();
   let txt='',col='var(--amber)';
   if(JT.saveState==='saving'){txt='Saving…';col='var(--text-sub)';}
   else if(!dirty){txt=JT.savedAt?'✓ Saved '+JT.savedAt.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'';col='var(--green)';}
@@ -11514,7 +11569,7 @@ function jtToggleAutosave(on){
 function jtScheduleAutosave(){
   if(!JT||!JT.autosave) return;
   clearTimeout(_jtAutoTimer);_jtAutoTimer=null;
-  if(JT.src===JT.saved){jtPaintSave();return;}
+  if(!jtDirty()){jtPaintSave();return;}
   _jtAutoTimer=setTimeout(()=>{_jtAutoTimer=null;jtSave(true);},JT_AUTOSAVE_MS);
   if(JT.saveState==='error'||JT.saveState==='blocked') JT.saveState=''; // a new attempt is queued
   jtPaintSave();
@@ -11523,7 +11578,7 @@ async function jtSave(auto){
   if(!JT) return;
   if(JT.tab==='code') jtApplyCode(true);
   if(!auto){clearTimeout(_jtAutoTimer);_jtAutoTimer=null;}
-  if(JT.src===JT.saved){jtPaintSave();return;}
+  if(!jtDirty()){jtPaintSave();return;}
   const issues=jtBlockIssues(JT.src);
   if(issues.length){
     jtSaveState('blocked',issues.join('; '));
@@ -11532,7 +11587,7 @@ async function jtSave(auto){
   }
   if(_jtSaving){_jtSaveAgain=true;return;}
   _jtSaving=true;
-  const ctx=JT,html=ctx.src,uid=ctx.uid,K=JT_KINDS[ctx.kind]||JT_KINDS.job;
+  const ctx=JT,html=ctx.src,uid=ctx.uid,K=JT_KINDS[ctx.kind]||JT_KINDS.job,opts=JSON.parse(JSON.stringify(ctx.opts));
   jtSaveState('saving');
   try{
     // 1. Has anyone changed it in Zuper since we loaded / last saved it?
@@ -11546,7 +11601,8 @@ async function jtSave(auto){
       if(!confirm('This template was changed in Zuper since you opened it (last updated '+(live.updated_at||'?')+').\n\nOverwrite it with your version?')){jtSaveState('');return;}
     }
     // Save on top of the live record, so a name/category change made in Zuper is kept.
-    const base={...ctx.detail,...live};
+    // Page setup is ours to change; everything else comes from the live record.
+    const base={...ctx.detail,...live,template_options:opts};
     // 2. Zuper's own template check.
     const v=await jtApi('POST','template/validate',{module_name:K.validateModule(base),template:html});
     if(!v.ok&&v.status!==404&&v.status!==405) throw new Error('Zuper rejected the template: '+v.msg);
@@ -11557,7 +11613,7 @@ async function jtSave(auto){
     let bd=null;try{bd=await K.read(uid);}catch(e){}
     if(!bd||typeof bd.template!=='string') throw new Error('Saved, but could not read the template back to confirm. Check it in Zuper.');
     if(bd.template!==html) throw new Error('Zuper accepted the save, but the template it returns differs from what was sent. Check it in Zuper before editing further.');
-    ctx.detail=bd;ctx.saved=html;ctx.savedAt=new Date();
+    ctx.detail=bd;ctx.saved=html;ctx.savedOpts=opts;ctx.savedAt=new Date();
     jtBackup(bd);
     if(JT===ctx){
       jtSaveState('saved');
@@ -11568,8 +11624,381 @@ async function jtSave(auto){
     if(JT===ctx){jtSaveState('error',e.message);jtMsg('✗ '+e.message,'err');}
   }finally{
     _jtSaving=false;
-    if(_jtSaveAgain){_jtSaveAgain=false;if(JT&&JT.autosave&&JT.src!==JT.saved) jtScheduleAutosave();}
+    if(_jtSaveAgain){_jtSaveAgain=false;if(JT&&JT.autosave&&jtDirty()) jtScheduleAutosave();}
   }
+}
+
+// ── Page setup (template_options) ───────────────────────────────────────────
+function jtOptsOf(d){
+  const o=(d&&d.template_options)||{},b=(o.border&&typeof o.border==='object')?o.border:{};
+  const s=v=>v==null?'':String(v);
+  return {format:o.format||'A4',orientation:o.orientation||'portrait',border:{top:s(b.top),right:s(b.right),bottom:s(b.bottom),left:s(b.left)}};
+}
+const jtOptsKey=o=>JSON.stringify(o?[o.format,o.orientation,o.border&&o.border.top,o.border&&o.border.right,o.border&&o.border.bottom,o.border&&o.border.left].map(v=>String(v==null?'':v).trim()):null);
+function jtDirty(c){c=c||JT;return !!c&&(c.src!==c.saved||jtOptsKey(c.opts)!==jtOptsKey(c.savedOpts));}
+function jtSetOpt(key,val){
+  if(!JT) return;
+  val=String(val).trim();
+  if(key in JT.opts.border) JT.opts.border[key]=val; else JT.opts[key]=val;
+  jtRenderFrame();jtPaintSave();jtScheduleAutosave();
+}
+function jtPageHtml(){
+  const o=JT.opts,b=o.border;
+  const sel=(k,list)=>'<select onchange="jtSetOpt(\''+k+'\',this.value)">'+list.map(([v,l])=>'<option value="'+v+'"'+(String(o[k]).toLowerCase()===v.toLowerCase()?' selected':'')+'>'+l+'</option>').join('')+
+    (list.some(([v])=>v.toLowerCase()===String(o[k]).toLowerCase())?'':'<option selected value="'+esc(o[k])+'">'+esc(o[k])+'</option>')+'</select>';
+  const m=k=>'<label class="jt-lab">'+k[0].toUpperCase()+k.slice(1)+'<input value="'+esc(b[k])+'" placeholder="0" onchange="jtSetOpt(\''+k+'\',this.value)"></label>';
+  return '<div class="jt-sec"><div class="jt-ph">Page</div><div class="jt-grid2">'+
+    '<label class="jt-lab">Paper size'+sel('format',[['A3','A3'],['A4','A4'],['A5','A5'],['Letter','Letter'],['Legal','Legal'],['Tabloid','Tabloid']])+'</label>'+
+    '<label class="jt-lab">Orientation'+sel('orientation',[['portrait','Portrait'],['landscape','Landscape']])+'</label></div>'+
+    '<div class="jt-lab" style="margin-top:6px">Margins (e.g. 10mm — a bare number is pixels)</div><div class="jt-grid4">'+['top','right','bottom','left'].map(m).join('')+'</div></div>';
+}
+
+// ── Versions + Changes tab ──────────────────────────────────────────────────
+function jtVersions(){try{return JSON.parse(localStorage.getItem('zdm_jobtpl_backup_'+JT.uid)||'[]');}catch(e){return [];}}
+function jtWhen(iso){const d=new Date(iso);return isNaN(d)?String(iso||''):d.toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}
+function jtVersionsHtml(){
+  const v=jtVersions();
+  if(!v.length) return '';
+  return '<div class="jt-sec"><div class="jt-ph">Versions kept in this browser</div>'+
+    v.map((x,i)=>({x,i})).reverse().map(({x,i})=>'<div class="jt-ver"><span>'+esc(jtWhen(x.at))+(x.template===JT.src?' · <b>current</b>':'')+'</span>'+
+      '<button class="btn btn-o" onclick="jtCompareWith('+i+')">Compare</button>'+
+      '<button class="btn btn-o" onclick="jtRestoreVersion('+i+')"'+(x.template===JT.src?' disabled':'')+'>Restore</button></div>').join('')+
+    '<div class="jt-note" style="margin-top:4px">Saved when you open or save a template (last 5). Restore loads it into the editor — Undo works, and nothing reaches Zuper until you save.</div></div>';
+}
+function jtRestoreVersion(i){
+  const x=jtVersions()[i];if(!x) return;
+  jtCommit(x.template);
+  jtMsg('✓ Restored the version from '+jtWhen(x.at)+'. Review it, then 💾 Save to Zuper to make it live (or Undo).','ok');
+}
+function jtCompareWith(i){
+  const x=jtVersions()[i];if(!x) return;
+  JT.cmp={label:'Version from '+jtWhen(x.at),text:x.template};
+  jtSetTab('diff');
+}
+function jtSetCompare(v){
+  if(v==='saved') JT.cmp=null;
+  else if(v==='original') JT.cmp={label:'When you opened it',text:JT.original};
+  else{const x=jtVersions()[Number(v)];if(x) JT.cmp={label:'Version from '+jtWhen(x.at),text:x.template};}
+  jtRenderDiff();
+}
+// Line diff: trim the common head/tail, LCS the rest (templates are a few hundred lines).
+function jtLineDiff(a,b){
+  const A=a.split('\n'),B=b.split('\n');
+  let s=0;while(s<A.length&&s<B.length&&A[s]===B[s])s++;
+  let e=0;while(e<A.length-s&&e<B.length-s&&A[A.length-1-e]===B[B.length-1-e])e++;
+  const a2=A.slice(s,A.length-e),b2=B.slice(s,B.length-e),n=a2.length,m=b2.length,ops=[];
+  if(n*m>4e6){a2.forEach(x=>ops.push(['-',x]));b2.forEach(x=>ops.push(['+',x]));}
+  else{
+    const W=m+1,L=new Uint32Array((n+1)*W);
+    for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)L[i*W+j]=a2[i]===b2[j]?L[(i+1)*W+j+1]+1:Math.max(L[(i+1)*W+j],L[i*W+j+1]);
+    let i=0,j=0;
+    while(i<n&&j<m){if(a2[i]===b2[j]){ops.push([' ',a2[i]]);i++;j++;}else if(L[(i+1)*W+j]>=L[i*W+j+1])ops.push(['-',a2[i++]]);else ops.push(['+',b2[j++]]);}
+    while(i<n)ops.push(['-',a2[i++]]);while(j<m)ops.push(['+',b2[j++]]);
+  }
+  const all=A.slice(0,s).map(x=>[' ',x]).concat(ops,A.slice(A.length-e).map(x=>[' ',x]));
+  return all;
+}
+function jtRenderDiff(){
+  if(!JT) return;
+  const base=JT.cmp?JT.cmp.text:JT.saved,label=JT.cmp?JT.cmp.label:'Last saved in Zuper';
+  const v=jtVersions();
+  const pick='<select onchange="jtSetCompare(this.value)"><option value="saved"'+(!JT.cmp?' selected':'')+'>Last saved in Zuper</option><option value="original"'+(JT.cmp&&JT.cmp.label==='When you opened it'?' selected':'')+'>When you opened it</option>'+
+    v.map((x,i)=>'<option value="'+i+'"'+(JT.cmp&&JT.cmp.text===x.template&&JT.cmp.label!=='When you opened it'?' selected':'')+'>Version from '+esc(jtWhen(x.at))+'</option>').join('')+'</select>';
+  const ops=jtLineDiff(base,JT.src);
+  const add=ops.filter(o=>o[0]==='+').length,del=ops.filter(o=>o[0]==='-').length;
+  const out=['<div class="jt-diffbar">Comparing '+pick+' → your current edits · <span style="color:var(--green)">+'+add+'</span> <span style="color:var(--red)">−'+del+'</span> line'+(add+del===1?'':'s')+'</div>'];
+  if(!add&&!del){out.push('<div class="jt-note" style="padding:16px">No differences from “'+esc(label)+'”.</div>');$('jt-diff').innerHTML=out.join('');return;}
+  // Show changed lines with 3 lines of context; collapse the rest.
+  const keep=new Array(ops.length).fill(false);
+  ops.forEach((o,i)=>{if(o[0]!==' ')for(let k=Math.max(0,i-3);k<=Math.min(ops.length-1,i+3);k++)keep[k]=true;});
+  let ln=0,hidden=0;
+  ops.forEach((o,i)=>{
+    if(o[0]!=='+') ln++;
+    if(!keep[i]){hidden++;return;}
+    if(hidden){out.push('<div class="jt-dl gap">… '+hidden+' unchanged line'+(hidden===1?'':'s')+' …</div>');hidden=0;}
+    out.push('<div class="jt-dl'+(o[0]==='+'?' add':o[0]==='-'?' del':'')+'"><i>'+(o[0]==='+'?'':ln)+'</i>'+(esc(o[1])||' ')+'</div>');
+  });
+  if(hidden) out.push('<div class="jt-dl gap">… '+hidden+' unchanged line'+(hidden===1?'':'s')+' …</div>');
+  $('jt-diff').innerHTML=out.join('');
+}
+
+// ── Columns panel (any table with a header row or a repeating row) ──────────
+function jtDataTableOf(nd){
+  for(let t=nd;t&&t.id!==0;t=t.parent){
+    if(t.tag!=='table') continue;
+    const P=JT.P,hr=jtHeaderRow(P,t);
+    if(!hr||jtCells(P,hr).length<2) return null;
+    const isData=hr.children.some(k=>k.tag==='th')||jtRows(t).some(r=>jtLoopFor(P,r));
+    return isData?t:null;
+  }
+  return null;
+}
+// The row whose cells show what each column prints: the repeating row, else the first body row.
+function jtSampleRow(P,table){const rows=jtRows(table),hr=jtHeaderRow(P,table);return rows.find(r=>r!==hr&&jtLoopFor(P,r))||rows.find(r=>r!==hr)||null;}
+function jtColumnsHtml(nd){
+  const t=jtDataTableOf(nd);if(!t) return '';
+  const P=JT.P,hr=jtHeaderRow(P,t),cells=jtCells(P,hr),body=jtSampleRow(P,t),bc=body?jtCells(P,body):[];
+  const loop=body&&jtLoopFor(P,body);
+  const selCell=jtCellOf(nd),selMe=selCell&&jtCells(P,selCell.parent).find(c=>c.node===selCell);
+  const rows=cells.map((c,i)=>{
+    const b=bc.find(k=>k.col<=c.col&&c.col<k.col+k.span);
+    const on=selMe&&jtTableOf(selCell)===t&&selMe.col===c.col;
+    return '<div class="jt-colrow'+(on?' on':'')+'" onclick="jtSelect('+c.node.id+')" title="Select this column">'+
+      '<span class="nm">'+esc(jtSnippet(P,c.node,40)||('Column '+(i+1)))+'</span>'+
+      (b&&b.node!==c.node?'<span class="fd">'+esc(jtSnippet(P,b.node,40))+'</span>':'')+
+      '<button title="Move left" onclick="event.stopPropagation();jtMoveColumn('+c.node.id+',-1)"'+(i===0?' disabled':'')+'>◀</button>'+
+      '<button title="Move right" onclick="event.stopPropagation();jtMoveColumn('+c.node.id+',1)"'+(i===cells.length-1?' disabled':'')+'>▶</button>'+
+      '<button class="x" title="Remove this column from every row" onclick="event.stopPropagation();jtRemoveColumn('+c.node.id+')">✕</button></div>';
+  }).join('');
+  const sugg=jtLoopFieldSuggestions(t,loop);
+  const last=cells[cells.length-1];
+  return '<div class="jt-sec"><div class="jt-ph">Columns'+(loop?' · ↻ one row per '+esc(loop):'')+'</div>'+rows+
+    '<details style="margin-top:6px"><summary class="btn btn-o" style="font-size:.72rem;padding:5px 9px;display:inline-block;list-style:none">＋ Add column</summary>'+
+    '<div style="margin-top:6px;display:flex;flex-direction:column;gap:6px">'+
+      '<label class="jt-lab">Header<input id="jt-nc-label" placeholder="e.g. UOM"></label>'+
+      '<label class="jt-lab">Field'+(loop?' (of each '+esc(loop)+' item)':'')+'<input id="jt-nc-field" list="jt-nc-list" placeholder="e.g. '+esc(sugg[0]||'unit_price')+'"></label>'+
+      '<datalist id="jt-nc-list">'+sugg.map(f=>'<option value="'+esc(f)+'">').join('')+'</datalist>'+
+      '<label class="jt-lab">Place after<select id="jt-nc-after">'+cells.map((c,i)=>'<option value="'+c.col+'"'+(c===last?' selected':'')+'>'+esc(jtSnippet(P,c.node,30)||('Column '+(i+1)))+'</option>').join('')+'</select></label>'+
+      '<button class="btn btn-p" style="font-size:.74rem;padding:5px 10px;align-self:flex-start" onclick="jtAddColumn('+t.id+',Number($(\'jt-nc-after\').value),$(\'jt-nc-label\').value,$(\'jt-nc-field\').value)">Add column</button>'+
+      (JT.data?'':'<div class="jt-note">Tip: pick a real record above the preview and this list shows every field '+(loop?'a '+esc(loop)+' item':'it')+' has.</div>')+
+    '</div></details></div>';
+}
+function jtLoopFieldSuggestions(table,loop){
+  const P=JT.P,s=new Set();
+  for(const h of P.hbs){if(h.start>=table.start&&h.end<=table.end&&jtHbKind(h.inner)==='expr'&&/^[\w@.\/]+$/.test(h.inner))s.add(h.inner);}
+  if(JT.data){
+    const arr=loop?jtGet(JT.data,loop):null;
+    if(Array.isArray(arr)&&arr.length) arr.slice(0,5).forEach(it=>jtPaths(it,'',2).forEach(p=>s.add(p)));
+    else if(!loop) jtPaths(JT.data,'',3).forEach(p=>s.add(p));
+  }
+  return [...s].sort();
+}
+function jtCellOpenTag(src,c){
+  const open=src.slice(c.start,c.openEnd);
+  if(open.includes('{{')) return '<'+c.tag+'>';
+  return open.replace(/\s+colspan\s*=\s*(["']?)\d+\1/i,'');
+}
+function jtAddColumn(tableId,after,label,field){
+  const table=jtNode(tableId);if(!table||table.tag!=='table') return;
+  const P=JT.P,src=P.src,rows=jtRows(table),hr=jtHeaderRow(P,table),edits=[];
+  label=String(label||'').trim();field=String(field||'').trim();
+  if(!label&&!field) return jtRefuse('Give the new column a header, a field, or both.');
+  const fieldHtml=!field?'':/^[\w@.\/-]+$/.test(field)?'{{'+field+'}}':field;
+  if(jtBlockIssues(fieldHtml).length) return jtRefuse('Unbalanced tags in the field: '+jtBlockIssues(fieldHtml).join('; '));
+  const hasLoop=rows.some(r=>r!==hr&&jtLoopFor(P,r));
+  const width=jtCells(P,hr).reduce((n,c)=>n+c.span,0);
+  const escTxt=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  for(const r of rows){
+    const cs=jtCells(P,r);if(!cs.length) continue;
+    const cov=cs.find(k=>k.col<=after&&after<k.col+k.span)||cs[cs.length-1];
+    // A merged cell that runs past the insert point just gets one column wider.
+    if(cov.span>1&&after<cov.col+cov.span-1){
+      const open=src.slice(cov.node.start,cov.node.openEnd),mm=/\bcolspan\s*=\s*(["']?)\d+\1/i.exec(open);
+      if(mm){edits.push({start:cov.node.start+mm.index,end:cov.node.start+mm.index+mm[0].length,text:'colspan="'+(cov.span+1)+'"'});continue;}
+    }
+    const fills=r===hr?escTxt(label):(hasLoop?!!jtLoopFor(P,r):cs.reduce((n,c)=>n+c.span,0)===width)?fieldHtml:'';
+    if(jtBlockIssues(src.slice(cov.node.start,cov.node.end)).length) return jtRefuse('A cell next to the insert point holds half of a {{#…}} block — pick a different “Place after” column.');
+    const tag=cov.node.tag;
+    const cell=jtCellOpenTag(src,cov.node)+fills+'</'+tag+'>';
+    const ind=jtIndentOf(src,cov.node.start),[,b]=jtLineRange(src,cov.node.start,cov.node.end);
+    edits.push({start:cov.node.end,end:cov.node.end,text:(ind!=null&&b!==cov.node.end?'\n'+ind:'')+cell});
+  }
+  const cols=[];const walk=n=>{for(const k of n.children){if(k.tag==='col')cols.push(k);else if(k.tag==='colgroup')walk(k);}};walk(table);
+  if(cols[after]) edits.push({start:cols[after].end,end:cols[after].end,text:src.slice(cols[after].start,cols[after].end)});
+  jtMsg('✓ Added column “'+(label||field)+'”.','ok');
+  jtCommit(jtSplice(src,edits),table.start,'table');
+}
+
+// ── Show only when… ─────────────────────────────────────────────────────────
+// An {{#if x}} / {{#unless x}} pair that hugs the element exactly (only whitespace between).
+function jtCondWrap(t){
+  const P=JT.P,src=P.src;
+  let open=null;for(const h of P.hbs){if(h.end<=t.start&&!h.inTag)open=h;else if(h.start>=t.start)break;}
+  if(!open||jtHbKind(open.inner)!=='open'||src.slice(open.end,t.start).trim()) return null;
+  const nm=jtHbName(open.inner);if(nm!=='if'&&nm!=='unless') return null;
+  const close=P.hbs.find(h=>h.start>=t.end&&!h.inTag);
+  if(!close||jtHbKind(close.inner)!=='close'||jtHbName(close.inner)!==nm||src.slice(t.end,close.start).trim()) return null;
+  if(jtBlockIssues(src.slice(open.start,close.end)).length) return null;
+  return {open,close,neg:nm==='unless',field:open.inner.replace(/^#\s*(if|unless)\s*/,'').trim()};
+}
+function jtShowWhenHtml(nd){
+  const t=jtMoveTarget(nd);if(!t) return '';
+  // A header row prints labels, not data — hiding it on a field makes no sense.
+  if(t.tag==='thead'||(t.children.some(c=>c.tag==='th')&&!t.children.some(c=>c.tag==='td'))) return '';
+  const noun=jtMoveNoun(t),w=jtCondWrap(t);
+  if(w) return '<div class="jt-sec"><div class="jt-ph">Show only when…</div><div class="jt-cond">This '+esc(noun)+' prints only when <code>'+esc(w.field)+'</code> '+(w.neg?'is empty':'has a value')+'.</div>'+
+    '<button class="btn btn-o" style="font-size:.72rem;padding:5px 9px" onclick="jtUnwrapCond('+t.id+')">Always show it</button></div>';
+  const simple=(a,b)=>JT.P.hbs.find(h=>h.start>=a.start&&h.end<=b.end&&!h.inTag&&jtHbKind(h.inner)==='expr'&&/^[\w@.\/-]+$/.test(h.inner));
+  const first=simple(nd,nd)||simple(t,t); // the field in what was clicked, else the first in the row/block
+  return '<div class="jt-sec"><div class="jt-ph">Show only when…</div>'+
+    '<div class="jt-note" style="margin-bottom:6px">Hide this '+esc(noun)+' on the PDF unless a field has a value — e.g. a Discount row with no discount, or a Ship-To block with no property.</div>'+
+    '<div style="display:flex;flex-direction:column;gap:5px">'+
+    '<input id="jt-sw-field" list="jt-field-list" value="'+esc(first?first.inner:'')+'" placeholder="Field, e.g. discount" style="width:100%;box-sizing:border-box;padding:5px 8px;border:1px solid var(--border-inp);border-radius:7px;background:var(--inp-bg);color:var(--text);font-size:.78rem">'+
+    '<select id="jt-sw-neg"><option value="0">has a value</option><option value="1">is empty</option></select>'+
+    '<button class="btn btn-o" style="font-size:.72rem;padding:5px 9px;align-self:flex-start" onclick="jtShowWhen('+t.id+',$(\'jt-sw-field\').value,$(\'jt-sw-neg\').value===\'1\')">Apply to this '+esc(noun)+'</button></div></div>';
+}
+function jtShowWhen(id,field,neg){
+  const t=jtMoveTarget(jtNode(id))||jtNode(id);if(!t||t.id===0) return;
+  field=String(field||'').trim().replace(/^\{\{\s*|\s*\}\}$/g,'');
+  if(!/^[\w@.\/\[\]-]+$/.test(field)) return jtRefuse('Pick one field (for example discount or property.property_address.street).');
+  const src=JT.P.src,body=src.slice(t.start,t.end);
+  if(jtBlockIssues(body).length) return jtRefuse('This element holds half of a {{#…}} block, so it cannot be wrapped on its own.');
+  const kw=neg?'unless':'if',open='{{#'+kw+' '+field+'}}',close='{{/'+kw+'}}';
+  const ind=jtIndentOf(src,t.start),[a,b]=jtLineRange(src,t.start,t.end),alone=ind!=null&&(a!==t.start||b!==t.end);
+  let out,at;
+  if(alone){const pre=ind+open+'\n';out=src.slice(0,a)+pre+src.slice(a,t.end)+'\n'+ind+close+src.slice(t.end);at=t.start+pre.length;}
+  else{out=src.slice(0,t.start)+open+body+close+src.slice(t.end);at=t.start+open.length;}
+  jtMsg('✓ This '+jtMoveNoun(t)+' now prints only when '+field+' '+(neg?'is empty':'has a value')+'.','ok');
+  jtCommit(out,at,t.tag);
+}
+function jtUnwrapCond(id){
+  const t=jtNode(id),w=t&&jtCondWrap(t);if(!w) return;
+  const src=JT.P.src,[ca,cb]=jtLineRange(src,w.close.start,w.close.end),[oa,ob]=jtLineRange(src,w.open.start,w.open.end);
+  // keep the element's own line break: drop the newline we added after {{#if}} / before {{/if}}
+  const edits=[{start:ca===w.close.start?w.close.start:ca-(src[ca-1]==='\n'?1:0),end:ca===w.close.start?w.close.end:cb-(src[cb-1]==='\n'?1:0),text:''},{start:oa,end:ob,text:''}];
+  const at=t.start-(ob-oa);
+  jtMsg('✓ It prints on every PDF again.','ok');
+  jtCommit(jtSplice(src,edits),at,t.tag);
+}
+
+// ── Preview with a real record ──────────────────────────────────────────────
+// Rendered here with Handlebars (the engine Zuper's templates are written for), using
+// the record's own GET detail. Helpers mirror the ones Zuper's web app registers
+// (stringEq, stringEqStrict, formatDate…) plus the math/date helpers these templates
+// call. Zuper's PDF server may still format a value differently — it is a preview.
+const JT_REC={
+  job:{noun:'job',list:'jobs?page=1&count=25',detail:u=>'jobs/'+encodeURIComponent(u),uid:r=>r.job_uid,label:r=>[(r.work_order_number||r.job_number)?'#'+(r.work_order_number||r.job_number):'',r.job_title,jtCustName(r.customer)]},
+  ESTIMATE:{noun:'quote',list:'estimate?page=1&count=25',detail:u=>'estimate/'+encodeURIComponent(u),uid:r=>r.estimate_uid,label:r=>[r.estimate_no?'#'+r.estimate_no:'',r.proposal_title||r.estimate_title,jtCustName(r.customer)]},
+  INVOICE:{noun:'invoice',list:'invoice?page=1&count=25',detail:u=>'invoice/'+encodeURIComponent(u),uid:r=>r.invoice_uid,label:r=>[r.invoice_no?'#'+r.invoice_no:'',r.invoice_title,jtCustName(r.customer)]}
+};
+function jtRecKind(){return JT.kind==='job'?JT_REC.job:(JT.detail&&JT.detail.type==='INVOICE')?JT_REC.INVOICE:JT_REC.ESTIMATE;}
+function jtCustName(c){if(!c||typeof c!=='object')return '';return [c.customer_first_name,c.customer_last_name].filter(Boolean).join(' ')||c.customer_company_name||'';}
+function jtGet(o,path){return String(path).replace(/^this\./,'').split('.').reduce((x,k)=>x==null?x:x[k],o);}
+function jtPaths(o,pre,depth){
+  const out=[];
+  if(!o||typeof o!=='object'||Array.isArray(o)) return out;
+  for(const k of Object.keys(o)){
+    const v=o[k],p=pre?pre+'.'+k:k;
+    if(v&&typeof v==='object'&&!Array.isArray(v)&&depth>1) out.push(...jtPaths(v,p,depth-1));
+    else if(!Array.isArray(v)) out.push(p);
+  }
+  return out;
+}
+function jtResetDataBar(){
+  $('jt-data-pick').innerHTML='<option value="">Field placeholders</option><option value="" disabled>Loading recent records…</option>';
+  $('jt-data-uid').value='';jtDataNote('');
+}
+function jtDataNote(txt,type){const e=$('jt-data-note');e.style.display=txt?'block':'none';e.style.color=type==='err'?'var(--red)':type==='warn'?'var(--amber)':'';e.textContent=txt||'';}
+async function jtLoadRecordList(){
+  const ctx=JT,R=jtRecKind();
+  const r=await jtApi('GET',R.list).catch(e=>({ok:false,msg:e.message}));
+  if(JT!==ctx) return;
+  const list=r.ok?((r.body&&Array.isArray(r.body.data))?r.body.data:extractRecords(r.body||{},R.noun)):[];
+  ctx.recs=list;
+  const opts=['<option value="">Field placeholders</option>'];
+  if(!r.ok) opts.push('<option value="" disabled>Could not list '+R.noun+'s — paste a UID</option>');
+  else if(!list.length) opts.push('<option value="" disabled>No '+R.noun+'s in this account</option>');
+  else opts.push('<optgroup label="Recent '+R.noun+'s">'+list.map(x=>{const u=R.uid(x);return u?'<option value="'+esc(u)+'">'+esc(R.label(x).filter(Boolean).join(' · ').slice(0,90)||u)+'</option>':'';}).join('')+'</optgroup>');
+  $('jt-data-pick').innerHTML=opts.join('');
+  if(ctx.data) $('jt-data-pick').value=ctx.dataUid||'';
+}
+function jtLoadHandlebars(){
+  if(window.Handlebars) return Promise.resolve();
+  if(!jtLoadHandlebars.p) jtLoadHandlebars.p=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/handlebars.js/4.7.8/handlebars.min.js';
+    s.onload=()=>res();s.onerror=()=>{jtLoadHandlebars.p=null;rej(new Error('Could not load the template engine from cdnjs.'));};
+    document.head.appendChild(s);
+  });
+  return jtLoadHandlebars.p;
+}
+async function jtPickRecord(uid){
+  if(!JT) return;
+  const ctx=JT,R=jtRecKind();
+  if(!uid){ctx.data=null;ctx.dataUid='';jtDataNote('');jtRenderFrame();return;}
+  jtDataNote('Loading '+R.noun+' '+uid+'…');
+  try{
+    await jtLoadHandlebars();
+    const r=await jtApi('GET',R.detail(uid));
+    if(JT!==ctx) return;
+    if(!r.ok) throw new Error('Could not load that '+R.noun+': '+r.msg);
+    const d=(r.body&&r.body.data)||r.body;
+    if(!d||typeof d!=='object'||Array.isArray(d)) throw new Error('That '+R.noun+' came back empty.');
+    ctx.data=d;ctx.dataUid=uid;
+    const known=[...$('jt-data-pick').options].some(o=>o.value===uid);
+    if(!known){const o=document.createElement('option');o.value=uid;o.textContent=R.label(d).filter(Boolean).join(' · ')||uid;$('jt-data-pick').appendChild(o);}
+    $('jt-data-pick').value=uid;
+    jtRenderFrame();jtRenderInspector();
+  }catch(e){
+    if(JT!==ctx) return;
+    ctx.data=null;ctx.dataUid='';$('jt-data-pick').value='';
+    jtDataNote('✗ '+e.message,'err');jtRenderFrame();
+  }
+}
+let _jtHb=null,_jtMissing=new Set();
+function jtFmtDate(v,fmt,tz){
+  if(v==null||v==='') return '';
+  const d=new Date(v);if(isNaN(d)) return String(v);
+  const o={year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric',hourCycle:'h23',weekday:'long'};
+  let parts;
+  try{parts=new Intl.DateTimeFormat('en-US',{...o,timeZone:(typeof tz==='string'&&tz)||undefined}).formatToParts(d);}
+  catch(e){parts=new Intl.DateTimeFormat('en-US',o).formatToParts(d);}
+  const p={};parts.forEach(x=>p[x.type]=x.value);
+  const Y=+p.year,M=+p.month,D=+p.day,h=(+p.hour)%24,mi=+p.minute,s=+p.second,pad=n=>String(n).padStart(2,'0');
+  const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const th=D%10===1&&D!==11?'st':D%10===2&&D!==12?'nd':D%10===3&&D!==13?'rd':'th';
+  const map={YYYY:Y,YY:pad(Y%100),MMMM:MN[M-1],MMM:MN[M-1].slice(0,3),MM:pad(M),M,Do:D+th,DD:pad(D),D,dddd:p.weekday,ddd:String(p.weekday).slice(0,3),HH:pad(h),H:h,hh:pad(h%12||12),h:h%12||12,mm:pad(mi),ss:pad(s),A:h<12?'AM':'PM',a:h<12?'am':'pm'};
+  return String(typeof fmt==='string'&&fmt?fmt:'MM/DD/YYYY').replace(/\[([^\]]*)\]|YYYY|YY|MMMM|MMM|MM|Do|M|dddd|ddd|DD|D|HH|H|hh|h|mm|ss|A|a/g,(t,lit)=>lit!=null?lit:String(map[t]));
+}
+function jtHbs(){
+  if(_jtHb||!window.Handlebars) return _jtHb;
+  const H=window.Handlebars.create();
+  const isOpt=x=>x&&typeof x==='object'&&typeof x.lookupProperty==='function'||x&&x.hash&&x.data!==undefined;
+  const args=a=>{const l=Array.prototype.slice.call(a);return isOpt(l[l.length-1])?l.slice(0,-1):l;};
+  const optOf=a=>a[a.length-1];
+  const num=v=>{const n=parseFloat(v);return isNaN(n)?0:n;};
+  const blockOr=(res,o,self)=>o&&o.fn?(res?o.fn(self):o.inverse(self)):res;
+  // Same rules as Zuper's web app.
+  H.registerHelper('stringEq',function(a,b,o){return a===b||String(a).indexOf(String(b))>-1?o.fn(this):o.inverse(this);});
+  H.registerHelper('stringEqStrict',function(a,b,o){return a===b||(String(a).indexOf(String(b))>-1&&String(a).length===String(b).length)?o.fn(this):o.inverse(this);});
+  const PCT={'%Y/%m/%d':'YYYY/MM/DD','%d/%m/%Y':'DD/MM/YYYY','%m/%d/%Y':'MM/DD/YYYY','%I:%M %p':'hh:mm A','%H:%M':'HH:mm'};
+  H.registerHelper('formatDate',function(v,f){const a=args(arguments);return jtFmtDate(a[0],PCT[a[1]]||a[1],JT&&JT.data&&JT.data.timezone);});
+  H.registerHelper('formatCustomDate',function(){const a=args(arguments);return jtFmtDate(a[0],a[1],JT&&JT.data&&JT.data.timezone);});
+  H.registerHelper('formatDateWithTimeZone',function(){const a=args(arguments);return jtFmtDate(a[0]||new Date().toISOString(),a[1],a[2]||(JT&&JT.data&&JT.data.timezone));});
+  // Called by these templates; Zuper's PDF server provides them.
+  H.registerHelper('eachLastInstance',function(arr,key,o){
+    if(!Array.isArray(arr)||!arr.length) return o.inverse(this);
+    const last=new Map();arr.forEach(x=>last.set(x&&typeof key==='string'?x[key]:x,x));
+    return [...last.values()].map((x,i)=>o.fn(x,{data:Object.assign(H.createFrame(o.data||{}),{index:i})})).join('');
+  });
+  H.registerHelper('add',function(){return args(arguments).reduce((s,v)=>s+num(v),0);});
+  H.registerHelper('subtract',function(){const a=args(arguments);return num(a[0])-num(a[1]);});
+  H.registerHelper('multiply',function(){return args(arguments).reduce((s,v)=>s*num(v),1);});
+  H.registerHelper('divide',function(){const a=args(arguments);return num(a[1])?num(a[0])/num(a[1]):0;});
+  H.registerHelper('toFixed',function(){const a=args(arguments);return num(a[0]).toFixed(a.length>1&&!isNaN(parseInt(a[1]))?parseInt(a[1]):2);});
+  H.registerHelper('round',function(){const a=args(arguments);return Math.round(num(a[0]));});
+  [['eq',(a,b)=>a==b],['ne',(a,b)=>a!=b],['gt',(a,b)=>num(a)>num(b)],['gte',(a,b)=>num(a)>=num(b)],['lt',(a,b)=>num(a)<num(b)],['lte',(a,b)=>num(a)<=num(b)],
+   ['ifEquals',(a,b)=>a==b],['ifEq',(a,b)=>a==b],['and',(...x)=>x.every(Boolean)],['or',(...x)=>x.some(Boolean)],['not',a=>!a]]
+    .forEach(([n,f])=>{if(!(n in H.helpers))H.registerHelper(n,function(){const a=args(arguments);return blockOr(f(...a),optOf(arguments),this);});});
+  // Anything else: show the block's content (or nothing) and say which helpers were guessed.
+  H.registerHelper('helperMissing',function(){const o=optOf(arguments);_jtMissing.add(o&&o.name||'?');return o&&o.fn?o.fn(this):'';});
+  _jtHb=H;return H;
+}
+function jtFrameBody(){
+  if(JT&&JT.data){
+    const H=jtHbs(),R=jtRecKind();
+    if(H){
+      try{
+        _jtMissing=new Set();
+        const html=H.compile(jtSplice(JT.P.src,jtZidEdits(JT.P)),{compat:true})(JT.data);
+        const miss=[..._jtMissing];
+        jtDataNote('Showing '+R.noun+' “'+($('jt-data-pick').selectedOptions[0]||{}).textContent+'”. A close preview — Zuper’s PDF server may format a few values differently.'+
+          (miss.length?' Not simulated here (left blank): '+miss.join(', ')+'.':''),miss.length?'warn':'');
+        return html;
+      }catch(e){jtDataNote('⚠ Could not fill this template with that '+R.noun+' ('+e.message.split('\n')[0]+') — showing field placeholders.','warn');}
+    }
+  }
+  return jtPreviewBody(JT.P);
 }
 </script>
   <script src="../assets/back-link.js"></script>
