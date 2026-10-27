@@ -425,6 +425,8 @@ input[type=checkbox]{accent-color:var(--primary)}
         <option value="customer_notification">Customer Notifications</option>
         <option value="job_status">Job Statuses</option>
         <option value="job_category">Job Categories</option>
+        <option value="job_template">Job Card Templates</option>
+        <option value="qi_template">Quote &amp; Invoice Templates</option>
         <option value="asset_form">Asset Inspection Forms</option>
         <option value="service_task">Service Tasks</option>
         <option value="checklist">Checklists</option>
@@ -1650,6 +1652,14 @@ const MODULES={
   // Same fault as formula: 'job_category' is not a path this API serves. Every
   // reference in this file is jobs/category.
   job_category:{label:'Job Categories',uid:['category_uid','uid','_id'],del:'jobs/category',endpoint:'jobs/category',fetchParams:'populate_statuses=true',noPageLimit:true,cols:[{h:'Name',f:'category_name'},{h:'Color',f:'category_color'},{h:'Statuses',f:'_status_count'},{h:'Display Order',f:'display_order'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(c=>({...c,_status_count:(c.job_statuses||[]).length}))},
+  // Job Card Templates (Settings → Modules → Jobs → Job Card Template). List + detail
+  // confirmed live 2026-10-27; detail carries the HTML in data.template. The ✏ Edit
+  // column opens the visual editor (openJobTplEditor). Delete is unconfirmed → off.
+  job_template:{label:'Job Card Templates',uid:['template_uid','uid','_id'],del:null,noDelete:true,endpoint:'jobs/template',noPageLimit:true,fetchParams:'',readPaths:['jobs/template'],cols:[{h:'Name',f:'template_name'},{h:'Description',f:'template_description'},{h:'Job Category',f:'_cat'},{h:'Used By',f:'_assoc'},{h:'Engine',f:'render_engine'},{h:'Updated',f:'updated_at'},{h:'Edit',f:'_edit'}],transform:(recs)=>recs.map(r=>{const n=(r.associated_to||[]).length;return{...r,_cat:(r.job_category&&r.job_category.category_name)||'—',_assoc:n+' categor'+(n===1?'y':'ies')};})},
+  // Quote & Invoice Templates (Settings → Quotes & Invoices → Templates). Confirmed live
+  // (2026-10-27): GET invoice_estimate/template lists every quote (type ESTIMATE) and
+  // invoice (type INVOICE) template WITH its HTML — there is no detail call. Same editor.
+  qi_template:{label:'Quote & Invoice Templates',uid:['template_uid','uid','_id'],del:null,noDelete:true,endpoint:'invoice_estimate/template',noPageLimit:true,fetchParams:'',readPaths:['invoice_estimate/template'],cols:[{h:'Name',f:'template_name'},{h:'Type',f:'_type'},{h:'Description',f:'template_description'},{h:'Engine',f:'render_engine'},{h:'Updated',f:'updated_at'},{h:'Edit',f:'_edit'}],transform:(recs)=>recs.map(r=>({...r,_type:r.type==='ESTIMATE'?'Quote':r.type==='INVOICE'?'Invoice':(r.type||'—')}))},
   // Asset Inspection Forms
   asset_form:{label:'Asset Inspection Forms',uid:['asset_form_uid','uid','_id'],del:'assets/inspection_form/master',endpoint:'assets/inspection_form/master',fetchParams:'sort=DESC&sort_by=created_at&filter.keyword=',cols:[{h:'Name',f:'asset_form_name'},{h:'Description',f:'asset_form_description'},{h:'Fields',f:'_field_count'},{h:'Active',f:'is_active'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_field_count:(r.asset_form_fields||[]).length}))},
   // Service Tasks — the task instances sitting on jobs, not the master templates.
@@ -2612,7 +2622,7 @@ function renderRows(){
   $('tbody').innerHTML=pageRecs().map(r=>{
     const uid=String(r[uidField]||''),sel=selUids.has(uid);
     const chkCell=noDelete?'':'<td><input type="checkbox" '+(sel?'checked':'')+' onchange="toggleRow(\''+esc(uid)+'\',this.checked,this.closest(\'tr\'))"></td>';
-    return'<tr class="'+(sel?'row-sel':'')+'" data-uid="'+esc(uid)+'" ondblclick="openDrawer(allRecs.find(r=>String(r[uidField]||\'\')===this.dataset.uid))" style="cursor:pointer">'+chkCell+'<td class="uid-cell" title="'+esc(uid)+'">'+esc(uid)+'</td>'+vcols.map(c=>'<td>'+(c.f==='_cpq'?cpqPill(r):esc(fmt(getF(r,c.f))))+'</td>').join('')+'</tr>';
+    return'<tr class="'+(sel?'row-sel':'')+'" data-uid="'+esc(uid)+'" ondblclick="openDrawer(allRecs.find(r=>String(r[uidField]||\'\')===this.dataset.uid))" style="cursor:pointer">'+chkCell+'<td class="uid-cell" title="'+esc(uid)+'">'+esc(uid)+'</td>'+vcols.map(c=>'<td>'+(c.f==='_cpq'?cpqPill(r):c.f==='_edit'?jtEditBtn(uid,modKey()==='qi_template'?'qi':'job'):esc(fmt(getF(r,c.f))))+'</td>').join('')+'</tr>';
   }).join('')||'<tr><td colspan="10" style="padding:28px;text-align:center;color:#aaa">No matching records.</td></tr>';
 }
 function toggleRow(uid,checked,row){
@@ -10632,6 +10642,933 @@ async function startTplImport(){
     msg.className='msg msg-err';msg.textContent='✗ '+e.message;msg.style.display='block';
   }finally{
     $('ti-run-btn').disabled=false;
+  }
+}
+</script>
+<!-- ── JOB CARD TEMPLATE EDITOR ─────────────────────────────────────────────── -->
+<style>
+#jt-modal{position:fixed;inset:0;z-index:1005;background:var(--bg,#faf8f5);color:var(--text,#191919);display:none;flex-direction:column}
+#jt-modal.open{display:flex}
+body:has(#jt-modal.open) .back-link{display:none!important}
+.jt-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--card);flex-wrap:wrap}
+.jt-title{font-weight:700;font-size:.95rem}
+.jt-sub{font-size:.72rem;color:var(--text-sub);margin-top:2px}
+.jt-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.jt-actions .btn{font-size:.76rem;padding:6px 11px}
+.jt-tabs{display:inline-flex;border:1px solid var(--border-inp);border-radius:9px;overflow:hidden}
+.jt-tabs button{background:transparent;border:none;padding:6px 12px;font-size:.76rem;font-weight:600;cursor:pointer;color:var(--text-sub)}
+.jt-tabs button.on{background:var(--primary);color:var(--primary-on)}
+.jt-chk{font-size:.72rem;padding:3px 8px;border-radius:999px;border:1px solid var(--border)}
+.jt-chk.ok{color:var(--green);border-color:var(--green)}
+.jt-chk.bad{color:var(--red);border-color:var(--red);cursor:help}
+.jt-dirty{font-size:.72rem;color:var(--amber);font-weight:600}
+.jt-auto{display:inline-flex;align-items:center;gap:5px;font-size:.74rem;font-weight:600;color:var(--text-sub);cursor:pointer;user-select:none}
+.jt-auto input{accent-color:var(--primary);margin:0}
+#jt-status{margin:8px 16px 0;display:none}
+.jt-body{flex:1;display:grid;grid-template-columns:300px 1fr 340px;min-height:0}
+.jt-left,.jt-right{overflow:auto;padding:12px;background:var(--card);border-right:1px solid var(--border)}
+.jt-right{border-right:none;border-left:1px solid var(--border)}
+.jt-center{position:relative;min-width:0;display:flex;flex-direction:column}
+#jt-frame{flex:1;width:100%;border:none;background:#e5e7eb}
+#jt-code{flex:1;width:100%;border:none;resize:none;font:12px/1.5 ui-monospace,Consolas,monospace;padding:12px;background:var(--inp-bg);color:var(--text);display:none;box-sizing:border-box}
+.jt-codebar{display:none;padding:8px 12px;gap:8px;align-items:center;border-top:1px solid var(--border);background:var(--card);font-size:.74rem;color:var(--text-sub)}
+.jt-ph{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-sub);margin:2px 0 8px}
+.jt-item{display:flex;align-items:flex-start;gap:6px;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:.78rem;line-height:1.3}
+.jt-item:hover{background:var(--tr-hover)}
+.jt-item.on{background:var(--row-sel);outline:1px solid var(--primary)}
+.jt-item .ic{flex:none;width:18px;text-align:center;opacity:.75}
+.jt-item .lb{flex:1;min-width:0;word-break:break-word}
+.jt-x{flex:none;border:none;background:transparent;color:var(--text-sub);cursor:pointer;font-size:.8rem;padding:0 3px;border-radius:5px}
+.jt-x:hover{color:var(--red);background:var(--tr-hover)}
+.jt-cols{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 6px 32px}
+.jt-col{display:inline-flex;align-items:center;gap:2px;font-size:.7rem;border:1px solid var(--border-inp);border-radius:999px;padding:1px 4px 1px 8px;cursor:pointer;background:var(--inp-bg)}
+.jt-col:hover{border-color:var(--primary)}
+.jt-col.on{border-color:var(--primary);background:var(--primary-tint)}
+.jt-sec{border-top:1px solid var(--sec-border);padding-top:10px;margin-top:12px}
+.jt-crumb{display:flex;flex-wrap:wrap;gap:3px;font-size:.7rem;margin-bottom:8px}
+.jt-crumb span{padding:1px 6px;border-radius:5px;background:var(--th-bg);cursor:pointer;font-family:ui-monospace,Consolas,monospace}
+.jt-crumb span.on{background:var(--primary);color:var(--primary-on)}
+.jt-btns{display:flex;flex-wrap:wrap;gap:5px}
+.jt-btns .btn{font-size:.72rem;padding:5px 9px}
+.jt-txt{display:flex;flex-direction:column;gap:2px;margin-bottom:7px}
+.jt-txt label{font-size:.66rem;color:var(--text-sub);font-family:ui-monospace,Consolas,monospace}
+.jt-txt input,.jt-ins input,.jt-right textarea{width:100%;box-sizing:border-box;padding:5px 8px;border:1px solid var(--border-inp);border-radius:7px;background:var(--inp-bg);color:var(--text);font-size:.78rem}
+.jt-right textarea{font:11px/1.45 ui-monospace,Consolas,monospace;min-height:140px}
+.jt-field{display:flex;align-items:center;gap:4px;font-size:.74rem;padding:2px 0}
+.jt-field code{flex:1;min-width:0;background:#fff3e0;color:#b45309;border:1px dashed #f59e0b;border-radius:4px;padding:1px 5px;word-break:break-all;font-size:.7rem}
+.jt-note{font-size:.72rem;color:var(--text-sub);line-height:1.4}
+.jt-ins{display:flex;gap:5px}
+@media (max-width:1100px){.jt-body{grid-template-columns:240px 1fr 280px}}
+</style>
+<div id="jt-modal" role="dialog" aria-label="Job card template editor">
+  <div class="jt-head">
+    <div>
+      <div class="jt-title" id="jt-title">Template</div>
+      <div class="jt-sub" id="jt-sub"></div>
+    </div>
+    <div class="jt-actions">
+      <span class="jt-dirty" id="jt-dirty"></span>
+      <label class="jt-auto" title="Write each change to Zuper a couple of seconds after you stop editing"><input type="checkbox" id="jt-autosave" onchange="jtToggleAutosave(this.checked)"> Auto-save</label>
+      <span class="jt-chk ok" id="jt-chk">✓ Tags balanced</span>
+      <button class="btn btn-o" onclick="jtUndo()" id="jt-undo" title="Undo (Ctrl+Z)">↶ Undo</button>
+      <button class="btn btn-o" onclick="jtRedo()" id="jt-redo" title="Redo (Ctrl+Y)">↷ Redo</button>
+      <span class="jt-tabs"><button id="jt-tab-visual" class="on" onclick="jtSetTab('visual')">Visual</button><button id="jt-tab-code" onclick="jtSetTab('code')">HTML</button></span>
+      <button class="btn btn-o" onclick="jtReset()" title="Discard every change since the template was opened">⟲ Reset</button>
+      <button class="btn btn-o" onclick="jtCopy()">📋 Copy HTML</button>
+      <button class="btn btn-o" onclick="jtDownload()">⬇ Download</button>
+      <button class="btn btn-p" onclick="jtSave()" id="jt-save">💾 Save to Zuper</button>
+      <button class="btn btn-o" onclick="jtClose()">✕ Close</button>
+    </div>
+  </div>
+  <div id="jt-status" class="msg"></div>
+  <div class="jt-body">
+    <aside class="jt-left"><div class="jt-ph">Sections</div><div id="jt-outline"></div></aside>
+    <main class="jt-center">
+      <iframe id="jt-frame" sandbox="allow-same-origin" title="Template preview"></iframe>
+      <textarea id="jt-code" spellcheck="false"></textarea>
+      <div class="jt-codebar" id="jt-codebar"><button class="btn btn-p" style="font-size:.74rem;padding:5px 11px" onclick="jtApplyCode()">Apply HTML</button><span>Edits here replace the whole template. Switching back to Visual applies them too.</span></div>
+    </main>
+    <aside class="jt-right"><div class="jt-ph">Selected</div><div id="jt-insp"></div></aside>
+  </div>
+</div>
+<script>
+'use strict';
+// Job Card Templates — visual editor.
+//
+// Confirmed live (2026-10-27): GET jobs/template lists them; GET jobs/template/{uid}
+// returns data.template, ONE HTML string with Handlebars tags (render_engine PHANTOM).
+//
+// Every edit is made on the SOURCE STRING, never by round-tripping through the DOM.
+// The HTML parser "foster-parents" stray text out of tables, so a {{#each}} sitting
+// between two <tr>s would be moved above the table on re-serialise and the loop
+// would silently break. jtParse() is a small tokenizer that records source offsets
+// for every element, text run and {{tag}}; ops splice those ranges. The preview
+// iframe is the only thing the browser ever parses, and nothing is read back from it.
+//
+// Any op that would cut a {{#block}} … {{/block}} pair in half is refused — that is
+// the one edit that renders fine in the preview but breaks the PDF.
+//
+// SAVE contract, read from Zuper's own web app (job-card-templates module, 2026-10-27):
+//   PUT jobs/template   body {template:{template_uid, template_name, template_description,
+//     job_category:<first associated category_uid>, template_options:{format,orientation,
+//     border:{top,right,bottom,left}}, template:<html>, associated_to:[category_uid…]}}
+// No uid in the path — it rides inside the body. Detail GET returns associated_to as
+// category OBJECTS; the UI maps them back to uids before saving, and so do we.
+// Before every save: re-read (someone else may have edited it), then
+// POST template/validate {module_name:'JOB', template} — the same check Zuper's editor
+// runs — then PUT, then read back to prove the HTML landed.
+const JT_INLINE=new Set(['b','strong','i','em','u','s','strike','span','a','small','big','font','sup','sub','label','br','img','code','mark','abbr']);
+const JT_AUTOSAVE_MS=2500;
+let _jtSaving=false,_jtSaveAgain=false,_jtAutoTimer=null;
+const JT_VOID=new Set(['area','base','br','col','embed','hr','img','input','link','meta','source','track','wbr']);
+const JT_RAW=new Set(['style','script','textarea','title']);
+const JT_CLOSES_P=new Set(['div','table','p','ul','ol','h1','h2','h3','h4','h5','h6','section','header','footer','hr','blockquote','pre']);
+let JT=null; // {uid, kind, detail, original, src, P, undo, redo, sel, tab}
+
+// Template kinds. Same editor, different endpoints:
+//  job — GET jobs/template/{uid} detail; PUT jobs/template (uid in body); validate JOB.
+//  qi  — quotes & invoices, read from Zuper's estimate-templates module (2026-10-27):
+//        no detail GET, the list carries the HTML, so we read the list and pick the uid;
+//        PUT invoice_estimate/template/{uid} body {template:{template_uid, type,
+//        template_name, template_description, template_options, template}};
+//        validate with module_name = the template's type (ESTIMATE | INVOICE).
+const JT_KINDS={
+  job:{
+    noun:'job card template',
+    read:async uid=>{
+      const r=await jtApi('GET','jobs/template/'+encodeURIComponent(uid));
+      if(!r.ok) throw new Error('HTTP '+r.status+' — '+r.msg);
+      return (r.body&&r.body.data)||r.body;
+    },
+    validateModule:()=>'JOB',
+    save:(d,html)=>['PUT','jobs/template',jtSavePayload(d,html)],
+    sub:d=>{const n=(d.associated_to||[]).length;return n?'used by '+n+' job categor'+(n===1?'y':'ies'):'';}
+  },
+  qi:{
+    noun:'quote / invoice template',
+    read:async uid=>{
+      const r=await jtApi('GET','invoice_estimate/template');
+      if(!r.ok) throw new Error('HTTP '+r.status+' — '+r.msg);
+      const list=(r.body&&r.body.data)||[];
+      const d=Array.isArray(list)&&list.find(t=>String(t.template_uid)===String(uid));
+      if(!d) throw new Error('Template '+uid+' is no longer in this account’s quote & invoice templates.');
+      return d;
+    },
+    validateModule:d=>d.type||'ESTIMATE',
+    save:(d,html)=>['PUT','invoice_estimate/template/'+encodeURIComponent(d.template_uid),jtQiSavePayload(d,html)],
+    sub:d=>d.type==='ESTIMATE'?'Quote':d.type==='INVOICE'?'Invoice':(d.type||'')
+  }
+};
+
+// ── Parsing ─────────────────────────────────────────────────────────────────
+function jtParse(src){
+  const n=src.length;
+  const root={id:0,tag:'#root',start:0,nameEnd:0,openEnd:0,closeStart:n,end:n,children:[],texts:[],parent:null};
+  const nodes=[root],texts=[],hbs=[];
+  let cur=root,i=0,textStart=0;
+  const close=(nd,at,endAt)=>{nd.closeStart=at;nd.end=endAt;};
+  const popWhile=(pred,at)=>{while(cur!==root&&pred(cur)){close(cur,at,at);cur=cur.parent;}};
+  const flush=at=>{if(at>textStart){const t={start:textStart,end:at,parent:cur};cur.texts.push(t);texts.push(t);}};
+  const readHb=(at,inTag)=>{
+    const triple=src.startsWith('{{{',at),o=triple?3:2;
+    const c=src.indexOf(triple?'}}}':'}}',at+o),e=c<0?n:c+o;
+    hbs.push({start:at,end:e,inner:src.slice(at+o,c<0?n:c).trim(),triple,inTag,parent:cur});
+    return e;
+  };
+  while(i<n){
+    if(src.charCodeAt(i)===123&&src.charCodeAt(i+1)===123){i=readHb(i,false);continue;}
+    if(src[i]!=='<'){i++;continue;}
+    if(src.startsWith('<!--',i)){
+      flush(i);
+      const c=src.indexOf('-->',i+4),e=c<0?n:c+3;
+      const nd={id:nodes.length,tag:'#comment',start:i,nameEnd:i,openEnd:e,closeStart:e,end:e,children:[],texts:[],parent:cur};
+      nodes.push(nd);cur.children.push(nd);i=e;textStart=i;continue;
+    }
+    const head=src.slice(i,i+64);
+    let m=/^<\/([a-zA-Z][\w:-]*)\s*>/.exec(head);
+    if(m){
+      flush(i);
+      const tag=m[1].toLowerCase(),e=i+m[0].length;
+      let t=cur;while(t!==root&&t.tag!==tag)t=t.parent;
+      if(t!==root){while(cur!==t){close(cur,i,i);cur=cur.parent;}close(t,i,e);cur=t.parent;}
+      i=e;textStart=i;continue;
+    }
+    m=/^<([a-zA-Z][\w:-]*)/.exec(head);
+    if(!m){i++;continue;}
+    flush(i);
+    const tag=m[1].toLowerCase(),hb0=hbs.length;
+    let j=i+m[0].length,q=null;
+    while(j<n){
+      // {{tags}} inside quoted attributes too — src="{{customer_signature}}" is the common case
+      if(src.charCodeAt(j)===123&&src.charCodeAt(j+1)===123){j=readHb(j,true);continue;}
+      const ch=src[j];
+      if(q){if(ch===q)q=null;}
+      else if(ch==='"'||ch==="'")q=ch;
+      else if(ch==='>')break;
+      j++;
+    }
+    const openEnd=Math.min(n,j+1);
+    // Implicit closes — only the cases print templates actually rely on.
+    if(tag==='td'||tag==='th') popWhile(c=>c.tag==='td'||c.tag==='th',i);
+    else if(tag==='tr') popWhile(c=>c.tag==='td'||c.tag==='th'||c.tag==='tr',i);
+    else if(tag==='thead'||tag==='tbody'||tag==='tfoot') popWhile(c=>['td','th','tr','thead','tbody','tfoot'].includes(c.tag),i);
+    else if(tag==='li') popWhile(c=>c.tag==='li',i);
+    if(JT_CLOSES_P.has(tag)) popWhile(c=>c.tag==='p',i);
+    const nd={id:nodes.length,tag,start:i,nameEnd:i+1+m[1].length,openEnd,closeStart:openEnd,end:openEnd,children:[],texts:[],parent:cur,selfClose:src[j-1]==='/'};
+    for(let k=hb0;k<hbs.length;k++) hbs[k].parent=nd;
+    nodes.push(nd);cur.children.push(nd);
+    i=openEnd;textStart=i;
+    if(JT_VOID.has(tag)||nd.selfClose) continue;
+    if(JT_RAW.has(tag)){
+      const re=new RegExp('</'+tag+'\\s*>','ig');re.lastIndex=i;
+      const mm=re.exec(src),cs=mm?mm.index:n,e=mm?mm.index+mm[0].length:n;
+      close(nd,cs,e);i=e;textStart=i;continue;
+    }
+    cur=nd;
+  }
+  flush(n);
+  while(cur!==root){close(cur,n,n);cur=cur.parent;}
+  return {src,root,nodes,texts,hbs};
+}
+function jtHbKind(inner){
+  const s=inner.replace(/^~|~$/g,'').trim();
+  if(s.startsWith('!')) return 'comment';
+  if(s==='^'||s==='else'||/^else\s/.test(s)) return 'else';
+  if(s.startsWith('#')||s.startsWith('^')) return 'open';
+  if(s.startsWith('/')) return 'close';
+  return 'expr';
+}
+function jtHbName(inner){return (inner.replace(/^~|~$/g,'').trim().replace(/^[#^/>]\s*/,'').split(/\s+/)[0]||'');}
+const JT_HB_RE=/\{\{\{?([\s\S]*?)\}?\}\}/g;
+// Every {{#x}} must be closed by {{/x}} in order. Returns human-readable problems.
+function jtBlockIssues(s){
+  const issues=[],stack=[];let m;JT_HB_RE.lastIndex=0;
+  while((m=JT_HB_RE.exec(s))){
+    const inner=m[1].trim(),k=jtHbKind(inner);
+    if(k==='open') stack.push(jtHbName(inner));
+    else if(k==='close'){
+      const nm=jtHbName(inner),top=stack.pop();
+      if(top===undefined) issues.push('{{/'+nm+'}} has no opening tag');
+      else if(top!==nm) issues.push('{{#'+top+'}} is closed by {{/'+nm+'}}');
+    }
+  }
+  stack.forEach(nm=>issues.push('{{#'+nm+'}} is never closed'));
+  return issues;
+}
+const jtHasBlockTag=s=>/\{\{\s*~?\s*([#^/]|else\b)/.test(s);
+function jtBlocksAt(P,pos){
+  const st=[];
+  for(const h of P.hbs){if(h.end>pos)break;const k=jtHbKind(h.inner);if(k==='open')st.push(h);else if(k==='close')st.pop();}
+  return st;
+}
+// The collection a <tr> repeats over, when an {{#each}} opens inside its own tbody.
+function jtLoopFor(P,nd){
+  if(!nd.parent) return '';
+  const st=jtBlocksAt(P,nd.start);
+  for(let k=st.length-1;k>=0;k--){
+    const h=st[k];if(h.start<nd.parent.openEnd)break;
+    if(/^each/i.test(jtHbName(h.inner))) return (h.inner.replace(/^#\s*/,'').split(/\s+/)[1]||'items');
+  }
+  return '';
+}
+function jtLoopsAround(P,nd){
+  return jtBlocksAt(P,nd.start).filter(h=>/^each/i.test(jtHbName(h.inner))).map(h=>h.inner.replace(/^#\s*/,'').split(/\s+/)[1]||'items');
+}
+// Readable name for a {{tag}}: the path it prints, or — for {{value}} inside a
+// {{#stringEqStrict label 'Labor Hours'}} — the custom field it is picking out.
+function jtTokenLabel(inner,stack){
+  const s=inner.replace(/^~|~$/g,'').trim().replace(/^&\s*/,'');
+  const parts=s.match(/"[^"]*"|'[^']*'|\S+/g)||[s];
+  let main=parts[0];
+  if(parts.length>1){const arg=parts.slice(1).find(p=>!/^["'\d]/.test(p)&&!p.includes('='));if(arg)main=arg;}
+  main=main.replace(/^(\.\.\/)+/,'').replace(/^this\./,'');
+  if(main==='value'||main==='this'||main==='.'){
+    for(let k=stack.length-1;k>=0;k--){const lit=(stack[k].inner.match(/["']([^"']+)["']/)||[])[1];if(lit)return lit;}
+  }
+  return main;
+}
+function jtImgPlaceholder(label){
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="160" height="56"><rect x="1" y="1" width="158" height="54" rx="4" fill="#fff7ed" stroke="#f59e0b" stroke-dasharray="4 3"/><text x="80" y="32" font-family="monospace" font-size="11" text-anchor="middle" fill="#b45309">'+String(label).replace(/[<>&"]/g,'')+'</text></svg>';
+  return 'data:image/svg+xml,'+encodeURIComponent(svg).replace(/'/g,'%27');
+}
+function jtDecode(s){const t=document.createElement('textarea');t.innerHTML=s;return t.value;}
+function jtEncode(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/ /g,'&nbsp;');}
+function jtSplice(src,edits){
+  let out=src;
+  [...edits].sort((a,b)=>b.start-a.start).forEach(e=>{out=out.slice(0,e.start)+e.text+out.slice(e.end);});
+  return out;
+}
+// Widen a range to whole lines when the element sits alone on its line.
+function jtLineRange(src,a,b){
+  let k=a;while(k>0&&(src[k-1]===' '||src[k-1]==='\t'))k--;
+  let m=b;while(m<src.length&&(src[m]===' '||src[m]==='\t'))m++;
+  if((k===0||src[k-1]==='\n')&&(m>=src.length||src[m]==='\n'||src[m]==='\r')){
+    if(src[m]==='\r')m++;if(src[m]==='\n')m++;return [k,m];
+  }
+  return [a,b];
+}
+function jtIndentOf(src,pos){let k=pos;while(k>0&&(src[k-1]===' '||src[k-1]==='\t'))k--;return (k===0||src[k-1]==='\n')?src.slice(k,pos):null;}
+
+// ── Preview ─────────────────────────────────────────────────────────────────
+function jtPreviewBody(P){
+  const {src,nodes,hbs}=P,edits=[];
+  for(const nd of nodes){
+    if(nd.id===0||nd.tag==='#comment') continue;
+    let attr=' data-zid="'+nd.id+'"';
+    if(nd.tag==='tr'){const loop=jtLoopFor(P,nd);if(loop) attr+=' data-zloop="'+esc(loop)+'"';}
+    edits.push({start:nd.nameEnd,end:nd.nameEnd,text:attr});
+  }
+  const stack=[];
+  for(const h of hbs){
+    const kind=jtHbKind(h.inner);
+    if(kind==='open') stack.push(h); else if(kind==='close') stack.pop();
+    if(h.inTag){
+      const isSrc=kind==='expr'&&/\bsrc\s*=\s*["']?[^"'>]*$/i.test(src.slice(h.parent.start,h.start));
+      edits.push({start:h.start,end:h.end,text:isSrc?jtImgPlaceholder(jtTokenLabel(h.inner,stack)):''});
+      continue;
+    }
+    if(kind!=='expr'){edits.push({start:h.start,end:h.end,text:''});continue;}
+    edits.push({start:h.start,end:h.end,text:'<span class="zhb" title="'+esc('{{'+h.inner+'}}')+'">'+esc(jtTokenLabel(h.inner,stack))+'</span>'});
+  }
+  return jtSplice(src,edits);
+}
+function jtPaper(){
+  const o=(JT.detail&&JT.detail.template_options)||{};
+  const sizes={a3:['297mm','420mm'],a4:['210mm','297mm'],a5:['148mm','210mm'],letter:['8.5in','11in'],legal:['8.5in','14in'],tabloid:['11in','17in']};
+  let [w,h]=sizes[String(o.format||'A4').toLowerCase()]||sizes.a4;
+  if(String(o.orientation||'').toLowerCase()==='landscape') [w,h]=[h,w];
+  const u=v=>{v=String(v==null?'0':v).trim();return /^[\d.]+$/.test(v)?v+'px':v;};
+  const b=o.border||{};
+  const pad=typeof b==='object'?[b.top,b.right,b.bottom,b.left].map(u).join(' '):u(b);
+  return {w,h,pad};
+}
+function jtRenderFrame(){
+  const f=$('jt-frame'),pp=jtPaper();
+  let scrollY=0;try{scrollY=f.contentWindow?f.contentWindow.scrollY:0;}catch(e){}
+  const css='html,body{margin:0}body{background:#e5e7eb;padding:24px 12px}'+
+    '.zpage{background:#fff;width:'+pp.w+';min-height:'+pp.h+';padding:'+pp.pad+';box-sizing:border-box;margin:0 auto;box-shadow:0 2px 14px rgba(0,0,0,.18);position:relative}'+
+    '.zhb{background:#fff3e0;color:#b45309;border:1px dashed #f59e0b;border-radius:3px;padding:0 2px;font-family:ui-monospace,Consolas,monospace;font-size:.92em;font-style:normal;font-weight:normal}'+
+    '[data-zloop]{outline:1px dashed #6366f1;outline-offset:-1px}'+
+    '.zhov{outline:1px solid rgba(253,80,0,.55)!important;outline-offset:-1px;cursor:pointer}'+
+    '.zsel{outline:2px solid #fd5000!important;outline-offset:-2px;background-color:rgba(253,80,0,.06)!important}';
+  f.onload=()=>{
+    const d=f.contentDocument;if(!d) return;
+    try{f.contentWindow.scrollTo(0,scrollY);}catch(e){}
+    let hov=null;
+    d.addEventListener('mouseover',e=>{const t=e.target.closest&&e.target.closest('[data-zid]');if(hov&&hov!==t)hov.classList.remove('zhov');hov=t;if(t)t.classList.add('zhov');});
+    d.addEventListener('mouseleave',()=>{if(hov)hov.classList.remove('zhov');hov=null;});
+    // Node ids belong to one parse. A click can land on this frame after an edit has
+    // already re-parsed (e.g. a Text box commits on blur as you click the preview) —
+    // its id would then name a different element, so ignore clicks on a stale frame.
+    const P=JT&&JT.P;
+    d.addEventListener('click',e=>{e.preventDefault();if(!JT||JT.P!==P)return;const t=e.target.closest&&e.target.closest('[data-zid]');jtSelect(t?Number(t.getAttribute('data-zid')):null,true);});
+    d.addEventListener('keydown',jtKeys);
+    jtMarkFrameSel();
+  };
+  f.srcdoc='<!doctype html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body><div class="zpage">'+jtPreviewBody(JT.P)+'</div></body></html>';
+}
+function jtMarkFrameSel(scroll){
+  const d=$('jt-frame').contentDocument;if(!d) return;
+  d.querySelectorAll('.zsel').forEach(e=>e.classList.remove('zsel'));
+  if(!JT||JT.sel==null) return; // the frame also reloads (Loading…) while no template is open
+  const el=d.querySelector('[data-zid="'+JT.sel+'"]');
+  if(el){el.classList.add('zsel');if(scroll&&el.scrollIntoView) el.scrollIntoView({block:'nearest'});}
+}
+
+// ── Labels ──────────────────────────────────────────────────────────────────
+function jtSnippet(P,nd,max){
+  max=max||60;
+  let s=P.src.slice(nd.openEnd,nd.closeStart).replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<!--[\s\S]*?-->/g,'');
+  const stack=[];
+  s=s.replace(JT_HB_RE,(all,inner)=>{inner=inner.trim();const k=jtHbKind(inner);if(k==='open'){stack.push({inner});return '';}if(k==='close'){stack.pop();return '';}if(k!=='expr')return '';return ' «'+jtTokenLabel(inner,stack)+'» ';});
+  s=jtDecode(s.replace(/<img\b[^>]*>/gi,' [image] ').replace(/<br\s*\/?>/gi,' · ').replace(/<[^>]*>/g,' ')).replace(/\s+/g,' ').trim();
+  return s.length>max?s.slice(0,max-1)+'…':s;
+}
+function jtTableOf(nd){let t=nd.parent;while(t&&t.tag!=='table')t=t.parent;return t;}
+// A "row" is a <tr>, or a thead/tbody/tfoot/table that holds cells directly — quote and
+// invoice templates often write <thead><th>…</th></thead> with no <tr>, which the PDF
+// renderer accepts, so its header cells must still line up with the body columns.
+function jtRows(table){
+  const rows=[],isCell=c=>c.tag==='td'||c.tag==='th';
+  if(table.children.some(isCell)) rows.push(table);
+  const walk=n=>{for(const c of n.children){if(c.tag==='tr')rows.push(c);else if(c.tag!=='table'){if(c.children.some(isCell))rows.push(c);walk(c);}}};
+  walk(table);return rows;
+}
+function jtCells(P,tr){
+  let col=0;
+  return tr.children.filter(c=>c.tag==='td'||c.tag==='th').map(c=>{
+    const sp=parseInt((/\bcolspan\s*=\s*["']?(\d+)/i.exec(P.src.slice(c.start,c.openEnd))||[])[1]||'1',10)||1;
+    const o={node:c,col,span:sp};col+=sp;return o;
+  });
+}
+function jtCellOf(nd){let t=nd;while(t&&t.tag!=='td'&&t.tag!=='th'){if(t.tag==='table'||t.tag==='#root')return null;t=t.parent;}return t||null;}
+function jtHeaderRow(P,table){const rows=jtRows(table);return rows.find(r=>r.children.some(c=>c.tag==='th'))||rows[0]||null;}
+function jtColName(P,cellNd){
+  const table=jtTableOf(cellNd);if(!table) return '';
+  const me=jtCells(P,cellNd.parent).find(c=>c.node===cellNd);if(!me) return '';
+  const hr=jtHeaderRow(P,table);
+  const h=hr&&jtCells(P,hr).find(c=>c.col<=me.col&&me.col<c.col+c.span);
+  return (h&&jtSnippet(P,h.node,40))||('Column '+(me.col+1));
+}
+function jtTagIcon(tag){return ({table:'▦',img:'🖼',p:'¶',div:'▭',h1:'H',h2:'H',h3:'H',h4:'H',ul:'•',ol:'1.',hr:'—',td:'▢',th:'▣',tr:'☰'})[tag]||'‹›';}
+function jtHasDirectContent(P,nd){return nd.texts.some(t=>P.src.slice(t.start,t.end).trim());}
+
+// ── Open / close ────────────────────────────────────────────────────────────
+function jtEditBtn(uid,kind){
+  return '<button class="btn btn-o" style="font-size:.72rem;padding:3px 10px" onclick="event.stopPropagation();openJobTplEditor(\''+esc(uid)+'\',\''+(kind||'job')+'\')">✏ Edit</button>';
+}
+async function openJobTplEditor(uid,kind){
+  kind=JT_KINDS[kind]?kind:'job';const K=JT_KINDS[kind];
+  const m=$('jt-modal');m.classList.add('open');
+  document.addEventListener('keydown',jtKeys);
+  $('jt-title').textContent='Loading template…';$('jt-sub').textContent='';
+  $('jt-outline').innerHTML='';$('jt-insp').innerHTML='';
+  $('jt-frame').onload=null;
+  $('jt-frame').srcdoc='<p style="font:14px sans-serif;color:#888;padding:24px">Loading…</p>';
+  jtMsg('','');
+  JT=null;
+  try{
+    const d=await K.read(uid);
+    if(!d||typeof d.template!=='string') throw new Error('The response has no template HTML (data.template).');
+    let auto=false;try{auto=localStorage.getItem('zdm_jt_autosave')==='1';}catch(e){}
+    JT={uid,kind,detail:d,original:d.template,saved:d.template,src:d.template,P:jtParse(d.template),undo:[],redo:[],sel:null,tab:'visual',autosave:auto,saveState:'',saveMsg:'',savedAt:null};
+    $('jt-autosave').checked=auto;
+    jtBackup(d);
+    $('jt-title').textContent=d.template_name||'Untitled template';
+    $('jt-modal').setAttribute('aria-label',K.noun+' editor');
+    $('jt-sub').textContent=[K.sub(d),d.template_description,d.render_engine,(d.template_options&&d.template_options.format)||''].filter(Boolean).join(' · ');
+    jtSetTab('visual');
+    jtRenderAll();
+    jtMsg(auto?'Auto-save is on — each change is written to Zuper a couple of seconds after you stop editing. The original was backed up in this browser.'
+              :'Changes stay in this window until you click 💾 Save to Zuper (or Ctrl+S). The original was backed up in this browser.','info');
+  }catch(e){
+    $('jt-title').textContent='Could not open template';
+    jtMsg('✗ '+e.message,'err');
+  }
+}
+async function jtClose(){
+  if(JT&&JT.autosave&&JT.src!==JT.saved&&!jtBlockIssues(JT.src).length){
+    clearTimeout(_jtAutoTimer);_jtAutoTimer=null;
+    await jtSave(true);
+  }
+  if(JT&&JT.src!==JT.saved&&!confirm('You have unsaved changes to this template. Close anyway?')) return;
+  clearTimeout(_jtAutoTimer);_jtAutoTimer=null;
+  $('jt-modal').classList.remove('open');
+  document.removeEventListener('keydown',jtKeys);
+  JT=null;
+}
+function jtBackup(d){
+  try{
+    const k='zdm_jobtpl_backup_'+d.template_uid;
+    const list=JSON.parse(localStorage.getItem(k)||'[]');
+    if(!list.length||list[list.length-1].template!==d.template){
+      list.push({at:new Date().toISOString(),template_name:d.template_name,template:d.template});
+      localStorage.setItem(k,JSON.stringify(list.slice(-5)));
+    }
+  }catch(e){}
+}
+function jtMsg(txt,type){const e=$('jt-status');if(!txt){e.style.display='none';return;}e.className='msg msg-'+type;e.textContent=txt;e.style.display='block';}
+
+// ── State changes ───────────────────────────────────────────────────────────
+function jtCommit(newSrc,selectAt,selectTag){
+  if(newSrc===JT.src) return;
+  JT.undo.push(JT.src);JT.redo=[];
+  JT.src=newSrc;JT.P=jtParse(newSrc);
+  JT.sel=null;
+  if(selectAt!=null){const nd=JT.P.nodes.find(x=>x.start===selectAt&&(!selectTag||x.tag===selectTag));if(nd)JT.sel=nd.id;}
+  jtRenderAll();jtScheduleAutosave();
+}
+function jtUndo(){if(!JT||!JT.undo.length)return;JT.redo.push(JT.src);JT.src=JT.undo.pop();JT.P=jtParse(JT.src);JT.sel=null;jtRenderAll();jtScheduleAutosave();}
+function jtRedo(){if(!JT||!JT.redo.length)return;JT.undo.push(JT.src);JT.src=JT.redo.pop();JT.P=jtParse(JT.src);JT.sel=null;jtRenderAll();jtScheduleAutosave();}
+function jtReset(){if(!JT||JT.src===JT.original)return;if(!confirm('Discard every change since this template was opened?'))return;jtCommit(JT.original);}
+function jtSelect(id,scrollOutline){
+  if(!JT) return;
+  JT.sel=(id==null||id===0)?null:id;
+  jtMarkFrameSel(!scrollOutline);
+  jtRenderOutline();jtRenderInspector();
+  if(scrollOutline){const a=document.querySelector('#jt-outline .on');if(a&&a.scrollIntoView)a.scrollIntoView({block:'nearest'});}
+}
+function jtKeys(e){
+  if(!JT) return;
+  const k=(e.key||'').toLowerCase();
+  if((e.ctrlKey||e.metaKey)&&k==='s'){e.preventDefault();if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();jtSave(false);return;}
+  const tg=(e.target&&e.target.tagName)||'';
+  if(tg==='INPUT'||tg==='TEXTAREA') return;
+  if((e.ctrlKey||e.metaKey)&&k==='z'&&!e.shiftKey){e.preventDefault();jtUndo();}
+  else if((e.ctrlKey||e.metaKey)&&(k==='y'||(k==='z'&&e.shiftKey))){e.preventDefault();jtRedo();}
+  else if((k==='delete'||k==='backspace')&&JT.sel!=null){e.preventDefault();jtRemove(JT.sel);}
+  else if(k==='escape'&&JT.sel!=null){jtSelect(null);}
+}
+function jtNode(id){return JT&&JT.P.nodes[id];}
+function jtRefuse(why){jtMsg('✗ '+why,'err');}
+
+// ── Element ops ─────────────────────────────────────────────────────────────
+function jtRemove(id){
+  const nd=jtNode(id);if(!nd||nd.id===0) return;
+  const s=JT.P.src.slice(nd.start,nd.end);
+  if(jtBlockIssues(s).length) return jtRefuse('This element holds only half of a {{#…}} … {{/…}} block that continues outside it, so removing it would break the template. Pick its parent in the path above and remove that instead.');
+  const [a,b]=jtLineRange(JT.P.src,nd.start,nd.end);
+  jtMsg('','');
+  jtCommit(JT.P.src.slice(0,a)+JT.P.src.slice(b));
+}
+// What "move up/down" acts on for a selection. Moving a lone cell would misalign its
+// column, and moving inline bits (<b>, <span>, <br>) shuffles a label away from the
+// value printed next to it — so cells move their ROW and inline content moves the
+// block that holds it. Column order has its own ◀ / ▶ buttons.
+function jtMoveTarget(nd){
+  if(!nd||nd.id===0) return null;
+  const cell=jtCellOf(nd);
+  let t=cell?cell.parent:nd;
+  while(t&&t.id!==0&&JT_INLINE.has(t.tag)) t=t.parent;
+  return t&&t.id!==0?t:null;
+}
+function jtMoveNoun(t){return !t?'':({tr:'row',thead:'header row',tbody:'row group',tfoot:'footer row',table:'table',p:'paragraph',div:'block',li:'item',ul:'list',ol:'list',img:'image',hr:'divider'})[t.tag]||t.tag;}
+function jtSiblings(nd){return nd.parent?nd.parent.children.filter(c=>c.tag!=='#comment'&&!JT_RAW.has(c.tag)&&c.tag!=='br'):[];}
+function jtMove(id,dir){
+  const nd=jtMoveTarget(jtNode(id));if(!nd) return;
+  const noun=jtMoveNoun(nd);
+  const sib=jtSiblings(nd),i=sib.indexOf(nd),o=sib[i+dir];
+  if(!o) return jtRefuse('This '+noun+' is already the '+(dir<0?'first':'last')+' one here — nothing to move past.');
+  const [a,b]=dir<0?[o,nd]:[nd,o],src=JT.P.src;
+  const A=src.slice(a.start,a.end),B=src.slice(b.start,b.end),between=src.slice(a.end,b.start);
+  if(jtHasBlockTag(between)) return jtRefuse('A {{#…}} or {{/…}} tag sits between these two, so swapping them would move one in or out of a loop or condition. Use “Edit HTML” on the parent instead.');
+  if(jtDecode(between.replace(/<br\s*\/?>/gi,'').replace(JT_HB_RE,'x')).trim()) return jtRefuse('Text or a field sits between this '+noun+' and the next one, so swapping them would separate it from its label. Use “Edit HTML” on the parent instead.');
+  if(jtBlockIssues(A).length||jtBlockIssues(B).length) return jtRefuse('One of these holds half of a {{#…}} block, so it cannot be moved on its own.');
+  const newStart=dir<0?a.start:a.start+B.length+between.length;
+  jtMsg('','');
+  jtCommit(src.slice(0,a.start)+B+between+A+src.slice(b.end),newStart,nd.tag);
+}
+function jtDuplicate(id){
+  const nd=jtNode(id);if(!nd||nd.id===0) return;
+  const src=JT.P.src,s=src.slice(nd.start,nd.end);
+  if(jtBlockIssues(s).length) return jtRefuse('This element holds half of a {{#…}} block, so it cannot be duplicated on its own.');
+  const ind=jtIndentOf(src,nd.start),ins=ind!=null?'\n'+ind+s:s;
+  jtCommit(src.slice(0,nd.end)+ins+src.slice(nd.end),nd.end+(ind!=null?1+ind.length:0),nd.tag);
+}
+function jtReplaceNode(id,html){
+  const nd=jtNode(id);if(!nd) return;
+  const old=JT.P.src.slice(nd.start,nd.end);
+  if(!jtBlockIssues(old).length&&jtBlockIssues(html).length) return jtRefuse('The new HTML has unbalanced tags: '+jtBlockIssues(html).join('; '));
+  jtMsg('','');
+  jtCommit(JT.P.src.slice(0,nd.start)+html+JT.P.src.slice(nd.end),nd.start);
+}
+function jtInsertContent(id,val){
+  const nd=jtNode(id);if(!nd||JT_VOID.has(nd.tag)) return;
+  val=String(val||'').trim();if(!val) return;
+  if(/^[\w@.\/-]+$/.test(val)) val='{{'+val+'}}';
+  if(jtBlockIssues(val).length) return jtRefuse('Unbalanced tags in what you typed: '+jtBlockIssues(val).join('; '));
+  const src=JT.P.src,at=nd.closeStart,prev=src[at-1]||'';
+  const ins=(prev&&!/\s|>/.test(prev)?' ':'')+val;
+  jtMsg('','');
+  jtCommit(src.slice(0,at)+ins+src.slice(at),nd.start,nd.tag);
+}
+function jtRemoveToken(start,end){
+  const nd=jtNode(JT.sel);
+  jtCommit(JT.P.src.slice(0,start)+JT.P.src.slice(end),nd?nd.start:null,nd?nd.tag:null);
+}
+function jtSetText(start,end,val){
+  const raw=JT.P.src.slice(start,end),lead=raw.match(/^\s*/)[0],trail=raw.match(/\s*$/)[0];
+  const nd=jtNode(JT.sel);
+  jtCommit(JT.P.src.slice(0,start)+lead+jtEncode(val)+trail+JT.P.src.slice(end),nd?nd.start:null,nd?nd.tag:null);
+}
+
+// ── Column ops ──────────────────────────────────────────────────────────────
+function jtColCtx(cellId){
+  const cell=jtNode(cellId);if(!cell) return null;
+  const table=jtTableOf(cell);if(!table) return null;
+  const me=jtCells(JT.P,cell.parent).find(c=>c.node===cell);if(!me) return null;
+  return {cell,table,col:me.col,rows:jtRows(table)};
+}
+function jtRemoveColumn(cellId){
+  const c=jtColCtx(cellId);if(!c) return;
+  const src=JT.P.src,edits=[];
+  for(const tr of c.rows){
+    const x=jtCells(JT.P,tr).find(k=>k.col<=c.col&&c.col<k.col+k.span);
+    if(!x) continue;
+    if(x.span>1){
+      const open=src.slice(x.node.start,x.node.openEnd),mm=/\bcolspan\s*=\s*(["']?)\d+\1/i.exec(open);
+      edits.push({start:x.node.start+mm.index,end:x.node.start+mm.index+mm[0].length,text:'colspan="'+(x.span-1)+'"'});
+      continue;
+    }
+    if(jtBlockIssues(src.slice(x.node.start,x.node.end)).length) return jtRefuse('A cell in this column holds half of a {{#…}} block, so the column cannot be removed cleanly. Edit it with the HTML tab.');
+    const [a,b]=jtLineRange(src,x.node.start,x.node.end);
+    edits.push({start:a,end:b,text:''});
+  }
+  // <colgroup><col> widths, when present
+  const cols=[];const walk=n=>{for(const k of n.children){if(k.tag==='col')cols.push(k);else if(k.tag==='colgroup')walk(k);}};walk(c.table);
+  if(cols[c.col]){const [a,b]=jtLineRange(src,cols[c.col].start,cols[c.col].end);edits.push({start:a,end:b,text:''});}
+  const name=jtColName(JT.P,c.cell);
+  jtMsg('✓ Removed column “'+name+'” from '+c.rows.length+' row(s).','ok');
+  jtCommit(jtSplice(src,edits));
+}
+function jtMoveColumn(cellId,dir){
+  const c=jtColCtx(cellId);if(!c) return;
+  const src=JT.P.src,edits=[];let selAt=null;
+  for(const tr of c.rows){
+    const cs=jtCells(JT.P,tr);
+    const covering=cs.find(k=>k.col<=c.col&&c.col<k.col+k.span);
+    if(!covering) continue;
+    const a=cs.find(k=>k.col===c.col&&k.span===1),b=cs.find(k=>k.col===c.col+dir&&k.span===1);
+    if(!a||!b) return jtRefuse(cs.length&&!b&&!cs.some(k=>k.col===c.col+dir)?'That is already the '+(dir<0?'first':'last')+' column.':'Some rows merge cells (colspan) across these columns, so they cannot be swapped.');
+    const [f,s]=dir<0?[b,a]:[a,b];
+    const F=src.slice(f.node.start,f.node.end),S=src.slice(s.node.start,s.node.end),between=src.slice(f.node.end,s.node.start);
+    if(jtHasBlockTag(between)||jtBlockIssues(F).length||jtBlockIssues(S).length) return jtRefuse('A {{#…}} block spans these cells, so they cannot be swapped.');
+    edits.push({start:f.node.start,end:s.node.end,text:S+between+F});
+    // swaps keep total length, so offsets after this row stay valid
+    if(tr===c.cell.parent) selAt=dir<0?f.node.start:f.node.start+S.length+between.length;
+  }
+  jtMsg('','');
+  jtCommit(jtSplice(src,edits),selAt,c.cell.tag);
+}
+function jtDuplicateColumn(cellId){
+  const c=jtColCtx(cellId);if(!c) return;
+  const src=JT.P.src,edits=[];
+  for(const tr of c.rows){
+    const x=jtCells(JT.P,tr).find(k=>k.col<=c.col&&c.col<k.col+k.span);
+    if(!x||x.span>1) continue;
+    const s=src.slice(x.node.start,x.node.end);
+    if(jtBlockIssues(s).length) return jtRefuse('A cell in this column holds half of a {{#…}} block, so the column cannot be duplicated.');
+    const ind=jtIndentOf(src,x.node.start);
+    edits.push({start:x.node.end,end:x.node.end,text:(ind!=null?'\n'+ind:'')+s});
+  }
+  jtMsg('✓ Column duplicated — select a cell in the copy to rename it or change its field.','ok');
+  jtCommit(jtSplice(src,edits));
+}
+
+// ── Rendering the editor ────────────────────────────────────────────────────
+function jtRenderAll(){
+  if(!JT) return;
+  const issues=jtBlockIssues(JT.src),chk=$('jt-chk');
+  chk.className='jt-chk '+(issues.length?'bad':'ok');
+  chk.textContent=issues.length?('⚠ '+issues.length+' tag issue'+(issues.length===1?'':'s')):'✓ Tags balanced';
+  chk.title=issues.join('\n')||'Every {{#block}} has its matching {{/block}}';
+  $('jt-undo').disabled=!JT.undo.length;$('jt-redo').disabled=!JT.redo.length;
+  jtPaintSave();
+  if(JT.tab==='code') $('jt-code').value=JT.src;
+  jtRenderFrame();jtRenderOutline();jtRenderInspector();
+}
+function jtRenderOutline(){
+  const P=JT.P,out=[];
+  const INTEREST=new Set(['table','p','img','h1','h2','h3','h4','h5','h6','ul','ol','hr']);
+  const selCell=JT.sel!=null?jtCellOf(jtNode(JT.sel)):null;
+  const walk=(n,depth)=>{
+    for(const c of n.children){
+      if(c.tag==='#comment'||JT_RAW.has(c.tag)) continue;
+      const show=INTEREST.has(c.tag)||(c.tag==='div'&&jtHasDirectContent(P,c));
+      if(!show){walk(c,depth);continue;}
+      let label;
+      if(c.tag==='table'){
+        // Only a real header row (<th>) gets column chips; layout tables are named by their text.
+        const hr=jtHeaderRow(P,c),isData=!!hr&&hr.children.some(k=>k.tag==='th'),cells=isData?jtCells(P,hr):[];
+        label=isData?'Table':'Layout · '+(jtSnippet(P,c,48)||'(empty)');
+        const loops=jtRows(c).map(r=>jtLoopFor(P,r)).filter(Boolean);
+        if(loops.length) label+=' · ↻ '+[...new Set(loops)].join(', ');
+        out.push(jtOutlineItem(c,depth,label));
+        if(cells.length>1) out.push('<div class="jt-cols" style="margin-left:'+(32+depth*12)+'px">'+cells.map(k=>{
+          const nm=jtSnippet(P,k.node,26)||('Col '+(k.col+1));
+          const on=selCell&&jtTableOf(selCell)===c&&jtCells(P,selCell.parent).some(x=>x.node===selCell&&x.col===k.col);
+          return '<span class="jt-col'+(on?' on':'')+'" onclick="jtSelect('+k.node.id+')" title="Select this column">'+esc(nm)+'<button class="jt-x" title="Remove this column" onclick="event.stopPropagation();jtRemoveColumn('+k.node.id+')">✕</button></span>';
+        }).join('')+'</div>');
+      }else if(c.tag==='img'){
+        const alt=(/\balt\s*=\s*["']([^"']*)/i.exec(P.src.slice(c.start,c.openEnd))||[])[1];
+        out.push(jtOutlineItem(c,depth,'Image'+(alt?' · '+alt:'')));
+      }else if(c.tag==='hr'){
+        out.push(jtOutlineItem(c,depth,'Divider'));
+      }else{
+        out.push(jtOutlineItem(c,depth,jtSnippet(P,c)||'(empty '+c.tag+')'));
+      }
+      walk(c,depth+1);
+    }
+  };
+  walk(P.root,0);
+  $('jt-outline').innerHTML=out.join('')||'<div class="jt-note">No sections found.</div>';
+}
+function jtOutlineItem(nd,depth,label){
+  let on=false;for(let t=jtNode(JT.sel);t;t=t.parent) if(t===nd){on=t.id===JT.sel;break;}
+  return '<div class="jt-item'+(on?' on':'')+'" style="padding-left:'+(8+depth*12)+'px" onclick="jtSelect('+nd.id+')"><span class="ic">'+jtTagIcon(nd.tag)+'</span><span class="lb">'+esc(label)+'</span><button class="jt-x" title="Remove this section" onclick="event.stopPropagation();jtRemove('+nd.id+')">✕</button></div>';
+}
+function jtRenderInspector(){
+  const box=$('jt-insp'),nd=JT.sel!=null?jtNode(JT.sel):null;
+  if(!nd){
+    box.innerHTML='<div class="jt-note">Click anything in the preview — a heading, a cell, a field, a whole table — or pick a section on the left.<br><br>'+
+      '<b>Orange chips</b> are fields Zuper fills in when the PDF is generated. Rows with a <span style="outline:1px dashed #6366f1;padding:0 3px">dashed blue outline</span> repeat once per item.<br><br>'+
+      'Keyboard: <b>Delete</b> removes the selection, <b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo and redo, <b>Esc</b> clears the selection.</div>'+
+      '<div class="jt-sec"><div class="jt-ph">All fields in this template</div>'+jtAllFieldsHtml()+'</div>';
+    return;
+  }
+  const P=JT.P,h=[];
+  const path=[];for(let t=nd;t&&t.id!==0;t=t.parent) path.unshift(t);
+  h.push('<div class="jt-crumb">'+path.map(t=>'<span class="'+(t===nd?'on':'')+'" onclick="jtSelect('+t.id+')" title="'+esc(jtSnippet(P,t,80))+'">'+t.tag+'</span>').join('<span style="background:none;cursor:default;padding:0">›</span>')+'</div>');
+  h.push('<div style="font-size:.8rem;margin-bottom:8px">'+esc(jtSnippet(P,nd,140)||'(no text)')+'</div>');
+  const loops=jtLoopsAround(P,nd);
+  if(loops.length) h.push('<div class="jt-note" style="margin-bottom:8px">↻ Repeats for each <b>'+esc(loops.join(' → '))+'</b></div>');
+  const mv=jtMoveTarget(nd),mvNoun=jtMoveNoun(mv);
+  const mvTitle=mv&&mv!==nd?' title="Moves the whole '+mvNoun+' this is in"':'';
+  h.push('<div class="jt-btns">'+
+    '<button class="btn btn-d" onclick="jtRemove('+nd.id+')">🗑 Remove</button>'+
+    (mv?'<button class="btn btn-o"'+mvTitle+' onclick="jtMove('+nd.id+',-1)">↑ Move '+esc(mvNoun)+' up</button>'+
+        '<button class="btn btn-o"'+mvTitle+' onclick="jtMove('+nd.id+',1)">↓ Move '+esc(mvNoun)+' down</button>':'')+
+    '<button class="btn btn-o" onclick="jtDuplicate('+nd.id+')">⧉ Duplicate</button></div>');
+  const cell=jtCellOf(nd);
+  if(cell&&jtTableOf(cell)){
+    h.push('<div class="jt-sec"><div class="jt-ph">Column · '+esc(jtColName(P,cell))+'</div><div class="jt-btns">'+
+      '<button class="btn btn-d" onclick="jtRemoveColumn('+cell.id+')">🗑 Remove column</button>'+
+      '<button class="btn btn-o" onclick="jtMoveColumn('+cell.id+',-1)">◀ Left</button>'+
+      '<button class="btn btn-o" onclick="jtMoveColumn('+cell.id+',1)">Right ▶</button>'+
+      '<button class="btn btn-o" onclick="jtDuplicateColumn('+cell.id+')">⧉ Duplicate</button></div></div>');
+  }
+  // Plain-text labels (the bits between tags and {{fields}})
+  const segs=jtTextSegments(P,nd).slice(0,15);
+  if(segs.length){
+    h.push('<div class="jt-sec"><div class="jt-ph">Text</div>'+segs.map(s=>
+      '<div class="jt-txt"><label>'+esc(s.where)+'</label><input value="'+esc(jtDecode(s.text))+'" onkeydown="if(event.key===\'Enter\')this.blur()" onchange="jtSetText('+s.start+','+s.end+',this.value)"></div>').join('')+'</div>');
+  }
+  // Fields printed inside the selection
+  const stack=[],fields=[];
+  for(const t of P.hbs){
+    const k=jtHbKind(t.inner);if(k==='open')stack.push(t);else if(k==='close')stack.pop();
+    if(t.start>=nd.start&&t.end<=nd.end&&k==='expr'&&!t.inTag) fields.push({t,label:jtTokenLabel(t.inner,stack)});
+  }
+  const logic=[...new Set(P.hbs.filter(t=>t.start>=nd.start&&t.end<=nd.end&&jtHbKind(t.inner)==='open').map(t=>'#'+jtHbName(t.inner)))];
+  h.push('<div class="jt-sec"><div class="jt-ph">Fields</div>'+
+    (fields.length?fields.map(f=>'<div class="jt-field"><code title="'+esc('{{'+f.t.inner+'}}')+'">'+esc(f.label)+(f.label!==f.t.inner?' <span style="opacity:.6">· '+esc(f.t.inner.length>60?f.t.inner.slice(0,59)+'…':f.t.inner)+'</span>':'')+'</code><button class="jt-x" title="Remove this field" onclick="jtRemoveToken('+f.t.start+','+f.t.end+')">✕</button></div>').join(''):'<div class="jt-note">No fields directly in this element.</div>')+
+    (logic.length?'<div class="jt-note" style="margin-top:6px">Contains logic: '+esc(logic.join(', '))+'</div>':'')+
+    (JT_VOID.has(nd.tag)?'':'<div class="jt-ins" style="margin-top:8px"><input id="jt-ins-val" list="jt-field-list" placeholder="Add a field, e.g. customer.customer_email"><button class="btn btn-o" style="font-size:.72rem;padding:5px 9px" onclick="jtInsertContent('+nd.id+',$(\'jt-ins-val\').value)">+ Add</button></div>'+
+      '<datalist id="jt-field-list">'+jtKnownFields().map(f=>'<option value="'+esc(f)+'">').join('')+'</datalist>'+
+      '<div class="jt-note" style="margin-top:4px">Adds at the end of this element. A plain path becomes {{path}}; anything else is inserted as typed.</div>')+
+    '</div>');
+  h.push('<div class="jt-sec"><details><summary class="jt-ph" style="cursor:pointer;display:list-item">Edit HTML of this element</summary>'+
+    '<textarea id="jt-el-html" spellcheck="false">'+esc(P.src.slice(nd.start,nd.end))+'</textarea>'+
+    '<button class="btn btn-o" style="font-size:.72rem;padding:5px 9px;margin-top:6px" onclick="jtReplaceNode('+nd.id+',$(\'jt-el-html\').value)">Apply</button></details></div>');
+  box.innerHTML=h.join('');
+}
+function jtTextSegments(P,nd){
+  const out=[];
+  const walk=n=>{
+    for(const t of n.texts){
+      const raw=P.src.slice(t.start,t.end);
+      let last=0,m;const re=new RegExp(JT_HB_RE.source,'g');
+      const push=(a,b)=>{const s=raw.slice(a,b);if(/[A-Za-z0-9]/.test(s)&&!s.includes('{{')) out.push({start:t.start+a,end:t.start+b,text:s.trim(),where:'<'+n.tag+'>'+(n.tag==='td'||n.tag==='th'?' · '+jtColName(P,n):'')});};
+      while((m=re.exec(raw))){push(last,m.index);last=m.index+m[0].length;}
+      push(last,raw.length);
+    }
+    for(const c of n.children) if(!JT_RAW.has(c.tag)) walk(c);
+  };
+  walk(nd);
+  return out.sort((a,b)=>a.start-b.start);
+}
+function jtKnownFields(){
+  const s=new Set();
+  for(const t of JT.P.hbs){if(jtHbKind(t.inner)==='expr'&&/^[\w@.\/]+$/.test(t.inner)) s.add(t.inner);}
+  if(JT.kind==='job') ['customer.customer_email','customer.customer_contact_no.mobile','job_title','job_priority','job_description','scheduled_start_time','scheduled_end_time','work_order_number','company.company_name','company.company_phone','customer_address.street','customer_address.city'].forEach(f=>s.add(f));
+  return [...s].sort();
+}
+function jtAllFieldsHtml(){
+  const stack=[],seen=new Map();
+  for(const t of JT.P.hbs){
+    const k=jtHbKind(t.inner);if(k==='open')stack.push(t);else if(k==='close')stack.pop();
+    if(k!=='expr') continue;
+    const lbl=jtTokenLabel(t.inner,stack);
+    if(!seen.has(lbl)) seen.set(lbl,{count:0,first:t});
+    seen.get(lbl).count++;
+  }
+  if(!seen.size) return '<div class="jt-note">None.</div>';
+  return [...seen.entries()].map(([lbl,v])=>'<div class="jt-field" style="cursor:pointer" onclick="jtSelectToken('+v.first.start+')"><code>'+esc(lbl)+'</code><span class="jt-note">'+(v.count>1?'×'+v.count:'')+'</span></div>').join('');
+}
+function jtSelectToken(pos){
+  let best=null;
+  for(const nd of JT.P.nodes){if(nd.id&&nd.tag!=='#comment'&&nd.start<=pos&&pos<nd.end&&(!best||nd.start>=best.start))best=nd;}
+  if(best) jtSelect(best.id,true);
+}
+
+// ── Tabs, export, save ──────────────────────────────────────────────────────
+function jtSetTab(tab){
+  if(!JT) return;
+  if(JT.tab==='code'&&tab==='visual') jtApplyCode(true);
+  JT.tab=tab;
+  const code=tab==='code';
+  $('jt-tab-visual').classList.toggle('on',!code);$('jt-tab-code').classList.toggle('on',code);
+  $('jt-frame').style.display=code?'none':'block';
+  $('jt-code').style.display=code?'block':'none';
+  $('jt-codebar').style.display=code?'flex':'none';
+  if(code) $('jt-code').value=JT.src;
+}
+function jtApplyCode(silent){
+  if(!JT) return;
+  const v=$('jt-code').value;
+  if(v===JT.src) return;
+  const issues=jtBlockIssues(v);
+  jtCommit(v);
+  if(issues.length) jtMsg('⚠ Applied, but the HTML has tag problems: '+issues.join('; '),'warn');
+  else if(!silent) jtMsg('✓ HTML applied.','ok');
+}
+async function jtCopy(){
+  if(!JT) return;
+  if(JT.tab==='code') jtApplyCode(true);
+  try{await navigator.clipboard.writeText(JT.src);jtMsg('✓ Template HTML copied. In Zuper open the template, switch its editor to HTML/source, select everything, paste, and save.','ok');}
+  catch(e){jtSetTab('code');const t=$('jt-code');t.focus();t.select();jtMsg('Clipboard is blocked here — the HTML is selected in the HTML tab; press Ctrl+C.','warn');}
+}
+function jtDownload(){
+  if(!JT) return;
+  if(JT.tab==='code') jtApplyCode(true);
+  const nm=(JT.detail.template_name||'template').replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'_')||'template';
+  dlFile(JT.src,nm+'.html','text/html');
+  dlFile(JSON.stringify(JT.detail,null,2),nm+'.original.json','application/json');
+  jtMsg('✓ Downloaded the edited HTML and a JSON backup of the original.','ok');
+}
+function jtSavePayload(d,html){
+  const assoc=(d.associated_to||[]).map(a=>typeof a==='string'?a:(a&&a.category_uid)).filter(Boolean);
+  const o=d.template_options||{},b=o.border||{};
+  const s=v=>v==null?v:String(v).trim();
+  return {template:{
+    template_uid:d.template_uid,
+    template_name:s(d.template_name)||'',
+    template_description:s(d.template_description)||'',
+    job_category:assoc[0],
+    template_options:{format:o.format,orientation:o.orientation,border:{top:s(b.top),right:s(b.right),bottom:s(b.bottom),left:s(b.left)}},
+    template:html,
+    associated_to:assoc
+  }};
+}
+function jtQiSavePayload(d,html){
+  const o=d.template_options||{},b=o.border||{};
+  const s=v=>v==null?v:String(v).trim();
+  return {template:{
+    template_uid:d.template_uid,
+    type:d.type,
+    template_name:s(d.template_name)||'',
+    template_description:s(d.template_description)||'',
+    template_options:{format:o.format,orientation:o.orientation,border:{top:s(b.top),right:s(b.right),bottom:s(b.bottom),left:s(b.left)}},
+    template:html
+  }};
+}
+async function jtApi(method,path,body){
+  const r=await fetch(baseUrl()+path,{method,headers:body?hdrs():getHdrs(),body:body?JSON.stringify(body):undefined});
+  const t=await r.text();let j={};
+  try{j=t?JSON.parse(t):{};}catch(e){j={message:t.slice(0,200)};}
+  const msg=j.message||j.error||(j.errors&&JSON.stringify(j.errors).slice(0,200))||('HTTP '+r.status);
+  return {ok:r.ok&&j.type!=='error',status:r.status,body:j,msg:typeof msg==='string'?msg:JSON.stringify(msg).slice(0,200)};
+}
+function jtSaveState(state,msg){if(!JT)return;JT.saveState=state;JT.saveMsg=msg||'';jtPaintSave();}
+function jtPaintSave(){
+  if(!JT) return;
+  const el=$('jt-dirty'),sv=$('jt-save'),dirty=JT.src!==JT.saved;
+  let txt='',col='var(--amber)';
+  if(JT.saveState==='saving'){txt='Saving…';col='var(--text-sub)';}
+  else if(!dirty){txt=JT.savedAt?'✓ Saved '+JT.savedAt.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'';col='var(--green)';}
+  else if(JT.saveState==='error'){txt='⚠ Save failed';col='var(--red)';}
+  else if(JT.saveState==='blocked'){txt='⚠ Not saved — tag issues';col='var(--red)';}
+  else if(JT.autosave&&_jtAutoTimer){txt='Auto-saving…';col='var(--text-sub)';}
+  else txt='● Unsaved changes';
+  el.textContent=txt;el.style.color=col;el.title=JT.saveMsg||'';
+  sv.disabled=JT.saveState==='saving'||!dirty;
+  sv.title=dirty?'Write this template to Zuper (Ctrl+S)':'No changes since the last save';
+}
+function jtToggleAutosave(on){
+  if(!JT) return;
+  JT.autosave=!!on;
+  try{localStorage.setItem('zdm_jt_autosave',on?'1':'0');}catch(e){}
+  if(on){jtMsg('Auto-save on — each change is written to Zuper a couple of seconds after you stop editing. Undo still works; it auto-saves too.','info');jtScheduleAutosave();}
+  else{clearTimeout(_jtAutoTimer);_jtAutoTimer=null;jtMsg('Auto-save off — click 💾 Save to Zuper (or Ctrl+S) when you are ready.','info');jtPaintSave();}
+}
+function jtScheduleAutosave(){
+  if(!JT||!JT.autosave) return;
+  clearTimeout(_jtAutoTimer);_jtAutoTimer=null;
+  if(JT.src===JT.saved){jtPaintSave();return;}
+  _jtAutoTimer=setTimeout(()=>{_jtAutoTimer=null;jtSave(true);},JT_AUTOSAVE_MS);
+  if(JT.saveState==='error'||JT.saveState==='blocked') JT.saveState=''; // a new attempt is queued
+  jtPaintSave();
+}
+async function jtSave(auto){
+  if(!JT) return;
+  if(JT.tab==='code') jtApplyCode(true);
+  if(!auto){clearTimeout(_jtAutoTimer);_jtAutoTimer=null;}
+  if(JT.src===JT.saved){jtPaintSave();return;}
+  const issues=jtBlockIssues(JT.src);
+  if(issues.length){
+    jtSaveState('blocked',issues.join('; '));
+    if(!auto) jtMsg('✗ Not saved: the template has tag problems that would break the PDF — '+issues.join('; ')+'. Undo the last change or fix it in the HTML tab.','err');
+    return;
+  }
+  if(_jtSaving){_jtSaveAgain=true;return;}
+  _jtSaving=true;
+  const ctx=JT,html=ctx.src,uid=ctx.uid,K=JT_KINDS[ctx.kind]||JT_KINDS.job;
+  jtSaveState('saving');
+  try{
+    // 1. Has anyone changed it in Zuper since we loaded / last saved it?
+    let live;
+    try{live=await K.read(uid)||{};}catch(e){throw new Error('Could not re-read the template before saving: '+e.message);}
+    if(typeof live.template==='string'&&live.template!==ctx.saved){
+      if(auto){
+        ctx.autosave=false;$('jt-autosave').checked=false;
+        throw new Error('This template was changed in Zuper by someone else since you opened it, so auto-save stopped instead of overwriting their edit. Click 💾 Save to Zuper to overwrite it with your version, or close and reopen to start from theirs.');
+      }
+      if(!confirm('This template was changed in Zuper since you opened it (last updated '+(live.updated_at||'?')+').\n\nOverwrite it with your version?')){jtSaveState('');return;}
+    }
+    // Save on top of the live record, so a name/category change made in Zuper is kept.
+    const base={...ctx.detail,...live};
+    // 2. Zuper's own template check.
+    const v=await jtApi('POST','template/validate',{module_name:K.validateModule(base),template:html});
+    if(!v.ok&&v.status!==404&&v.status!==405) throw new Error('Zuper rejected the template: '+v.msg);
+    // 3. Write.
+    const s=await jtApi(...K.save(base,html));
+    if(!s.ok) throw new Error('Save failed: '+s.msg);
+    // 4. Prove it landed.
+    let bd=null;try{bd=await K.read(uid);}catch(e){}
+    if(!bd||typeof bd.template!=='string') throw new Error('Saved, but could not read the template back to confirm. Check it in Zuper.');
+    if(bd.template!==html) throw new Error('Zuper accepted the save, but the template it returns differs from what was sent. Check it in Zuper before editing further.');
+    ctx.detail=bd;ctx.saved=html;ctx.savedAt=new Date();
+    jtBackup(bd);
+    if(JT===ctx){
+      jtSaveState('saved');
+      if(!auto) jtMsg('✓ Saved to Zuper and verified. New PDFs will use this version.','ok');
+      const r=allRecs.find(x=>String(x.template_uid||'')===uid);if(r) r.updated_at=bd.updated_at;
+    }
+  }catch(e){
+    if(JT===ctx){jtSaveState('error',e.message);jtMsg('✗ '+e.message,'err');}
+  }finally{
+    _jtSaving=false;
+    if(_jtSaveAgain){_jtSaveAgain=false;if(JT&&JT.autosave&&JT.src!==JT.saved) jtScheduleAutosave();}
   }
 }
 </script>
