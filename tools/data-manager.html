@@ -427,6 +427,8 @@ input[type=checkbox]{accent-color:var(--primary)}
         <option value="job_category">Job Categories</option>
         <option value="job_template">Job Card Templates</option>
         <option value="qi_template">Quote &amp; Invoice Templates</option>
+        <option value="po_template">Purchase Order Templates</option>
+        <option value="so_template">Work Order Templates</option>
         <option value="asset_form">Asset Inspection Forms</option>
         <option value="service_task">Service Tasks</option>
         <option value="checklist">Checklists</option>
@@ -1660,6 +1662,11 @@ const MODULES={
   // (2026-10-27): GET invoice_estimate/template lists every quote (type ESTIMATE) and
   // invoice (type INVOICE) template WITH its HTML — there is no detail call. Same editor.
   qi_template:{label:'Quote & Invoice Templates',uid:['template_uid','uid','_id'],del:null,noDelete:true,endpoint:'invoice_estimate/template',noPageLimit:true,fetchParams:'',readPaths:['invoice_estimate/template'],cols:[{h:'Name',f:'template_name'},{h:'Type',f:'_type'},{h:'Description',f:'template_description'},{h:'Engine',f:'render_engine'},{h:'Updated',f:'updated_at'},{h:'Edit',f:'_edit'}],transform:(recs)=>recs.map(r=>({...r,_type:r.type==='ESTIMATE'?'Quote':r.type==='INVOICE'?'Invoice':(r.type||'—')}))},
+  // Purchase Order + Work Order Templates (Settings → Purchasing). Lists confirmed live
+  // (2026-10-28): GET purchase_order/template → PURCHASE_ORDER templates; the same path
+  // with ?type=SERVICE_ORDER → work order templates. Both carry the HTML. Same editor.
+  po_template:{label:'Purchase Order Templates',uid:['template_uid','uid','_id'],del:null,noDelete:true,endpoint:'purchase_order/template',noPageLimit:true,fetchParams:'',readPaths:['purchase_order/template'],cols:[{h:'Name',f:'template_name'},{h:'Description',f:'template_description'},{h:'Page',f:'_page'},{h:'Updated',f:'updated_at'},{h:'Edit',f:'_edit'}],transform:(recs)=>recs.map(r=>({...r,_page:[r.template_options&&r.template_options.format,r.template_options&&r.template_options.orientation].filter(Boolean).join(' · ')||'—'}))},
+  so_template:{label:'Work Order Templates',uid:['template_uid','uid','_id'],del:null,noDelete:true,endpoint:'purchase_order/template',noPageLimit:true,fetchParams:'type=SERVICE_ORDER',readPaths:['purchase_order/template'],cols:[{h:'Name',f:'template_name'},{h:'Description',f:'template_description'},{h:'Page',f:'_page'},{h:'Updated',f:'updated_at'},{h:'Edit',f:'_edit'}],transform:(recs)=>recs.map(r=>({...r,_page:[r.template_options&&r.template_options.format,r.template_options&&r.template_options.orientation].filter(Boolean).join(' · ')||'—'}))},
   // Asset Inspection Forms
   asset_form:{label:'Asset Inspection Forms',uid:['asset_form_uid','uid','_id'],del:'assets/inspection_form/master',endpoint:'assets/inspection_form/master',fetchParams:'sort=DESC&sort_by=created_at&filter.keyword=',cols:[{h:'Name',f:'asset_form_name'},{h:'Description',f:'asset_form_description'},{h:'Fields',f:'_field_count'},{h:'Active',f:'is_active'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_field_count:(r.asset_form_fields||[]).length}))},
   // Service Tasks — the task instances sitting on jobs, not the master templates.
@@ -2622,7 +2629,7 @@ function renderRows(){
   $('tbody').innerHTML=pageRecs().map(r=>{
     const uid=String(r[uidField]||''),sel=selUids.has(uid);
     const chkCell=noDelete?'':'<td><input type="checkbox" '+(sel?'checked':'')+' onchange="toggleRow(\''+esc(uid)+'\',this.checked,this.closest(\'tr\'))"></td>';
-    return'<tr class="'+(sel?'row-sel':'')+'" data-uid="'+esc(uid)+'" ondblclick="openDrawer(allRecs.find(r=>String(r[uidField]||\'\')===this.dataset.uid))" style="cursor:pointer">'+chkCell+'<td class="uid-cell" title="'+esc(uid)+'">'+esc(uid)+'</td>'+vcols.map(c=>'<td>'+(c.f==='_cpq'?cpqPill(r):c.f==='_edit'?jtEditBtn(uid,modKey()==='qi_template'?'qi':'job'):esc(fmt(getF(r,c.f))))+'</td>').join('')+'</tr>';
+    return'<tr class="'+(sel?'row-sel':'')+'" data-uid="'+esc(uid)+'" ondblclick="openDrawer(allRecs.find(r=>String(r[uidField]||\'\')===this.dataset.uid))" style="cursor:pointer">'+chkCell+'<td class="uid-cell" title="'+esc(uid)+'">'+esc(uid)+'</td>'+vcols.map(c=>'<td>'+(c.f==='_cpq'?cpqPill(r):c.f==='_edit'?jtEditBtn(uid,({qi_template:'qi',po_template:'po',so_template:'so'})[modKey()]||'job'):esc(fmt(getF(r,c.f))))+'</td>').join('')+'</tr>';
   }).join('')||'<tr><td colspan="10" style="padding:28px;text-align:center;color:#aaa">No matching records.</td></tr>';
 }
 function toggleRow(uid,checked,row){
@@ -10832,8 +10839,33 @@ const JT_KINDS={
     validateModule:d=>d.type||'ESTIMATE',
     save:(d,html)=>['PUT','invoice_estimate/template/'+encodeURIComponent(d.template_uid),jtQiSavePayload(d,html)],
     sub:d=>d.type==='ESTIMATE'?'Quote':d.type==='INVOICE'?'Invoice':(d.type||'')
-  }
+  },
+  po:jtPurchasingKind('PURCHASE_ORDER','purchase order template','Purchase order'),
+  so:jtPurchasingKind('SERVICE_ORDER','work order template','Work order')
 };
+//  po / so — purchase order and work order (SERVICE_ORDER) templates, read from Zuper's
+//        purchasing-templates module (2026-10-28): no detail GET, list carries the HTML
+//        (work orders need ?type=SERVICE_ORDER); PUT purchase_order/template/{uid} body
+//        {template:{template_uid, type, template_name, template_description,
+//        template_options, template}} — the quote/invoice shape. Zuper's own editor never
+//        calls template/validate for these, so validateModule is null and we skip it.
+function jtPurchasingKind(type,noun,label){
+  const list='purchase_order/template'+(type==='SERVICE_ORDER'?'?type=SERVICE_ORDER':'');
+  return {
+    noun,
+    read:async uid=>{
+      const r=await jtApi('GET',list);
+      if(!r.ok) throw new Error('HTTP '+r.status+' — '+r.msg);
+      const all=(r.body&&r.body.data)||[];
+      const d=Array.isArray(all)&&all.find(t=>String(t.template_uid)===String(uid));
+      if(!d) throw new Error('Template '+uid+' is no longer in this account’s '+noun+'s.');
+      return {...d,type:d.type||type};
+    },
+    validateModule:()=>null,
+    save:(d,html)=>['PUT','purchase_order/template/'+encodeURIComponent(d.template_uid),jtQiSavePayload({...d,type:d.type||type},html)],
+    sub:()=>label
+  };
+}
 
 // ── Parsing ─────────────────────────────────────────────────────────────────
 function jtParse(src){
@@ -11604,8 +11636,11 @@ async function jtSave(auto){
     // Page setup is ours to change; everything else comes from the live record.
     const base={...ctx.detail,...live,template_options:opts};
     // 2. Zuper's own template check.
-    const v=await jtApi('POST','template/validate',{module_name:K.validateModule(base),template:html});
-    if(!v.ok&&v.status!==404&&v.status!==405) throw new Error('Zuper rejected the template: '+v.msg);
+    const vm=K.validateModule(base);
+    if(vm){
+      const v=await jtApi('POST','template/validate',{module_name:vm,template:html});
+      if(!v.ok&&v.status!==404&&v.status!==405) throw new Error('Zuper rejected the template: '+v.msg);
+    }
     // 3. Write.
     const s=await jtApi(...K.save(base,html));
     if(!s.ok) throw new Error('Save failed: '+s.msg);
@@ -11869,9 +11904,16 @@ function jtUnwrapCond(id){
 const JT_REC={
   job:{noun:'job',list:'jobs?page=1&count=25',detail:u=>'jobs/'+encodeURIComponent(u),uid:r=>r.job_uid,label:r=>[(r.work_order_number||r.job_number)?'#'+(r.work_order_number||r.job_number):'',r.job_title,jtCustName(r.customer)]},
   ESTIMATE:{noun:'quote',list:'estimate?page=1&count=25',detail:u=>'estimate/'+encodeURIComponent(u),uid:r=>r.estimate_uid,label:r=>[r.estimate_no?'#'+r.estimate_no:'',r.proposal_title||r.estimate_title,jtCustName(r.customer)]},
-  INVOICE:{noun:'invoice',list:'invoice?page=1&count=25',detail:u=>'invoice/'+encodeURIComponent(u),uid:r=>r.invoice_uid,label:r=>[r.invoice_no?'#'+r.invoice_no:'',r.invoice_title,jtCustName(r.customer)]}
+  INVOICE:{noun:'invoice',list:'invoice?page=1&count=25',detail:u=>'invoice/'+encodeURIComponent(u),uid:r=>r.invoice_uid,label:r=>[r.invoice_no?'#'+r.invoice_no:'',r.invoice_title,jtCustName(r.customer)]},
+  // Detail paths read from Zuper's purchase-order / service-order services (2026-10-28).
+  PURCHASE_ORDER:{noun:'purchase order',list:'purchase_orders?page=1&count=25',detail:u=>'purchase_orders/'+encodeURIComponent(u),uid:r=>r.purchase_order_uid,label:r=>[(r.reference_number||r.purchase_order_number)?'#'+(r.reference_number||r.purchase_order_number):'',r.purchase_order_title||r.title,r.vendor&&r.vendor.vendor_name]},
+  SERVICE_ORDER:{noun:'work order',list:'service_orders?page=1&count=25',detail:u=>'service_orders/'+encodeURIComponent(u),uid:r=>r.service_order_uid||r.purchase_order_uid,label:r=>[(r.reference_number||r.service_order_number||r.purchase_order_number)?'#'+(r.reference_number||r.service_order_number||r.purchase_order_number):'',r.service_order_title||r.purchase_order_title||r.title,r.vendor&&r.vendor.vendor_name]}
 };
-function jtRecKind(){return JT.kind==='job'?JT_REC.job:(JT.detail&&JT.detail.type==='INVOICE')?JT_REC.INVOICE:JT_REC.ESTIMATE;}
+function jtRecKind(){
+  if(JT.kind==='po') return JT_REC.PURCHASE_ORDER;
+  if(JT.kind==='so') return JT_REC.SERVICE_ORDER;
+  return JT.kind==='job'?JT_REC.job:(JT.detail&&JT.detail.type==='INVOICE')?JT_REC.INVOICE:JT_REC.ESTIMATE;
+}
 function jtCustName(c){if(!c||typeof c!=='object')return '';return [c.customer_first_name,c.customer_last_name].filter(Boolean).join(' ')||c.customer_company_name||'';}
 function jtGet(o,path){return String(path).replace(/^this\./,'').split('.').reduce((x,k)=>x==null?x:x[k],o);}
 function jtPaths(o,pre,depth){
