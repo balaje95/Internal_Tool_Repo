@@ -528,6 +528,7 @@ input[type=checkbox]{accent-color:var(--primary)}
     <button class="btn btn-o" id="connect-btn" onclick="doConnect()">🔌 Connect</button>
     <button class="btn btn-o" id="save-conn-btn" onclick="saveCurrentConnection()" style="display:none" title="Save this connection">🔖 Save</button>
     <button class="btn btn-g" id="disconnect-btn" onclick="doDisconnect()" style="display:none">⏏ Disconnect</button>
+    <button class="btn btn-o" id="toolkit-btn" onclick="openToolkit()" style="display:none" title="Template tools across the whole account, snapshots, health score, readiness, merges and more">🧰 Toolkit</button>
     <button class="btn btn-o" id="backup-btn" onclick="backupAccount()" style="display:none" title="Download a JSON snapshot of this account's config">💾 Backup account</button>
     <button class="btn btn-o" id="restore-btn" onclick="showRestoreCard()" style="display:none" title="Restore workflows/categories from a backup file">♻ Restore</button>
     <button class="btn btn-p" id="fetch-btn" onclick="doFetch()" style="display:none">📄 Fetch Records</button>
@@ -1887,6 +1888,7 @@ function showConnected(accountName, region){
   $('connect-btn').style.display='none';
   $('disconnect-btn').style.display='inline-flex';
   { const b=$('backup-btn'); if(b) b.style.display='inline-flex'; }
+  { const b=$('toolkit-btn'); if(b) b.style.display='inline-flex'; }
   { const b=$('restore-btn'); if(b) b.style.display='inline-flex'; }
   { const r=$('recipe-row'); if(r){ r.style.display='flex'; renderRecipeOptions(); } }
   $('fetch-btn').style.display='inline-flex';
@@ -1935,6 +1937,8 @@ function doDisconnect(){
   $('connect-btn').style.display='inline-flex';
   $('disconnect-btn').style.display='none';
   { const b=$('backup-btn'); if(b) b.style.display='none'; }
+  { const b=$('toolkit-btn'); if(b) b.style.display='none'; }
+  { const m=$('zk-modal'); if(m) m.classList.remove('open'); } if(typeof ZK!=='undefined'){ZK.tpls=null;ZK.sel.clear();ZK.samples={};ZK.dest=null;}
   { const b=$('restore-btn'); if(b) b.style.display='none'; }
   { const rc=$('restore-card'); if(rc) rc.style.display='none'; }
   $('fetch-btn').style.display='none';
@@ -6386,6 +6390,8 @@ function _recUid(rec,cfg){
 // Best-effort human label for a deleted record.
 function _histName(rec){
   if(!rec||typeof rec!=='object') return '(record)';
+  if(rec.customer_first_name||rec.customer_last_name) return ((rec.customer_first_name||'')+' '+(rec.customer_last_name||'')).trim();
+  if(rec.customer_company_name) return String(rec.customer_company_name);
   const f=['name','customer_name','full_name','title','product_name','asset_name',
     'work_order_number','po_number','request_number','email','category_name',
     'status_name','template_name','display_name','property_name'];
@@ -6490,6 +6496,7 @@ function recordDeleteHistory(deletedRecs,cfg){
     });
   }
   if(_delHistSave(list)) updateHistBadge();
+  if(typeof zkMirrorDeletes==='function') zkMirrorDeletes(mod,deletedRecs,cfg); // team recycle bin (shared, 90 days)
 }
 function _removeHistoryFor(mod,uids){
   if(!uids||!uids.length) return;
@@ -10766,6 +10773,7 @@ body:has(#jt-modal.open) .back-link{display:none!important}
         <span>Preview with</span>
         <select id="jt-data-pick" onchange="jtPickRecord(this.value)" title="Fill the preview with a real record's data"><option value="">Field placeholders</option></select>
         <input id="jt-data-uid" placeholder="…or paste a UID and press Enter" onkeydown="if(event.key==='Enter')jtPickRecord(this.value.trim())">
+        <button class="btn btn-o" style="font-size:.72rem;padding:4px 9px" onclick="jtMulti()" title="Render this template against many real records at once">▦ Many records</button>
         <span id="jt-data-note" class="jt-note"></span>
       </div>
       <div id="jt-diff"></div>
@@ -11165,6 +11173,7 @@ async function openJobTplEditor(uid,kind){
     $('jt-autosave').checked=auto;
     jtResetDataBar();jtLoadRecordList();
     jtBackup(d);
+    jtTeamVersionPush(d,'opened');jtTeamVersionsLoad();
     $('jt-title').textContent=d.template_name||'Untitled template';
     $('jt-modal').setAttribute('aria-label',K.noun+' editor');
     $('jt-sub').textContent=[K.sub(d),d.template_description,d.render_engine,(d.template_options&&d.template_options.format)||''].filter(Boolean).join(' · ');
@@ -11704,7 +11713,7 @@ function jtRenderInspector(){
       'Keyboard: <b>Delete</b> removes the selection, <b>Alt+↑ ↓</b> moves it, <b>Alt+← →</b> moves its column, <b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo and redo, <b>Esc</b> clears the selection.</div>'+
       jtPageHtml()+
       '<div class="jt-sec"><div class="jt-ph">All fields in this template</div>'+jtAllFieldsHtml()+'</div>'+
-      jtVersionsHtml();
+      jtHealthHtml()+jtVersionsHtml()+jtTeamVersionsHtml();
     return;
   }
   const P=JT.P,h=[];
@@ -11751,6 +11760,8 @@ function jtRenderInspector(){
       '<datalist id="jt-field-list">'+jtKnownFields().map(f=>'<option value="'+esc(f)+'">').join('')+'</datalist>'+
       '<div class="jt-note" style="margin-top:4px">Adds at the end of this element. A plain path becomes {{path}}; anything else is inserted as typed.</div>')+
     '</div>');
+  h.push(jtPickerHtml(nd));
+  h.push(jtBlocksHtml(nd));
   h.push('<div class="jt-sec"><details><summary class="jt-ph" style="cursor:pointer;display:list-item">Edit HTML of this element</summary>'+
     '<textarea id="jt-el-html" spellcheck="false">'+esc(P.src.slice(nd.start,nd.end))+'</textarea>'+
     '<button class="btn btn-o" style="font-size:.72rem;padding:5px 9px;margin-top:6px" onclick="jtReplaceNode('+nd.id+',$(\'jt-el-html\').value)">Apply</button></details></div>');
@@ -11942,6 +11953,7 @@ async function jtSave(auto){
     if(bd.template!==html) throw new Error('Zuper accepted the save, but the template it returns differs from what was sent. Check it in Zuper before editing further.');
     ctx.detail=bd;ctx.saved=html;ctx.savedOpts=opts;ctx.savedAt=new Date();
     jtBackup(bd);
+    jtTeamVersionPush(bd,'saved');
     if(JT===ctx){
       jtSaveState('saved');
       if(!auto) jtMsg('✓ Saved to Zuper and verified. New PDFs will use this version.','ok');
@@ -12333,6 +12345,1295 @@ function jtFrameBody(){
     }
   }
   return jtPreviewBody(JT.P);
+}
+</script>
+<!-- ═══════════════ TOOLKIT (templates across the account + account-level tools) ═══════════════ -->
+<style>
+#zk-modal{position:fixed;inset:0;z-index:1004;background:var(--bg,#faf8f5);color:var(--text,#191919);display:none;flex-direction:column}
+#zk-modal.open{display:flex}
+body:has(#zk-modal.open) .back-link{display:none!important}
+.zk-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--card)}
+.zk-head h2{margin:0;font-size:1.05rem}.zk-head .sub{font-size:.76rem;color:var(--text-sub)}
+.zk-body{flex:1;display:flex;min-height:0}
+.zk-nav{width:230px;flex:none;border-right:1px solid var(--border);overflow:auto;padding:10px 8px;background:var(--card)}
+.zk-nav .grp{font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-sub);margin:12px 8px 4px}
+.zk-nav button{display:flex;gap:8px;align-items:center;width:100%;text-align:left;border:0;background:none;color:var(--text);padding:7px 10px;border-radius:8px;font-size:.8rem;cursor:pointer}
+.zk-nav button:hover{background:var(--primary-tint)}.zk-nav button.on{background:var(--primary-tint);color:var(--primary);font-weight:600}
+.zk-main{flex:1;overflow:auto;padding:18px 22px 40px;min-width:0}
+.zk-main h3{margin:0 0 4px;font-size:1rem}.zk-main .lead{font-size:.8rem;color:var(--text-sub);margin:0 0 14px;max-width:880px;line-height:1.5}
+.zk-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.zk-row .btn{font-size:.76rem;padding:6px 11px}
+.zk-tbl{width:100%;border-collapse:collapse;font-size:.78rem;margin-top:8px}
+.zk-tbl th{text-align:left;font-size:.7rem;color:var(--text-sub);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg)}
+.zk-tbl td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.zk-tbl tr:hover td{background:var(--primary-tint)}
+.zk-pill{display:inline-block;padding:1px 7px;border-radius:999px;font-size:.68rem;font-weight:600;border:1px solid var(--border)}
+.zk-pill.err{color:#b91c1c;border-color:#fca5a5;background:#fef2f2}.zk-pill.warn{color:#b45309;border-color:#fcd34d;background:#fffbeb}.zk-pill.info{color:#1d4ed8;border-color:#93c5fd;background:#eff6ff}.zk-pill.ok{color:#15803d;border-color:#86efac;background:#f0fdf4}
+.zk-card{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin:10px 0;background:var(--card)}
+.zk-card h4{margin:0 0 6px;font-size:.86rem}
+.zk-in{padding:6px 9px;border:1px solid var(--border-inp);border-radius:7px;background:var(--inp-bg);color:var(--text);font-size:.8rem}
+.zk-lab{display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:var(--text-sub);font-weight:600}
+.zk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.zk-frame{width:100%;height:520px;border:1px solid var(--border);border-radius:8px;background:#e5e7eb}
+.zk-log{font:12px ui-monospace,Consolas,monospace;max-height:260px;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;white-space:pre-wrap}
+.zk-sw{display:inline-block;width:16px;height:16px;border-radius:4px;border:1px solid rgba(0,0,0,.15);vertical-align:middle}
+.zk-score{font-size:2.2rem;font-weight:800;line-height:1}
+.zk-tree details{margin-left:14px}.zk-tree summary{cursor:pointer;padding:3px 0;font-size:.8rem}
+.zk-mini{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.zk-mini .cell{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--card);cursor:pointer}
+.zk-mini .cell:hover{border-color:var(--primary)}
+.zk-mini .cap{font-size:.72rem;padding:5px 8px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:6px}
+.zk-mini .vp{height:330px;overflow:hidden;position:relative;background:#e5e7eb}
+.zk-mini iframe{width:250%;height:250%;transform:scale(.4);transform-origin:0 0;border:0;pointer-events:none}
+@media (max-width:760px){.zk-nav{width:150px}.zk-main{padding:12px}}
+</style>
+<div id="zk-modal" role="dialog" aria-label="Toolkit">
+  <div class="zk-head">
+    <div><h2>🧰 Toolkit</h2><div class="sub" id="zk-acct"></div></div>
+    <button class="btn btn-o" onclick="zkClose()">✕ Close</button>
+  </div>
+  <div class="zk-body">
+    <nav class="zk-nav" id="zk-nav"></nav>
+    <main class="zk-main"><div id="zk-status" class="msg" style="display:none;margin-bottom:10px"></div><div id="zk-main"></div></main>
+  </div>
+</div>
+<script>
+'use strict';
+// ════════════════════════════════════════════════════════════════════════
+//  TOOLKIT — work across every template in the account, and account-level
+//  tools (snapshots, health, readiness, spreadsheet round-trip, merges,
+//  reassignment, price changes, team recycle bin, relationship explorer).
+//
+//  Shared storage (team recycle bin, template versions, library, reusable
+//  blocks) lives behind the zdm-store edge function on the "SRS catalogue"
+//  Supabase project. It checks the caller's Zuper API key with Zuper and
+//  scopes bin/version rows to that account (supabase/functions/zdm-store).
+//
+//  Write contracts used here, all read from Zuper's own web app bundle
+//  (web.zuperpro.com, 2026-10-28/29) unless noted:
+//    templates  PUT jobs/template {template:{…}} · PUT invoice_estimate/template/{uid}
+//               · PUT purchase_order/template/{uid} — see JT_KINDS. Create = POST to
+//               the same collection with {template:{…}} (job + PO/WO read from the
+//               bundle; quote/invoice create is inferred from the same shape).
+//    customers  PUT customers/{uid} {customer:{customer_uid,…}} · POST customers/merge
+//               {source_customer_uids:[…], target_customer_uid}
+//    assets     PUT assets/{uid} {asset:{asset_uid,…}}
+//    jobs       PUT jobs {job:{job_uid,…}} · POST jobs/assign {job_uid, update_all_jobs,
+//               notify_users, type:'ASSIGN'|'UNASSIGN', users:[{team_uid,user_uid}]}
+//    product    PUT product/{uid} {product:{…}} (confirmed live, see memory notes)
+//    property   PUT property/{uid} {property:{…}} (confirmed live)
+//    teams      POST team/assign · team/unassign {team_uid,user_uid}
+//    lists scoped to a customer: <module>?filter.customer=<uid> (quotes, invoices,
+//               properties, assets, recurring jobs — from the customer page)
+// ════════════════════════════════════════════════════════════════════════
+const ZK_STORE='https://oneubjctfcrdhebqmzhc.supabase.co/functions/v1/zdm-store';
+const ZK={page:'tpl',tpls:null,sel:new Set(),samples:{},busy:false,dest:null};
+const zkCur=()=>({base:baseUrl(),key:apiKey()});
+const zkSleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+async function zkReq(ctx,method,path,body){
+  ctx=ctx||zkCur();
+  const h={...ZUPER_CLIENT_HDRS,'x-api-key':ctx.key};if(body!==undefined)h['Content-Type']='application/json';
+  let r;
+  try{r=await fetch(ctx.base+path,{method,headers:h,body:body!==undefined?JSON.stringify(body):undefined});}
+  catch(e){return {ok:false,status:0,body:{},msg:'Network / CORS: '+e.message};}
+  const t=await r.text();let j={};try{j=t?JSON.parse(t):{};}catch(e){j={message:t.slice(0,200)};}
+  const msg=j.message||j.error||(j.errors&&JSON.stringify(j.errors).slice(0,200))||('HTTP '+r.status);
+  return {ok:r.ok&&j.type!=='error',status:r.status,body:j,msg:typeof msg==='string'?msg:JSON.stringify(msg).slice(0,200)};
+}
+async function zkStore(op,args){
+  if(!baseUrl()||!apiKey()) throw new Error('Connect to an account first.');
+  let r;
+  try{r=await fetch(ZK_STORE,{method:'POST',headers:{'content-type':'application/json','x-zuper-key':apiKey(),'x-zuper-base':baseUrl()},body:JSON.stringify({op,...(args||{})})});}
+  catch(e){throw new Error('Shared storage unreachable ('+e.message+').');}
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok||j.error) throw new Error(j.error||('Shared storage HTTP '+r.status));
+  return j.data;
+}
+function zkWho(){
+  const e=(($('empid')&&$('empid').value)||'').trim();if(e) return e;
+  try{let n=localStorage.getItem('zdm_user_name');if(!n){n=(prompt('Your name — shown next to versions and deletions you make (asked once):')||'').trim();if(n)localStorage.setItem('zdm_user_name',n);}return n||'';}catch(x){return '';}
+}
+async function zkPool(items,n,fn,onProgress){
+  let i=0,done=0;const out=new Array(items.length);
+  await Promise.all(Array.from({length:Math.min(n,items.length)},async()=>{
+    while(i<items.length){const k=i++;try{out[k]=await fn(items[k],k);}catch(e){out[k]={error:e.message||String(e)};}done++;if(onProgress)onProgress(done,items.length);}
+  }));
+  return out;
+}
+function zkMsg(txt,type){const e=$('zk-status');if(!txt){e.style.display='none';return;}e.className='msg msg-'+(type||'info');e.innerHTML=txt;e.style.display='block';}
+function zkDl(text,name,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:type||'text/plain'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);}
+function zkCsv(rows){return rows.map(r=>r.map(v=>{v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}).join(',')).join('\n');}
+const zkNorm=s=>String(s==null?'':s).trim().toLowerCase().replace(/\s+/g,' ');
+
+// Every record of a Data Manager module (same rules as doFetch, any account).
+async function zkFetchModule(key,opt){
+  opt=opt||{};const ctx=opt.ctx||zkCur(),cfg=MODULES[key];
+  if(!cfg) throw new Error('Unknown module '+key);
+  const endpoint=cfg.endpoint||key,limit=150,max=opt.maxPages||350;
+  const H={...ZUPER_CLIENT_HDRS,'x-api-key':ctx.key};
+  const get=async url=>{const r=await fetch(url,{headers:H});if(!r.ok)throw new Error('HTTP '+r.status+' @ '+url.replace(ctx.base,''));return r.json();};
+  let out=[];
+  if(cfg.noPageLimit){
+    let data=null,last='';
+    for(const ep of [endpoint].concat(cfg.altEndpoints||[])){try{data=await get(ctx.base+ep+'?'+(cfg.fetchParams||''));break;}catch(e){last=e.message;}}
+    if(data===null) throw new Error(last);
+    out=extractRecords(data,key);
+  }else if(cfg.customParams){
+    out=extractRecords(await get(ctx.base+endpoint+(opt.params||'')),endpoint);
+  }else{
+    let page=1,stop=false;
+    while(page<=max&&!stop){
+      const pages=[];for(let k=0;k<6&&page<=max;k++)pages.push(page++);
+      const res=await Promise.all(pages.map(async p=>{
+        let d;
+        if(cfg.fetchMethod==='POST'){const r=await fetch(ctx.base+endpoint,{method:'POST',headers:{...H,'Content-Type':'application/json'},body:JSON.stringify(typeof cfg.fetchBody==='function'?cfg.fetchBody(p,limit):{page:p,count:limit})});if(!r.ok)throw new Error('HTTP '+r.status);d=await r.json();}
+        else d=await get(ctx.base+endpoint+'?page='+p+'&'+(cfg.paginationParam||'count')+'='+limit+(cfg.fetchParams?'&'+cfg.fetchParams:'')+(opt.extra||''));
+        return {recs:extractRecords(d,key)||[],tp:d.total_pages||d.totalPages||null};
+      }));
+      res.forEach((r,j)=>{if(!r.recs.length){stop=true;return;}out.push(...r.recs);if(r.recs.length<limit||(r.tp&&pages[j]>=r.tp))stop=true;});
+      if(opt.onProgress) opt.onProgress(out.length);
+    }
+  }
+  if(cfg.transform) out=cfg.transform(out);
+  const uf=out.length?findUid(out[0],cfg.uid):null;
+  if(uf){const seen=new Set();out=out.filter(r=>{const k=String(r[uf]||'');if(!k)return true;if(seen.has(k))return false;seen.add(k);return true;});}
+  return out;
+}
+
+// ── Templates, all kinds ────────────────────────────────────────────────
+const ZK_TK={
+  job:{label:'Job card',list:'jobs/template'},
+  qi:{label:'Quote / invoice',list:'invoice_estimate/template'},
+  po:{label:'Purchase order',list:'purchase_order/template',type:'PURCHASE_ORDER'},
+  so:{label:'Work order',list:'purchase_order/template?type=SERVICE_ORDER',type:'SERVICE_ORDER'}
+};
+function zkTypeLabel(t){return t.kind==='qi'?(t.type==='INVOICE'?'Invoice':t.type==='ESTIMATE'?'Quote':t.type||'Quote/Invoice'):ZK_TK[t.kind].label;}
+async function zkLoadKind(kind,ctx){
+  const r=await zkReq(ctx,'GET',ZK_TK[kind].list);
+  if(!r.ok) throw new Error(ZK_TK[kind].label+' templates: '+r.msg);
+  let list=(r.body&&r.body.data)||[];if(!Array.isArray(list))list=[];
+  if(kind==='job'){
+    // the job list has no HTML — one detail call each
+    list=await zkPool(list,4,async x=>{const d=await zkReq(ctx,'GET','jobs/template/'+encodeURIComponent(x.template_uid));return d.ok?((d.body&&d.body.data)||x):x;});
+  }
+  return list.filter(x=>x&&x.template_uid).map(x=>({id:kind+':'+x.template_uid,kind,uid:x.template_uid,name:x.template_name||'(untitled)',
+    type:x.type||ZK_TK[kind].type||'',html:typeof x.template==='string'?x.template:'',raw:{...x,type:x.type||ZK_TK[kind].type},updated:x.updated_at||''}));
+}
+async function zkLoadTemplates(ctx,kinds){
+  const out=[],errs=[];
+  for(const k of kinds||Object.keys(ZK_TK)){try{out.push(...await zkLoadKind(k,ctx));}catch(e){errs.push(e.message);}}
+  return {tpls:out,errs};
+}
+async function zkEnsureTpls(force){
+  if(ZK.tpls&&!force) return ZK.tpls;
+  zkMsg('Loading every template in this account…','info');
+  const {tpls,errs}=await zkLoadTemplates(zkCur());
+  ZK.tpls=tpls;
+  zkMsg(errs.length?'⚠ Some template types could not be read: '+esc(errs.join(' · ')):'','warn');
+  return tpls;
+}
+function zkPutReq(t,html,opts){
+  const raw={...t.raw,...(opts?{template_options:opts}:{})};
+  if(t.kind==='job') return ['PUT','jobs/template',jtSavePayload(raw,html)];
+  if(t.kind==='qi') return ['PUT','invoice_estimate/template/'+encodeURIComponent(t.uid),jtQiSavePayload(raw,html)];
+  return ['PUT','purchase_order/template/'+encodeURIComponent(t.uid),jtQiSavePayload({...raw,type:raw.type||ZK_TK[t.kind].type},html)];
+}
+function zkCreateReq(kind,o){
+  const s=v=>v==null?'':String(v);
+  const body={template_name:s(o.name),template_description:s(o.description),template_options:o.options||{format:'A4',orientation:'portrait',border:{top:'10mm',right:'10mm',bottom:'10mm',left:'10mm'}},template:o.html};
+  if(kind==='job') return ['POST','jobs/template',{template:{...body,job_category:(o.associated_to||[])[0],associated_to:o.associated_to||[]}}];
+  if(kind==='qi') return ['POST','invoice_estimate/template',{template:{...body,type:o.type||'ESTIMATE'}}];
+  return ['POST','purchase_order/template',{template:{...body,type:o.type||ZK_TK[kind].type}}];
+}
+// Write new HTML to several templates of the CONNECTED account: version backup first,
+// then PUT, then re-read each kind once and prove the HTML landed.
+async function zkSaveMany(changes,label,logEl){
+  const log=s=>{if(logEl){logEl.textContent+=s+'\n';logEl.scrollTop=logEl.scrollHeight;}};
+  const who=zkWho();let ok=0,fail=0;
+  await zkPool(changes,3,async c=>{
+    try{await zkStore('versions.add',{kind:c.t.kind,template_uid:c.t.uid,template_name:c.t.name,template:c.t.html,template_options:c.t.raw.template_options,saved_by:who,note:'before: '+label});}
+    catch(e){log('  (version backup skipped for '+c.t.name+': '+e.message+')');}
+    try{jtBackup({template_uid:c.t.uid,template_name:c.t.name,template:c.t.html});}catch(e){}
+    const r=await zkReq(null,...zkPutReq(c.t,c.html,c.opts));
+    if(r.ok){ok++;log('✓ '+zkTypeLabel(c.t)+' · '+c.t.name);}else{fail++;c.err=r.msg;log('✗ '+zkTypeLabel(c.t)+' · '+c.t.name+' — '+r.msg);}
+  });
+  // verify
+  const kinds=[...new Set(changes.filter(c=>!c.err).map(c=>c.t.kind))];
+  const {tpls}=await zkLoadTemplates(zkCur(),kinds);
+  let bad=0;
+  for(const c of changes){if(c.err) continue;const now=tpls.find(x=>x.id===c.t.id);if(!now||now.html!==c.html){bad++;log('⚠ '+c.t.name+': saved, but Zuper returns different HTML — check it in Zuper.');}}
+  if(ZK.tpls){for(const n of tpls){const i=ZK.tpls.findIndex(x=>x.id===n.id);if(i>=0)ZK.tpls[i]=n;else ZK.tpls.push(n);}}
+  log('Done — '+ok+' saved'+(fail?', '+fail+' failed':'')+(bad?', '+bad+' not verified':'')+'.');
+  return {ok,fail,bad};
+}
+
+// ── Template health ─────────────────────────────────────────────────────
+function zkAddCss(h,css){
+  if(/<\/style>/i.test(h)) return h.replace(/<\/style>/i,'  '+css+'\n</style>');
+  if(/<\/head>/i.test(h)) return h.replace(/<\/head>/i,'<style>'+css+'</style>\n</head>');
+  return '<style>'+css+'</style>\n'+h;
+}
+function zkResolve(ctx,path){
+  let up=0;path=path.replace(/^this\./,'');
+  while(path.startsWith('../')){up++;path=path.slice(3);}
+  let base=ctx[Math.max(0,ctx.length-1-up)];
+  if(path.startsWith('@root.')){base=ctx[0];path=path.slice(6);}
+  if(base==null) return undefined;
+  return path.split('.').reduce((o,k)=>o==null?undefined:o[k],base);
+}
+// Simple {{paths}} that resolve to nothing on this record. Skipped: helpers, anything inside
+// an {{#if}}-style block (a blank there is usually intended) and lists that are empty.
+function zkBlankFields(P,data){
+  const out=new Set(),ctx=[data],names=[];
+  for(const h of P.hbs){
+    const k=jtHbKind(h.inner);
+    if(k==='open'){
+      const nm=jtHbName(h.inner),arg=(h.inner.replace(/^[#^]\s*/,'').split(/\s+/)[1]||'');
+      let next=ctx[ctx.length-1];
+      if(nm==='each'||nm==='eachLastInstance'){const v=zkResolve(ctx,arg);next=Array.isArray(v)&&v.length?(nm==='each'?v[0]:v[v.length-1]):null;}
+      else if(nm==='with'){const v=zkResolve(ctx,arg);next=v==null?null:v;}
+      names.push(nm);ctx.push(next);continue;
+    }
+    if(k==='close'){names.pop();if(ctx.length>1)ctx.pop();continue;}
+    if(k!=='expr'||h.inTag) continue;
+    const s=h.inner.replace(/^[&~\s]+|[~\s]+$/g,'');
+    if(!/^(\.\.\/)*[A-Za-z_][\w.]*$/.test(s)||s==='this'||s==='else') continue;
+    if(ctx.some(c=>c===null)||names.some(n=>!/^(each|with|eachLastInstance)$/.test(n))) continue;
+    const v=zkResolve(ctx,s);
+    if(v===undefined||v===null||v==='') out.add(s);
+  }
+  return [...out];
+}
+function zkHealth(html,sample){
+  const out=[],add=(level,code,msg,fix)=>out.push({level,code,msg,fix});
+  const bi=jtBlockIssues(html);
+  if(bi.length) add('err','tags','Unbalanced {{#…}} tags: '+bi.slice(0,3).join('; ')+(bi.length>3?' …':'')+' — the PDF will fail or print wrongly.');
+  const http=html.match(/\b(?:src|href)\s*=\s*["']\s*http:\/\/(?!localhost)/gi)||[];
+  if(http.length) add('warn','http',http.length+' image/link URL'+(http.length>1?'s use':' uses')+' http:// — it can show broken in the PDF. Switch to https://.',h=>h.replace(/(\b(?:src|href)\s*=\s*["']\s*)http:\/\/(?!localhost)/gi,'$1https://'));
+  const big=(html.match(/data:image\/[a-z+]+;base64,[A-Za-z0-9+\/=]{200000,}/gi)||[]).length;
+  if(big) add('warn','bigimg',big+' embedded image'+(big>1?'s are':' is')+' over ~150 KB — PDFs get slow and heavy. Upload the image and link its URL instead.');
+  if(/<script\b/i.test(html)) add('warn','script','Contains <script> — scripts do not run when Zuper makes the PDF.');
+  if(/â€|Â©|Â®|Ã©/.test(html)) add('warn','mojibake','Text contains garbled characters (â€¢, Â©…) — a symbol was saved with the wrong encoding. Retype it in the Text box or HTML tab.');
+  const ext=(html.match(/<link\b[^>]*stylesheet[^>]*>|@import\s+url/gi)||[]).length;
+  if(ext) add('info','extcss','Loads '+ext+' external stylesheet/font — if the PDF server cannot fetch it, fonts and spacing differ from the preview.');
+  if(/<head\b/i.test(html)&&!/<meta[^>]+charset/i.test(html)) add('info','charset','No charset declared — symbols like ©, •, é can print as garbage.',h=>h.replace(/<head(\s[^>]*)?>/i,m=>m+'\n<meta charset="utf-8">'));
+  let P=null;try{P=jtParse(html);}catch(e){}
+  if(P&&P.nodes.some(n=>n.tag==='tr'&&jtLoopFor(P,n))&&!/(page-)?break-inside\s*:\s*avoid/i.test(html))
+    add('info','pagebreak','Item tables can split a row across two pages. Adding tr{page-break-inside:avoid} keeps each row whole.',h=>zkAddCss(h,'tr{page-break-inside:avoid}'));
+  if(P&&sample&&sample.data){const b=zkBlankFields(P,sample.data);if(b.length)add('warn','blank','Prints blank on '+sample.label+': '+b.slice(0,8).join(', ')+(b.length>8?' … +'+(b.length-8)+' more':''));}
+  if(html.length>400000) add('info','size','Template is '+Math.round(html.length/1024)+' KB — large templates render slowly.');
+  return out;
+}
+const zkWorst=h=>h.some(x=>x.level==='err')?'err':h.some(x=>x.level==='warn')?'warn':h.length?'info':'ok';
+function zkRecKindOf(t){return t.kind==='job'?'job':t.kind==='po'?'PURCHASE_ORDER':t.kind==='so'?'SERVICE_ORDER':(t.type==='INVOICE'?'INVOICE':'ESTIMATE');}
+// The newest record of the kind a template prints, for "prints blank" checks.
+async function zkSample(rk){
+  if(ZK.samples[rk]!==undefined) return ZK.samples[rk];
+  const R=JT_REC[rk];ZK.samples[rk]=null;
+  try{
+    const l=await zkReq(null,'GET',R.list);
+    const list=l.ok?((l.body&&Array.isArray(l.body.data))?l.body.data:extractRecords(l.body||{},R.noun)):[];
+    const first=list.find(x=>R.uid(x));if(!first) return null;
+    const d=await zkReq(null,'GET',R.detail(R.uid(first)));
+    const data=d.ok?((d.body&&d.body.data)||d.body):null;
+    if(data&&typeof data==='object') ZK.samples[rk]={data,label:R.noun+' '+(R.label(data).filter(Boolean).join(' · ').slice(0,60)||R.uid(first))};
+  }catch(e){}
+  return ZK.samples[rk];
+}
+function zkRender(html,data){
+  if(data&&window.Handlebars){const H=jtHbs();if(H){try{return H.compile(html,{compat:true})(data);}catch(e){}}}
+  return jtPreviewBody(jtParse(html));
+}
+function zkDoc(body,opts){
+  const o=opts||{},sizes={a4:['210mm','297mm'],letter:['8.5in','11in'],legal:['8.5in','14in'],a3:['297mm','420mm'],a5:['148mm','210mm']};
+  let [w,h]=sizes[String(o.format||'A4').toLowerCase()]||sizes.a4;if(String(o.orientation||'').toLowerCase()==='landscape')[w,h]=[h,w];
+  return '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0}body{background:#e5e7eb;padding:16px}.zpage{background:#fff;width:'+w+';min-height:'+h+';padding:10mm;box-sizing:border-box;margin:0 auto;box-shadow:0 2px 12px rgba(0,0,0,.15)}.zhb{background:#fff3e0;color:#b45309;border:1px dashed #f59e0b;border-radius:3px;padding:0 2px;font:11px ui-monospace,monospace}</style></head><body><div class="zpage">'+body+'</div></body></html>';
+}
+
+// ── Shell ───────────────────────────────────────────────────────────────
+const ZK_NAV=[
+  ['Templates',[['tpl','📄','All templates'],['health','🩺','Health check'],['brand','🎨','Brand kit'],['replace','🔎','Find & replace'],['copy','📤','Copy to another account'],['library','📚','Template library'],['blocks','🧩','Reusable blocks'],['usage','🗺','Usage map']]],
+  ['Account',[['snap','📸','Snapshots & compare'],['score','💯','Account health score'],['ready','🚦','Go-live readiness'],['sheet','📊','Spreadsheet round-trip'],['merge','🔗','Merge duplicates'],['reassign','🔁','Reassign a technician'],['price','💲','Bulk price update'],['bin','🗑','Team recycle bin'],['rel','🕸','Relationship explorer']]]
+];
+function openToolkit(page){
+  if(!baseUrl()||!apiKey()){alert('Connect to an account first.');return;}
+  $('zk-modal').classList.add('open');
+  $('zk-acct').textContent=($('s-account').textContent||'')+' · '+baseUrl().replace(/^https:\/\//,'').replace(/\/api\/$/,'');
+  zkGo(page||ZK.page);
+}
+function zkClose(){if(ZK.busy&&!confirm('Something is still running. Close anyway? (It keeps running in the background.)'))return;$('zk-modal').classList.remove('open');}
+function zkGo(page){
+  ZK.page=page;zkMsg('');
+  $('zk-nav').innerHTML=ZK_NAV.map(([g,items])=>'<div class="grp">'+g+'</div>'+items.map(([k,ic,l])=>'<button class="'+(k===page?'on':'')+'" onclick="zkGo(\''+k+'\')"><span>'+ic+'</span>'+l+'</button>').join('')).join('');
+  const el=$('zk-main');el.innerHTML='';
+  const fn=ZK_PAGES[page];
+  Promise.resolve().then(()=>fn(el)).catch(e=>zkMsg('✗ '+esc(e.message),'err'));
+}
+const ZK_PAGES={};
+function zkTplPicker(tpls,opt){
+  opt=opt||{};
+  const rows=tpls.map((t,i)=>'<tr><td><input type="checkbox" class="zk-pick" data-id="'+esc(t.id)+'"'+(ZK.sel.has(t.id)?' checked':'')+' onchange="zkPick(this)"></td><td>'+esc(t.name)+'</td><td>'+esc(zkTypeLabel(t))+'</td>'+(opt.extra?opt.extra(t,i):'')+'</tr>').join('');
+  return '<div class="zk-row"><button class="btn btn-o" onclick="zkPickAll(true)">Select all</button><button class="btn btn-o" onclick="zkPickAll(false)">Select none</button>'+
+    Object.keys(ZK_TK).map(k=>'<button class="btn btn-o" onclick="zkPickKind(\''+k+'\')">Only '+ZK_TK[k].label.toLowerCase()+'s</button>').join('')+
+    '<span class="jt-note" id="zk-selcount">'+ZK.sel.size+' selected</span></div>'+
+    '<div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:8px"><table class="zk-tbl"><thead><tr><th></th><th>Template</th><th>Type</th>'+(opt.extraHead||'')+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function zkPick(cb){if(cb.checked)ZK.sel.add(cb.dataset.id);else ZK.sel.delete(cb.dataset.id);const c=$('zk-selcount');if(c)c.textContent=ZK.sel.size+' selected';}
+function zkPickAll(on){document.querySelectorAll('.zk-pick').forEach(cb=>{cb.checked=on;zkPick(cb);});}
+function zkPickKind(k){document.querySelectorAll('.zk-pick').forEach(cb=>{cb.checked=cb.dataset.id.startsWith(k+':');zkPick(cb);});}
+const zkSelected=()=>(ZK.tpls||[]).filter(t=>ZK.sel.has(t.id));
+
+// ── Page: all templates ─────────────────────────────────────────────────
+ZK_PAGES.tpl=async el=>{
+  el.innerHTML='<h3>All templates</h3><p class="lead">Every job card, quote, invoice, purchase order and work order template in this account. Tick templates here to use them in Brand kit, Find &amp; replace, Copy and the Library.</p><div id="zk-tpl"></div>';
+  const tpls=await zkEnsureTpls();
+  const box=$('zk-tpl');
+  box.innerHTML='<div class="zk-row"><button class="btn btn-o" onclick="ZK.tpls=null;zkGo(\'tpl\')">↻ Reload</button><span class="jt-note">'+tpls.length+' templates</span></div>'+
+    zkTplPicker(tpls,{extraHead:'<th>Size</th><th>Health</th><th>Updated</th><th></th>',extra:t=>{const h=zkHealth(t.html),w=zkWorst(h);
+      return '<td>'+Math.max(1,Math.round(t.html.length/1024))+' KB</td><td><span class="zk-pill '+w+'">'+(w==='ok'?'OK':h.length+' note'+(h.length>1?'s':''))+'</span></td><td>'+esc(fmt(t.updated))+'</td>'+
+        '<td><button class="btn btn-o" style="font-size:.7rem;padding:3px 9px" onclick="zkClose();openJobTplEditor(\''+esc(t.uid)+'\',\''+t.kind+'\')">✏ Edit</button></td>';}});
+};
+
+// ── Page: health check ──────────────────────────────────────────────────
+ZK_PAGES.health=async el=>{
+  el.innerHTML='<h3>Template health check</h3><p class="lead">Finds what breaks or degrades PDFs before a customer sees it: unbalanced tags, http:// images, oversized embedded images, scripts, garbled symbols, external fonts, rows that split across pages — and, against the newest real record of each kind, fields that print blank. Safe fixes can be applied in one click (each is saved as a new version first).</p>'+
+    '<div class="zk-row"><label class="jt-note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="zk-h-real" checked> Check fields against a real record</label><button class="btn btn-p" onclick="zkRunHealth()">🩺 Run check</button></div><div id="zk-h-out"></div>';
+};
+async function zkRunHealth(){
+  const out=$('zk-h-out');out.innerHTML='<div class="jt-note">Checking…</div>';
+  const tpls=await zkEnsureTpls();
+  const real=$('zk-h-real').checked;
+  if(real) try{await jtLoadHandlebars();}catch(e){}
+  const res=[];
+  for(const t of tpls){const s=real?await zkSample(zkRecKindOf(t)):null;res.push({t,h:zkHealth(t.html,s)});}
+  ZK.health=res;
+  const fixable=res.filter(r=>r.h.some(x=>x.fix));
+  const order={err:0,warn:1,info:2,ok:3};
+  res.sort((a,b)=>order[zkWorst(a.h)]-order[zkWorst(b.h)]);
+  const cnt=l=>res.filter(r=>zkWorst(r.h)===l).length;
+  out.innerHTML='<div class="zk-row"><span class="zk-pill err">'+cnt('err')+' broken</span><span class="zk-pill warn">'+cnt('warn')+' with warnings</span><span class="zk-pill info">'+cnt('info')+' with tips</span><span class="zk-pill ok">'+cnt('ok')+' clean</span>'+
+    (fixable.length?'<button class="btn btn-p" onclick="zkFixAll()">🛠 Apply safe fixes to '+fixable.length+' template'+(fixable.length>1?'s':'')+'</button>':'')+'</div>'+
+    res.map((r,i)=>'<div class="zk-card"><h4><span class="zk-pill '+zkWorst(r.h)+'">'+esc(zkTypeLabel(r.t))+'</span> '+esc(r.t.name)+
+      ' <button class="btn btn-o" style="font-size:.7rem;padding:2px 8px;float:right" onclick="zkClose();openJobTplEditor(\''+esc(r.t.uid)+'\',\''+r.t.kind+'\')">✏ Open</button></h4>'+
+      (r.h.length?r.h.map(x=>'<div style="font-size:.78rem;margin:3px 0"><span class="zk-pill '+x.level+'">'+x.level+'</span> '+esc(x.msg)+(x.fix?' <span class="jt-note">· fixable</span>':'')+'</div>').join(''):'<div class="jt-note">No issues found.</div>')+'</div>').join('')+
+    '<pre class="zk-log" id="zk-h-log" style="display:none"></pre>';
+}
+async function zkFixAll(){
+  const items=(ZK.health||[]).map(r=>{let h=r.t.html;r.h.forEach(x=>{if(x.fix)h=x.fix(h);});return {t:r.t,html:h};}).filter(c=>c.html!==c.t.html&&!jtBlockIssues(c.html).length);
+  if(!items.length) return zkMsg('Nothing to fix.','info');
+  if(!confirm('Apply the safe fixes to '+items.length+' template(s) and save them to Zuper?\n\nEach template is saved as a version first, so it can be restored.')) return;
+  const log=$('zk-h-log');log.style.display='block';log.textContent='';
+  let r;ZK.busy=true;try{r=await zkSaveMany(items,'health fixes',log);}finally{ZK.busy=false;}
+  const res=log.textContent;
+  await zkRunHealth();
+  zkMsg('🛠 Fixed '+r.ok+' template(s)'+(r.fail?', '+r.fail+' failed':'')+(r.bad?', '+r.bad+' not verified':'')+'. The list below is re-checked.',r.fail||r.bad?'warn':'ok');
+  const l2=$('zk-h-log');if(l2){l2.style.display='block';l2.textContent=res;}
+}
+
+// ── Page: brand kit ─────────────────────────────────────────────────────
+function zkColors(html){
+  const m=html.match(/#[0-9a-f]{6}\b|#[0-9a-f]{3}\b/gi)||[];
+  const norm=c=>{c=c.toLowerCase();return c.length===4?'#'+c[1]+c[1]+c[2]+c[2]+c[3]+c[3]:c;};
+  const grey=c=>{const r=parseInt(c.slice(1,3),16),g=parseInt(c.slice(3,5),16),b=parseInt(c.slice(5,7),16);return Math.max(r,g,b)-Math.min(r,g,b)<24;};
+  const cnt=new Map();m.forEach(c=>{c=norm(c);if(!grey(c))cnt.set(c,(cnt.get(c)||0)+1);});
+  return cnt;
+}
+function zkStaticImgs(html){return [...html.matchAll(/<img\b[^>]*\bsrc\s*=\s*["']([^"'{}]+)["']/gi)].map(m=>m[1]).filter(u=>!/^data:/i.test(u));}
+ZK_PAGES.brand=async el=>{
+  const tpls=await zkEnsureTpls();
+  const sel=zkSelected().length?zkSelected():tpls;
+  const colors=new Map(),imgs=new Map();
+  sel.forEach(t=>{zkColors(t.html).forEach((n,c)=>colors.set(c,(colors.get(c)||0)+n));zkStaticImgs(t.html).forEach(u=>imgs.set(u,(imgs.get(u)||0)+1));});
+  const topC=[...colors].sort((a,b)=>b[1]-a[1]).slice(0,12),topI=[...imgs].sort((a,b)=>b[1]-a[1]).slice(0,12);
+  ZK.brandColors=topC.map(x=>x[0]);ZK.brandImgs=topI.map(x=>x[0]);
+  el.innerHTML='<h3>Brand kit</h3><p class="lead">Set colours, logo, font and a footer once and apply them to '+(zkSelected().length?'the <b>'+sel.length+' selected</b>':'<b>all '+sel.length+'</b>')+' templates (pick templates under “All templates” to narrow it). Nothing is saved until you click Apply; each template is versioned first.</p>'+
+    '<div class="zk-card"><h4>Colours used in these templates</h4><div class="jt-note">Pick a new colour for any you want to change.</div>'+
+    (topC.length?'<table class="zk-tbl"><thead><tr><th>Now</th><th>Used</th><th>Change to</th></tr></thead><tbody>'+topC.map(([c,n],i)=>'<tr><td><span class="zk-sw" style="background:'+c+'"></span> <code>'+c+'</code></td><td>'+n+'×</td><td><input type="color" id="zk-bc-'+i+'" value="'+c+'"> <label class="jt-note"><input type="checkbox" id="zk-bcon-'+i+'"> change</label></td></tr>').join('')+'</tbody></table>':'<div class="jt-note">No brand colours found (only greys).</div>')+'</div>'+
+    '<div class="zk-card"><h4>Logo</h4><div class="zk-row"><input class="zk-in" id="zk-b-logo" placeholder="New logo URL (https://…)" style="flex:1;min-width:260px"></div>'+
+    (topI.length?'<div class="jt-note">Replace these fixed images with the new logo (templates that print the company logo through a {{field}} already follow Zuper settings):</div>'+topI.map(([u,n],i)=>'<label style="display:flex;gap:8px;align-items:center;margin:4px 0;font-size:.76rem"><input type="checkbox" id="zk-bi-'+i+'"'+(/logo/i.test(u)?' checked':'')+'><img src="'+esc(u)+'" style="height:26px;max-width:90px;object-fit:contain;background:#fff;border:1px solid var(--border)"> <span style="word-break:break-all">'+esc(u.length>90?u.slice(0,88)+'…':u)+'</span> <span class="jt-note">'+n+'×</span></label>').join(''):'<div class="jt-note">No fixed images found.</div>')+'</div>'+
+    '<div class="zk-card"><h4>Font</h4><select class="zk-in" id="zk-b-font"><option value="">Keep each template’s font</option><option>Arial, Helvetica, sans-serif</option><option>"Helvetica Neue", Helvetica, Arial, sans-serif</option><option>"Source Sans Pro", Arial, sans-serif</option><option>Roboto, Arial, sans-serif</option><option>Georgia, "Times New Roman", serif</option><option>Verdana, Geneva, sans-serif</option></select> <span class="jt-note">Applied as an override, so it beats the template’s own CSS.</span></div>'+
+    '<div class="zk-card"><h4>Footer</h4><textarea class="zk-in" id="zk-b-foot" rows="2" style="width:100%;box-sizing:border-box" placeholder="e.g. Licensed &amp; insured · Lic #12345 · (555) 010-2000 · www.example.com — leave empty to keep footers as they are"></textarea><div class="jt-note">Added once at the bottom of each template (and updated in place next time).</div></div>'+
+    '<div class="zk-row"><button class="btn btn-o" onclick="zkBrandPreview()">👁 Preview changes</button><button class="btn btn-p" onclick="zkBrandApply()">Apply to '+sel.length+' template'+(sel.length>1?'s':'')+'</button></div><div id="zk-b-out"></div>';
+};
+function zkBrandEdit(html){
+  let h=html;
+  (ZK.brandColors||[]).forEach((c,i)=>{const on=$('zk-bcon-'+i),to=$('zk-bc-'+i);if(on&&on.checked&&to&&to.value.toLowerCase()!==c){
+    const short=c[1]===c[2]&&c[3]===c[4]&&c[5]===c[6]?'#'+c[1]+c[3]+c[5]:null;
+    h=h.replace(new RegExp(c+'\\b','gi'),to.value);if(short)h=h.replace(new RegExp(short+'(?![0-9a-f])','gi'),to.value);}});
+  const logo=($('zk-b-logo').value||'').trim();
+  if(logo) (ZK.brandImgs||[]).forEach((u,i)=>{const cb=$('zk-bi-'+i);if(cb&&cb.checked)h=h.split(u).join(logo);});
+  const font=$('zk-b-font').value;
+  h=h.replace(/\n?<style data-zdm="brand-font">[\s\S]*?<\/style>/i,'');
+  if(font){const css='<style data-zdm="brand-font">body,table,td,th,p,div,span,li,h1,h2,h3,h4{font-family:'+font+' !important}</style>';h=/<\/head>/i.test(h)?h.replace(/<\/head>/i,css+'\n</head>'):css+'\n'+h;}
+  const foot=($('zk-b-foot').value||'').trim();
+  if(foot){
+    const blk='<!-- zdm:footer -->\n<div style="margin-top:16px;padding-top:8px;border-top:1px solid #ddd;text-align:center;font-size:10px;color:#666">'+esc(foot)+'</div>\n<!-- /zdm:footer -->';
+    if(/<!-- zdm:footer -->[\s\S]*?<!-- \/zdm:footer -->/.test(h)) h=h.replace(/<!-- zdm:footer -->[\s\S]*?<!-- \/zdm:footer -->/,blk);
+    else h=/<\/body>/i.test(h)?h.replace(/<\/body>/i,blk+'\n</body>'):h+'\n'+blk;
+  }
+  return h;
+}
+function zkBrandPlan(){const sel=zkSelected().length?zkSelected():ZK.tpls||[];return sel.map(t=>({t,html:zkBrandEdit(t.html)})).filter(c=>c.html!==c.t.html);}
+function zkBrandPreview(){
+  const plan=zkBrandPlan(),out=$('zk-b-out');
+  if(!plan.length){out.innerHTML='<div class="jt-note">No template would change with these settings.</div>';return;}
+  out.innerHTML='<div class="jt-note">'+plan.length+' template(s) would change. Before → after for <select class="zk-in" id="zk-b-pv" onchange="zkBrandShow(this.value)">'+plan.map((c,i)=>'<option value="'+i+'">'+esc(c.t.name)+'</option>').join('')+'</select></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px"><iframe class="zk-frame" id="zk-b-f0" sandbox="allow-same-origin"></iframe><iframe class="zk-frame" id="zk-b-f1" sandbox="allow-same-origin"></iframe></div>';
+  ZK.brandPlan=plan;zkBrandShow(0);
+}
+function zkBrandShow(i){const c=ZK.brandPlan[i];if(!c)return;const o=c.t.raw.template_options;$('zk-b-f0').srcdoc=zkDoc(zkRender(c.t.html),o);$('zk-b-f1').srcdoc=zkDoc(zkRender(c.html),o);}
+async function zkBrandApply(){
+  const plan=zkBrandPlan().filter(c=>!jtBlockIssues(c.html).length||jtBlockIssues(c.t.html).length);
+  if(!plan.length) return zkMsg('No template would change with these settings.','info');
+  if(!confirm('Save brand changes to '+plan.length+' template(s) in Zuper?\n\nEach is saved as a version first.')) return;
+  const out=$('zk-b-out');out.innerHTML='<pre class="zk-log" id="zk-b-log"></pre>';
+  ZK.busy=true;try{const r=await zkSaveMany(plan,'brand kit',$('zk-b-log'));zkMsg('✓ Brand applied — '+r.ok+' saved'+(r.fail?', '+r.fail+' failed':'')+'.',r.fail?'warn':'ok');}finally{ZK.busy=false;}
+}
+
+// ── Page: find & replace ────────────────────────────────────────────────
+ZK_PAGES.replace=async el=>{
+  const tpls=await zkEnsureTpls();
+  el.innerHTML='<h3>Find &amp; replace across templates</h3><p class="lead">Change a phone number, licence number, address or wording everywhere at once. By default only the printed text is searched — not tags, styles or {{fields}} — so markup can’t be damaged. Each template is versioned before it is saved.</p>'+
+    '<div class="zk-row"><input class="zk-in" id="zk-r-find" placeholder="Find" style="flex:1;min-width:200px"><input class="zk-in" id="zk-r-rep" placeholder="Replace with" style="flex:1;min-width:200px"></div>'+
+    '<div class="zk-row"><label class="jt-note"><input type="checkbox" id="zk-r-case"> Match case</label><label class="jt-note"><input type="checkbox" id="zk-r-re"> Regular expression</label><label class="jt-note"><input type="checkbox" id="zk-r-text" checked> Printed text only</label>'+
+    '<button class="btn btn-o" onclick="zkReplacePreview()">🔎 Find matches</button></div>'+
+    '<div class="jt-note">Searches '+(zkSelected().length?'the '+zkSelected().length+' selected':'all '+tpls.length)+' templates.</div><div id="zk-r-out"></div>';
+};
+function zkRe(){
+  const f=$('zk-r-find').value;if(!f) throw new Error('Type something to find.');
+  const flags='g'+($('zk-r-case').checked?'':'i');
+  return $('zk-r-re').checked?new RegExp(f,flags):new RegExp(f.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),flags);
+}
+// Replace only in printed text: skip tags, {{…}}, <style>/<script> contents, comments.
+function zkReplaceText(html,re,rep,onHit){
+  const parts=html.split(/(<!--[\s\S]*?-->|<style\b[\s\S]*?<\/style>|<script\b[\s\S]*?<\/script>|<[^>]+>|\{\{\{?[\s\S]*?\}?\}\})/i);
+  return parts.map((p,i)=>i%2?p:p.replace(re,(...a)=>{if(onHit)onHit(a[0],p,a[a.length-2]);return typeof rep==='function'?rep(...a):a[0].replace(new RegExp(re.source,re.flags.replace('g','')),rep);})).join('');
+}
+function zkReplacePlan(){
+  const re=zkRe(),rep=$('zk-r-rep').value,textOnly=$('zk-r-text').checked;
+  const sel=zkSelected().length?zkSelected():ZK.tpls||[];
+  return sel.map(t=>{
+    const hits=[];
+    const html=textOnly?zkReplaceText(t.html,re,rep,(m,ctx,at)=>hits.push(ctx.slice(Math.max(0,at-30),at)+'«'+m+'»'+ctx.slice(at+m.length,at+m.length+30))):
+      t.html.replace(re,(...a)=>{const m=a[0],at=a[a.length-2];hits.push(t.html.slice(Math.max(0,at-30),at)+'«'+m+'»'+t.html.slice(at+m.length,at+m.length+30));return m.replace(new RegExp(re.source,re.flags.replace('g','')),rep);});
+    return {t,html,hits,broken:!jtBlockIssues(t.html).length&&jtBlockIssues(html).length>0};
+  }).filter(c=>c.hits.length);
+}
+function zkReplacePreview(){
+  let plan;try{plan=zkReplacePlan();}catch(e){return zkMsg('✗ '+esc(e.message),'err');}
+  ZK.repPlan=plan;
+  const out=$('zk-r-out');
+  if(!plan.length){out.innerHTML='<div class="jt-note" style="margin-top:8px">No matches.</div>';return;}
+  const n=plan.reduce((s,c)=>s+c.hits.length,0),good=plan.filter(c=>!c.broken);
+  out.innerHTML='<div class="zk-row"><b>'+n+' match'+(n>1?'es':'')+' in '+plan.length+' template'+(plan.length>1?'s':'')+'</b>'+(good.length?'<button class="btn btn-p" onclick="zkReplaceApply()">Replace in '+good.length+' template'+(good.length>1?'s':'')+'</button>':'')+'</div>'+
+    plan.map(c=>'<div class="zk-card"><h4>'+esc(c.t.name)+' <span class="jt-note">'+esc(zkTypeLabel(c.t))+' · '+c.hits.length+'×</span>'+(c.broken?' <span class="zk-pill err">would break {{#…}} tags — skipped</span>':'')+'</h4>'+
+      c.hits.slice(0,6).map(h=>'<div style="font:12px ui-monospace,monospace;margin:2px 0;word-break:break-all">…'+esc(h).replace(/«/g,'<mark>').replace(/»/g,'</mark>')+'…</div>').join('')+(c.hits.length>6?'<div class="jt-note">… and '+(c.hits.length-6)+' more</div>':'')+'</div>').join('')+
+    '<pre class="zk-log" id="zk-r-log" style="display:none"></pre>';
+}
+async function zkReplaceApply(){
+  const plan=(ZK.repPlan||[]).filter(c=>!c.broken);if(!plan.length) return;
+  if(!confirm('Replace in '+plan.length+' template(s) and save to Zuper?\n\nEach template is versioned first.')) return;
+  const log=$('zk-r-log');log.style.display='block';log.textContent='';
+  ZK.busy=true;try{const r=await zkSaveMany(plan,'find & replace',log);zkMsg('✓ '+r.ok+' template(s) updated'+(r.fail?', '+r.fail+' failed':'')+'.',r.fail?'warn':'ok');}finally{ZK.busy=false;}
+}
+
+// ── Page: copy to another account ───────────────────────────────────────
+ZK_PAGES.copy=async el=>{
+  const tpls=await zkEnsureTpls();
+  el.innerHTML='<h3>Copy templates to another account</h3><p class="lead">Push templates from this account (the source) to a customer account. Matching is by type and name: an existing template with the same name is <b>updated</b>, otherwise a new one is <b>created</b>. Job cards are linked to the destination job categories with the same names. Run the dry run first — it shows exactly what will happen.</p>'+
+    '<div class="zk-card"><h4>1 · Destination account</h4><div class="zk-row"><input class="zk-in" id="zk-c-key" type="password" placeholder="Destination API key" style="flex:1;min-width:260px" value="'+esc(ZK.dest?ZK.dest.key:'')+'"><button class="btn btn-o" onclick="zkCopyConnect()">🔌 Connect</button><span class="jt-note" id="zk-c-acct">'+(ZK.dest?'✓ '+esc(ZK.dest.name):'')+'</span></div></div>'+
+    '<div class="zk-card"><h4>2 · Templates to copy</h4>'+zkTplPicker(tpls)+'</div>'+
+    '<div class="zk-card"><h4>3 · Plan &amp; run</h4><div class="zk-row"><label class="jt-note"><input type="checkbox" id="zk-c-upd" checked> Update templates that already exist (same type + name)</label></div><div class="zk-row"><button class="btn btn-o" onclick="zkCopyPlan()">🧪 Dry run — show the plan</button></div><div id="zk-c-out"></div></div>';
+};
+async function zkCopyConnect(){
+  const key=($('zk-c-key').value||'').trim();if(!key) return zkMsg('Paste the destination API key.','warn');
+  $('zk-c-acct').textContent='Connecting…';
+  try{const r=await resolveByApiKey(key);ZK.dest={key,base:r.baseUrl,name:r.accountName||r.baseUrl};$('zk-c-acct').textContent='✓ '+ZK.dest.name;
+    if(ZK.dest.base===baseUrl()&&key===apiKey()) zkMsg('⚠ That is the account you are connected to — pick a different one.','warn');}
+  catch(e){ZK.dest=null;$('zk-c-acct').textContent='✗ '+e.message;}
+}
+async function zkCopyPlan(){
+  if(!ZK.dest) return zkMsg('Connect the destination account first.','warn');
+  const src=zkSelected();if(!src.length) return zkMsg('Tick at least one template to copy.','warn');
+  const out=$('zk-c-out');out.innerHTML='<div class="jt-note">Reading the destination…</div>';
+  const kinds=[...new Set(src.map(t=>t.kind))];
+  const {tpls:dst,errs}=await zkLoadTemplates(ZK.dest,kinds);
+  let cats=[];if(kinds.includes('job')){const r=await zkReq(ZK.dest,'GET','jobs/category?populate_statuses=false');cats=r.ok?(r.body.data||[]):[];}
+  let srcCats=[];if(kinds.includes('job')){const r=await zkReq(null,'GET','jobs/category?populate_statuses=false');srcCats=r.ok?(r.body.data||[]):[];}
+  const catName=uid=>{const c=srcCats.find(x=>x.category_uid===uid);return c?c.category_name:'';};
+  const upd=$('zk-c-upd').checked;
+  const plan=src.map(t=>{
+    const match=dst.find(d=>d.kind===t.kind&&(t.kind==='job'||(d.type||'')===(t.type||''))&&zkNorm(d.name)===zkNorm(t.name));
+    let assoc=[],missing=[];
+    if(t.kind==='job'){(t.raw.associated_to||[]).map(a=>typeof a==='string'?a:(a&&a.category_uid)).filter(Boolean).forEach(u=>{const nm=(t.raw.associated_to.find(a=>a&&a.category_uid===u)||{}).category_name||catName(u);const d=cats.find(c=>zkNorm(c.category_name)===zkNorm(nm));if(d)assoc.push(d.category_uid);else if(nm)missing.push(nm);});}
+    const action=match?(upd?(match.html===t.html?'same':'update'):'skip'):'create';
+    return {t,match,action,assoc,missing};
+  });
+  ZK.copyPlan=plan;
+  const lbl={create:'＋ Create',update:'↻ Update',same:'= Already identical',skip:'– Skip (exists)'};
+  out.innerHTML=(errs.length?'<div class="msg msg-warn">'+esc(errs.join(' · '))+'</div>':'')+
+    '<table class="zk-tbl"><thead><tr><th>Template</th><th>Type</th><th>In '+esc(ZK.dest.name)+'</th><th>Notes</th></tr></thead><tbody>'+
+    plan.map(p=>'<tr><td>'+esc(p.t.name)+'</td><td>'+esc(zkTypeLabel(p.t))+'</td><td><b>'+lbl[p.action]+'</b></td><td class="jt-note">'+
+      (p.t.kind==='job'?(p.assoc.length?'Linked to '+p.assoc.length+' categor'+(p.assoc.length>1?'ies':'y'):'Not linked to a job category')+(p.missing.length?' · no category named '+esc(p.missing.join(', ')):''):'')+
+      (p.action==='update'?' · the current version there is backed up first':'')+'</td></tr>').join('')+'</tbody></table>'+
+    '<div class="zk-row"><button class="btn btn-p" onclick="zkCopyRun()">📤 Copy '+plan.filter(p=>p.action==='create'||p.action==='update').length+' template(s) now</button></div><pre class="zk-log" id="zk-c-log" style="display:none"></pre>';
+}
+async function zkCopyRun(){
+  const plan=(ZK.copyPlan||[]).filter(p=>p.action==='create'||p.action==='update');if(!plan.length) return zkMsg('Nothing to copy.','info');
+  if(!confirm('Write '+plan.length+' template(s) into '+ZK.dest.name+'?')) return;
+  const log=$('zk-c-log');log.style.display='block';log.textContent='';const L=s=>{log.textContent+=s+'\n';log.scrollTop=log.scrollHeight;};
+  ZK.busy=true;let ok=0,fail=0;
+  try{
+    for(const p of plan){
+      let r;
+      if(p.action==='update'){
+        L('… backing up '+p.match.name+' in the destination (download)');ZK.copyBackup=(ZK.copyBackup||[]).concat([{account:ZK.dest.name,template:p.match.raw}]);
+        const raw={...p.match.raw,template_options:p.t.raw.template_options};
+        if(p.t.kind==='job'&&p.assoc.length){raw.associated_to=p.assoc;}
+        r=await zkReq(ZK.dest,...zkPutReq({...p.match,raw},p.t.html));
+      }else{
+        r=await zkReq(ZK.dest,...zkCreateReq(p.t.kind,{name:p.t.name,description:p.t.raw.template_description,type:p.t.type,html:p.t.html,options:p.t.raw.template_options,associated_to:p.assoc}));
+      }
+      if(r.ok){ok++;L('✓ '+(p.action==='update'?'Updated ':'Created ')+p.t.name);}else{fail++;L('✗ '+p.t.name+' — '+r.msg);}
+    }
+    // verify by reading back
+    const {tpls:after}=await zkLoadTemplates(ZK.dest,[...new Set(plan.map(p=>p.t.kind))]);
+    let verified=0;plan.forEach(p=>{if(after.some(d=>d.kind===p.t.kind&&zkNorm(d.name)===zkNorm(p.t.name)&&d.html===p.t.html))verified++;});
+    L('Verified '+verified+' of '+plan.length+' in the destination.');
+    if(ZK.copyBackup&&ZK.copyBackup.length) zkDl(JSON.stringify(ZK.copyBackup,null,2),'templates_overwritten_in_'+ZK.dest.name.replace(/[^\w]+/g,'_')+'.json','application/json');
+    zkMsg('✓ Copied — '+ok+' written'+(fail?', '+fail+' failed':'')+', '+verified+' verified.',fail?'warn':'ok');
+  }finally{ZK.busy=false;ZK.copyBackup=[];}
+}
+
+// ── Page: library ───────────────────────────────────────────────────────
+ZK_PAGES.library=async el=>{
+  el.innerHTML='<h3>Template library</h3><p class="lead">A team-wide shelf of proven templates. Save good templates from any account here, then install them into a customer account in one click (installed as a new template — nothing existing is touched).</p>'+
+    '<div class="zk-row"><button class="btn btn-o" onclick="zkLibSaveSel()">⬆ Save selected templates to the library</button><span class="jt-note">'+ZK.sel.size+' selected under “All templates”.</span></div><div id="zk-l-out" class="jt-note">Loading…</div>';
+  let list;try{list=await zkStore('lib.list',{});}catch(e){$('zk-l-out').innerHTML='<div class="msg msg-err">'+esc(e.message)+'</div>';return;}
+  ZK.lib=list;
+  $('zk-l-out').innerHTML=list.length?'<table class="zk-tbl"><thead><tr><th>Name</th><th>Type</th><th>Description</th><th>From</th><th>Updated</th><th></th></tr></thead><tbody>'+
+    list.map(x=>'<tr><td><b>'+esc(x.name)+'</b></td><td>'+esc((ZK_TK[x.kind]||{}).label||x.kind)+'</td><td>'+esc(x.description||'')+'</td><td class="jt-note">'+esc([x.source_account,x.created_by].filter(Boolean).join(' · '))+'</td><td>'+esc(fmt(x.updated_at))+'</td>'+
+      '<td style="white-space:nowrap"><button class="btn btn-o" style="font-size:.7rem;padding:3px 8px" onclick="zkLibPreview('+x.id+')">👁</button> <button class="btn btn-p" style="font-size:.7rem;padding:3px 8px" onclick="zkLibInstall('+x.id+')">Install</button> <button class="btn btn-o" style="font-size:.7rem;padding:3px 8px" onclick="zkLibDelete('+x.id+')">✕</button></td></tr>').join('')+'</tbody></table><iframe class="zk-frame" id="zk-l-f" style="display:none;margin-top:10px" sandbox="allow-same-origin"></iframe>':
+    '<div class="jt-note">The library is empty. Tick templates under “All templates” (Zuper’s default PO / Work Order templates are good starters) and save them here.</div>';
+};
+async function zkLibPreview(id){const x=await zkStore('lib.get',{id});const f=$('zk-l-f');f.style.display='block';f.srcdoc=zkDoc(zkRender(x.template),x.template_options);f.scrollIntoView({behavior:'smooth'});}
+async function zkLibSaveSel(){
+  await zkEnsureTpls();const sel=zkSelected();if(!sel.length) return zkMsg('Tick templates under “All templates” first.','warn');
+  const desc=prompt('Short description for '+sel.length+' template(s) (optional):','')||'';
+  let n=0;for(const t of sel){try{await zkStore('lib.save',{name:t.name,kind:t.kind,description:desc||t.raw.template_description||'',template:t.html,template_options:{...(t.raw.template_options||{}),...(t.kind==='qi'||t.kind==='po'||t.kind==='so'?{_type:t.type}:{})},created_by:zkWho()});n++;}catch(e){zkMsg('✗ '+esc(t.name)+': '+esc(e.message),'err');}}
+  zkMsg('✓ Saved '+n+' template(s) to the library.','ok');zkGo('library');
+}
+async function zkLibInstall(id){
+  const x=await zkStore('lib.get',{id});
+  const opts={...(x.template_options||{})},type=opts._type||(x.kind==='so'?'SERVICE_ORDER':x.kind==='po'?'PURCHASE_ORDER':'');delete opts._type;
+  let qtype=type;if(x.kind==='qi'&&!qtype) qtype=confirm('Install as a QUOTE template? (Cancel = INVOICE)')?'ESTIMATE':'INVOICE';
+  const name=prompt('Name for the new template in this account:',x.name);if(!name) return;
+  const r=await zkReq(null,...zkCreateReq(x.kind,{name,description:x.description,type:qtype,html:x.template,options:opts,associated_to:[]}));
+  if(!r.ok) return zkMsg('✗ Install failed: '+esc(r.msg),'err');
+  ZK.tpls=null;zkMsg('✓ Installed “'+esc(name)+'”'+(x.kind==='job'?' — link it to job categories in Zuper (Settings → Job Card Templates).':'.'),'ok');
+}
+async function zkLibDelete(id){if(!confirm('Remove this template from the team library? (Templates already installed in accounts are not affected.)'))return;await zkStore('lib.delete',{id});zkGo('library');}
+
+// ── Page: reusable blocks ───────────────────────────────────────────────
+// A block is stored HTML. In a template it lives between markers, so it can be found and
+// updated everywhere later:  <!-- zdm-block:NAME --> … <!-- /zdm-block:NAME -->
+function zkBlockRe(name){const n=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');return new RegExp('<!-- zdm-block:'+n+' -->[\\s\\S]*?<!-- /zdm-block:'+n+' -->','g');}
+function zkBlockWrap(b){return '<!-- zdm-block:'+b.name+' -->\n'+b.html+'\n<!-- /zdm-block:'+b.name+' -->';}
+ZK_PAGES.blocks=async el=>{
+  el.innerHTML='<h3>Reusable blocks</h3><p class="lead">Keep signature blocks, terms &amp; conditions, warranty text and footers in one place. Insert them from the template editor (select an element → “Insert block”), and when a block changes, update every template that uses it here.</p>'+
+    '<div class="zk-card"><h4>New / edit block</h4><div class="zk-row"><input class="zk-in" id="zk-k-name" placeholder="Name, e.g. Warranty terms" style="min-width:240px"><input class="zk-in" id="zk-k-desc" placeholder="Description (optional)" style="flex:1"></div>'+
+    '<textarea class="zk-in" id="zk-k-html" rows="7" spellcheck="false" style="width:100%;box-sizing:border-box;font-family:ui-monospace,monospace" placeholder="<div>…HTML, {{fields}} allowed…</div>"></textarea>'+
+    '<div class="zk-row"><button class="btn btn-p" onclick="zkBlockSave()">💾 Save block</button></div></div><div id="zk-k-out" class="jt-note">Loading…</div>';
+  let list;try{list=await zkStore('blocks.list',{});}catch(e){$('zk-k-out').innerHTML='<div class="msg msg-err">'+esc(e.message)+'</div>';return;}
+  ZK.blocks=list;
+  const tpls=await zkEnsureTpls();
+  $('zk-k-out').innerHTML=list.length?'<table class="zk-tbl"><thead><tr><th>Block</th><th>Used in</th><th>Updated</th><th></th></tr></thead><tbody>'+list.map((b,i)=>{
+    const used=tpls.filter(t=>{const re=zkBlockRe(b.name);return re.test(t.html);});
+    const stale=used.filter(t=>{const m=t.html.match(zkBlockRe(b.name))||[];return m.some(x=>x!==zkBlockWrap(b));});
+    return '<tr><td><b>'+esc(b.name)+'</b><div class="jt-note">'+esc(b.description||'')+'</div></td><td>'+used.length+' template'+(used.length===1?'':'s')+(stale.length?' · <span class="zk-pill warn">'+stale.length+' out of date</span>':'')+'</td><td class="jt-note">'+esc(fmt(b.updated_at))+' '+esc(b.updated_by||'')+'</td>'+
+      '<td style="white-space:nowrap"><button class="btn btn-o" style="font-size:.7rem;padding:3px 8px" onclick="zkBlockEdit('+i+')">✏</button> '+(stale.length?'<button class="btn btn-p" style="font-size:.7rem;padding:3px 8px" onclick="zkBlockPush('+i+')">Update '+stale.length+' template'+(stale.length>1?'s':'')+'</button> ':'')+'<button class="btn btn-o" style="font-size:.7rem;padding:3px 8px" onclick="zkBlockDel('+i+')">✕</button></td></tr>';}).join('')+'</tbody></table><pre class="zk-log" id="zk-k-log" style="display:none"></pre>':'<div class="jt-note">No blocks yet.</div>';
+};
+function zkBlockEdit(i){const b=ZK.blocks[i];$('zk-k-name').value=b.name;$('zk-k-desc').value=b.description||'';$('zk-k-html').value=b.html;$('zk-k-name').scrollIntoView({behavior:'smooth'});}
+async function zkBlockSave(){
+  const name=$('zk-k-name').value.trim(),html=$('zk-k-html').value;
+  if(!name||!html.trim()) return zkMsg('Give the block a name and some HTML.','warn');
+  if(jtBlockIssues(html).length) return zkMsg('✗ Unbalanced {{#…}} tags in the block: '+esc(jtBlockIssues(html).join('; ')),'err');
+  try{await zkStore('blocks.save',{name,html,description:$('zk-k-desc').value,updated_by:zkWho()});zkMsg('✓ Saved block “'+esc(name)+'”.','ok');zkGo('blocks');}catch(e){zkMsg('✗ '+esc(e.message),'err');}
+}
+async function zkBlockDel(i){const b=ZK.blocks[i];if(!confirm('Delete block “'+b.name+'”? Templates keep their copy of it.'))return;await zkStore('blocks.delete',{name:b.name});zkGo('blocks');}
+async function zkBlockPush(i){
+  const b=ZK.blocks[i],plan=(ZK.tpls||[]).map(t=>({t,html:t.html.replace(zkBlockRe(b.name),zkBlockWrap(b))})).filter(c=>c.html!==c.t.html);
+  if(!plan.length) return;
+  if(!confirm('Update “'+b.name+'” in '+plan.length+' template(s) and save to Zuper?')) return;
+  const log=$('zk-k-log');log.style.display='block';log.textContent='';
+  ZK.busy=true;try{await zkSaveMany(plan,'block '+b.name,log);}finally{ZK.busy=false;}
+  zkGo('blocks');
+}
+
+// ── Page: usage map ─────────────────────────────────────────────────────
+ZK_PAGES.usage=async el=>{
+  el.innerHTML='<h3>Usage map</h3><p class="lead">Which job categories print which job card, which categories have none, and which templates nothing uses (safe to tidy up).</p><div id="zk-u" class="jt-note">Loading…</div>';
+  const tpls=await zkEnsureTpls();
+  const r=await zkReq(null,'GET','jobs/category?populate_statuses=false');const cats=r.ok?(r.body.data||[]):[];
+  const jobs=tpls.filter(t=>t.kind==='job');
+  const assoc=t=>(t.raw.associated_to||[]).map(a=>typeof a==='string'?a:(a&&a.category_uid)).filter(Boolean);
+  const byCat=cats.map(c=>({c,t:jobs.filter(t=>assoc(t).includes(c.category_uid))}));
+  const orphan=jobs.filter(t=>!assoc(t).length);
+  const kinds=['qi','po','so'].map(k=>({k,list:tpls.filter(t=>t.kind===k)}));
+  $('zk-u').innerHTML='<div class="zk-card"><h4>Job categories → job card templates</h4><table class="zk-tbl"><thead><tr><th>Job category</th><th>Job card template(s)</th></tr></thead><tbody>'+
+    byCat.map(x=>'<tr><td><span class="zk-sw" style="background:'+esc(x.c.category_color||'#ccc')+'"></span> '+esc(x.c.category_name)+'</td><td>'+(x.t.length?x.t.map(t=>esc(t.name)).join(', '):'<span class="zk-pill warn">none — jobs print the default</span>')+'</td></tr>').join('')+'</tbody></table></div>'+
+    '<div class="zk-card"><h4>Job card templates not linked to any category</h4>'+(orphan.length?orphan.map(t=>'<div style="font-size:.8rem">• '+esc(t.name)+'</div>').join(''):'<div class="jt-note">None.</div>')+'</div>'+
+    kinds.map(({k,list})=>'<div class="zk-card"><h4>'+ZK_TK[k].label+' templates ('+list.length+')</h4>'+(list.length?list.map(t=>'<div style="font-size:.8rem">• '+esc(t.name)+' <span class="jt-note">'+esc(zkTypeLabel(t))+(t.raw.is_default?' · default':'')+' · updated '+esc(fmt(t.updated))+'</span></div>').join(''):'<div class="jt-note">None.</div>')+'</div>').join('');
+};
+
+// ════ ACCOUNT TOOLS ════════════════════════════════════════════════════
+function zkJson(rec,title){
+  let o=$('zk-json');
+  if(!o){o=document.createElement('div');o.id='zk-json';o.style.cssText='position:fixed;inset:0;z-index:1010;background:rgba(0,0,0,.35);display:flex;justify-content:flex-end';o.onclick=e=>{if(e.target===o)o.remove();};document.body.appendChild(o);}
+  o.innerHTML='<div style="width:min(640px,96vw);height:100%;background:var(--card);overflow:auto;padding:14px 16px;box-shadow:-4px 0 20px rgba(0,0,0,.2)"><div style="display:flex;justify-content:space-between;align-items:center"><b>'+esc(title||'Record')+'</b><button class="btn btn-o" onclick="$(\'zk-json\').remove()">✕</button></div><div style="font:12px ui-monospace,monospace;white-space:pre-wrap;margin-top:8px">'+syntaxHighlightJson(rec)+'</div></div>';
+}
+const ZK_VOLATILE=new Set(['updated_at','modified_at','last_modified','__v','updatedAt','last_updated_at']);
+function zkStable(v){if(Array.isArray(v))return '['+v.map(zkStable).join(',')+']';if(v&&typeof v==='object')return '{'+Object.keys(v).filter(k=>!ZK_VOLATILE.has(k)&&!k.startsWith('_')).sort().map(k=>JSON.stringify(k)+':'+zkStable(v[k])).join(',')+'}';return JSON.stringify(v);}
+function zkUidOf(key,r){const cfg=MODULES[key];const f=cfg?findUid(r,cfg.uid):null;return f?String(r[f]):String(r.uid||r._id||_histName(r));}
+
+// ── Page: snapshots & compare ───────────────────────────────────────────
+async function zkSnapshot(progress){
+  const wfBase=_workflowBaseUrl||deriveWorkflowUrl(baseUrl().replace(/\/api\/?$/,''));
+  const snap={meta:{account:$('s-account').textContent||'',base_url:baseUrl(),exported_at:new Date().toISOString(),source:'Zuper Data Manager snapshot v2'},modules:{},templates:[]};
+  for(let i=0;i<BACKUP_SET.length;i++){
+    const item=BACKUP_SET[i];if(progress)progress(item.label,i,BACKUP_SET.length);
+    let res;try{res=await backupFetch(item,wfBase);}catch(e){res={records:[],error:e.message};}
+    snap.modules[item.key]={label:item.label,count:res.records.length,records:res.records,...(res.error?{error:res.error}:{})};
+  }
+  if(progress)progress('Templates',BACKUP_SET.length,BACKUP_SET.length);
+  const {tpls}=await zkLoadTemplates(zkCur());
+  snap.templates=tpls.map(t=>({kind:t.kind,uid:t.uid,name:t.name,type:t.type,html:t.html,raw:{...t.raw,template:undefined}}));
+  return snap;
+}
+ZK_PAGES.snap=async el=>{
+  el.innerHTML='<h3>Snapshots &amp; compare</h3><p class="lead">A snapshot is one JSON file holding this account’s whole setup: job categories &amp; statuses, custom fields, workflows, products, formulas, proposal templates, notifications, email templates — and every PDF template. Compare any two (or a snapshot against the live account) to see exactly what changed, and restore what was lost.</p>'+
+    '<div class="zk-card"><h4>Take a snapshot</h4><div class="zk-row"><button class="btn btn-p" onclick="zkSnapTake()">📸 Snapshot this account (download)</button><span class="jt-note" id="zk-s-prog"></span></div></div>'+
+    '<div class="zk-card"><h4>Compare</h4><div class="zk-row"><label class="zk-lab">Before<input type="file" id="zk-s-a" accept=".json"></label><span style="font-size:1.2rem">→</span>'+
+    '<label class="zk-lab">After<select class="zk-in" id="zk-s-bsrc" onchange="$(\'zk-s-b\').style.display=this.value===\'file\'?\'\':\'none\'"><option value="live">The live account now</option><option value="file">Another snapshot file</option></select><input type="file" id="zk-s-b" accept=".json" style="display:none"></label>'+
+    '<button class="btn btn-o" onclick="zkSnapCompare()">⚖ Compare</button></div><div class="jt-note">“Before” must be a snapshot (or a 💾 Backup file). With “After” = live, you can re-create removed records and revert changed templates.</div></div><div id="zk-s-out"></div>';
+};
+async function zkSnapTake(){
+  const p=$('zk-s-prog');ZK.busy=true;
+  try{const s=await zkSnapshot((l,i,n)=>p.textContent='Reading '+l+' ('+(i+1)+'/'+(n+1)+')…');
+    zkDl(JSON.stringify(s,null,1),'zuper_snapshot_'+(s.meta.account||'account').replace(/[^\w]+/g,'_')+'_'+s.meta.exported_at.slice(0,10)+'.json','application/json');
+    const n=Object.values(s.modules).reduce((a,m)=>a+m.count,0);p.textContent='✓ '+n+' records + '+s.templates.length+' templates saved to the download.';}
+  catch(e){p.textContent='✗ '+e.message;}finally{ZK.busy=false;}
+}
+const zkReadFile=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>{try{res(JSON.parse(r.result));}catch(e){rej(new Error(f.name+' is not valid JSON'));}};r.onerror=()=>rej(r.error);r.readAsText(f);});
+async function zkSnapCompare(){
+  const fa=$('zk-s-a').files[0];if(!fa) return zkMsg('Choose the “before” snapshot file.','warn');
+  const out=$('zk-s-out');out.innerHTML='<div class="jt-note">Reading…</div>';
+  let A,B,live=$('zk-s-bsrc').value==='live';
+  try{
+    A=await zkReadFile(fa);if(!A.modules) throw new Error('“Before” is not a snapshot or backup file.');
+    if(live){out.innerHTML='<div class="jt-note" id="zk-s-lp">Reading the live account…</div>';B=await zkSnapshot((l,i,n)=>{const e=$('zk-s-lp');if(e)e.textContent='Reading '+l+' ('+(i+1)+'/'+(n+1)+')…';});}
+    else{const fb=$('zk-s-b').files[0];if(!fb) throw new Error('Choose the “after” snapshot file.');B=await zkReadFile(fb);}
+  }catch(e){out.innerHTML='';return zkMsg('✗ '+esc(e.message),'err');}
+  if(live&&A.meta&&A.meta.base_url&&A.meta.base_url!==baseUrl()) zkMsg('⚠ The “before” snapshot was taken on '+esc(A.meta.account||A.meta.base_url)+', not the connected account — restore is disabled.','warn');
+  const sameAcct=live&&(!A.meta||!A.meta.base_url||A.meta.base_url===baseUrl());
+  const res=[];
+  for(const key of [...new Set([...Object.keys(A.modules||{}),...Object.keys(B.modules||{})])]){
+    const a=((A.modules[key]||{}).records)||[],b=((B.modules[key]||{}).records)||[];
+    const ma=new Map(a.map(r=>[zkUidOf(key,r),r])),mb=new Map(b.map(r=>[zkUidOf(key,r),r]));
+    const added=[...mb.keys()].filter(k=>!ma.has(k)).map(k=>mb.get(k)),removed=[...ma.keys()].filter(k=>!mb.has(k)).map(k=>ma.get(k));
+    const changed=[];
+    for(const [k,ra] of ma){const rb=mb.get(k);if(!rb)continue;if(zkStable(ra)!==zkStable(rb)){const keys=[...new Set([...Object.keys(ra),...Object.keys(rb)])].filter(x=>!ZK_VOLATILE.has(x)&&!x.startsWith('_')&&zkStable(ra[x])!==zkStable(rb[x]));changed.push({ra,rb,keys});}}
+    res.push({key,label:(A.modules[key]||B.modules[key]).label||key,added,removed,changed});
+  }
+  const ta=new Map((A.templates||[]).map(t=>[t.kind+':'+t.uid,t])),tb=new Map((B.templates||[]).map(t=>[t.kind+':'+t.uid,t]));
+  const tRes={key:'templates',label:'PDF templates',added:[...tb.keys()].filter(k=>!ta.has(k)).map(k=>tb.get(k)),removed:[...ta.keys()].filter(k=>!tb.has(k)).map(k=>ta.get(k)),
+    changed:[...ta].filter(([k,t])=>tb.has(k)&&tb.get(k).html!==t.html).map(([k,t])=>({ra:t,rb:tb.get(k),keys:['template HTML']}))};
+  res.push(tRes);
+  ZK.snapDiff={res,A,B,sameAcct};
+  const nm=r=>esc(r.template_name||r.name||_histName(r));
+  out.innerHTML='<table class="zk-tbl"><thead><tr><th>Area</th><th>Added</th><th>Removed</th><th>Changed</th></tr></thead><tbody>'+res.map(r=>'<tr><td>'+esc(r.label)+'</td><td>'+(r.added.length||'')+'</td><td>'+(r.removed.length?'<b style="color:var(--red-d)">'+r.removed.length+'</b>':'')+'</td><td>'+(r.changed.length||'')+'</td></tr>').join('')+'</tbody></table>'+
+    res.filter(r=>r.added.length||r.removed.length||r.changed.length).map((r,ri)=>'<details class="zk-card"><summary><b>'+esc(r.label)+'</b> — '+[r.added.length?r.added.length+' added':'',r.removed.length?r.removed.length+' removed':'',r.changed.length?r.changed.length+' changed':''].filter(Boolean).join(', ')+'</summary>'+
+      (r.removed.length?'<div style="margin-top:6px"><b style="font-size:.78rem">Removed</b>'+(sameAcct&&(r.key==='templates'?false:_histRecoverable(r.key))?' <button class="btn btn-p" style="font-size:.7rem;padding:3px 9px" onclick="zkSnapRecreate(\''+r.key+'\')">↩ Re-create '+r.removed.length+'</button>':'')+r.removed.slice(0,200).map(x=>'<div style="font-size:.78rem">− '+nm(x)+'</div>').join('')+'</div>':'')+
+      (r.added.length?'<div style="margin-top:6px"><b style="font-size:.78rem">Added</b>'+r.added.slice(0,200).map(x=>'<div style="font-size:.78rem">+ '+nm(x)+'</div>').join('')+'</div>':'')+
+      (r.changed.length?'<div style="margin-top:6px"><b style="font-size:.78rem">Changed</b>'+(sameAcct&&r.key==='templates'?' <button class="btn btn-p" style="font-size:.7rem;padding:3px 9px" onclick="zkSnapRevertTpls()">↩ Revert '+r.changed.length+' template(s) to “before”</button>':'')+
+        r.changed.slice(0,200).map(c=>'<div style="font-size:.78rem">~ '+nm(c.ra)+' <span class="jt-note">'+esc(c.keys.slice(0,8).join(', '))+(c.keys.length>8?' …':'')+'</span></div>').join('')+'</div>':'')+'</details>').join('')+
+    '<pre class="zk-log" id="zk-s-log" style="display:none"></pre>';
+}
+async function zkSnapRecreate(key){
+  const r=ZK.snapDiff.res.find(x=>x.key===key);if(!r||!confirm('Re-create '+r.removed.length+' '+r.label+' record(s) in this account? They come back as new records with new IDs.'))return;
+  const log=$('zk-s-log');log.style.display='block';const L=s=>{log.textContent+=s+'\n';};let ok=0;
+  ZK.busy=true;try{for(const rec of r.removed){const x=await _recoverIntoCurrentAccount(key,rec);if(x&&x.ok){ok++;L('✓ '+_histName(rec));}else L('✗ '+_histName(rec)+' — '+((x&&x.error)||'failed'));}}finally{ZK.busy=false;}
+  zkMsg('↩ Re-created '+ok+' of '+r.removed.length+'.',ok===r.removed.length?'ok':'warn');
+}
+async function zkSnapRevertTpls(){
+  const r=ZK.snapDiff.res.find(x=>x.key==='templates');if(!r)return;
+  const live=(await zkLoadTemplates(zkCur())).tpls;
+  const plan=r.changed.map(c=>{const t=live.find(x=>x.id===c.ra.kind+':'+c.ra.uid);return t?{t,html:c.ra.html}:null;}).filter(Boolean);
+  if(!plan.length||!confirm('Revert '+plan.length+' template(s) to the snapshot version? Their current HTML is versioned first.'))return;
+  const log=$('zk-s-log');log.style.display='block';log.textContent='';
+  ZK.busy=true;try{await zkSaveMany(plan,'revert to snapshot',log);}finally{ZK.busy=false;}
+}
+
+// ── Page: account health score ──────────────────────────────────────────
+ZK_PAGES.score=async el=>{
+  el.innerHTML='<h3>Account health score</h3><p class="lead">A quick audit of data quality and setup gaps. Each finding lists the records involved — open them in the table to fix or bulk-delete, or download them as CSV.</p><div class="zk-row"><button class="btn btn-p" onclick="zkScoreRun()">💯 Run audit</button><span class="jt-note" id="zk-sc-prog"></span></div><div id="zk-sc-out"></div>';
+};
+async function zkScoreRun(){
+  const P=$('zk-sc-prog'),out=$('zk-sc-out');out.innerHTML='';
+  const step=t=>P.textContent=t;ZK.busy=true;
+  const checks=[];
+  const add=(o)=>checks.push(o);
+  try{
+    step('Customers…');const cust=await zkFetchModule('customers',{onProgress:n=>step('Customers… '+n)}).catch(e=>{add({title:'Customers could not be read',weight:0,items:[],note:e.message});return [];});
+    step('Products…');const prods=await zkFetchModule('product',{onProgress:n=>step('Products… '+n)}).catch(()=>[]);
+    step('Properties…');const props=await zkFetchModule('property',{onProgress:n=>step('Properties… '+n)}).catch(()=>[]);
+    step('Job categories…');const cats=await zkFetchModule('job_category').catch(()=>[]);
+    step('Users…');const users=await zkFetchModule('user').catch(()=>[]);
+    step('Templates…');const tpls=await zkEnsureTpls();
+    const phone=c=>{const n=c.customer_contact_no||{};return String(n.mobile||n.work||n.home||c.customer_phone||'').replace(/\D/g,'').slice(-10);};
+    const grp=(list,keyFn)=>{const m=new Map();list.forEach(r=>{const k=keyFn(r);if(!k)return;if(!m.has(k))m.set(k,[]);m.get(k).push(r);});return [...m.values()].filter(g=>g.length>1);};
+    const cu=r=>r.customer_uid,cn=r=>[r.customer_first_name,r.customer_last_name].filter(Boolean).join(' ')||r.customer_company_name||'(no name)';
+    const dE=grp(cust,r=>zkNorm(r.customer_email)),dP=grp(cust,r=>phone(r).length===10?phone(r):'');
+    add({title:'Duplicate customers (same email)',weight:12,pop:cust.length,mod:'customers',items:dE.flat().map(r=>({uid:cu(r),label:cn(r)+' · '+(r.customer_email||'')})),fix:'merge'});
+    add({title:'Duplicate customers (same phone)',weight:8,pop:cust.length,mod:'customers',items:dP.flat().map(r=>({uid:cu(r),label:cn(r)+' · '+phone(r)})),fix:'merge'});
+    add({title:'Customers with no email and no phone',weight:8,pop:cust.length,mod:'customers',items:cust.filter(r=>!r.customer_email&&!phone(r)).map(r=>({uid:cu(r),label:cn(r)}))});
+    const pu=r=>r.product_uid,pn=r=>r.product_name||'(no name)';
+    add({title:'Products with no price',weight:10,pop:prods.length,mod:'product',items:prods.filter(r=>!(parseFloat(r.price)>0)).map(r=>({uid:pu(r),label:pn(r)+' · '+(r.product_id||'')}))});
+    add({title:'Products with no category',weight:6,pop:prods.length,mod:'product',items:prods.filter(r=>!r.product_category&&!r._cat_name).map(r=>({uid:pu(r),label:pn(r)}))});
+    add({title:'Duplicate product SKUs',weight:10,pop:prods.length,mod:'product',items:grp(prods,r=>zkNorm(r.product_id)).flat().map(r=>({uid:pu(r),label:pn(r)+' · SKU '+(r.product_id||'')}))});
+    add({title:'Properties with no customer',weight:6,pop:props.length,mod:'property',items:props.filter(r=>!(r.property_customers||[]).length&&!r.customer&&!r.customer_uid).map(r=>({uid:r.property_uid,label:r.property_name||'(no name)'}))});
+    const assoc=t=>(t.raw.associated_to||[]).map(a=>typeof a==='string'?a:(a&&a.category_uid)).filter(Boolean);
+    const linked=new Set(tpls.filter(t=>t.kind==='job').flatMap(assoc));
+    add({title:'Job categories with no job card template',weight:8,pop:cats.length,mod:'job_category',items:cats.filter(c=>!linked.has(c.category_uid)).map(c=>({uid:c.category_uid,label:c.category_name}))});
+    add({title:'Job categories with no Completed status',weight:8,pop:cats.length,mod:'job_category',items:cats.filter(c=>!(c.job_statuses||[]).some(s=>String(s.status_type).toUpperCase()==='COMPLETED')).map(c=>({uid:c.category_uid,label:c.category_name}))});
+    add({title:'Inactive users',weight:3,pop:users.length,mod:'user',items:users.filter(u=>u.is_active===false).map(u=>({uid:u.user_uid,label:[u.first_name,u.last_name].filter(Boolean).join(' ')+' · '+(u.email||'')}))});
+    const sick=tpls.map(t=>({t,h:zkHealth(t.html)})).filter(x=>x.h.some(i=>i.level==='err'||i.level==='warn'));
+    add({title:'PDF templates with errors or warnings',weight:10,pop:tpls.length,mod:null,items:sick.map(x=>({uid:x.t.uid,label:zkTypeLabel(x.t)+' · '+x.t.name})),fix:'health'});
+  }finally{ZK.busy=false;step('');}
+  let earned=0,total=0;
+  checks.forEach(c=>{total+=c.weight;const ratio=c.pop?c.items.length/c.pop:(c.items.length?1:0);c.earned=c.weight*Math.max(0,1-Math.min(1,ratio*5));earned+=c.earned;});
+  const score=total?Math.round(100*earned/total):0;
+  ZK.score=checks;
+  out.innerHTML='<div class="zk-card" style="display:flex;gap:18px;align-items:center"><div class="zk-score" style="color:'+(score>=85?'#15803d':score>=65?'#b45309':'#b91c1c')+'">'+score+'</div><div class="jt-note">out of 100 · '+checks.filter(c=>c.items.length).length+' of '+checks.length+' checks found something</div></div>'+
+    checks.map((c,i)=>'<details class="zk-card"'+(c.items.length&&i<3?' open':'')+'><summary><span class="zk-pill '+(c.items.length?(c.earned<c.weight/2?'err':'warn'):'ok')+'">'+(c.items.length||'✓')+'</span> <b>'+esc(c.title)+'</b>'+(c.note?' <span class="jt-note">'+esc(c.note)+'</span>':'')+'</summary>'+
+      (c.items.length?'<div class="zk-row">'+(c.mod?'<button class="btn btn-o" onclick="zkShowInTable('+i+')">Open these in the table</button>':'')+'<button class="btn btn-o" onclick="zkScoreCsv('+i+')">⬇ CSV</button>'+(c.fix==='merge'?'<button class="btn btn-o" onclick="zkGo(\'merge\')">🔗 Merge duplicates</button>':'')+(c.fix==='health'?'<button class="btn btn-o" onclick="zkGo(\'health\')">🩺 Health check</button>':'')+'</div>'+
+        c.items.slice(0,40).map(x=>'<div style="font-size:.78rem">• '+esc(x.label)+'</div>').join('')+(c.items.length>40?'<div class="jt-note">… and '+(c.items.length-40)+' more</div>':''):'')+'</details>').join('');
+}
+function zkScoreCsv(i){const c=ZK.score[i];zkDl(zkCsv([['uid','record']].concat(c.items.map(x=>[x.uid,x.label]))),c.title.replace(/[^\w]+/g,'_').toLowerCase()+'.csv','text/csv');}
+// Switch the main table to a module and show only these records.
+async function zkShowInTable(i){
+  const c=ZK.score[i],uids=new Set(c.items.map(x=>String(x.uid)));
+  $('zk-modal').classList.remove('open');
+  $('module').value=c.mod;onModuleChange();
+  await doFetch();
+  if(uidField){filtRecs=allRecs.filter(r=>uids.has(String(r[uidField])));renderTable();showMsg('fetch-msg','Showing '+filtRecs.length+' record(s) from “'+c.title+'”. Clear the search to see all.','info');}
+}
+
+// ── Page: go-live readiness ─────────────────────────────────────────────
+ZK_PAGES.ready=async el=>{
+  el.innerHTML='<h3>Go-live readiness</h3><p class="lead">A green / red list of what a customer needs before go-live. Load the <b>Self-Onboarding blueprint</b> (⬇ Blueprint in that tool) to also check that every job type, stage, trade, product category, service, custom field, team and notification in it exists in this account.</p>'+
+    '<div class="zk-row"><label class="zk-lab">Blueprint (optional)<input type="file" id="zk-r-bp" accept=".json"></label><button class="btn btn-p" onclick="zkReadyRun()">🚦 Check readiness</button><span class="jt-note" id="zk-r-prog"></span></div><div id="zk-rd-out"></div>';
+};
+async function zkReadyRun(){
+  const P=$('zk-r-prog'),out=$('zk-rd-out');out.innerHTML='';const step=t=>P.textContent=t;
+  let bp=null;const f=$('zk-r-bp').files[0];
+  if(f){try{bp=await zkReadFile(f);if(bp.version!==1||!Array.isArray(bp.job_types))throw new Error('Not a Self-Onboarding blueprint.');}catch(e){return zkMsg('✗ '+esc(e.message),'err');}}
+  const rows=[],add=(group,label,ok,note)=>rows.push({group,label,ok,note:note||''});
+  ZK.busy=true;
+  try{
+    step('Job categories…');const cats=await zkFetchModule('job_category').catch(()=>[]);
+    step('Templates…');const tpls=await zkEnsureTpls();
+    step('Users & teams…');const users=await zkFetchModule('user').catch(()=>[]),teams=await zkFetchModule('team').catch(()=>[]);
+    step('Products…');const prods=await zkFetchModule('product').catch(()=>[]);
+    step('Taxes…');const taxes=await zkFetchModule('tax').catch(()=>null);
+    step('Notifications…');const notifs=await zkFetchModule('customer_notification').catch(()=>[]);
+    const assoc=t=>(t.raw.associated_to||[]).map(a=>typeof a==='string'?a:(a&&a.category_uid)).filter(Boolean);
+    const linked=new Set(tpls.filter(t=>t.kind==='job').flatMap(assoc));
+    add('Setup','At least one job category',cats.length>0,cats.length+' categories');
+    cats.forEach(c=>{
+      const st=c.job_statuses||[];
+      add('Job categories',c.category_name+' — has statuses',st.length>1,st.length+' statuses');
+      add('Job categories',c.category_name+' — has a Completed status',st.some(s=>String(s.status_type).toUpperCase()==='COMPLETED'));
+      add('Job categories',c.category_name+' — has a job card template',linked.has(c.category_uid),linked.has(c.category_uid)?'':'jobs print the default job card');
+    });
+    add('Templates','Quote template',tpls.some(t=>t.kind==='qi'&&t.type==='ESTIMATE'));
+    add('Templates','Invoice template',tpls.some(t=>t.kind==='qi'&&t.type==='INVOICE'));
+    const sick=tpls.filter(t=>zkHealth(t.html).some(i=>i.level==='err'));
+    add('Templates','No broken templates',!sick.length,sick.map(t=>t.name).join(', '));
+    const active=users.filter(u=>u.is_active!==false);
+    add('People','At least 2 active users',active.length>=2,active.length+' active');
+    add('People','At least one team',teams.length>0,teams.length+' teams');
+    add('Catalog','Products / services exist',prods.length>0,prods.length+' products');
+    add('Catalog','All products have a price',prods.length>0&&prods.every(p=>parseFloat(p.price)>0),prods.filter(p=>!(parseFloat(p.price)>0)).length+' without a price');
+    if(taxes) add('Billing','Tax rates configured',taxes.length>0,taxes.length+' tax rates');
+    add('Communication','Customer notifications set up',notifs.length>0,notifs.length+' notifications');
+    if(bp){
+      step('Comparing with the blueprint…');
+      const catBy=new Map(cats.map(c=>[zkNorm(c.category_name),c]));
+      (bp.job_types||[]).filter(j=>j.enabled).forEach(j=>{
+        const c=catBy.get(zkNorm(j.name));add('Blueprint · job types',j.name,!!c,c?'':'missing');
+        if(c)(j.stages||[]).forEach(s=>{const hit=(c.job_statuses||[]).find(x=>zkNorm(x.status_name)===zkNorm(s.name));add('Blueprint · stages',j.name+' › '+s.name,!!hit,hit?(String(hit.status_type).toUpperCase()===s.type?'':'type is '+hit.status_type+', blueprint says '+s.type):'missing');});
+      });
+      const bus=await zkFetchModule('trade_type').catch(()=>[]);
+      (bp.trades||[]).forEach(t=>add('Blueprint · trades',t,bus.some(b=>zkNorm(b.bu_name)===zkNorm(t))));
+      const pcs=await zkFetchModule('product_category').catch(()=>[]);
+      (bp.product_categories||[]).filter(c=>c.enabled).forEach(c=>add('Blueprint · product categories',c.name,pcs.some(p=>zkNorm(p.category_name||p.product_category_name)===zkNorm(c.name))));
+      (bp.services||[]).filter(s=>s.enabled&&s.name).forEach(s=>add('Blueprint · services',s.name,prods.some(p=>zkNorm(p.product_name)===zkNorm(s.name))));
+      const cfCache={};
+      for(const cf of (bp.custom_fields||[]).filter(x=>x.enabled&&x.name)){
+        if(!cfCache[cf.module]){const r=await zkReq(null,'GET','settings/custom_fields?module_name='+encodeURIComponent(cf.module)+'&sort=ASC&sort_by=display_order');cfCache[cf.module]=r.ok?extractRecords(r.body,'custom_fields'):[];}
+        add('Blueprint · custom fields',cf.module+' › '+cf.name,cfCache[cf.module].some(x=>zkNorm(x.field_name)===zkNorm(cf.name)));
+      }
+      (bp.teams||[]).forEach(t=>add('Blueprint · teams',t,teams.some(x=>zkNorm(x.team_name)===zkNorm(t))));
+      (bp.users||[]).forEach(u=>{const em=zkNorm(u.email||'');add('Blueprint · users',(u.name||u.email||'user'),em?users.some(x=>zkNorm(x.email)===em):false,em?'':'no email in blueprint');});
+      (bp.notifications||[]).filter(n=>n.enabled).forEach(n=>add('Blueprint · notifications',n.name,notifs.some(x=>zkNorm(x.notification_name)===zkNorm(n.name))));
+      (bp.checklists||[]).filter(c=>c.enabled).forEach(c=>add('Blueprint · checklists',c.name+' (check in Zuper)',null,'checklists are per job stage — verify manually'));
+    }
+  }finally{ZK.busy=false;step('');}
+  const scored=rows.filter(r=>r.ok!==null),pct=scored.length?Math.round(100*scored.filter(r=>r.ok).length/scored.length):0;
+  ZK.ready=rows;
+  const groups=[...new Set(rows.map(r=>r.group))];
+  out.innerHTML='<div class="zk-card" style="display:flex;gap:18px;align-items:center"><div class="zk-score" style="color:'+(pct>=90?'#15803d':pct>=70?'#b45309':'#b91c1c')+'">'+pct+'%</div><div class="jt-note">ready · '+scored.filter(r=>!r.ok).length+' item(s) to fix'+(bp?' · checked against the blueprint':'')+'</div><button class="btn btn-o" style="margin-left:auto" onclick="zkDl(zkCsv([[\'group\',\'item\',\'ready\',\'note\']].concat(ZK.ready.map(r=>[r.group,r.label,r.ok===null?\'manual\':r.ok?\'yes\':\'no\',r.note]))),\'go_live_readiness.csv\',\'text/csv\')">⬇ CSV</button></div>'+
+    groups.map(g=>{const rs=rows.filter(r=>r.group===g);const bad=rs.filter(r=>r.ok===false).length;
+      return '<details class="zk-card"'+(bad?' open':'')+'><summary><b>'+esc(g)+'</b> <span class="zk-pill '+(bad?'err':'ok')+'">'+(bad?bad+' to fix':'all good')+'</span></summary>'+rs.map(r=>'<div style="font-size:.8rem;margin:2px 0">'+(r.ok===null?'◻':r.ok?'✅':'❌')+' '+esc(r.label)+(r.note?' <span class="jt-note">'+esc(r.note)+'</span>':'')+'</div>').join('')+'</details>';}).join('');
+}
+
+// ── Page: spreadsheet round-trip ────────────────────────────────────────
+const ZK_EDIT={
+  customers:{fields:['customer_first_name','customer_last_name','customer_company_name','customer_email','customer_contact_no.mobile','customer_contact_no.work','customer_contact_no.home'],
+    put:(uid,o)=>['PUT','customers/'+encodeURIComponent(uid),{customer:{customer_uid:uid,...o}}]},
+  property:{fields:['property_name','property_address.street','property_address.city','property_address.state','property_address.zip_code'],
+    put:(uid,o)=>['PUT','property/'+encodeURIComponent(uid),{property:o}]},
+  product:{fields:['product_name','product_id','product_description','price','purchase_price','uom'],num:['price','purchase_price'],
+    put:(uid,o)=>['PUT','product/'+encodeURIComponent(uid),{product:o}]},
+  assets:{fields:['asset_name','asset_code','serial_number','asset_description'],
+    put:(uid,o)=>['PUT','assets/'+encodeURIComponent(uid),{asset:{asset_uid:uid,...o}}]},
+  jobs:{fields:['job_title','job_priority','job_description'],
+    put:(uid,o)=>['PUT','jobs',{job:{job_uid:uid,...o}}]}
+};
+ZK_PAGES.sheet=async el=>{
+  el.innerHTML='<h3>Spreadsheet round-trip</h3><p class="lead">Export a module to Excel, edit the cells, and import the file back. Only cells that actually changed are written — you see every change before anything is sent, and an “undo” file with the old values is downloaded first (re-import it to roll back). The UID column must not be edited.</p>'+
+    '<div class="zk-row"><label class="zk-lab">Module<select class="zk-in" id="zk-x-mod">'+Object.keys(ZK_EDIT).map(k=>'<option value="'+k+'">'+esc(MODULES[k].label)+'</option>').join('')+'</select></label>'+
+    '<button class="btn btn-o" onclick="zkSheetExport()">⬇ Export to Excel</button><label class="zk-lab">Edited file<input type="file" id="zk-x-file" accept=".xlsx,.xls,.csv"></label><button class="btn btn-p" onclick="zkSheetDiff()">🔍 Show changes</button><span class="jt-note" id="zk-x-prog"></span></div><div id="zk-x-out"></div>';
+};
+function zkGetPath(r,p){return p.split('.').reduce((o,k)=>o==null?undefined:o[k],r);}
+function zkCell(v){return v==null?'':typeof v==='object'?JSON.stringify(v):String(v);}
+async function zkSheetExport(){
+  const mod=$('zk-x-mod').value,E=ZK_EDIT[mod],P=$('zk-x-prog');
+  P.textContent='Reading '+MODULES[mod].label+'…';
+  let recs;try{recs=await zkFetchModule(mod,{onProgress:n=>P.textContent='Reading… '+n});}catch(e){P.textContent='✗ '+e.message;return;}
+  const head=['UID (do not edit)',...E.fields],rows=recs.map(r=>[zkUidOf(mod,r),...E.fields.map(f=>zkCell(zkGetPath(r,f)))]);
+  const name=MODULES[mod].label.replace(/[^\w]+/g,'_').toLowerCase()+'_'+new Date().toISOString().slice(0,10);
+  if(window.XLSX){const ws=XLSX.utils.aoa_to_sheet([head,...rows]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Data');XLSX.writeFile(wb,name+'.xlsx');}
+  else zkDl(zkCsv([head,...rows]),name+'.csv','text/csv');
+  P.textContent='✓ Exported '+recs.length+' rows.';
+}
+function zkReadSheet(file){
+  return new Promise((res,rej)=>{const r=new FileReader();r.onerror=()=>rej(r.error);
+    r.onload=()=>{try{
+      if(!window.XLSX) throw new Error('The spreadsheet library has not loaded yet — try again in a moment.');
+      const wb=XLSX.read(new Uint8Array(r.result),{type:'array'});res(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''}));
+    }catch(e){rej(e);}};r.readAsArrayBuffer(file);});
+}
+async function zkSheetDiff(){
+  const mod=$('zk-x-mod').value,E=ZK_EDIT[mod],f=$('zk-x-file').files[0],P=$('zk-x-prog'),out=$('zk-x-out');
+  if(!f) return zkMsg('Choose the edited file.','warn');
+  let aoa;try{aoa=await zkReadSheet(f);}catch(e){return zkMsg('✗ '+esc(e.message),'err');}
+  const head=(aoa[0]||[]).map(h=>String(h).trim());
+  if(!/^UID/i.test(head[0]||'')) return zkMsg('✗ The first column must be the UID column from the export.','err');
+  const cols=head.slice(1).map((h,i)=>({h,i:i+1})).filter(c=>E.fields.includes(c.h));
+  const ignored=head.slice(1).filter(h=>h&&!E.fields.includes(h));
+  P.textContent='Reading current values…';
+  const recs=await zkFetchModule(mod,{onProgress:n=>P.textContent='Reading current values… '+n});
+  const by=new Map(recs.map(r=>[zkUidOf(mod,r),r]));
+  const changes=[],missing=[];
+  for(const row of aoa.slice(1)){
+    const uid=String(row[0]||'').trim();if(!uid) continue;
+    const rec=by.get(uid);if(!rec){missing.push(uid);continue;}
+    const diff=[];
+    for(const c of cols){
+      const now=zkCell(zkGetPath(rec,c.h)),nv=String(row[c.i]==null?'':row[c.i]);
+      const same=(E.num||[]).includes(c.h)?(parseFloat(now||0)===parseFloat(nv||0)):now.trim()===nv.trim();
+      if(!same) diff.push({f:c.h,old:now,nv});
+    }
+    if(diff.length) changes.push({uid,rec,diff});
+  }
+  P.textContent='';
+  ZK.sheet={mod,changes};
+  const n=changes.reduce((s,c)=>s+c.diff.length,0);
+  out.innerHTML=(ignored.length?'<div class="msg msg-warn">Ignored columns (not editable here): '+esc(ignored.join(', '))+'</div>':'')+(missing.length?'<div class="msg msg-warn">'+missing.length+' UID(s) not found in this account — skipped.</div>':'')+
+    '<div class="zk-row"><b>'+n+' changed cell'+(n===1?'':'s')+' in '+changes.length+' record'+(changes.length===1?'':'s')+'</b>'+(changes.length?'<button class="btn btn-p" onclick="zkSheetApply()">✏ Write '+changes.length+' record(s) to Zuper</button>':'')+'</div>'+
+    (changes.length?'<div style="max-height:420px;overflow:auto"><table class="zk-tbl"><thead><tr><th>Record</th><th>Field</th><th>Now</th><th>New</th></tr></thead><tbody>'+
+      changes.slice(0,500).flatMap(c=>c.diff.map((d,i)=>'<tr><td>'+(i?'':esc(_histName(c.rec)))+'</td><td><code>'+esc(d.f)+'</code></td><td style="color:var(--red-d)">'+esc(d.old||'∅')+'</td><td style="color:var(--green-d)">'+esc(d.nv||'∅')+'</td></tr>')).join('')+'</tbody></table></div>':'')+
+    '<pre class="zk-log" id="zk-x-log" style="display:none"></pre>';
+}
+function zkSetPath(o,p,v){const ks=p.split('.');let x=o;ks.slice(0,-1).forEach(k=>{x[k]=x[k]&&typeof x[k]==='object'?{...x[k]}:{};x=x[k];});x[ks[ks.length-1]]=v;}
+async function zkSheetApply(){
+  const {mod,changes}=ZK.sheet||{};if(!changes||!changes.length) return;
+  const E=ZK_EDIT[mod];
+  if(!confirm('Write '+changes.length+' record(s) in '+MODULES[mod].label+'?\n\nAn undo file with the current values downloads first.')) return;
+  // undo file: same layout as the export, holding the OLD values of the touched fields
+  const fields=[...new Set(changes.flatMap(c=>c.diff.map(d=>d.f)))];
+  zkDl(zkCsv([['UID (do not edit)',...fields],...changes.map(c=>[c.uid,...fields.map(f=>zkCell(zkGetPath(c.rec,f)))])]),'UNDO_'+mod+'_'+new Date().toISOString().replace(/[:.]/g,'-')+'.csv','text/csv');
+  const log=$('zk-x-log');log.style.display='block';log.textContent='';const L=s=>{log.textContent+=s+'\n';log.scrollTop=log.scrollHeight;};
+  let ok=0,fail=0;ZK.busy=true;
+  try{
+    await zkPool(changes,3,async c=>{
+      const o={};
+      c.diff.forEach(d=>{
+        const top=d.f.split('.')[0];
+        if(d.f.includes('.')&&!(top in o)) o[top]={...(c.rec[top]||{})}; // keep the sibling values of nested objects
+        let v=d.nv;if((E.num||[]).includes(d.f))v=v===''?null:parseFloat(v);
+        zkSetPath(o,d.f,v);
+      });
+      const r=await zkReq(null,...E.put(c.uid,o));
+      if(r.ok){ok++;L('✓ '+_histName(c.rec));}else{fail++;L('✗ '+_histName(c.rec)+' — '+r.msg);}
+    });
+  }finally{ZK.busy=false;}
+  zkMsg('✓ '+ok+' record(s) updated'+(fail?', '+fail+' failed (see log)':'')+'.',fail?'warn':'ok');
+}
+
+// ── Page: merge duplicates ──────────────────────────────────────────────
+ZK_PAGES.merge=async el=>{
+  el.innerHTML='<h3>Merge duplicate customers</h3><p class="lead">Uses Zuper’s own customer merge: the duplicates’ jobs, quotes, invoices and properties move to the customer you keep, then the duplicates go away. Each duplicate is copied to the team recycle bin first. (Zuper has no merge for properties — duplicate properties can be found and deleted from the main table.)</p>'+
+    '<div class="zk-row"><label class="zk-lab">Match on<select class="zk-in" id="zk-m-rule"><option value="email">Same email</option><option value="phone">Same phone</option><option value="name">Same full name</option><option value="namephone">Same name + phone</option></select></label><button class="btn btn-p" onclick="zkMergeFind()">🔍 Find duplicates</button><span class="jt-note" id="zk-m-prog"></span></div><div id="zk-m-out"></div>';
+};
+async function zkMergeFind(){
+  const P=$('zk-m-prog'),rule=$('zk-m-rule').value;
+  const cust=await zkFetchModule('customers',{onProgress:n=>P.textContent='Reading customers… '+n});P.textContent='';
+  const ph=c=>{const n=c.customer_contact_no||{};return String(n.mobile||n.work||n.home||c.customer_phone||'').replace(/\D/g,'').slice(-10);};
+  const nm=c=>zkNorm([c.customer_first_name,c.customer_last_name].filter(Boolean).join(' ')||c.customer_company_name);
+  const key={email:c=>zkNorm(c.customer_email),phone:c=>ph(c).length===10?ph(c):'',name:nm,namephone:c=>nm(c)&&ph(c)?nm(c)+'|'+ph(c):''}[rule];
+  const m=new Map();cust.forEach(c=>{const k=key(c);if(!k)return;if(!m.has(k))m.set(k,[]);m.get(k).push(c);});
+  const groups=[...m.values()].filter(g=>g.length>1).map(g=>g.sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at))));
+  ZK.mergeGroups=groups;
+  const lbl=c=>esc([c.customer_first_name,c.customer_last_name].filter(Boolean).join(' ')||c.customer_company_name||'(no name)')+' <span class="jt-note">'+esc([c.customer_email,ph(c),fmt(c.created_at)].filter(Boolean).join(' · '))+'</span>';
+  $('zk-m-out').innerHTML=groups.length?'<div class="zk-row"><b>'+groups.length+' group(s)</b><button class="btn btn-p" onclick="zkMergeRun(-1)">🔗 Merge all '+groups.length+' groups</button></div>'+
+    groups.map((g,gi)=>'<div class="zk-card" id="zk-mg-'+gi+'"><div class="jt-note" style="margin-bottom:4px">Keep ◉ · merge ☑ into it</div>'+g.map((c,ci)=>'<div style="display:flex;gap:8px;align-items:center;font-size:.8rem;margin:2px 0"><input type="radio" name="zk-mk-'+gi+'" value="'+ci+'"'+(ci===0?' checked':'')+'><input type="checkbox" class="zk-mc-'+gi+'" value="'+ci+'" checked> '+lbl(c)+' <button class="btn btn-o" style="font-size:.66rem;padding:1px 6px" onclick="zkJson(ZK.mergeGroups['+gi+']['+ci+'],\'Customer\')">👁</button></div>').join('')+
+      '<button class="btn btn-o" style="font-size:.72rem;padding:4px 10px;margin-top:4px" onclick="zkMergeRun('+gi+')">🔗 Merge this group</button><span class="jt-note" id="zk-mr-'+gi+'"></span></div>').join(''):'<div class="jt-note">No duplicates by this rule.</div>';
+}
+async function zkMergeRun(only){
+  const idx=only>=0?[only]:ZK.mergeGroups.map((_,i)=>i);
+  const plans=idx.map(gi=>{const g=ZK.mergeGroups[gi];const keep=+((document.querySelector('input[name="zk-mk-'+gi+'"]:checked')||{}).value||0);
+    const src=[...document.querySelectorAll('.zk-mc-'+gi+':checked')].map(x=>+x.value).filter(i=>i!==keep).map(i=>g[i]);return {gi,target:g[keep],src};}).filter(p=>p.src.length&&!p.done);
+  if(!plans.length) return zkMsg('Nothing to merge.','info');
+  const n=plans.reduce((s,p)=>s+p.src.length,0);
+  if(!confirm('Merge '+n+' duplicate customer(s) into '+plans.length+' customer(s)? This uses Zuper’s merge and cannot be undone from here (copies go to the team recycle bin).')) return;
+  ZK.busy=true;let ok=0;
+  try{
+    for(const p of plans){
+      const st=$('zk-mr-'+p.gi);if(st)st.textContent=' merging…';
+      try{await zkStore('bin.add',{deleted_by:zkWho(),items:p.src.map(c=>({module:'customers',record_uid:c.customer_uid,label:_histName(c)+' (merged into '+_histName(p.target)+')',record:c}))});}catch(e){}
+      const r=await zkReq(null,'POST','customers/merge',{source_customer_uids:p.src.map(c=>c.customer_uid),target_customer_uid:p.target.customer_uid});
+      if(r.ok){ok++;if(st)st.textContent=' ✓ merged';const card=$('zk-mg-'+p.gi);if(card)card.style.opacity='.5';}else if(st)st.textContent=' ✗ '+r.msg;
+    }
+  }finally{ZK.busy=false;}
+  zkMsg('🔗 Merged '+ok+' of '+plans.length+' group(s).',ok===plans.length?'ok':'warn');
+}
+
+// ── Page: reassign a technician ─────────────────────────────────────────
+ZK_PAGES.reassign=async el=>{
+  el.innerHTML='<h3>Reassign a technician</h3><p class="lead">When someone leaves: move their upcoming jobs to another person and give that person their team memberships — in one pass, with a preview first.</p><div id="zk-ra" class="jt-note">Loading users…</div>';
+  const [users,teams]=await Promise.all([zkFetchModule('user'),zkFetchModule('team')]);
+  ZK.ra={users,teams};
+  const nm=u=>[u.first_name,u.last_name].filter(Boolean).join(' ')+(u.email?' · '+u.email:'')+(u.is_active===false?' (inactive)':'');
+  const opts=users.map(u=>'<option value="'+esc(u.user_uid)+'">'+esc(nm(u))+'</option>').join('');
+  $('zk-ra').innerHTML='<div class="zk-row"><label class="zk-lab">From<select class="zk-in" id="zk-ra-from">'+opts+'</select></label><label class="zk-lab">To<select class="zk-in" id="zk-ra-to">'+users.filter(u=>u.is_active!==false).map(u=>'<option value="'+esc(u.user_uid)+'">'+esc(nm(u))+'</option>').join('')+'</select></label></div>'+
+    '<div class="zk-row"><label class="jt-note"><input type="checkbox" id="zk-ra-jobs" checked> Upcoming jobs (scheduled from now on)</label><label class="jt-note"><input type="checkbox" id="zk-ra-unsched"> Also unscheduled jobs</label><label class="jt-note"><input type="checkbox" id="zk-ra-teams" checked> Add to their teams</label><label class="jt-note"><input type="checkbox" id="zk-ra-rmteams"> Remove “From” from those teams</label><label class="jt-note"><input type="checkbox" id="zk-ra-notify"> Notify the people assigned</label></div>'+
+    '<div class="zk-row"><button class="btn btn-o" onclick="zkRaPlan()">🔍 Find their work</button><span class="jt-note" id="zk-ra-prog"></span></div><div id="zk-ra-out"></div>';
+};
+const zkAsg=a=>({user_uid:(a.user&&a.user.user_uid)||a.user_uid,team_uid:(a.team&&a.team.team_uid)||a.team_uid});
+async function zkRaPlan(){
+  const from=$('zk-ra-from').value,to=$('zk-ra-to').value,P=$('zk-ra-prog');
+  if(from===to) return zkMsg('Pick two different people.','warn');
+  const {teams}=ZK.ra,inTeam=(t,u)=>(t.users||[]).some(x=>(x.user_uid||(x.user&&x.user.user_uid))===u);
+  let jobs=[];
+  if($('zk-ra-jobs').checked){
+    const all=await zkFetchModule('jobs',{onProgress:n=>P.textContent='Reading jobs… '+n});P.textContent='';
+    const now=Date.now(),unsched=$('zk-ra-unsched').checked;
+    jobs=all.filter(j=>(j.assigned_to||[]).some(a=>zkAsg(a).user_uid===from)&&(j.scheduled_start_time?new Date(j.scheduled_start_time).getTime()>=now:unsched)&&!/COMPLETED|CANCEL/i.test(String((j.current_job_status&&j.current_job_status.status_type)||'')));
+  }
+  const fromTeams=teams.filter(t=>inTeam(t,from));
+  ZK.raPlan={from,to,jobs,teamsAdd:$('zk-ra-teams').checked?fromTeams.filter(t=>!inTeam(t,to)):[],teamsRm:$('zk-ra-rmteams').checked?fromTeams:[]};
+  const p=ZK.raPlan;
+  $('zk-ra-out').innerHTML='<div class="zk-card"><b>'+p.jobs.length+' job(s)</b> to move · add “To” to <b>'+p.teamsAdd.length+'</b> team(s)'+(p.teamsRm.length?' · remove “From” from '+p.teamsRm.length+' team(s)':'')+
+    (p.jobs.length?'<div style="max-height:260px;overflow:auto;margin-top:6px">'+p.jobs.slice(0,300).map(j=>'<div style="font-size:.78rem">• #'+esc(j.work_order_number||j.job_number||'')+' '+esc(j.job_title||'')+' <span class="jt-note">'+esc(fmt(j.scheduled_start_time)||'unscheduled')+'</span></div>').join('')+'</div>':'')+
+    (p.teamsAdd.length?'<div class="jt-note" style="margin-top:6px">Teams: '+esc(p.teamsAdd.map(t=>t.team_name).join(', '))+'</div>':'')+
+    '<div class="zk-row"><button class="btn btn-p" onclick="zkRaRun()">🔁 Reassign now</button></div><pre class="zk-log" id="zk-ra-log" style="display:none"></pre></div>';
+}
+async function zkRaRun(){
+  const p=ZK.raPlan;if(!p) return;
+  if(!confirm('Move '+p.jobs.length+' job(s) and update '+(p.teamsAdd.length+p.teamsRm.length)+' team membership(s)?')) return;
+  const log=$('zk-ra-log');log.style.display='block';log.textContent='';const L=s=>{log.textContent+=s+'\n';log.scrollTop=log.scrollHeight;};
+  const notify=$('zk-ra-notify').checked,toTeams=ZK.ra.teams.filter(t=>(t.users||[]).some(x=>(x.user_uid||(x.user&&x.user.user_uid))===p.to));
+  ZK.busy=true;let ok=0,fail=0;
+  try{
+    // teams first, so the new person can be assigned under the same team on each job
+    for(const t of p.teamsAdd){const r=await zkReq(null,'POST','team/assign',{team_uid:t.team_uid,user_uid:p.to});L((r.ok?'✓ added to team ':'✗ team ')+t.team_name+(r.ok?'':' — '+r.msg));if(r.ok)toTeams.push(t);}
+    await zkPool(p.jobs,3,async j=>{
+      const cur=(j.assigned_to||[]).map(zkAsg),mine=cur.find(a=>a.user_uid===p.from);
+      const team=(mine&&toTeams.some(t=>t.team_uid===mine.team_uid))?mine.team_uid:(toTeams[0]&&toTeams[0].team_uid)||(mine&&mine.team_uid);
+      const users=cur.filter(a=>a.user_uid!==p.from&&a.user_uid!==p.to).concat([{team_uid:team,user_uid:p.to}]);
+      const a=await zkReq(null,'POST','jobs/assign',{job_uid:j.job_uid,update_all_jobs:false,notify_users:notify,type:'ASSIGN',users});
+      if(!a.ok){fail++;L('✗ #'+(j.work_order_number||j.job_uid)+' assign — '+a.msg);return;}
+      const u=await zkReq(null,'POST','jobs/assign',{job_uid:j.job_uid,update_all_jobs:false,notify_users:notify,type:'UNASSIGN',users:[mine]});
+      if(u.ok){ok++;L('✓ #'+(j.work_order_number||j.job_uid)+' '+(j.job_title||''));}else{fail++;L('⚠ #'+(j.work_order_number||j.job_uid)+' — assigned the new person, but could not unassign the old one: '+u.msg);}
+    });
+    for(const t of p.teamsRm){const r=await zkReq(null,'POST','team/unassign',{team_uid:t.team_uid,user_uid:p.from});L((r.ok?'✓ removed from team ':'✗ team ')+t.team_name+(r.ok?'':' — '+r.msg));}
+  }finally{ZK.busy=false;}
+  zkMsg('🔁 '+ok+' job(s) reassigned'+(fail?', '+fail+' with problems (see log)':'')+'.',fail?'warn':'ok');
+}
+
+// ── Page: bulk price update ─────────────────────────────────────────────
+ZK_PAGES.price=async el=>{
+  el.innerHTML='<h3>Bulk price update</h3><p class="lead">Raise or lower prices (or costs) by a percentage or amount — for a category, a product type or a search — with a full preview. An undo file with the old prices downloads first (import it in Spreadsheet round-trip to roll back).<br><span class="jt-note">Syncing costs from the SRS / ABC / QXO catalog is not offered: those catalogs carry tier bands, not real unit costs.</span></p><div id="zk-p" class="jt-note">Loading products…</div>';
+  const prods=await zkFetchModule('product',{onProgress:n=>{const e=$('zk-p');if(e)e.textContent='Loading products… '+n;}});
+  ZK.prods=prods;
+  const catOf=p=>p._cat_name||(p.product_category&&(p.product_category.category_name||p.product_category.product_category_name))||'';
+  const cats=[...new Set(prods.map(catOf).filter(Boolean))].sort(),types=[...new Set(prods.map(p=>p.product_type).filter(Boolean))].sort();
+  $('zk-p').innerHTML='<div class="zk-row"><label class="zk-lab">Category<select class="zk-in" id="zk-p-cat"><option value="">All</option>'+cats.map(c=>'<option>'+esc(c)+'</option>').join('')+'</select></label>'+
+    '<label class="zk-lab">Type<select class="zk-in" id="zk-p-type"><option value="">All</option>'+types.map(c=>'<option>'+esc(c)+'</option>').join('')+'</select></label>'+
+    '<label class="zk-lab">Name / SKU contains<input class="zk-in" id="zk-p-q"></label></div>'+
+    '<div class="zk-row"><label class="zk-lab">Field<select class="zk-in" id="zk-p-field"><option value="price">Price</option><option value="purchase_price">Cost (purchase price)</option></select></label>'+
+    '<label class="zk-lab">Change<select class="zk-in" id="zk-p-op"><option value="pct">Increase by %</option><option value="pctdown">Decrease by %</option><option value="add">Add amount</option><option value="set">Set to</option></select></label>'+
+    '<label class="zk-lab">Value<input class="zk-in" id="zk-p-val" type="number" step="any" style="width:110px"></label>'+
+    '<label class="zk-lab">Rounding<select class="zk-in" id="zk-p-round"><option value="2">2 decimals</option><option value="0">Whole number</option><option value="99">Ends in .99</option></select></label>'+
+    '<label class="jt-note"><input type="checkbox" id="zk-p-zero"> Include items priced 0</label><button class="btn btn-o" onclick="zkPricePlan()">👁 Preview</button></div><div id="zk-p-out"></div>';
+  ZK.catOf=catOf;
+};
+function zkPricePlan(){
+  const cat=$('zk-p-cat').value,type=$('zk-p-type').value,q=zkNorm($('zk-p-q').value),field=$('zk-p-field').value,op=$('zk-p-op').value,val=parseFloat($('zk-p-val').value),rnd=$('zk-p-round').value,zero=$('zk-p-zero').checked;
+  if(isNaN(val)) return zkMsg('Enter a value.','warn');
+  const round=v=>rnd==='0'?Math.round(v):rnd==='99'?Math.max(0,Math.floor(v)+.99):Math.round(v*100)/100;
+  const plan=ZK.prods.filter(p=>(!cat||ZK.catOf(p)===cat)&&(!type||p.product_type===type)&&(!q||zkNorm(p.product_name).includes(q)||zkNorm(p.product_id).includes(q))).map(p=>{
+    const old=parseFloat(p[field])||0;if(!old&&!zero&&op!=='set') return null;
+    let nv=op==='pct'?old*(1+val/100):op==='pctdown'?old*(1-val/100):op==='add'?old+val:val;nv=round(Math.max(0,nv));
+    return nv===old?null:{p,old,nv};
+  }).filter(Boolean);
+  ZK.pricePlan={field,plan};
+  $('zk-p-out').innerHTML='<div class="zk-row"><b>'+plan.length+' product(s) change</b>'+(plan.length?'<button class="btn btn-p" onclick="zkPriceRun()">💲 Update '+plan.length+' product(s)</button>':'')+'</div>'+
+    (plan.length?'<div style="max-height:420px;overflow:auto"><table class="zk-tbl"><thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>Now</th><th>New</th></tr></thead><tbody>'+plan.slice(0,500).map(x=>'<tr><td>'+esc(x.p.product_name)+'</td><td>'+esc(x.p.product_id||'')+'</td><td>'+esc(ZK.catOf(x.p))+'</td><td>'+x.old.toFixed(2)+'</td><td><b>'+x.nv.toFixed(2)+'</b></td></tr>').join('')+'</tbody></table></div>':'')+
+    '<pre class="zk-log" id="zk-p-log" style="display:none"></pre>';
+}
+async function zkPriceRun(){
+  const {field,plan}=ZK.pricePlan||{};if(!plan||!plan.length) return;
+  if(!confirm('Update '+field+' on '+plan.length+' product(s)? An undo file downloads first.')) return;
+  zkDl(zkCsv([['UID (do not edit)',field],...plan.map(x=>[x.p.product_uid,x.old])]),'UNDO_product_'+field+'_'+new Date().toISOString().replace(/[:.]/g,'-')+'.csv','text/csv');
+  const log=$('zk-p-log');log.style.display='block';log.textContent='';const L=s=>{log.textContent+=s+'\n';log.scrollTop=log.scrollHeight;};
+  let ok=0,fail=0;ZK.busy=true;
+  try{await zkPool(plan,4,async x=>{const r=await zkReq(null,'PUT','product/'+encodeURIComponent(x.p.product_uid),{product:{[field]:x.nv}});if(r.ok){ok++;x.p[field]=x.nv;L('✓ '+x.p.product_name+' '+x.old+' → '+x.nv);}else{fail++;L('✗ '+x.p.product_name+' — '+r.msg);}});}
+  finally{ZK.busy=false;}
+  zkMsg('💲 '+ok+' product(s) updated'+(fail?', '+fail+' failed':'')+'.',fail?'warn':'ok');
+}
+
+// ── Page: team recycle bin ──────────────────────────────────────────────
+// Every live delete made with this tool is also copied here (shared with everyone who can
+// connect to this account; kept 90 days). Recover re-creates the record with the same
+// engine as the local recycle bin (_recoverIntoCurrentAccount).
+function zkMirrorDeletes(mod,recs,cfg){
+  if(!recs||!recs.length) return;
+  let who='';try{who=(($('empid')&&$('empid').value)||'').trim()||localStorage.getItem('zdm_user_name')||'';}catch(e){}
+  const items=recs.map(r=>({module:mod,record_uid:_recUid(r,cfg),label:_histName(r),record:r}));
+  (async()=>{for(let i=0;i<items.length;i+=500){try{await zkStore('bin.add',{items:items.slice(i,i+500),deleted_by:who});}catch(e){console.warn('[ZDM] team recycle bin: '+e.message);return;}}})();
+}
+ZK_PAGES.bin=async el=>{
+  el.innerHTML='<h3>Team recycle bin</h3><p class="lead">Every record deleted with this tool — by anyone on the team, from any browser — is kept here for 90 days. Recover re-creates it in this account as a new record (Zuper has no true un-delete). Only people with an API key for this account can see these.</p><div id="zk-bn" class="jt-note">Loading…</div>';
+  let list;try{list=await zkStore('bin.list',{limit:2000});}catch(e){$('zk-bn').innerHTML='<div class="msg msg-err">'+esc(e.message)+'</div>';return;}
+  ZK.bin=list;
+  const mods=[...new Set(list.map(x=>x.module))];
+  $('zk-bn').innerHTML=list.length?'<div class="zk-row"><select class="zk-in" id="zk-bn-mod" onchange="zkBinFilter()"><option value="">All modules</option>'+mods.map(m=>'<option value="'+esc(m)+'">'+esc((MODULES[m]||{}).label||m)+'</option>').join('')+'</select>'+
+    '<button class="btn btn-p" onclick="zkBinRecover()">↩ Recover selected</button><button class="btn btn-o" onclick="zkBinPurge()">✕ Delete forever</button><span class="jt-note">'+list.length+' record(s)</span></div>'+
+    '<div style="max-height:520px;overflow:auto"><table class="zk-tbl"><thead><tr><th><input type="checkbox" onchange="document.querySelectorAll(\'.zk-bn-cb\').forEach(c=>{if(c.closest(\'tr\').style.display!==\'none\'&&!c.disabled)c.checked=this.checked})"></th><th>Record</th><th>Module</th><th>Deleted</th><th>By</th><th></th></tr></thead><tbody id="zk-bn-body">'+
+    list.map(x=>{const rec=_histRecoverable(x.module);return '<tr data-mod="'+esc(x.module)+'"><td><input type="checkbox" class="zk-bn-cb" value="'+x.id+'"'+(x.restored_at||!rec?' disabled':'')+'></td><td>'+esc(x.label||x.record_uid)+(x.restored_at?' <span class="zk-pill ok">recovered</span>':'')+(rec?'':' <span class="zk-pill info" title="'+esc(_recoverReason(x.module))+'">view only</span>')+'</td><td>'+esc((MODULES[x.module]||{}).label||x.module)+'</td><td>'+esc(new Date(x.deleted_at).toLocaleString())+'</td><td>'+esc(x.deleted_by||'')+'</td><td><button class="btn btn-o" style="font-size:.68rem;padding:2px 7px" onclick="zkBinView('+x.id+')">👁</button></td></tr>';}).join('')+'</tbody></table></div><pre class="zk-log" id="zk-bn-log" style="display:none"></pre>':
+    '<div class="jt-note">Empty. Deletions made from now on appear here.</div>';
+};
+function zkBinFilter(){const m=$('zk-bn-mod').value;document.querySelectorAll('#zk-bn-body tr').forEach(tr=>tr.style.display=!m||tr.dataset.mod===m?'':'none');}
+async function zkBinView(id){const r=await zkStore('bin.get',{id});if(r&&r[0])zkJson(r[0].record,r[0].label);}
+const zkBinSel=()=>[...document.querySelectorAll('.zk-bn-cb:checked')].map(c=>+c.value);
+async function zkBinRecover(){
+  const ids=zkBinSel();if(!ids.length) return zkMsg('Tick records to recover.','warn');
+  if(!confirm('Re-create '+ids.length+' record(s) in this account?')) return;
+  const log=$('zk-bn-log');log.style.display='block';log.textContent='';const L=s=>{log.textContent+=s+'\n';};
+  ZK.busy=true;let ok=0;
+  try{
+    const rows=await zkStore('bin.get',{ids});
+    for(const x of rows){
+      const r=await _recoverIntoCurrentAccount(x.module,x.record);
+      if(r&&r.ok){ok++;L('✓ '+x.label);try{await zkStore('bin.restored',{id:x.id,restored_uid:r.uid||r.newUid||''});}catch(e){}}else L('✗ '+x.label+' — '+((r&&r.error)||'failed'));
+    }
+  }finally{ZK.busy=false;}
+  zkMsg('↩ Recovered '+ok+' of '+ids.length+'.',ok===ids.length?'ok':'warn');
+}
+async function zkBinPurge(){const ids=zkBinSel();if(!ids.length)return;if(!confirm('Delete '+ids.length+' record(s) from the recycle bin forever?'))return;await zkStore('bin.purge',{ids});zkGo('bin');}
+
+// ── Page: relationship explorer ─────────────────────────────────────────
+ZK_PAGES.rel=async el=>{
+  el.innerHTML='<h3>Relationship explorer</h3><p class="lead">Everything hanging off one customer — properties, jobs, quotes, invoices and assets — before you delete, merge or migrate it.</p>'+
+    '<div class="zk-row"><input class="zk-in" id="zk-x-q" placeholder="Search customers by name, email or phone" style="flex:1;min-width:260px" onkeydown="if(event.key===\'Enter\')zkRelSearch()"><button class="btn btn-o" onclick="zkRelSearch()">🔍 Search</button></div><div id="zk-x-res"></div><div id="zk-x-tree" class="zk-tree"></div>';
+};
+async function zkRelSearch(){
+  const q=$('zk-x-q').value.trim();if(!q) return;
+  const r=await zkReq(null,'GET','customers?filter.keyword='+encodeURIComponent(q)+'&page=1&count=20');
+  const list=r.ok?extractRecords(r.body,'customers'):[];
+  ZK.relRes=list;
+  $('zk-x-res').innerHTML=list.length?list.map((c,i)=>'<div style="font-size:.8rem;margin:3px 0"><button class="btn btn-o" style="font-size:.7rem;padding:2px 8px" onclick="zkRelOpen('+i+')">Open</button> '+esc(_histName(c))+' <span class="jt-note">'+esc([c.customer_email,c.customer_company_name].filter(Boolean).join(' · '))+'</span></div>').join(''):'<div class="jt-note">'+(r.ok?'No customers found.':esc(r.msg))+'</div>';
+}
+async function zkRelOpen(i){
+  const c=ZK.relRes[i],uid=c.customer_uid,tree=$('zk-x-tree');
+  tree.innerHTML='<div class="jt-note">Loading…</div>';
+  const belongs=(r)=>{const cu=(r.customer&&(r.customer.customer_uid||r.customer))||r.customer_uid||(r.customer_details&&r.customer_details.customer_uid);
+    if(cu) return String(cu)===uid;
+    const pc=r.property_customers;if(Array.isArray(pc)) return pc.some(x=>(x.customer&&(x.customer.customer_uid||x.customer))===uid||x.customer_uid===uid);
+    return null;};
+  const parts=[['property','Properties','property'],['jobs','Jobs','jobs'],['estimate','Quotes','estimate'],['invoice','Invoices','invoice'],['assets','Assets','assets']];
+  const res=await Promise.all(parts.map(async([path,label,mod])=>{
+    const r=await zkReq(null,'GET',path+'?filter.customer='+encodeURIComponent(uid)+'&page=1&count=100');
+    if(!r.ok) return {label,mod,err:r.msg,list:[]};
+    let list=extractRecords(r.body,path);if(MODULES[mod]&&MODULES[mod].transform)list=MODULES[mod].transform(list);
+    const verdict=list.map(belongs),known=verdict.filter(v=>v!==null);
+    // If the API ignored the filter, the rows belong to other customers — drop those.
+    if(known.length&&known.some(v=>v===false)) list=list.filter((_,k)=>verdict[k]!==false);
+    return {label,mod,list,more:(r.body&&r.body.total_records>100)?r.body.total_records:0};
+  }));
+  ZK.relTree=res;
+  const lab=(mod,r)=>{const cols=(MODULES[mod]||{}).cols||[];return esc(cols.slice(0,3).map(cc=>fmt(getF(r,cc.f))).filter(v=>v&&v!=='—').join(' · ')||_histName(r));};
+  tree.innerHTML='<div class="zk-card"><h4>👤 '+esc(_histName(c))+' <button class="btn btn-o" style="font-size:.66rem;padding:1px 6px" onclick="zkJson(ZK.relRes['+i+'],\'Customer\')">👁</button></h4>'+
+    res.map((x,k)=>'<details'+(x.list.length?' open':'')+'><summary><b>'+esc(x.label)+'</b> ('+(x.err?'✗ '+esc(x.err):x.list.length+(x.more?' of '+x.more:''))+')</summary>'+
+      x.list.map((r,j)=>'<div style="font-size:.78rem;margin:2px 0 2px 14px">• '+lab(x.mod,r)+' <button class="btn btn-o" style="font-size:.62rem;padding:0 5px" onclick="zkJson(ZK.relTree['+k+'].list['+j+'],\''+esc(x.label)+'\')">👁</button></div>').join('')+'</details>').join('')+'</div>';
+}
+
+// ════ TEMPLATE EDITOR ADD-ONS ══════════════════════════════════════════
+// ── Team version history (shared; the browser-local list stays as it was) ──
+function jtTeamVersionPush(d,note){
+  if(!d||typeof d.template!=='string') return;
+  const kind=JT&&JT.kind;
+  let who='';try{who=(($('empid')&&$('empid').value)||'').trim()||localStorage.getItem('zdm_user_name')||'';}catch(e){}
+  zkStore('versions.add',{kind,template_uid:d.template_uid,template_name:d.template_name,template:d.template,template_options:d.template_options||null,saved_by:who,note}).catch(e=>console.warn('[ZDM] team versions: '+e.message));
+}
+function jtTeamVersionsLoad(){
+  const ctx=JT;if(!ctx) return;ctx.team=null;
+  zkStore('versions.list',{template_uid:ctx.uid,limit:30}).then(v=>{if(JT!==ctx)return;ctx.team=v||[];if(JT.sel==null)jtRenderInspector();}).catch(e=>{if(JT===ctx){ctx.team={error:e.message};if(JT.sel==null)jtRenderInspector();}});
+}
+function jtTeamVersionsHtml(){
+  const v=JT.team;
+  if(v==null) return '<div class="jt-sec"><div class="jt-ph">Team history</div><div class="jt-note">Loading…</div></div>';
+  if(v.error) return '<div class="jt-sec"><div class="jt-ph">Team history</div><div class="jt-note">Unavailable: '+esc(v.error)+'</div></div>';
+  if(!v.length) return '';
+  return '<div class="jt-sec"><div class="jt-ph">Team history · everyone’s saves</div>'+v.map((x,i)=>'<div class="jt-ver"><span>'+esc(jtWhen(x.created_at))+' · '+esc(x.saved_by||'someone')+' <span class="jt-note">'+esc(x.note||'')+'</span>'+(x.template===JT.src?' · <b>current</b>':'')+'</span>'+
+    '<button class="btn btn-o" onclick="jtTeamCompare('+i+')">Compare</button><button class="btn btn-o" onclick="jtTeamRestore('+i+')"'+(x.template===JT.src?' disabled':'')+'>Restore</button></div>').join('')+
+    '<div class="jt-note" style="margin-top:4px">Kept for everyone who can connect to this account (last 50 per template). Restore loads it into the editor — nothing reaches Zuper until you save.</div></div>';
+}
+function jtTeamCompare(i){const x=JT.team[i];if(!x)return;JT.cmp={label:'Team version from '+jtWhen(x.created_at)+(x.saved_by?' ('+x.saved_by+')':''),text:x.template};jtSetTab('diff');}
+function jtTeamRestore(i){const x=JT.team[i];if(!x)return;jtCommit(x.template);jtMsg('✓ Restored the team version from '+jtWhen(x.created_at)+'. Review it, then 💾 Save to Zuper (or Undo).','ok');}
+
+// ── Health check for the open template ──
+function jtHealthHtml(){
+  const sample=JT.data?{data:JT.data,label:'this record'}:null;
+  const h=zkHealth(JT.src,sample);
+  JT.health=h;
+  return '<div class="jt-sec"><div class="jt-ph">Health check'+(sample?'':' · pick a record above to also find blank fields')+'</div>'+
+    (h.length?h.map((x,i)=>'<div style="font-size:.74rem;margin:3px 0"><span class="zk-pill '+x.level+'">'+x.level+'</span> '+esc(x.msg)+(x.fix?' <button class="btn btn-o" style="font-size:.66rem;padding:1px 7px" onclick="jtHealthFix('+i+')">Fix</button>':'')+'</div>').join(''):'<div class="jt-note">✓ No issues found.</div>')+'</div>';
+}
+function jtHealthFix(i){const x=JT.health&&JT.health[i];if(!x||!x.fix)return;const out=x.fix(JT.src);if(jtBlockIssues(out).length>jtBlockIssues(JT.src).length)return jtRefuse('That fix would break a {{#…}} block — not applied.');jtCommit(out);jtMsg('✓ Fixed. Ctrl+Z undoes it.','ok');}
+
+// ── Many records at once ──
+async function jtMulti(){
+  const ctx=JT;if(!ctx) return;
+  const R=jtRecKind(),center=$('jt-frame').parentNode;
+  let box=$('jt-multi');
+  if(box){box.remove();return;}
+  box=document.createElement('div');box.id='jt-multi';
+  box.style.cssText='position:absolute;inset:44px 0 0 0;z-index:5;background:var(--bg);overflow:auto;padding:12px';
+  box.innerHTML='<div class="zk-row"><b>Preview across real '+esc(R.noun)+'s</b><span class="jt-note" id="jt-multi-st">Loading…</span><button class="btn btn-o" style="margin-left:auto" onclick="$(\'jt-multi\').remove()">✕ Back to the editor</button></div><div class="zk-mini" id="jt-multi-grid"></div>';
+  center.appendChild(box);
+  try{
+    await jtLoadHandlebars();
+    let list=ctx.recs;
+    if(!list){const r=await jtApi('GET',R.list);list=r.ok?((r.body&&Array.isArray(r.body.data))?r.body.data:extractRecords(r.body||{},R.noun)):[];}
+    const uids=list.map(R.uid).filter(Boolean).slice(0,12);
+    if(!uids.length){$('jt-multi-st').textContent='No '+R.noun+'s found in this account.';return;}
+    const grid=$('jt-multi-grid');let done=0;
+    const P=ctx.P,src=ctx.src;
+    await zkPool(uids,4,async uid=>{
+      const d=await jtApi('GET',R.detail(uid));if(JT!==ctx) return;
+      done++;$('jt-multi-st').textContent=done+' / '+uids.length;
+      const data=d.ok?((d.body&&d.body.data)||d.body):null;
+      const cell=document.createElement('div');cell.className='cell';
+      if(!data){cell.innerHTML='<div class="vp"></div><div class="cap"><span>'+esc(uid)+'</span><span class="zk-pill err">could not load</span></div>';grid.appendChild(cell);return;}
+      const blanks=zkBlankFields(P,data);
+      let html;try{html=zkRender(src,data);}catch(e){html='<p style="color:#b91c1c">'+esc(e.message)+'</p>';}
+      cell.innerHTML='<div class="vp"><iframe sandbox="allow-same-origin"></iframe></div><div class="cap"><span>'+esc(R.label(data).filter(Boolean).join(' · ').slice(0,60)||uid)+'</span>'+(blanks.length?'<span class="zk-pill warn" title="'+esc(blanks.join(', '))+'">'+blanks.length+' blank</span>':'<span class="zk-pill ok">all filled</span>')+'</div>';
+      cell.querySelector('iframe').srcdoc=zkDoc(html,ctx.opts);
+      cell.onclick=()=>{box.remove();jtPickRecord(uid);};
+      grid.appendChild(cell);
+    });
+    if(JT===ctx) $('jt-multi-st').textContent='Click a page to open that '+R.noun+' in the main preview. “blank” = simple fields that print nothing for it.';
+  }catch(e){const s=$('jt-multi-st');if(s)s.textContent='✗ '+e.message;}
+}
+
+// ── Field picker with real values ──
+// The object a {{field}} at this position resolves against (the current {{#each}} item),
+// plus how many loops deep it is — company / root fields need that many "../".
+function jtCtxAt(pos){
+  const ctx=[JT.data],LOOP=/^(each|eachLastInstance|with)$/;
+  for(const h of JT.P.hbs){
+    if(h.start>=pos) break;
+    const k=jtHbKind(h.inner);
+    if(k==='open'){
+      const nm=jtHbName(h.inner),arg=(h.inner.replace(/^[#^]\s*/,'').split(/\s+/)[1]||'');let next=ctx[ctx.length-1];
+      if(LOOP.test(nm)){const v=zkResolve(ctx,arg);next=Array.isArray(v)?(v.length?v[0]:{}):(v||{});}
+      ctx.push(next);
+    }else if(k==='close'&&ctx.length>1) ctx.pop();
+  }
+  return {obj:ctx[ctx.length-1]||{},depth:jtBlocksAt(JT.P,pos).filter(h=>LOOP.test(jtHbName(h.inner))).length};
+}
+function jtPickerHtml(nd){
+  if(!JT.data||JT_VOID.has(nd.tag)) return '';
+  const {obj,depth}=jtCtxAt(nd.closeStart);
+  const paths=jtPaths(obj,'',3).filter(p=>{const v=jtGet(obj,p);return v!==''&&v!=null;}).slice(0,400);
+  JT.pick={paths,obj,depth};
+  return '<div class="jt-sec"><div class="jt-ph">Insert a field'+(depth?' · from each list item':'')+'</div>'+
+    '<div style="display:flex;gap:5px;margin-bottom:5px"><input id="jt-pk-q" placeholder="Search fields or values…" oninput="jtPickFilter()" style="flex:1;padding:4px 7px;border:1px solid var(--border-inp);border-radius:6px;background:var(--inp-bg);color:var(--text);font-size:.74rem">'+
+    '<select id="jt-pk-fmt" style="font-size:.72rem"><option value="">as is</option><option value="date">as date</option><option value="money">as money</option></select></div>'+
+    '<div id="jt-pk-list" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px">'+jtPickRows('')+'</div>'+
+    '<div class="jt-note" style="margin-top:4px">Values come from the record picked above. Click one to add it at the end of the selected element.</div></div>';
+}
+function jtPickRows(q){
+  const {paths,obj}=JT.pick;q=zkNorm(q);
+  const rows=paths.filter(p=>!q||p.toLowerCase().includes(q)||zkNorm(jtGet(obj,p)).includes(q)).slice(0,120);
+  return rows.map(p=>{const v=String(jtGet(obj,p));return '<div class="jt-field" style="cursor:pointer" onclick="jtPickInsert(\''+esc(p).replace(/'/g,"\\'")+'\')"><code>'+esc(p)+'</code><span class="jt-note" style="max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(v.length>40?v.slice(0,39)+'…':v)+'</span></div>';}).join('')||'<div class="jt-note" style="padding:6px">No matching fields.</div>';
+}
+function jtPickFilter(){$('jt-pk-list').innerHTML=jtPickRows($('jt-pk-q').value);}
+function jtPickInsert(p){
+  const fmtSel=$('jt-pk-fmt').value,up='../'.repeat(JT.pick.depth||0);
+  const v=fmtSel==='date'?"{{formatDate "+p+" 'MM/DD/YYYY'}}":fmtSel==='money'?'{{formatCurrencyNew (toFixed '+p+' '+up+'company_meta.general.decimal_roundoff) '+up+'company.company_currency}}':'{{'+p+'}}';
+  jtInsertContent(JT.sel,v);
+}
+
+// ── Reusable blocks in the editor ──
+function jtBlocksHtml(nd){
+  if(!ZK.blocks){zkStore('blocks.list',{}).then(b=>{ZK.blocks=b||[];if(JT&&JT.sel!=null)jtRenderInspector();}).catch(()=>{ZK.blocks=[];});return '';}
+  return '<div class="jt-sec"><div class="jt-ph">Reusable blocks</div>'+
+    (ZK.blocks.length?'<div style="display:flex;gap:5px"><select id="jt-bk-pick" style="flex:1;font-size:.74rem">'+ZK.blocks.map((b,i)=>'<option value="'+i+'">'+esc(b.name)+'</option>').join('')+'</select><button class="btn btn-o" style="font-size:.72rem;padding:4px 9px" onclick="jtBlockInsert('+nd.id+')">Insert below</button></div>':'<div class="jt-note">No blocks yet.</div>')+
+    '<button class="btn btn-o" style="font-size:.72rem;padding:4px 9px;margin-top:5px" onclick="jtBlockSaveSel('+nd.id+')">⬆ Save this element as a block</button>'+
+    '<div class="jt-note" style="margin-top:4px">Blocks are shared with the team. Toolkit → Reusable blocks updates every template that uses one.</div></div>';
+}
+function jtBlockInsert(id){
+  const b=ZK.blocks[+$('jt-bk-pick').value],nd=jtMoveTarget(jtNode(id))||jtNode(id);if(!b||!nd) return;
+  const src=JT.P.src,u=jtUnit(nd),ind=jtIndentOf(src,u.start),[,lb]=jtLineRange(src,u.start,u.end);
+  const blk=zkBlockWrap(b),alone=ind!=null&&lb!==u.end;
+  const at=alone?lb:u.end,text=alone?blk.split('\n').map(l=>ind+l).join('\n')+'\n':blk;
+  jtMsg('✓ Inserted block “'+b.name+'”.','ok');
+  jtCommit(src.slice(0,at)+text+src.slice(at));
+}
+async function jtBlockSaveSel(id){
+  const nd=jtNode(id);if(!nd) return;
+  const html=JT.P.src.slice(nd.start,nd.end);
+  if(jtBlockIssues(html).length) return jtRefuse('This element holds half of a {{#…}} block — select its parent instead.');
+  const name=(prompt('Name this block (e.g. Warranty terms):')||'').trim();if(!name) return;
+  try{await zkStore('blocks.save',{name,html,updated_by:zkWho()});ZK.blocks=null;jtMsg('✓ Saved “'+name+'” as a reusable block.','ok');jtRenderInspector();}
+  catch(e){jtRefuse(e.message);}
 }
 </script>
   <script src="../assets/back-link.js"></script>

@@ -10,7 +10,7 @@
 
 export const config = {
   // Run on everything except the login page, the login API, and static assets.
-  matcher: ['/((?!api/login|login.html|assets/|favicon.ico|robots.txt).*)'],
+  matcher: ['/((?!api/login|api/keepalive|login.html|assets/|favicon.ico|robots.txt).*)'],
 };
 
 function getCookie(request, name) {
@@ -55,7 +55,7 @@ export default async function middleware(request) {
   const p = url.pathname;
 
   // Explicit allow-list (belt-and-suspenders alongside the matcher).
-  if (p === '/login.html' || p.startsWith('/api/login') || p.startsWith('/assets/')
+  if (p === '/login.html' || p.startsWith('/api/login') || p === '/api/keepalive' || p.startsWith('/assets/')
       || p === '/favicon.ico' || p === '/robots.txt') {
     return;
   }
