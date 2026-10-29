@@ -10697,6 +10697,9 @@ body:has(#jt-modal.open) .back-link{display:none!important}
 .jt-crumb span.on{background:var(--primary);color:var(--primary-on)}
 .jt-btns{display:flex;flex-wrap:wrap;gap:5px}
 .jt-btns .btn{font-size:.72rem;padding:5px 9px}
+.jt-seg{gap:0}.jt-seg .btn{border-radius:0;margin-left:-1px}.jt-seg .btn:first-child{border-radius:7px 0 0 7px;margin-left:0}.jt-seg .btn:last-child{border-radius:0 7px 7px 0}
+.jt-seg .btn.on{background:var(--primary-tint);border-color:var(--primary);color:var(--primary);position:relative}
+.jt-nudge{display:inline-flex;align-items:center;gap:4px;font-size:.74rem}.jt-nudge button{width:22px;height:22px;border:1px solid var(--border-inp);border-radius:6px;background:var(--inp-bg);color:var(--text);cursor:pointer;line-height:1}.jt-nudge b{min-width:30px;text-align:center;font-weight:600}
 .jt-txt{display:flex;flex-direction:column;gap:2px;margin-bottom:7px}
 .jt-txt label{font-size:.66rem;color:var(--text-sub);font-family:ui-monospace,Consolas,monospace}
 .jt-txt input,.jt-ins input,.jt-right textarea{width:100%;box-sizing:border-box;padding:5px 8px;border:1px solid var(--border-inp);border-radius:7px;background:var(--inp-bg);color:var(--text);font-size:.78rem}
@@ -11062,7 +11065,14 @@ function jtRenderFrame(){
     '.zhb{background:#fff3e0;color:#b45309;border:1px dashed #f59e0b;border-radius:3px;padding:0 2px;font-family:ui-monospace,Consolas,monospace;font-size:.92em;font-style:normal;font-weight:normal}'+
     '[data-zloop]{outline:1px dashed #6366f1;outline-offset:-1px}'+
     '.zhov{outline:1px solid rgba(253,80,0,.55)!important;outline-offset:-1px;cursor:pointer}'+
-    '.zsel{outline:2px solid #fd5000!important;outline-offset:-2px;background-color:rgba(253,80,0,.06)!important}';
+    '.zsel{outline:2px solid #fd5000!important;outline-offset:-2px;background-color:rgba(253,80,0,.06)!important;cursor:grab}'+
+    '.zdragging,.zdragging *{cursor:grabbing!important;user-select:none!important}'+
+    '.zdsrc{opacity:.35}'+
+    '.zdrop{position:fixed;z-index:99999;pointer-events:none;background:#fd5000;border-radius:2px;box-shadow:0 0 0 2px rgba(253,80,0,.25)}'+
+    '.zdrop.cell{background:rgba(253,80,0,.08);border:2px dashed #fd5000;box-sizing:border-box}'+
+    '.zdrop.bad{background:#dc2626}.zdrop.cell.bad{background:rgba(220,38,38,.08);border-color:#dc2626}'+
+    '.zdtip{position:fixed;z-index:99999;pointer-events:none;background:#111827;color:#fff;font:12px system-ui,sans-serif;padding:4px 8px;border-radius:6px;max-width:250px;box-shadow:0 2px 8px rgba(0,0,0,.25)}'+
+    '.zdtip.bad{background:#991b1b}';
   f.onload=()=>{
     const d=f.contentDocument;if(!d) return;
     try{f.contentWindow.scrollTo(0,scrollY);}catch(e){}
@@ -11073,8 +11083,12 @@ function jtRenderFrame(){
     // already re-parsed (e.g. a Text box commits on blur as you click the preview) —
     // its id would then name a different element, so ignore clicks on a stale frame.
     const P=JT&&JT.P;
-    d.addEventListener('click',e=>{e.preventDefault();if(!JT||JT.P!==P)return;const t=e.target.closest&&e.target.closest('[data-zid]');jtSelect(t?Number(t.getAttribute('data-zid')):null,true);});
-    d.addEventListener('keydown',jtKeys);
+    d.addEventListener('click',e=>{e.preventDefault();if(!JT||JT.P!==P||Date.now()-_jtDragEndAt<250)return;const t=e.target.closest&&e.target.closest('[data-zid]');jtSelect(t?Number(t.getAttribute('data-zid')):null,true);});
+    d.addEventListener('mousedown',e=>jtDragDown(e,d,P));
+    d.addEventListener('mousemove',jtDragMove);
+    d.addEventListener('mouseup',jtDragUp);
+    d.addEventListener('dragstart',e=>e.preventDefault()); // no native image / link dragging
+    d.addEventListener('keydown',e=>{if(_jtDrag&&e.key==='Escape'){jtDragCancel();return;}jtKeys(e);});
     jtMarkFrameSel();
   };
   f.srcdoc='<!doctype html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body><div class="zpage">'+jtFrameBody()+'</div></body></html>';
@@ -11213,6 +11227,8 @@ function jtKeys(e){
   if(tg==='INPUT'||tg==='TEXTAREA') return;
   if((e.ctrlKey||e.metaKey)&&k==='z'&&!e.shiftKey){e.preventDefault();jtUndo();}
   else if((e.ctrlKey||e.metaKey)&&(k==='y'||(k==='z'&&e.shiftKey))){e.preventDefault();jtRedo();}
+  else if(e.altKey&&JT.sel!=null&&(k==='arrowup'||k==='arrowdown')){e.preventDefault();jtMove(JT.sel,k==='arrowup'?-1:1);}
+  else if(e.altKey&&JT.sel!=null&&(k==='arrowleft'||k==='arrowright')){e.preventDefault();const c=jtCellOf(jtNode(JT.sel));if(c)jtMoveColumn(c.id,k==='arrowleft'?-1:1);}
   else if((k==='delete'||k==='backspace')&&JT.sel!=null){e.preventDefault();jtRemove(JT.sel);}
   else if(k==='escape'&&JT.sel!=null){jtSelect(null);}
 }
@@ -11318,25 +11334,299 @@ function jtRemoveColumn(cellId){
   jtMsg('✓ Removed column “'+name+'” from '+c.rows.length+' row(s).','ok');
   jtCommit(jtSplice(src,edits));
 }
+// The source range that moves with an element: the element itself, plus an {{#if}} /
+// {{#unless}} that hugs it — so a column that hides on a setting, written as
+// {{#unless hide_pricing_columns}}<td>…</td>{{/unless}}, keeps its condition.
+function jtUnit(nd){const w=jtCondWrap(nd);return w?{start:w.open.start,end:w.close.end}:{start:nd.start,end:nd.end};}
+function jtTableWidth(c){return c.rows.reduce((n,r)=>Math.max(n,jtCells(JT.P,r).reduce((m,k)=>m+k.span,0)),0);}
 function jtMoveColumn(cellId,dir){
   const c=jtColCtx(cellId);if(!c) return;
-  const src=JT.P.src,edits=[];let selAt=null;
+  const to=c.col+dir;
+  if(to<0||to>=jtTableWidth(c)) return jtRefuse('That is already the '+(dir<0?'first':'last')+' column.');
+  jtMoveColumnTo(cellId,to);
+}
+// Move a whole column to position `to`, in every row of its table. A row whose cells are
+// merged (colspan) across the columns involved — a Total row, say — is left exactly as it
+// is: it has no per-column cells to reorder, and its merged cells still span the table.
+function jtMoveColumnTo(cellId,to){
+  const c=jtColCtx(cellId);if(!c) return;
+  const from=c.col;if(to===from) return;
+  const lo=Math.min(from,to),hi=Math.max(from,to);
+  const src=JT.P.src,edits=[];let selAt=null,moved=0,kept=0;
+  const plain=s=>!s.replace(/<!--[\s\S]*?-->/g,'').trim();
+  // Reorder the units of one row (or of a <colgroup>) between lo and hi.
+  const reorder=(units,isSel,offIn)=>{
+    for(let i=1;i<units.length;i++) if(!plain(src.slice(units[i-1].end,units[i].start))) return 'Something other than cells sits between these columns (a {{#…}} block covering several cells, or text), so they cannot be reordered safely. Use the HTML tab for this table.';
+    const texts=units.map(u=>src.slice(u.start,u.end));
+    if(texts.some(t=>jtBlockIssues(t).length)) return 'A cell in these columns holds half of a {{#…}} block, so the columns cannot be reordered.';
+    const order=units.map((_,i)=>i);order.splice(to-lo,0,order.splice(from-lo,1)[0]);
+    let out='',at=null;
+    order.forEach((j,i)=>{if(i)out+=src.slice(units[i-1].end,units[i].start);if(j===from-lo)at=out.length;out+=texts[j];});
+    edits.push({start:units[0].start,end:units[units.length-1].end,text:out});
+    if(isSel) selAt=units[0].start+at+offIn;
+    return '';
+  };
   for(const tr of c.rows){
-    const cs=jtCells(JT.P,tr);
-    const covering=cs.find(k=>k.col<=c.col&&c.col<k.col+k.span);
-    if(!covering) continue;
-    const a=cs.find(k=>k.col===c.col&&k.span===1),b=cs.find(k=>k.col===c.col+dir&&k.span===1);
-    if(!a||!b) return jtRefuse(cs.length&&!b&&!cs.some(k=>k.col===c.col+dir)?'That is already the '+(dir<0?'first':'last')+' column.':'Some rows merge cells (colspan) across these columns, so they cannot be swapped.');
-    const [f,s]=dir<0?[b,a]:[a,b];
-    const F=src.slice(f.node.start,f.node.end),S=src.slice(s.node.start,s.node.end),between=src.slice(f.node.end,s.node.start);
-    if(jtHasBlockTag(between)||jtBlockIssues(F).length||jtBlockIssues(S).length) return jtRefuse('A {{#…}} block spans these cells, so they cannot be swapped.');
-    edits.push({start:f.node.start,end:s.node.end,text:S+between+F});
-    // swaps keep total length, so offsets after this row stay valid
-    if(tr===c.cell.parent) selAt=dir<0?f.node.start:f.node.start+S.length+between.length;
+    const cs=jtCells(JT.P,tr).filter(k=>k.col+k.span>lo&&k.col<=hi);
+    if(!cs.length) continue; // a short row with nothing at these columns
+    const isSel=tr===c.cell.parent;
+    if(cs.some(k=>k.span>1)||cs.length!==hi-lo+1){
+      if(isSel) return jtRefuse('This cell is merged across columns (colspan). Select a cell in a normal row of the column to move it.');
+      kept++;continue;
+    }
+    const units=cs.map(k=>jtUnit(k.node));
+    const why=reorder(units,isSel,isSel?c.cell.start-units[from-lo].start:0);
+    if(why) return jtRefuse(why);
+    moved++;
   }
-  jtMsg('','');
+  // <colgroup><col> widths, when present
+  const cols=[];const walk=n=>{for(const k of n.children){if(k.tag==='col')cols.push(k);else if(k.tag==='colgroup')walk(k);}};walk(c.table);
+  if(cols.length>hi&&!cols.slice(lo,hi+1).some(k=>/\bspan\s*=/i.test(src.slice(k.start,k.openEnd)))){const why=reorder(cols.slice(lo,hi+1).map(k=>jtUnit(k)),false,0);if(why) return jtRefuse(why);}
+  if(!moved) return jtRefuse('Every row merges cells across these columns, so there is nothing to reorder.');
+  jtMsg('✓ Moved column “'+jtColName(JT.P,c.cell)+'”'+(kept?' · '+kept+' merged row'+(kept===1?'':'s')+' (e.g. a Total row) left as '+(kept===1?'it is':'they are'):'')+'.','ok');
   jtCommit(jtSplice(src,edits),selAt,c.cell.tag);
 }
+// ── Drag & drop in the preview ──────────────────────────────────────────────
+// Drag anything in the preview and drop it where the orange line shows. What moves is
+// always a whole unit, never a fragment, so the layout keeps its structure:
+//   • a table cell → its whole COLUMN (drag sideways) or its ROW (drag up / down);
+//   • a row        → another position among the rows of the same table;
+//   • anything else (heading, paragraph, image, block, whole table) → before / after
+//     another block, or into a table cell (drop on the cell's empty space).
+// Inline bits (<b>, <span>) carry the block they sit in. Whatever is selected moves when
+// you drag from inside it, so "select the section, then drag it" works too.
+// Refused: a move that would take {{fields}} in or out of the {{#each}} loop they read
+// from (they would print blank), or split a {{#…}} … {{/…}} pair.
+let _jtDrag=null,_jtDragEndAt=0;
+document.addEventListener('mouseup',()=>{if(_jtDrag)jtDragCancel();}); // released outside the preview
+const JT_DRAG_PART=new Set(['thead','tbody','tfoot','colgroup','col','caption']);
+function jtDragBlock(nd){
+  let t=nd;
+  while(t&&t.id!==0&&((JT_INLINE.has(t.tag)&&t.tag!=='img')||JT_DRAG_PART.has(t.tag))) t=t.parent;
+  return t&&t.id!==0?t:null;
+}
+function jtUnitLabel(nd){return jtMoveNoun(nd)+(jtSnippet(JT.P,nd,30)?' “'+jtSnippet(JT.P,nd,30)+'”':'');}
+function jtDragDown(e,d,P){
+  if(e.button!==0||!JT||JT.P!==P||JT.tab!=='visual') return;
+  const el=e.target.closest&&e.target.closest('[data-zid]');if(!el) return;
+  let nd=jtNode(Number(el.getAttribute('data-zid')));
+  // Dragging from inside the selection moves the selection.
+  if(JT.sel!=null&&el.closest('[data-zid="'+JT.sel+'"]')) nd=jtNode(JT.sel);
+  _jtDrag={d,P,x:e.clientX,y:e.clientY,node:nd,on:false};
+}
+function jtDragMove(e){
+  const g=_jtDrag;if(!g) return;
+  if(!JT||JT.P!==g.P){jtDragCancel();return;}
+  if(!g.on){
+    const dx=e.clientX-g.x,dy=e.clientY-g.y;
+    if(Math.abs(dx)<6&&Math.abs(dy)<6) return;
+    const blk=jtDragBlock(g.node);if(!blk){_jtDrag=null;return;}
+    if(blk.tag==='td'||blk.tag==='th'){g.mode=Math.abs(dx)>Math.abs(dy)?'col':'row';g.src=g.mode==='col'?blk:blk.parent;}
+    else if(blk.tag==='tr'){g.mode='row';g.src=blk;}
+    else{g.mode='block';g.src=blk;}
+    if(g.mode==='row'&&g.src.tag!=='tr'){g.mode='block';g.src=jtTableOf(blk)||blk;}
+    g.on=true;
+    try{g.d.getSelection().removeAllRanges();}catch(x){}
+    g.d.body.classList.add('zdragging');
+    g.line=g.d.createElement('div');g.line.className='zdrop';g.d.body.appendChild(g.line);
+    g.tip=g.d.createElement('div');g.tip.className='zdtip';g.d.body.appendChild(g.tip);
+    g.d.querySelectorAll('[data-zid="'+g.src.id+'"]').forEach(x=>x.classList.add('zdsrc'));
+  }
+  // keep the page scrolling while dragging near the frame's top / bottom edge
+  const win=g.d.defaultView,hgt=win.innerHeight;
+  if(e.clientY<36) win.scrollBy(0,-18); else if(e.clientY>hgt-36) win.scrollBy(0,18);
+  const drop=g.drop=jtDropAt(g,e);
+  const L=g.line,T=g.tip;
+  if(!drop||!drop.rect){L.style.display='none';T.style.display='block';T.className='zdtip bad';T.textContent=drop&&drop.why?'✗ '+drop.why:'Drop on another section, row or column';}
+  else{
+    const r=drop.rect;
+    Object.assign(L.style,{display:'block',left:r.x+'px',top:r.y+'px',width:r.w+'px',height:r.h+'px'});
+    L.classList.toggle('bad',!!drop.why);L.classList.toggle('cell',!!r.cell);
+    T.style.display='block';T.className='zdtip'+(drop.why?' bad':'');T.textContent=drop.why?'✗ '+drop.why:drop.label;
+  }
+  T.style.left=Math.min(e.clientX+14,win.innerWidth-260)+'px';T.style.top=(e.clientY+16)+'px';
+}
+function jtDragUp(){
+  const g=_jtDrag;_jtDrag=null;if(!g||!g.on) return;
+  _jtDragEndAt=Date.now();
+  jtDragCleanup(g);
+  const drop=g.drop;
+  if(!drop||!drop.rect) return;
+  if(drop.why) return jtRefuse(drop.why);
+  drop.apply();
+}
+function jtDragCancel(){const g=_jtDrag;_jtDrag=null;if(g&&g.on){_jtDragEndAt=Date.now();jtDragCleanup(g);}}
+function jtDragCleanup(g){
+  try{g.line.remove();g.tip.remove();g.d.body.classList.remove('zdragging');g.d.querySelectorAll('.zdsrc').forEach(x=>x.classList.remove('zdsrc'));}catch(x){}
+}
+// Where would a drop at this pointer position go?  {rect, label, why?, apply}
+function jtDropAt(g,e){
+  const d=g.d,el=d.elementFromPoint(e.clientX,e.clientY);
+  const hit=el&&el.closest&&el.closest('[data-zid]');if(!hit) return null;
+  const P=JT.P,hn=jtNode(Number(hit.getAttribute('data-zid')));if(!hn) return null;
+  const elOf=(nd,near)=>(near&&near.closest('[data-zid="'+nd.id+'"]'))||d.querySelector('[data-zid="'+nd.id+'"]');
+  const inside=(a,b)=>{for(let t=a;t;t=t.parent) if(t===b) return true;return false;};
+  if(g.mode==='col'){
+    const cellEl=el.closest('td,th');const cn=cellEl&&cellEl.closest('[data-zid]')===cellEl?jtNode(Number(cellEl.getAttribute('data-zid'))):null;
+    const table=jtTableOf(g.src);
+    if(!cn||jtTableOf(cn)!==table) return {why:'A column can only move within its own table.'};
+    const tc=jtCells(P,cn.parent).find(k=>k.node===cn),fc=jtCells(P,g.src.parent).find(k=>k.node===g.src);
+    if(!tc||!fc) return null;
+    const r=cellEl.getBoundingClientRect(),after=e.clientX>r.left+r.width/2;
+    let to=after?tc.col+tc.span-1:tc.col;
+    if(after&&to<fc.col) to++; else if(!after&&to>fc.col) to--;
+    const tr=(elOf(table,cellEl)||cellEl).getBoundingClientRect();
+    const x=after?r.right:r.left;
+    return {rect:{x:x-2,y:tr.top,w:4,h:tr.height},label:to===fc.col?'Column stays where it is':'Move column “'+jtColName(P,g.src)+'” here',
+      why:'',apply:()=>{if(to!==fc.col) jtMoveColumnTo(g.src.id,to);}};
+  }
+  if(g.mode==='row'){
+    let rn=null;for(let t=hn;t&&t.id!==0;t=t.parent) if(t.tag==='tr'){rn=t;break;}
+    if(!rn||jtTableOf(rn)!==jtTableOf(g.src)) return {why:'A row can only move within its own table — drag a cell sideways to move its column instead.'};
+    if(rn.parent!==g.src.parent) return {why:'Rows can only move within the same part of the table (header rows stay in the header).'};
+    const rEl=elOf(rn,hit),r=rEl.getBoundingClientRect(),after=e.clientY>r.top+r.height/2;
+    return jtDropPlan(g.src,rn,after?'after':'before',{x:r.left,y:(after?r.bottom:r.top)-2,w:r.width,h:4});
+  }
+  // block
+  let tn=jtDragBlock(hn);
+  if(!tn) return null;
+  // Near the top / bottom edge of a section, drop above / below the OUTERMOST section
+  // whose edge that is — so the gap between two tables means "between the tables",
+  // not "into the first cell".
+  const EDGE=7;let edge=null;
+  for(let t=tn;t&&t.id!==0;t=t.parent){
+    if(JT_DRAG_PART.has(t.tag)||t.tag==='tr'||t.tag==='td'||t.tag==='th'||t.tag==='body'||t.tag==='html'||(JT_INLINE.has(t.tag)&&t.tag!=='img')) continue;
+    const te=elOf(t,hit);if(!te) continue;
+    const r=te.getBoundingClientRect();
+    if(e.clientY-r.top<EDGE) edge={t,where:'before',r};else if(r.bottom-e.clientY<EDGE) edge={t,where:'after',r};
+  }
+  if(edge&&!inside(edge.t,g.src)&&edge.t!==g.src) return jtDropPlan(g.src,edge.t,edge.where,{x:edge.r.left,y:(edge.where==='after'?edge.r.bottom:edge.r.top)-2,w:edge.r.width,h:4});
+  if(inside(tn,g.src)) return {why:'That is inside what you are moving.'};
+  if(tn.tag==='td'||tn.tag==='th'){
+    const cEl=elOf(tn,hit);
+    // Over the cell itself (not one of its blocks): drop into it, at the end.
+    if(hit===cEl){const r=cEl.getBoundingClientRect();return jtDropPlan(g.src,tn,'inside',{x:r.left+3,y:r.bottom-6,w:r.width-6,h:4},r);}
+  }
+  if(tn.tag==='tr'){tn=jtTableOf(tn);if(!tn||inside(tn,g.src)) return null;}
+  const bEl=elOf(tn,hit);if(!bEl) return null;
+  const r=bEl.getBoundingClientRect(),after=e.clientY>r.top+r.height/2;
+  return jtDropPlan(g.src,tn,after?'after':'before',{x:r.left,y:(after?r.bottom:r.top)-2,w:r.width,h:4});
+}
+function jtDropPlan(nd,target,where,rect,box){
+  const plan=jtRelocatePlan(nd,target,where);
+  const lbl=jtUnitLabel(nd);
+  // dropping into a cell outlines the whole cell; otherwise a line marks the spot
+  return {rect:box?{x:box.left,y:box.top,w:box.width,h:box.height,cell:true}:rect,
+    label:where==='inside'?'Move '+lbl+' into this cell':'Move '+lbl+' '+(where==='after'?'below':'above')+' '+jtMoveNoun(target),
+    why:plan.why||'',apply:()=>{if(plan.apply)plan.apply();}};
+}
+// Plan moving node `nd` (with any hugging {{#if}}) before / after / inside `target`.
+function jtRelocatePlan(nd,target,where){
+  const P=JT.P,src=P.src,u=jtUnit(nd);
+  const frag=src.slice(u.start,u.end);
+  if(jtBlockIssues(frag).length) return {why:'This holds half of a {{#…}} block, so it cannot move on its own.'};
+  const tu=jtUnit(target);
+  let at=where==='inside'?target.closeStart:where==='before'?tu.start:tu.end;
+  if(at>u.start&&at<u.end) return {why:'That is inside what you are moving.'};
+  // Fields resolve against the {{#each}} item they sit in — keep them in the same loop.
+  const loops=pos=>jtBlocksAt(P,pos).filter(h=>/^(each|with)$/i.test(jtHbName(h.inner))).map(h=>h.start).join(',');
+  if(loops(u.start)!==loops(at)&&P.hbs.some(h=>h.start>=u.start&&h.end<=u.end&&jtHbKind(h.inner)==='expr'&&!/^@root\b/.test(h.inner.trim()))){
+    const inn=jtLoopsAround(P,nd),out=jtBlocksAt(P,at).filter(h=>/^each$/i.test(jtHbName(h.inner))).map(h=>h.inner.replace(/^#\s*/,'').split(/\s+/)[1]||'items');
+    return {why:inn.length&&inn.join()!==out.join()?'Its fields read from each '+inn[inn.length-1]+' item — moved out of that list they would print blank.':'Moving it into the '+(out[out.length-1]||'repeating')+' list would repeat it per item and its fields would print blank.'};
+  }
+  return {apply:()=>jtRelocate(nd,u,target,tu,where)};
+}
+function jtRelocate(nd,u,target,tu,where){
+  const src=JT.P.src;
+  // Take the unit out, with its whole line when it sits alone on one.
+  const [ra,rb]=jtLineRange(src,u.start,u.end),wholeLine=ra!==u.start||rb!==u.end;
+  const baseInd=jtIndentOf(src,u.start)||'';
+  const frag=src.slice(u.start,u.end);
+  const reindent=ind=>frag.split('\n').map((l,i)=>i===0?ind+l:(l.startsWith(baseInd)?ind+l.slice(baseInd.length):l)).join('\n');
+  let ins,text,lead;
+  if(where==='inside'){
+    const ci=jtIndentOf(src,target.closeStart);
+    if(ci!=null){ins=target.closeStart-ci.length;lead=ci+'  ';text=reindent(lead)+'\n';}
+    else{ins=target.closeStart;lead='';text=frag;}
+  }else{
+    const ti=jtIndentOf(src,tu.start),[ta,tb]=jtLineRange(src,tu.start,tu.end),alone=ti!=null&&(ta!==tu.start||tb!==tu.end);
+    if(alone){ins=where==='before'?ta:tb;lead=ti;text=reindent(ti)+'\n';if(where==='after'&&tb===src.length&&src[tb-1]!=='\n')text='\n'+text.slice(0,-1);}
+    else{ins=where==='before'?tu.start:tu.end;lead='';text=frag;}
+  }
+  const cutA=wholeLine?ra:u.start,cutB=wholeLine?rb:u.end;
+  if(ins>=cutA&&ins<=cutB) return; // dropped next to itself — nothing moves
+  const fragAt=text.indexOf(frag.split('\n')[0]);
+  const out=ins<cutA?src.slice(0,ins)+text+src.slice(ins,cutA)+src.slice(cutB):src.slice(0,cutA)+src.slice(cutB,ins)+text+src.slice(ins);
+  const newUnitStart=(ins<cutA?ins:ins-(cutB-cutA))+fragAt;
+  if(jtBlockIssues(out).length&&!jtBlockIssues(src).length) return jtRefuse('That move would break a {{#…}} block, so it was not made.');
+  jtMsg('✓ Moved '+jtUnitLabel(nd)+'. Ctrl+Z undoes it.','ok');
+  jtCommit(out,newUnitStart+(nd.start-u.start),nd.tag);
+}
+
+// ── Layout: alignment, spacing, width ──────────────────────────────────────
+// Edits the element's own style="" attribute in the source. Attributes that hold
+// {{fields}} are left alone (their value is only known when the PDF is made).
+function jtStyleOf(nd){
+  const open=JT.P.src.slice(nd.start,nd.openEnd),m=/\sstyle\s*=\s*(["'])([\s\S]*?)\1/i.exec(open);
+  const map=new Map();
+  if(m) m[2].split(';').forEach(d=>{const i=d.indexOf(':');if(i>0){const k=d.slice(0,i).trim().toLowerCase(),v=d.slice(i+1).trim();if(k)map.set(k,v);}});
+  return {open,m,map};
+}
+function jtStyleEdit(nd,changes){
+  const {open,m,map}=jtStyleOf(nd);
+  if(m&&m[2].includes('{{')) return null;
+  for(const [k,v] of Object.entries(changes)){if(v==null||v==='')map.delete(k);else map.set(k,v);}
+  const css=[...map].map(([k,v])=>k+': '+v).join('; ');
+  const q=m?m[1]:'"';
+  const attr=css?' style='+q+css.replace(new RegExp(q,'g'),q==='"'?"'":'"')+q:'';
+  if(m) return {start:nd.start+m.index,end:nd.start+m.index+m[0].length,text:attr};
+  // new attribute goes last in the open tag (before ">" or "/>")
+  const at=nd.start+open.replace(/\s*\/?>$/,'').length;return {start:at,end:at,text:attr};
+}
+function jtSetStyle(id,changes,wholeColumn){
+  const nd=jtNode(id);if(!nd) return;
+  const targets=[nd];
+  if(wholeColumn){
+    const c=jtColCtx(id);
+    if(c) for(const tr of c.rows){const x=jtCells(JT.P,tr).find(k=>k.col===c.col&&k.span===1);if(x&&x.node!==nd) targets.push(x.node);}
+  }
+  const edits=[];
+  for(const t of targets){const ed=jtStyleEdit(t,changes);if(!ed){if(t===nd) return jtRefuse('This element’s style is built from {{fields}}, so it can only be edited in the HTML tab.');continue;}edits.push(ed);}
+  jtMsg('','');
+  jtCommit(jtSplice(JT.P.src,edits),nd.start,nd.tag);
+}
+function jtPx(v){const n=parseFloat(v);return isNaN(n)?0:n;}
+function jtNudge(id,prop,delta){
+  const nd=jtNode(id);if(!nd) return;
+  const v=Math.max(0,jtPx(jtStyleOf(nd).map.get(prop))+delta);
+  jtSetStyle(id,{[prop]:v?v+'px':'0'});
+}
+function jtLayoutHtml(nd){
+  if(JT_VOID.has(nd.tag)&&nd.tag!=='img'&&nd.tag!=='hr') return '';
+  const {map}=jtStyleOf(nd),isCell=nd.tag==='td'||nd.tag==='th',isImg=nd.tag==='img';
+  const ta=(map.get('text-align')||'').toLowerCase();
+  const imgAl=isImg?(map.get('margin-left')==='auto'&&map.get('margin-right')==='auto'?'center':map.get('margin-left')==='auto'?'right':map.get('display')==='block'?'left':''):'';
+  const cur=isImg?imgAl:ta;
+  const col=isCell?'<label class="jt-note" style="display:flex;gap:5px;align-items:center;margin-top:4px"><input type="checkbox" id="jt-lay-col" checked> Apply to the whole column</label>':'';
+  const alignBtn=(v,l)=>'<button class="btn btn-o'+(cur===v?' on':'')+'" onclick="'+(isImg?'jtImgAlign('+nd.id+',\''+v+'\')':'jtSetStyle('+nd.id+',{\'text-align\':\''+v+'\'},'+(isCell?'$(\'jt-lay-col\').checked':'false')+')')+'">'+l+'</button>';
+  const va=(map.get('vertical-align')||'').toLowerCase();
+  const vBtn=(v,l)=>'<button class="btn btn-o'+(va===v?' on':'')+'" onclick="jtSetStyle('+nd.id+',{\'vertical-align\':\''+v+'\'},$(\'jt-lay-col\').checked)">'+l+'</button>';
+  const sp=(p,l)=>'<span class="jt-nudge">'+l+' <button onclick="jtNudge('+nd.id+',\''+p+'\',-4)">−</button><b>'+esc(map.get(p)||'—')+'</b><button onclick="jtNudge('+nd.id+',\''+p+'\',4)">+</button></span>';
+  const wv=map.get('width')||'';
+  const widths=['','25%','33%','50%','75%','100%'];
+  return '<div class="jt-sec"><div class="jt-ph">Layout</div>'+
+    '<div class="jt-btns jt-seg">'+alignBtn('left','⯇ Left')+alignBtn('center','Center')+alignBtn('right','Right ⯈')+'</div>'+
+    (isCell?'<div class="jt-btns jt-seg" style="margin-top:4px">'+vBtn('top','Top')+vBtn('middle','Middle')+vBtn('bottom','Bottom')+'</div>':'')+col+
+    (isCell?'':'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">'+sp('margin-top','Space above')+sp('margin-bottom','Space below')+'</div>')+
+    (nd.tag==='table'||isImg||nd.tag==='div'||isCell?'<label class="jt-lab" style="margin-top:6px">Width<select onchange="jtSetStyle('+nd.id+',{width:this.value},'+(isCell?'$(\'jt-lay-col\').checked':'false')+')">'+
+      widths.concat(widths.includes(wv)?[]:[wv]).map(w=>'<option value="'+esc(w)+'"'+(w===wv?' selected':'')+'>'+(w||'Auto')+'</option>').join('')+'</select></label>':'')+
+    '<div class="jt-note" style="margin-top:5px">Tip: drag anything in the preview to move it — a cell drags its column sideways or its row up and down.</div></div>';
+}
+function jtImgAlign(id,v){
+  const m={left:{display:'block','margin-left':'0','margin-right':'auto'},center:{display:'block','margin-left':'auto','margin-right':'auto'},right:{display:'block','margin-left':'auto','margin-right':'0'}}[v];
+  jtSetStyle(id,m,false);
+}
+
 function jtDuplicateColumn(cellId){
   const c=jtColCtx(cellId);if(!c) return;
   const src=JT.P.src,edits=[];
@@ -11410,7 +11700,8 @@ function jtRenderInspector(){
   if(!nd){
     box.innerHTML='<div class="jt-note">Click anything in the preview — a heading, a cell, a field, a whole table — or pick a section on the left.<br><br>'+
       '<b>Orange chips</b> are fields Zuper fills in when the PDF is generated. Rows with a <span style="outline:1px dashed #6366f1;padding:0 3px">dashed blue outline</span> repeat once per item.<br><br>'+
-      'Keyboard: <b>Delete</b> removes the selection, <b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo and redo, <b>Esc</b> clears the selection.</div>'+
+      '<b>Drag</b> anything in the preview to move it — the orange line shows where it lands. A table cell drags its column sideways or its row up and down.<br><br>'+
+      'Keyboard: <b>Delete</b> removes the selection, <b>Alt+↑ ↓</b> moves it, <b>Alt+← →</b> moves its column, <b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo and redo, <b>Esc</b> clears the selection.</div>'+
       jtPageHtml()+
       '<div class="jt-sec"><div class="jt-ph">All fields in this template</div>'+jtAllFieldsHtml()+'</div>'+
       jtVersionsHtml();
@@ -11437,6 +11728,7 @@ function jtRenderInspector(){
       '<button class="btn btn-o" onclick="jtMoveColumn('+cell.id+',1)">Right ▶</button>'+
       '<button class="btn btn-o" onclick="jtDuplicateColumn('+cell.id+')">⧉ Duplicate</button></div></div>');
   }
+  h.push(jtLayoutHtml(nd));
   h.push(jtColumnsHtml(nd));
   h.push(jtShowWhenHtml(nd));
   // Plain-text labels (the bits between tags and {{fields}})
