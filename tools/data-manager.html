@@ -10744,6 +10744,7 @@ body:has(#jt-modal.open) .back-link{display:none!important}
 .jt-dl.del{background:rgba(220,38,38,.12)}.jt-dl.del i::after{content:' −'}
 .jt-dl.gap{color:var(--text-sub);background:var(--th-bg);padding:2px 12px;font-style:italic}
 @media (max-width:1100px){.jt-body{grid-template-columns:240px 1fr 280px}}
+.jt-target{max-width:230px;padding:6px 8px;border:1px solid var(--border-inp);border-radius:8px;background:var(--inp-bg);color:var(--text);font:inherit;font-size:.76rem;font-weight:600}
 </style>
 <div id="jt-modal" role="dialog" aria-label="Job card template editor">
   <div class="jt-head">
@@ -10761,6 +10762,8 @@ body:has(#jt-modal.open) .back-link{display:none!important}
       <button class="btn btn-o" onclick="jtReset()" title="Discard every change since the template was opened">⟲ Reset</button>
       <button class="btn btn-o" onclick="jtCopy()">📋 Copy HTML</button>
       <button class="btn btn-o" onclick="jtDownload()">⬇ Download</button>
+      <button class="btn btn-o" onclick="jtClone()" title="Create a copy of this template in Zuper and edit the copy — the original stays untouched until you choose to save into it">⧉ Clone</button>
+      <select id="jt-target" class="jt-target" onchange="jtSetTarget(this.value)" title="Which template 💾 Save writes to"><option value="self">Save to: this template</option></select>
       <button class="btn btn-p" onclick="jtSave()" id="jt-save">💾 Save to Zuper</button>
       <button class="btn btn-o" onclick="jtClose()">✕ Close</button>
     </div>
@@ -11151,7 +11154,8 @@ function jtHasDirectContent(P,nd){return nd.texts.some(t=>P.src.slice(t.start,t.
 
 // ── Open / close ────────────────────────────────────────────────────────────
 function jtEditBtn(uid,kind){
-  return '<button class="btn btn-o" style="font-size:.72rem;padding:3px 10px" onclick="event.stopPropagation();openJobTplEditor(\''+esc(uid)+'\',\''+(kind||'job')+'\')">✏ Edit</button>';
+  return '<button class="btn btn-o" style="font-size:.72rem;padding:3px 10px" onclick="event.stopPropagation();openJobTplEditor(\''+esc(uid)+'\',\''+(kind||'job')+'\')">✏ Edit</button> '+
+    '<button class="btn btn-o" style="font-size:.72rem;padding:3px 8px" title="Copy this template into a new one and open the copy" onclick="event.stopPropagation();jtCloneUid(\''+esc(uid)+'\',\''+(kind||'job')+'\')">⧉ Clone</button>';
 }
 async function openJobTplEditor(uid,kind){
   kind=JT_KINDS[kind]?kind:'job';const K=JT_KINDS[kind];
@@ -11169,8 +11173,10 @@ async function openJobTplEditor(uid,kind){
     let auto=false;try{auto=localStorage.getItem('zdm_jt_autosave')==='1';}catch(e){}
     const opts=jtOptsOf(d);
     JT={uid,kind,detail:d,original:d.template,saved:d.template,src:d.template,P:jtParse(d.template),undo:[],redo:[],sel:null,tab:'visual',autosave:auto,saveState:'',saveMsg:'',savedAt:null,
-        opts,savedOpts:JSON.parse(JSON.stringify(opts)),data:null,dataLabel:'',recs:null,cmp:null};
+        opts,savedOpts:JSON.parse(JSON.stringify(opts)),data:null,dataLabel:'',recs:null,cmp:null,
+        target:'self',cloneOf:jtCloneLink(uid),others:null};
     $('jt-autosave').checked=auto;
+    jtRenderTargets();jtLoadTargets();
     jtResetDataBar();jtLoadRecordList();
     jtBackup(d);
     jtTeamVersionPush(d,'opened');jtTeamVersionsLoad();
@@ -11893,6 +11899,9 @@ function jtPaintSave(){
   el.textContent=txt;el.style.color=col;el.title=JT.saveMsg||'';
   sv.disabled=JT.saveState==='saving'||!dirty;
   sv.title=dirty?'Write this template to Zuper (Ctrl+S)':'No changes since the last save';
+  const t=JT.target||'self';
+  sv.textContent=t==='self'?'💾 Save to Zuper':t==='both'?'💾 Save to both':t==='orig'?'💾 Save to original':'💾 Save to other';
+  if(t!=='self'){sv.disabled=JT.saveState==='saving';sv.title='Write into '+jtTargetName()+' (Ctrl+S)';}
 }
 function jtToggleAutosave(on){
   if(!JT) return;
@@ -11909,8 +11918,9 @@ function jtScheduleAutosave(){
   if(JT.saveState==='error'||JT.saveState==='blocked') JT.saveState=''; // a new attempt is queued
   jtPaintSave();
 }
-async function jtSave(auto){
+async function jtSave(auto,selfOnly){
   if(!JT) return;
+  if(!auto&&!selfOnly&&JT.target&&JT.target!=='self') return jtSaveRouted();
   if(JT.tab==='code') jtApplyCode(true);
   if(!auto){clearTimeout(_jtAutoTimer);_jtAutoTimer=null;}
   if(!jtDirty()){jtPaintSave();return;}
@@ -12017,6 +12027,7 @@ function jtCompareWith(i){
 function jtSetCompare(v){
   if(v==='saved') JT.cmp=null;
   else if(v==='original') JT.cmp={label:'When you opened it',text:JT.original};
+  else if(v==='tgt') return jtCompareTarget();
   else{const x=jtVersions()[Number(v)];if(x) JT.cmp={label:'Version from '+jtWhen(x.at),text:x.template};}
   jtRenderDiff();
 }
@@ -12042,7 +12053,8 @@ function jtRenderDiff(){
   const base=JT.cmp?JT.cmp.text:JT.saved,label=JT.cmp?JT.cmp.label:'Last saved in Zuper';
   const v=jtVersions();
   const pick='<select onchange="jtSetCompare(this.value)"><option value="saved"'+(!JT.cmp?' selected':'')+'>Last saved in Zuper</option><option value="original"'+(JT.cmp&&JT.cmp.label==='When you opened it'?' selected':'')+'>When you opened it</option>'+
-    v.map((x,i)=>'<option value="'+i+'"'+(JT.cmp&&JT.cmp.text===x.template&&JT.cmp.label!=='When you opened it'?' selected':'')+'>Version from '+esc(jtWhen(x.at))+'</option>').join('')+'</select>';
+    (jtTargetUid()?'<option value="tgt"'+(JT.cmp&&JT.cmp.tgt?' selected':'')+'>Live in Zuper: '+esc(jtTargetName(true))+'</option>':'')+
+    v.map((x,i)=>'<option value="'+i+'"'+(JT.cmp&&!JT.cmp.tgt&&JT.cmp.text===x.template&&JT.cmp.label!=='When you opened it'?' selected':'')+'>Version from '+esc(jtWhen(x.at))+'</option>').join('')+'</select>';
   const ops=jtLineDiff(base,JT.src);
   const add=ops.filter(o=>o[0]==='+').length,del=ops.filter(o=>o[0]==='-').length;
   const out=['<div class="jt-diffbar">Comparing '+pick+' → your current edits · <span style="color:var(--green)">+'+add+'</span> <span style="color:var(--red)">−'+del+'</span> line'+(add+del===1?'':'s')+'</div>'];
@@ -13509,11 +13521,15 @@ function jtTeamVersionPush(d,note){
   if(!d||typeof d.template!=='string') return;
   const kind=JT&&JT.kind;
   let who='';try{who=(($('empid')&&$('empid').value)||'').trim()||localStorage.getItem('zdm_user_name')||'';}catch(e){}
-  zkStore('versions.add',{kind,template_uid:d.template_uid,template_name:d.template_name,template:d.template,template_options:d.template_options||null,saved_by:who,note}).catch(e=>console.warn('[ZDM] team versions: '+e.message));
+  return zkStore('versions.add',{kind,template_uid:d.template_uid,template_name:d.template_name,template:d.template,template_options:d.template_options||null,saved_by:who,note}).catch(e=>console.warn('[ZDM] team versions: '+e.message));
 }
 function jtTeamVersionsLoad(){
   const ctx=JT;if(!ctx) return;ctx.team=null;
-  zkStore('versions.list',{template_uid:ctx.uid,limit:30}).then(v=>{if(JT!==ctx)return;ctx.team=v||[];if(JT.sel==null)jtRenderInspector();}).catch(e=>{if(JT===ctx){ctx.team={error:e.message};if(JT.sel==null)jtRenderInspector();}});
+  zkStore('versions.list',{template_uid:ctx.uid,limit:50}).then(v=>{if(JT!==ctx)return;ctx.team=v||[];
+    // A clone made by a teammate: its first team version names the original.
+    if(!ctx.cloneOf){const m=(ctx.team||[]).map(x=>/cloned from “([\s\S]*)” · clone-of:(\S+)/.exec(x.note||'')).find(Boolean);
+      if(m){ctx.cloneOf={uid:m[2],name:m[1],kind:ctx.kind};jtLinkClone(ctx.uid,ctx.cloneOf);jtRenderTargets();}}
+    if(JT.sel==null)jtRenderInspector();}).catch(e=>{if(JT===ctx){ctx.team={error:e.message};if(JT.sel==null)jtRenderInspector();}});
 }
 function jtTeamVersionsHtml(){
   const v=JT.team;
@@ -13526,6 +13542,188 @@ function jtTeamVersionsHtml(){
 }
 function jtTeamCompare(i){const x=JT.team[i];if(!x)return;JT.cmp={label:'Team version from '+jtWhen(x.created_at)+(x.saved_by?' ('+x.saved_by+')':''),text:x.template};jtSetTab('diff');}
 function jtTeamRestore(i){const x=JT.team[i];if(!x)return;jtCommit(x.template);jtMsg('✓ Restored the team version from '+jtWhen(x.created_at)+'. Review it, then 💾 Save to Zuper (or Undo).','ok');}
+
+// ── Clone, and "Save to" another template ───────────────────────────────
+// Clone = create a NEW template of the same kind with this HTML + page setup (job
+// clones are linked to no job category, so live jobs keep using the original). The
+// clone remembers its original — in this browser, and in the team history as a
+// "clone-of:<uid>" note — so the editor's Save-to dropdown can offer
+// "original" and "this clone + original". Writing into another template keeps
+// that template's name, description and job categories; only the HTML and page
+// setup change. It is backed up first and read back after, like every save.
+function jtCloneLinks(){try{return JSON.parse(localStorage.getItem('zdm_jt_clone_links')||'{}')||{};}catch(e){return {};}}
+function jtCloneLink(uid){const l=jtCloneLinks()[uid];return l&&l.uid?l:null;}
+function jtLinkClone(cloneUid,orig){try{const l=jtCloneLinks();l[cloneUid]={uid:String(orig.uid),name:orig.name||'',kind:orig.kind,at:new Date().toISOString()};localStorage.setItem('zdm_jt_clone_links',JSON.stringify(l));}catch(e){}}
+async function jtCreateCopy(kind,d,html,name){
+  const type=d.type||(ZK_TK[kind]&&ZK_TK[kind].type)||'';
+  const r=await jtApi(...zkCreateReq(kind,{name,description:d.template_description,type,html,options:jtOptsOf(d),associated_to:[]}));
+  if(!r.ok) throw new Error(r.msg);
+  const b=r.body||{},dd=(b.data&&typeof b.data==='object')?b.data:{};
+  let uid=dd.template_uid||b.template_uid||(dd.template&&dd.template.template_uid)||'';
+  if(!uid){ // the create response has no uid — find the newest template with this name
+    const l=await jtApi('GET',ZK_TK[kind].list),list=(l.body&&l.body.data)||[];
+    const hits=(Array.isArray(list)?list:[]).filter(t=>t&&t.template_name===name&&(!type||!t.type||t.type===type));
+    hits.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+    uid=hits[0]&&hits[0].template_uid;
+  }
+  if(!uid) throw new Error('Zuper said the copy was created, but it is not in the template list. Refresh and look for “'+name+'”.');
+  return String(uid);
+}
+async function jtDoClone(kind,orig,d,html){
+  const K=JT_KINDS[kind];
+  const name=(prompt('Name for the clone — it is created as a new '+K.noun+' in Zuper:',(d.template_name||'Template')+' (copy)')||'').trim();
+  if(!name) return null;
+  const uid=await jtCreateCopy(kind,d,html,name);
+  jtLinkClone(uid,orig);
+  let who='';try{who=(($('empid')&&$('empid').value)||'').trim()||localStorage.getItem('zdm_user_name')||'';}catch(e){}
+  await zkStore('versions.add',{kind,template_uid:uid,template_name:name,template:html,template_options:jtOptsOf(d),saved_by:who,note:'cloned from “'+(orig.name||'')+'” · clone-of:'+orig.uid}).catch(()=>{});
+  const mk={job:'job_template',qi:'qi_template',po:'po_template',so:'so_template'}[kind];
+  if(modKey()===mk&&allRecs.length) doFetch();
+  return {uid,name};
+}
+async function jtClone(){
+  if(!JT) return;
+  const ctx=JT;
+  if(ctx.tab==='code') jtApplyCode(true);
+  const issues=jtBlockIssues(ctx.src);
+  if(issues.length) return jtRefuse('Fix the tag problems first ('+issues.join('; ')+') — a clone would copy them.');
+  clearTimeout(_jtAutoTimer);_jtAutoTimer=null;
+  const dirty=jtDirty(ctx);
+  jtMsg('Creating the clone…','info');
+  let c;
+  try{c=await jtDoClone(ctx.kind,{uid:ctx.uid,name:ctx.detail.template_name||'',kind:ctx.kind},{...ctx.detail,template_options:ctx.opts},ctx.src);}
+  catch(e){if(JT===ctx)jtMsg('✗ Clone failed: '+e.message,'err');return;}
+  if(!c){if(JT===ctx){jtMsg('','');jtScheduleAutosave();}return;}
+  await openJobTplEditor(c.uid,ctx.kind);
+  if(JT&&JT.uid===c.uid) jtMsg('✓ Created “'+c.name+'” and opened it'+(dirty?' — your unsaved edits came with it; the original in Zuper is unchanged':'')+
+    '. Edit and 💾 Save here, check it, then choose “Save to: original” to copy the changes into “'+(ctx.detail.template_name||'the original')+'”.'+
+    (ctx.kind==='job'?' The clone is not linked to any job category, so live jobs keep using the original.':''),'ok');
+}
+async function jtCloneUid(uid,kind){
+  kind=JT_KINDS[kind]?kind:'job';
+  let d;try{d=await JT_KINDS[kind].read(uid);}catch(e){alert('Could not read the template: '+e.message);return;}
+  if(!d||typeof d.template!=='string'){alert('The template has no HTML to copy.');return;}
+  let c;try{c=await jtDoClone(kind,{uid:String(uid),name:d.template_name||'',kind},d,d.template);}catch(e){alert('Clone failed: '+e.message);return;}
+  if(!c) return;
+  await openJobTplEditor(c.uid,kind);
+  if(JT&&JT.uid===c.uid) jtMsg('✓ Created “'+c.name+'” as a copy of “'+(d.template_name||'')+'”. Edit and save it here; when it is right, pick “Save to: original” and save.'+
+    (kind==='job'?' It is not linked to any job category yet.':''),'ok');
+}
+// ── Save-to dropdown ──
+function jtTargetUid(){
+  if(!JT) return null;const t=JT.target||'self',c=JT.cloneOf;
+  if(t==='orig'||t==='both') return c?c.uid:null;
+  if(t==='self') return c?c.uid:null;
+  return t;
+}
+function jtTargetName(bare){
+  if(!JT) return '';const t=JT.target||'self',c=JT.cloneOf;
+  const q=n=>bare?n:'“'+n+'”';
+  if(t==='self') return bare&&c?(c.name||'original'):'this template';
+  if(t==='orig') return q(c&&c.name||'the original');
+  if(t==='both') return bare?(c&&c.name||'original'):'this clone and '+q(c&&c.name||'the original');
+  const o=(JT.others||[]).find(x=>x.uid===t);return q(o?o.name:t);
+}
+async function jtLoadTargets(){
+  const ctx=JT;if(!ctx) return;
+  try{
+    const r=await jtApi('GET',ZK_TK[ctx.kind].list),l=(r.ok&&r.body&&r.body.data)||[];
+    if(JT!==ctx) return;
+    ctx.others=(Array.isArray(l)?l:[]).filter(t=>t&&t.template_uid&&String(t.template_uid)!==String(ctx.uid))
+      .map(t=>({uid:String(t.template_uid),name:t.template_name||'(untitled)',type:t.type||''}));
+  }catch(e){if(JT===ctx)ctx.others=[];}
+  if(JT===ctx) jtRenderTargets();
+}
+function jtRenderTargets(){
+  const el=$('jt-target');if(!el||!JT) return;
+  const c=JT.cloneOf,o=JT.others||[];
+  if(c){const f=o.find(x=>x.uid===String(c.uid));if(f)c.name=f.name;}
+  const tl=t=>JT.kind==='qi'&&t.type?(t.type==='INVOICE'?'Invoice · ':'Quote · '):'';
+  let h='<option value="self">Save to: this template'+(c?' (clone)':'')+'</option>';
+  if(c) h+='<option value="orig">Save to: original — '+esc(c.name||c.uid)+'</option><option value="both">Save to: this clone + original</option>';
+  const rest=o.filter(t=>!c||t.uid!==String(c.uid));
+  if(rest.length) h+='<optgroup label="Save to another '+esc(JT_KINDS[JT.kind].noun)+'">'+rest.map(t=>'<option value="'+esc(t.uid)+'">'+esc(tl(t)+t.name)+'</option>').join('')+'</optgroup>';
+  else if(JT.others==null) h+='<option disabled>Loading other templates…</option>';
+  el.innerHTML=h;
+  const cur=JT.target||'self';
+  el.value=[...el.options].some(x=>x.value===cur&&!x.disabled)?cur:'self';
+  JT.target=el.value;
+  el.title=JT.target==='self'?'💾 Save writes to this template':'💾 Save writes into '+jtTargetName();
+  jtPaintSave();
+}
+function jtSetTarget(v){
+  if(!JT) return;
+  JT.target=v||'self';
+  if(JT.cmp&&JT.cmp.tgt) JT.cmp=null;
+  jtRenderTargets();
+  if(JT.tab==='diff') jtRenderDiff();
+  if(JT.target==='self') jtMsg('💾 Save writes to this template.','info');
+  else jtMsg('💾 Save will copy this template’s HTML and page setup into '+jtTargetName()+'. Its name, description'+(JT.kind==='job'?' and job categories':'')+
+    ' stay as they are, and its current version is backed up first. Review the difference in Changes → “Live in Zuper: '+jtTargetName(true)+'”.','info');
+}
+async function jtCompareTarget(){
+  const ctx=JT,uid=jtTargetUid();if(!ctx||!uid) return;
+  try{
+    const d=await JT_KINDS[ctx.kind].read(uid);
+    if(JT!==ctx) return;
+    ctx.cmp={label:'Live “'+(d.template_name||'')+'”',text:d.template||'',tgt:true};
+  }catch(e){if(JT===ctx)jtMsg('✗ Could not read '+jtTargetName()+': '+e.message,'err');return;}
+  jtRenderDiff();
+}
+async function jtSaveRouted(){
+  const ctx=JT;if(!ctx) return;
+  if(ctx.tab==='code') jtApplyCode(true);
+  const issues=jtBlockIssues(ctx.src);
+  if(issues.length) return jtMsg('✗ Not saved: the template has tag problems that would break the PDF — '+issues.join('; ')+'.','err');
+  const t=ctx.target;
+  if(t==='both'){
+    if(jtDirty(ctx)){await jtSave(false,true);if(JT!==ctx||jtDirty(ctx)) return;} // the clone's own save failed — stop there
+    return jtPushTo(ctx,ctx.cloneOf&&ctx.cloneOf.uid,true);
+  }
+  return jtPushTo(ctx,t==='orig'?ctx.cloneOf&&ctx.cloneOf.uid:t,false);
+}
+async function jtPushTo(ctx,uid,both){
+  if(!uid) return jtMsg('✗ No target template picked.','err');
+  if(String(uid)===String(ctx.uid)) return jtSave(false,true);
+  if(_jtSaving) return jtMsg('A save is already running — try again in a moment.','warn');
+  const K=JT_KINDS[ctx.kind],html=ctx.src,opts=JSON.parse(JSON.stringify(ctx.opts));
+  _jtSaving=true;jtSaveState('saving');
+  try{
+    let tgt;
+    try{tgt=await K.read(uid);}catch(e){throw new Error('Could not read the target template: '+e.message);}
+    if(!tgt||typeof tgt.template!=='string') throw new Error('The target template has no HTML to replace.');
+    const name=tgt.template_name||'(untitled)';
+    if(ctx.kind==='qi'&&tgt.type&&ctx.detail.type&&tgt.type!==ctx.detail.type&&
+       !confirm('“'+name+'” is '+(tgt.type==='INVOICE'?'an invoice':'a quote')+' template and this one is '+(ctx.detail.type==='INVOICE'?'an invoice':'a quote')+'. Write into it anyway?')){jtSaveState('');return;}
+    const ops=jtLineDiff(tgt.template,html),add=ops.filter(o=>o[0]==='+').length,del=ops.filter(o=>o[0]==='-').length;
+    const optsChanged=jtOptsKey(jtOptsOf(tgt))!==jtOptsKey(opts);
+    if(!add&&!del&&!optsChanged){jtSaveState('');jtMsg((both?'✓ Clone saved. ':'')+'“'+name+'” already matches this template — nothing to write.','ok');return;}
+    if(!confirm('Write this template into “'+name+'”?\n\n'+(add||del?'+'+add+' / −'+del+' lines':'Same HTML')+(optsChanged?', page setup changes too':'')+'.\n'+
+      'Its name, description'+(ctx.kind==='job'?' and job categories':'')+' stay as they are. Its current version is backed up first (team history + this browser).')){jtSaveState('');return;}
+    jtBackup(tgt);
+    await jtTeamVersionPush(tgt,'before overwrite from “'+(ctx.detail.template_name||'')+'”');
+    const base={...tgt,template_options:opts};
+    const vm=K.validateModule(base);
+    if(vm){
+      const v=await jtApi('POST','template/validate',{module_name:vm,template:html});
+      if(!v.ok&&v.status!==404&&v.status!==405) throw new Error('Zuper rejected the template: '+v.msg);
+    }
+    const s=await jtApi(...K.save(base,html));
+    if(!s.ok) throw new Error('Writing into “'+name+'” failed: '+s.msg);
+    let bd=null;try{bd=await K.read(uid);}catch(e){}
+    if(!bd||bd.template!==html) throw new Error('Zuper accepted the write to “'+name+'”, but reading it back did not match. Check it in Zuper.');
+    jtTeamVersionPush(bd,'saved from “'+(ctx.detail.template_name||'')+'”');
+    const r=allRecs.find(x=>String(x.template_uid||'')===String(uid));if(r) r.updated_at=bd.updated_at;
+    if(JT===ctx){
+      jtSaveState('');
+      if(ctx.cmp&&ctx.cmp.tgt){ctx.cmp.text=bd.template;if(ctx.tab==='diff')jtRenderDiff();}
+      jtMsg('✓ '+(both?'Saved this clone, and wrote it into':'Wrote this template into')+' “'+name+'” and verified it. New PDFs from “'+name+'” use this version.'+
+        (!both&&jtDirty(ctx)?' (This template itself still has unsaved changes — switch Save to “this template” to keep them here too.)':''),'ok');
+    }
+  }catch(e){
+    if(JT===ctx){jtSaveState('error',e.message);jtMsg('✗ '+e.message,'err');}
+  }finally{_jtSaving=false;}
+}
 
 // ── Health check for the open template ──
 function jtHealthHtml(){
