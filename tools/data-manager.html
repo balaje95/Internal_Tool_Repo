@@ -11083,7 +11083,7 @@ function jtRenderFrame(){
     '.zdrop.cell{background:rgba(253,80,0,.08);border:2px dashed #fd5000;box-sizing:border-box}'+
     '.zdrop.bad{background:#dc2626}.zdrop.cell.bad{background:rgba(220,38,38,.08);border-color:#dc2626}'+
     '.zdtip{position:fixed;z-index:99999;pointer-events:none;background:#111827;color:#fff;font:12px system-ui,sans-serif;padding:4px 8px;border-radius:6px;max-width:250px;box-shadow:0 2px 8px rgba(0,0,0,.25)}'+
-    '.zdtip.bad{background:#991b1b}';
+    '.zdtip.bad{background:#991b1b}'+jtPdfBandCss(JT.P);
   f.onload=()=>{
     const d=f.contentDocument;if(!d) return;
     try{f.contentWindow.scrollTo(0,scrollY);}catch(e){}
@@ -11186,7 +11186,8 @@ async function openJobTplEditor(uid,kind){
     jtSetTab('visual');
     jtRenderAll();
     jtMsg(auto?'Auto-save is on — each change is written to Zuper a couple of seconds after you stop editing. The original was backed up in this browser.'
-              :'Changes stay in this window until you click 💾 Save to Zuper (or Ctrl+S). The original was backed up in this browser.','info');
+              :'Changes stay in this window until you click 💾 Save to Zuper (or Ctrl+S). The original was backed up in this browser.'+
+           (/\bid\s*=\s*["']?page(Header|Footer)/i.test(d.template)?' Blue-labelled blocks are PDF page headers / footers: the PDF repeats them at the top / bottom of pages, the preview shows them where they sit in the HTML.':''),'info');
   }catch(e){
     $('jt-title').textContent='Could not open template';
     jtMsg('✗ '+e.message,'err');
@@ -11243,7 +11244,7 @@ function jtKeys(e){
   if((e.ctrlKey||e.metaKey)&&k==='z'&&!e.shiftKey){e.preventDefault();jtUndo();}
   else if((e.ctrlKey||e.metaKey)&&(k==='y'||(k==='z'&&e.shiftKey))){e.preventDefault();jtRedo();}
   else if(e.altKey&&JT.sel!=null&&(k==='arrowup'||k==='arrowdown')){e.preventDefault();jtMove(JT.sel,k==='arrowup'?-1:1);}
-  else if(e.altKey&&JT.sel!=null&&(k==='arrowleft'||k==='arrowright')){e.preventDefault();const c=jtCellOf(jtNode(JT.sel));if(c)jtMoveColumn(c.id,k==='arrowleft'?-1:1);}
+  else if(e.altKey&&JT.sel!=null&&(k==='arrowleft'||k==='arrowright')){e.preventDefault();const dir=k==='arrowleft'?-1:1,dg=jtDivGridNear(jtNode(JT.sel)),c=jtCellOf(jtNode(JT.sel));if(dg)jtDivMoveColumn(dg.cell.id,dir);else if(c)jtMoveColumn(c.id,dir);}
   else if((k==='delete'||k==='backspace')&&JT.sel!=null){e.preventDefault();jtRemove(JT.sel);}
   else if(k==='escape'&&JT.sel!=null){jtSelect(null);}
 }
@@ -11401,6 +11402,127 @@ function jtMoveColumnTo(cellId,to){
   jtMsg('✓ Moved column “'+jtColName(JT.P,c.cell)+'”'+(kept?' · '+kept+' merged row'+(kept===1?'':'s')+' (e.g. a Total row) left as '+(kept===1?'it is':'they are'):'')+'.','ok');
   jtCommit(jtSplice(src,edits),selAt,c.cell.tag);
 }
+// ── Div columns ─────────────────────────────────────────────────────────────
+// Many quote templates lay out line items with side-by-side boxes instead of a table:
+//   <div><div style="display:inline-block;width:50%">What</div><div …20%>Quantity</div>…</div>
+//   {{#each items}}<div><div …50%>{{name}}</div><div …20%>{{quantity}}</div>…</div>{{/each}}
+// A "div row" is an element whose element children are all side-by-side boxes
+// (inline-block / table-cell / float, or any child of a display:flex row). The rows of
+// one grid are the div rows under the same parent with the same number of boxes and,
+// when they set them, the same % widths. Column ops act on box N of every such row.
+function jtOpenTag(nd){return JT.P.src.slice(nd.start,nd.openEnd);}
+function jtIsDivCell(nd,rowFlex){
+  if(!nd||JT_VOID.has(nd.tag)||nd.tag.charAt(0)==='#') return false;
+  return rowFlex||/display\s*:\s*(inline-block|table-cell|inline-flex)|float\s*:\s*(left|right)/i.test(jtOpenTag(nd));
+}
+function jtDivCells(row){
+  if(!row||row.id===0||row.tag==='tr'||row.tag==='table'||JT_INLINE.has(row.tag)) return null;
+  const k=row.children.filter(c=>c.tag!=='#comment');
+  if(k.length<2) return null;
+  const flex=/display\s*:\s*flex/i.test(jtOpenTag(row));
+  if(!k.every(c=>jtIsDivCell(c,flex))) return null;
+  // nothing but whitespace (and {{#if}}-style tags) between the boxes
+  if(row.texts.some(t=>JT.P.src.slice(t.start,t.end).replace(/\{\{[\s\S]*?\}\}/g,'').replace(/&nbsp;/g,'').trim())) return null;
+  return k;
+}
+function jtWidthPct(nd){
+  const m=/\bstyle\s*=\s*(["'])([^"']*)\1/i.exec(jtOpenTag(nd));
+  const w=m&&/(?:^|;)\s*width\s*:\s*([\d.]+)%/i.exec(m[2]);
+  return w?parseFloat(w[1]):null;
+}
+function jtSetWidthEdit(nd,pct){
+  const open=jtOpenTag(nd),m=/\bstyle\s*=\s*(["'])([^"']*)\1/i.exec(open);if(!m) return null;
+  const w=/((?:^|;)\s*width\s*:\s*)([\d.]+)%/i.exec(m[2]);if(!w) return null;
+  const at=nd.start+m.index+m[0].length-1-m[2].length+w.index+w[1].length;
+  return {start:at,end:at+w[2].length,text:String(Math.round(pct*100)/100)};
+}
+// The grid `nd` sits in, as a box of a div row (the nearest one going up).
+function jtDivGrid(nd){
+  for(let c=nd;c&&c.id!==0;c=c.parent){
+    const row=c.parent,cells=jtDivCells(row);if(!cells) continue;
+    const col=cells.indexOf(c);if(col<0) continue;
+    const sig=r=>jtDivCells(r).map(jtWidthPct).join(','),mine=sig(row);
+    const rows=row.parent.children.filter(r=>{const k=jtDivCells(r);if(!k||k.length!==cells.length)return false;const s=sig(r);return s===mine||!/\d/.test(s)||!/\d/.test(mine);});
+    return {row,cells,col,rows,cell:c};
+  }
+  return null;
+}
+// A div grid that is closer to `nd` than any table cell — so a box layout inside a
+// one-cell wrapper table is treated as the box layout, not as that table's column.
+function jtDivGridNear(nd){
+  const g=jtDivGrid(nd);if(!g) return null;
+  for(let t=nd;t&&t!==g.row;t=t.parent) if(t.tag==='td'||t.tag==='th') return null;
+  return g;
+}
+function jtDivColName(g,i){const c=jtDivCells(g.rows[0])[i];return (c&&jtSnippet(JT.P,c,40))||('Column '+(i+1));}
+function jtDivRemoveColumn(id){
+  const g=jtDivGrid(jtNode(id));if(!g) return;
+  const src=JT.P.src,edits=[],name=jtDivColName(g,g.col);let widened=0;
+  for(const r of g.rows){
+    const cs=jtDivCells(r),x=cs[g.col],u=jtUnit(x);
+    if(jtBlockIssues(src.slice(u.start,u.end)).length) return jtRefuse('A box in this column holds half of a {{#…}} block, so the column cannot be removed cleanly. Edit it with the HTML tab.');
+    const [a,b]=jtLineRange(src,u.start,u.end);edits.push({start:a,end:b,text:''});
+    // Hand the freed width to the widest remaining box, so the row still spans the page.
+    const w=jtWidthPct(x),rest=cs.filter(k=>k!==x&&jtWidthPct(k)!=null);
+    if(w!=null&&rest.length){const t=rest.reduce((m,k)=>jtWidthPct(k)>jtWidthPct(m)?k:m);const e=jtSetWidthEdit(t,jtWidthPct(t)+w);if(e){edits.push(e);widened++;}}
+  }
+  jtMsg('✓ Removed column “'+name+'” from '+g.rows.length+' row(s)'+(widened?' — its width went to the widest remaining column, so the rows still line up':'')+'.','ok');
+  jtCommit(jtSplice(src,edits));
+}
+function jtDivMoveColumn(id,dir){
+  const g=jtDivGrid(jtNode(id));if(!g) return;
+  const to=g.col+dir;
+  if(to<0||to>=g.cells.length) return jtRefuse('That is already the '+(dir<0?'first':'last')+' column.');
+  jtDivMoveColumnTo(id,to);
+}
+function jtDivMoveColumnTo(id,to){
+  const g=jtDivGrid(jtNode(id));if(!g) return;
+  const from=g.col;if(to===from||to<0||to>=g.cells.length) return;
+  const lo=Math.min(from,to),hi=Math.max(from,to),src=JT.P.src,edits=[];let selAt=null;
+  const plain=s=>!s.replace(/<!--[\s\S]*?-->/g,'').trim();
+  for(const r of g.rows){
+    const units=jtDivCells(r).slice(lo,hi+1).map(jtUnit);
+    for(let i=1;i<units.length;i++) if(!plain(src.slice(units[i-1].end,units[i].start))) return jtRefuse('Something other than the boxes sits between these columns (a {{#…}} block covering several boxes, or text), so they cannot be reordered safely. Use the HTML tab.');
+    const texts=units.map(u=>src.slice(u.start,u.end));
+    if(texts.some(t=>jtBlockIssues(t).length)) return jtRefuse('A box in these columns holds half of a {{#…}} block, so the columns cannot be reordered.');
+    const order=units.map((_,i)=>i);order.splice(to-lo,0,order.splice(from-lo,1)[0]);
+    let out='',at=null;
+    order.forEach((j,i)=>{if(i)out+=src.slice(units[i-1].end,units[i].start);if(j===from-lo)at=out.length;out+=texts[j];});
+    edits.push({start:units[0].start,end:units[units.length-1].end,text:out});
+    if(r===g.row) selAt=units[0].start+at+(g.cell.start-units[from-lo].start);
+  }
+  jtMsg('✓ Moved column “'+jtDivColName(g,from)+'” in '+g.rows.length+' row(s).','ok');
+  jtCommit(jtSplice(src,edits),selAt,g.cell.tag);
+}
+function jtDivColumnsHtml(g){
+  const P=JT.P,head=jtDivCells(g.rows[0]),sample=g.rows.find(r=>r!==g.rows[0]),sc=sample?jtDivCells(sample):[];
+  const loop=sample&&jtLoopsAround(P,sample).pop();
+  return '<div class="jt-sec"><div class="jt-ph">Columns · side-by-side boxes'+(loop?' · ↻ one row per '+esc(loop):'')+'</div>'+head.map((c,i)=>{
+    const w=jtWidthPct(c);
+    return '<div class="jt-colrow'+(i===g.col?' on':'')+'" onclick="jtSelect('+c.id+')" title="Select this column">'+
+      '<span class="nm">'+esc(jtSnippet(P,c,40)||('Column '+(i+1)))+(w!=null?' <span class="jt-note">'+w+'%</span>':'')+'</span>'+
+      (sc[i]&&sc[i]!==c?'<span class="fd">'+esc(jtSnippet(P,sc[i],40))+'</span>':'')+
+      '<button title="Move left" onclick="event.stopPropagation();jtDivMoveColumn('+c.id+',-1)"'+(i===0?' disabled':'')+'>◀</button>'+
+      '<button title="Move right" onclick="event.stopPropagation();jtDivMoveColumn('+c.id+',1)"'+(i===head.length-1?' disabled':'')+'>▶</button>'+
+      '<button class="x" title="Remove this column from every row" onclick="event.stopPropagation();jtDivRemoveColumn('+c.id+')">✕</button></div>';
+  }).join('')+'</div>';
+}
+// PDF page header / footer blocks (Zuper's PDF engine: id="pageHeader", "pageFooter",
+// "pageHeader-3" = page 3 only, "-first" / "-last"). The PDF lifts them out of the flow
+// and repeats them per page; the preview leaves them where they are in the HTML, so mark
+// them — and keep them above content that overlaps them (a cover image with a negative
+// margin, say), which in the PDF never shares their space.
+function jtPdfBandCss(P){
+  let css='';
+  for(const nd of P.nodes){
+    if(nd.id===0||nd.tag.charAt(0)==='#') continue;
+    const m=/\bid\s*=\s*["']?page(Header|Footer)(?:-([\w]+))?["'\s>\/]/i.exec(P.src.slice(nd.start,nd.openEnd));if(!m) continue;
+    const p=m[2],lab='PDF '+m[1].toLowerCase()+' · '+(!p?'every page':/^first$/i.test(p)?'first page':/^last$/i.test(p)?'last page':'page '+p+' only');
+    css+='[data-zid="'+nd.id+'"]{position:relative;z-index:5;min-height:14px;outline:1px dashed #0ea5e9;outline-offset:-1px}'+
+      '[data-zid="'+nd.id+'"]::after{content:"'+lab+'";position:absolute;top:0;right:0;z-index:6;background:#0ea5e9;color:#fff;font:600 9px/1.6 system-ui,sans-serif;padding:0 6px;border-radius:0 0 0 4px;pointer-events:none}';
+  }
+  return css;
+}
 // ── Drag & drop in the preview ──────────────────────────────────────────────
 // Drag anything in the preview and drop it where the orange line shows. What moves is
 // always a whole unit, never a fragment, so the layout keeps its structure:
@@ -11436,7 +11558,9 @@ function jtDragMove(e){
     const dx=e.clientX-g.x,dy=e.clientY-g.y;
     if(Math.abs(dx)<6&&Math.abs(dy)<6) return;
     const blk=jtDragBlock(g.node);if(!blk){_jtDrag=null;return;}
-    if(blk.tag==='td'||blk.tag==='th'){g.mode=Math.abs(dx)>Math.abs(dy)?'col':'row';g.src=g.mode==='col'?blk:blk.parent;}
+    const dg=Math.abs(dx)>Math.abs(dy)&&jtDivGrid(blk);
+    if(dg&&dg.cell===blk){g.mode='dcol';g.src=blk;}
+    else if(blk.tag==='td'||blk.tag==='th'){g.mode=Math.abs(dx)>Math.abs(dy)?'col':'row';g.src=g.mode==='col'?blk:blk.parent;}
     else if(blk.tag==='tr'){g.mode='row';g.src=blk;}
     else{g.mode='block';g.src=blk;}
     if(g.mode==='row'&&g.src.tag!=='tr'){g.mode='block';g.src=jtTableOf(blk)||blk;}
@@ -11494,6 +11618,16 @@ function jtDropAt(g,e){
     const x=after?r.right:r.left;
     return {rect:{x:x-2,y:tr.top,w:4,h:tr.height},label:to===fc.col?'Column stays where it is':'Move column “'+jtColName(P,g.src)+'” here',
       why:'',apply:()=>{if(to!==fc.col) jtMoveColumnTo(g.src.id,to);}};
+  }
+  if(g.mode==='dcol'){
+    const gs=jtDivGrid(g.src),tg=jtDivGrid(hn);
+    if(!gs||!tg||!tg.rows.includes(gs.row)) return {why:'A column can only move within its own set of rows.'};
+    const cEl=elOf(tg.cell,hit);if(!cEl) return null;
+    const r=cEl.getBoundingClientRect(),after=e.clientX>r.left+r.width/2;
+    let to=tg.col;if(after&&to<gs.col)to++;else if(!after&&to>gs.col)to--;
+    const rr=(elOf(tg.row,cEl)||cEl).getBoundingClientRect();
+    return {rect:{x:(after?r.right:r.left)-2,y:rr.top,w:4,h:rr.height},label:to===gs.col?'Column stays where it is':'Move column “'+jtDivColName(gs,gs.col)+'” here',
+      why:'',apply:()=>{if(to!==gs.col) jtDivMoveColumnTo(g.src.id,to);}};
   }
   if(g.mode==='row'){
     let rn=null;for(let t=hn;t&&t.id!==0;t=t.parent) if(t.tag==='tr'){rn=t;break;}
@@ -11735,8 +11869,14 @@ function jtRenderInspector(){
     (mv?'<button class="btn btn-o"'+mvTitle+' onclick="jtMove('+nd.id+',-1)">↑ Move '+esc(mvNoun)+' up</button>'+
         '<button class="btn btn-o"'+mvTitle+' onclick="jtMove('+nd.id+',1)">↓ Move '+esc(mvNoun)+' down</button>':'')+
     '<button class="btn btn-o" onclick="jtDuplicate('+nd.id+')">⧉ Duplicate</button></div>');
-  const cell=jtCellOf(nd);
-  if(cell&&jtTableOf(cell)){
+  const cell=jtCellOf(nd),dg=jtDivGridNear(nd);
+  if(dg){
+    h.push('<div class="jt-sec"><div class="jt-ph">Column · '+esc(jtDivColName(dg,dg.col))+'</div><div class="jt-btns">'+
+      '<button class="btn btn-d" onclick="jtDivRemoveColumn('+dg.cell.id+')">🗑 Remove column</button>'+
+      '<button class="btn btn-o" onclick="jtDivMoveColumn('+dg.cell.id+',-1)">◀ Left</button>'+
+      '<button class="btn btn-o" onclick="jtDivMoveColumn('+dg.cell.id+',1)">Right ▶</button></div>'+
+      '<div class="jt-note" style="margin-top:4px">Side-by-side boxes, not a table — column changes apply to all '+dg.rows.length+' rows that share this layout.</div></div>');
+  }else if(cell&&jtTableOf(cell)){
     h.push('<div class="jt-sec"><div class="jt-ph">Column · '+esc(jtColName(P,cell))+'</div><div class="jt-btns">'+
       '<button class="btn btn-d" onclick="jtRemoveColumn('+cell.id+')">🗑 Remove column</button>'+
       '<button class="btn btn-o" onclick="jtMoveColumn('+cell.id+',-1)">◀ Left</button>'+
@@ -11744,7 +11884,7 @@ function jtRenderInspector(){
       '<button class="btn btn-o" onclick="jtDuplicateColumn('+cell.id+')">⧉ Duplicate</button></div></div>');
   }
   h.push(jtLayoutHtml(nd));
-  h.push(jtColumnsHtml(nd));
+  h.push(dg?jtDivColumnsHtml(dg):jtColumnsHtml(nd));
   h.push(jtShowWhenHtml(nd));
   // Plain-text labels (the bits between tags and {{fields}})
   const segs=jtTextSegments(P,nd).slice(0,15);
