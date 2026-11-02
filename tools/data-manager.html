@@ -11106,9 +11106,15 @@ function jtRenderFrame(){
     d.addEventListener('dragstart',e=>e.preventDefault()); // no native image / link dragging
     d.addEventListener('keydown',e=>{if(_jtDrag&&e.key==='Escape'){jtDragCancel();return;}jtKeys(e);});
     jtMarkFrameSel();
-    try{jtDrawPageBreaks(d);}catch(e){console.warn("[ZDM] page breaks: "+e.message);}
+    const pb=()=>{try{jtDrawPageBreaks(d);}catch(e){console.warn("[ZDM] page breaks: "+e.message);}};
+    pb();if(d.fonts&&d.fonts.ready) d.fonts.ready.then(()=>{if($("jt-frame").contentDocument===d)pb();});
   };
-  f.srcdoc='<!doctype html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body><div class="zpage">'+jtFrameBody()+'</div></body></html>';
+  let body=jtFrameBody(),fonts='';
+  if(jtPbOn()){ // print with the fonts Zuper's PDF server actually has (see jtPdfFontCss)
+    fonts=jtPdfFontCss();
+    body=body.replace(/(^|[^\w-])sans-serif\b/gi,'$1ZPdfSans').replace(/(^|[^\w-])serif\b/gi,'$1ZPdfSerif');
+  }
+  f.srcdoc='<!doctype html><html><head><meta charset="utf-8"><style>'+fonts+css+'</style></head><body><div class="zpage">'+body+'</div></body></html>';
 }
 
 // ── PDF page breaks ─────────────────────────────────────────────────────────
@@ -11136,6 +11142,29 @@ function jtSetPdfScale(pct,quiet){
   try{if(Math.abs(v-1)<0.0005)localStorage.removeItem('zdm_jt_pdfscale_'+JT.uid);else localStorage.setItem('zdm_jt_pdfscale_'+JT.uid,String(v));}catch(e){}
   jtRenderFrame();if(!quiet)jtRenderInspector();
 }
+// Zuper's PDF server (PhantomJS 2.1 / Qt 5.5 on Linux — confirmed from a PDF's Producer and
+// embedded fonts) only has DejaVu: Arial, Helvetica and the generic sans-serif all print as
+// DejaVu Sans, which is ~10% wider, so text wraps onto more lines and pages fill sooner
+// than in a browser. In page-break mode the preview swaps the same fonts in. Webfonts a
+// template loads itself (@font-face / <link>) come later in the document and still win.
+const JT_DEJAVU='https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/';
+function jtPdfFontCss(){
+  const face=(fam,file,w,s)=>'@font-face{font-family:'+fam+';src:url('+JT_DEJAVU+file+'.ttf) format("truetype");font-weight:'+w+';font-style:'+s+'}';
+  const set=(fam,base)=>face(fam,base,'normal','normal')+face(fam,base+'-Bold','bold','normal')+face(fam,base+(base==='DejaVuSans'?'-Oblique':'-Italic'),'normal','italic')+face(fam,base+(base==='DejaVuSans'?'-BoldOblique':'-BoldItalic'),'bold','italic');
+  const sans=['ZPdfSans','Arial','Helvetica','"Helvetica Neue"','Verdana','Tahoma','"Segoe UI"','Calibri','"Trebuchet MS"','system-ui','-apple-system','BlinkMacSystemFont'];
+  const serif=['ZPdfSerif','"Times New Roman"','Times','Georgia','Cambria','Garamond'];
+  return sans.filter(f=>!/^(system-ui|-apple-system|BlinkMacSystemFont)$/.test(f)).map(f=>set(f,'DejaVuSans')).join('')+serif.map(f=>set(f,'DejaVuSerif')).join('')+
+    'body{font-family:ZPdfSans}';
+}
+function jtPdfHF(){
+  const g=k=>{try{return localStorage.getItem('zdm_jt_pdf'+k+'_'+(JT&&JT.uid))||'';}catch(e){return '';}};
+  return {header:g('header')||'45mm',footer:g('footer')||'28mm'};
+}
+function jtSetPdfHF(k,v){
+  v=String(v||'').trim();if(v&&!jtToPx(v)&&!/^0/.test(v)) return jtRefuse('Use a size like 45mm.');
+  try{if(!v||v===(k==='header'?'45mm':'28mm'))localStorage.removeItem('zdm_jt_pdf'+k+'_'+JT.uid);else localStorage.setItem('zdm_jt_pdf'+k+'_'+JT.uid,v);}catch(e){}
+  jtRenderFrame();
+}
 function jtPageGeom(d){
   const o=JT.opts||(JT.detail&&JT.detail.template_options)||{};
   const pp=jtPaper(),b=(o.border&&typeof o.border==='object')?o.border:{top:o.border,bottom:o.border};
@@ -11144,9 +11173,13 @@ function jtPageGeom(d){
   const yOf=e=>{const r=e.getBoundingClientRect();return {t:r.top+sy-y0,b:r.bottom+sy-y0};};
   // PDF header/footer bands are lifted out of the flow and printed inside the margins
   const bands=[...page.querySelectorAll('[id^="pageHeader"],[id^="pageFooter"]')].map(e=>{const y=yOf(e);return {id:e.id,top:y.t,h:y.b-y.t};});
-  const bh=re=>Math.max(0,...bands.filter(x=>re.test(x.id)).map(x=>x.h));
+  // html-pdf reserves ONE fixed-height header / footer area on every page (whichever
+  // pageHeader-N variant fills it), not the band's own height. Measured on a real Zuper
+  // PDF: 45mm + 28mm (html-pdf's documented defaults). Overridable per template.
+  const hf=jtPdfHF(),hasH=bands.some(x=>/^pageHeader/.test(x.id)),hasF=bands.some(x=>/^pageFooter/.test(x.id));
+  const hH=hasH?jtToPx(hf.header):0,fH=hasF?jtToPx(hf.footer):0;
   const scale=jtPdfScale();
-  const usable=(jtToPx(pp.h)-jtToPx(b.top)-jtToPx(b.bottom)-bh(/^pageHeader/)-bh(/^pageFooter/))/scale;
+  const usable=(jtToPx(pp.h)-jtToPx(b.top)-jtToPx(b.bottom)-hH-fH)/scale;
   const top=jtToPx(b.top);
   // y inside the .zpage with the bands removed from the flow
   const flowY=y=>y-bands.filter(x=>x.top+x.h<=y+0.5).reduce((s,x)=>s+x.h,0);
@@ -11194,7 +11227,12 @@ function jtDrawPageBreaks(d){
     g.page.appendChild(el);
   });
   g.page.style.minHeight=(Math.max(1,breaks.length+1)*jtToPx(g.pp.h)/g.scale)+'px';
-  if(note) note.textContent='≈ '+(breaks.length+1)+' page'+(breaks.length?'s':'')+' in Zuper’s PDF'+(g.scale!==1?' · scale '+Math.round(g.scale*100)+'%':'');
+  if(note) note.textContent='≈ '+(breaks.length+1)+' page'+(breaks.length?'s':'')+' in Zuper’s PDF'+(g.scale!==1?' · scale '+Math.round(g.scale*100)+'%':'')
+  if(note){
+    const loops=!JT.data&&JT.P.hbs.some(h=>/^#each/.test(h.inner));
+    if(loops) note.textContent+=' with 1 row per list — pick a real record under “Preview with” to see its exact breaks';
+    note.title='Paper '+(g.pp.w+' × '+g.pp.h)+', margins from Page setup, PDF header '+jtPdfHF().header+' / footer '+jtPdfHF().footer+' when the template has them, fonts as on Zuper’s PDF server (DejaVu).';
+  }
 }
 // What a page break applies to: the table ROW the selection sits in, else its block.
 function jtPbTarget(nd){
@@ -12318,7 +12356,7 @@ function jtPageHtml(){
     '<label class="jt-lab">Paper size'+sel('format',[['A3','A3'],['A4','A4'],['A5','A5'],['Letter','Letter'],['Legal','Legal'],['Tabloid','Tabloid']])+'</label>'+
     '<label class="jt-lab">Orientation'+sel('orientation',[['portrait','Portrait'],['landscape','Landscape']])+'</label></div>'+
     '<div class="jt-lab" style="margin-top:6px">Margins (e.g. 10mm — a bare number is pixels)</div><div class="jt-grid4">'+['top','right','bottom','left'].map(m).join('')+'</div>'+
-    '<label class="jt-lab" style="margin-top:6px" title="Only changes where the preview draws its page lines — not saved to Zuper. Use 📏 on a selected element to match a real PDF.">PDF scale for page lines (%)<input type="number" min="20" max="500" step="1" value="'+Math.round(jtPdfScale()*100)+'" onchange="jtSetPdfScale(this.value,true)"></label></div>';
+    '<label class="jt-lab" style="margin-top:6px" title="Only changes where the preview draws its page lines — not saved to Zuper. Use 📏 on a selected element to match a real PDF.">PDF scale for page lines (%)<input type="number" min="20" max="500" step="1" value="'+Math.round(jtPdfScale()*100)+'" onchange="jtSetPdfScale(this.value,true)"></label><div class="jt-grid2" style="margin-top:6px"><label class="jt-lab" title="Height Zuper’s PDF reserves at the top of EVERY page when the template has a pageHeader. Preview only.">PDF header area<input value="'+esc(jtPdfHF().header)+'" onchange="jtSetPdfHF(\x27header\x27,this.value)"></label><label class="jt-lab" title="Height reserved at the bottom of every page when the template has a pageFooter. Preview only.">PDF footer area<input value="'+esc(jtPdfHF().footer)+'" onchange="jtSetPdfHF(\x27footer\x27,this.value)"></label></div></div>';
 }
 
 // ── Versions + Changes tab ──────────────────────────────────────────────────
