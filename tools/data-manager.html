@@ -10778,6 +10778,7 @@ body:has(#jt-modal.open) .back-link{display:none!important}
         <input id="jt-data-uid" placeholder="…or paste a UID and press Enter" onkeydown="if(event.key==='Enter')jtPickRecord(this.value.trim())">
         <button class="btn btn-o" style="font-size:.72rem;padding:4px 9px" onclick="jtMulti()" title="Render this template against many real records at once">▦ Many records</button>
         <span id="jt-data-note" class="jt-note"></span>
+        <label style="margin-left:auto;display:flex;gap:5px;align-items:center" title="Red dashed lines show where Zuper's PDF (paper size + margins from Page setup) ends each page"><input type="checkbox" id="jt-pb" onchange="jtPbToggle(this.checked)"> 📄 Page breaks</label><span id="jt-pb-note" class="jt-note"></span>
       </div>
       <div id="jt-diff"></div>
       <iframe id="jt-frame" sandbox="allow-same-origin" title="Template preview"></iframe>
@@ -11070,6 +11071,7 @@ function jtPaper(){
 }
 function jtRenderFrame(){
   const f=$('jt-frame'),pp=jtPaper();
+  const pbc=$("jt-pb");if(pbc) pbc.checked=jtPbOn();
   let scrollY=0;try{scrollY=f.contentWindow?f.contentWindow.scrollY:0;}catch(e){}
   const css='html,body{margin:0}body{background:#e5e7eb;padding:24px 12px}'+
     '.zpage{background:#fff;width:'+pp.w+';min-height:'+pp.h+';padding:'+pp.pad+';box-sizing:border-box;margin:0 auto;box-shadow:0 2px 14px rgba(0,0,0,.18);position:relative}'+
@@ -11083,7 +11085,10 @@ function jtRenderFrame(){
     '.zdrop.cell{background:rgba(253,80,0,.08);border:2px dashed #fd5000;box-sizing:border-box}'+
     '.zdrop.bad{background:#dc2626}.zdrop.cell.bad{background:rgba(220,38,38,.08);border-color:#dc2626}'+
     '.zdtip{position:fixed;z-index:99999;pointer-events:none;background:#111827;color:#fff;font:12px system-ui,sans-serif;padding:4px 8px;border-radius:6px;max-width:250px;box-shadow:0 2px 8px rgba(0,0,0,.25)}'+
-    '.zdtip.bad{background:#991b1b}'+jtPdfBandCss(JT.P);
+    '.zdtip.bad{background:#991b1b}'+
+    '.zpb{position:absolute;left:-12px;right:-12px;height:0;border-top:2px dashed #dc2626;z-index:20;pointer-events:none}'+
+    '.zpb span{position:absolute;right:12px;top:-9px;background:#dc2626;color:#fff;font:600 10px/16px system-ui,sans-serif;padding:0 7px;border-radius:8px;white-space:nowrap}'+
+    '.zpb.forced{border-top-color:#7c3aed}.zpb.forced span{background:#7c3aed}'+jtPdfBandCss(JT.P);
   f.onload=()=>{
     const d=f.contentDocument;if(!d) return;
     try{f.contentWindow.scrollTo(0,scrollY);}catch(e){}
@@ -11101,8 +11106,180 @@ function jtRenderFrame(){
     d.addEventListener('dragstart',e=>e.preventDefault()); // no native image / link dragging
     d.addEventListener('keydown',e=>{if(_jtDrag&&e.key==='Escape'){jtDragCancel();return;}jtKeys(e);});
     jtMarkFrameSel();
+    try{jtDrawPageBreaks(d);}catch(e){console.warn("[ZDM] page breaks: "+e.message);}
   };
   f.srcdoc='<!doctype html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body><div class="zpage">'+jtFrameBody()+'</div></body></html>';
+}
+
+// ── PDF page breaks ─────────────────────────────────────────────────────────
+// Zuper renders these templates with PhantomJS (html-pdf): template_options gives the
+// paper and its border (= page margins), and the content flows onto as many pages as it
+// needs. The preview is one long sheet, so without guides a box that Zuper splits across
+// two pages looks whole here. jtDrawPageBreaks() draws where each page ends:
+//   usable height = paper height − top/bottom border − PDF header/footer band heights,
+// honouring forced breaks (page-break-before/after: always) and blocks marked
+// page-break-inside: avoid. PhantomJS can print CSS slightly larger or smaller than a
+// browser, so the scale is adjustable per template ("Zuper's PDF starts a page here"
+// calibrates it from one element you know starts a new page in the real PDF).
+function jtToPx(v){
+  const m=/^\s*(-?[\d.]+)\s*(mm|cm|in|pt|px)?\s*$/i.exec(String(v==null?'':v));if(!m) return 0;
+  const n=parseFloat(m[1]),u=(m[2]||'px').toLowerCase();
+  return n*({mm:96/25.4,cm:96/2.54,in:96,pt:96/72,px:1}[u]);
+}
+function jtPbOn(){try{return localStorage.getItem('zdm_jt_pagebreaks')!=='0';}catch(e){return true;}}
+function jtPbToggle(on){try{localStorage.setItem('zdm_jt_pagebreaks',on?'1':'0');}catch(e){}if(JT)jtRenderFrame();}
+function jtPdfScale(){
+  try{const v=parseFloat(localStorage.getItem('zdm_jt_pdfscale_'+(JT&&JT.uid))||'');return v>0.2&&v<5?v:1;}catch(e){return 1;}
+}
+function jtSetPdfScale(pct,quiet){
+  const v=parseFloat(pct)/100;if(!(v>0.2&&v<5)) return jtRefuse('Scale must be between 20% and 500%.');
+  try{if(Math.abs(v-1)<0.0005)localStorage.removeItem('zdm_jt_pdfscale_'+JT.uid);else localStorage.setItem('zdm_jt_pdfscale_'+JT.uid,String(v));}catch(e){}
+  jtRenderFrame();if(!quiet)jtRenderInspector();
+}
+function jtPageGeom(d){
+  const o=JT.opts||(JT.detail&&JT.detail.template_options)||{};
+  const pp=jtPaper(),b=(o.border&&typeof o.border==='object')?o.border:{top:o.border,bottom:o.border};
+  const page=d.querySelector('.zpage');if(!page) return null;
+  const sy=d.defaultView.scrollY,y0=page.getBoundingClientRect().top+sy;
+  const yOf=e=>{const r=e.getBoundingClientRect();return {t:r.top+sy-y0,b:r.bottom+sy-y0};};
+  // PDF header/footer bands are lifted out of the flow and printed inside the margins
+  const bands=[...page.querySelectorAll('[id^="pageHeader"],[id^="pageFooter"]')].map(e=>{const y=yOf(e);return {id:e.id,top:y.t,h:y.b-y.t};});
+  const bh=re=>Math.max(0,...bands.filter(x=>re.test(x.id)).map(x=>x.h));
+  const scale=jtPdfScale();
+  const usable=(jtToPx(pp.h)-jtToPx(b.top)-jtToPx(b.bottom)-bh(/^pageHeader/)-bh(/^pageFooter/))/scale;
+  const top=jtToPx(b.top);
+  // y inside the .zpage with the bands removed from the flow
+  const flowY=y=>y-bands.filter(x=>x.top+x.h<=y+0.5).reduce((s,x)=>s+x.h,0);
+  return {page,pp,usable,top,scale,flowY,yOf,bands};
+}
+function jtPageBreaks(d){
+  const g=jtPageGeom(d);if(!g||!(g.usable>40)) return null;
+  const all=[...g.page.querySelectorAll('*')].filter(e=>!e.closest('[id^="pageHeader"],[id^="pageFooter"],.zpb'));
+  const forced=[],avoid=[];let end=g.top;
+  for(const e of all){
+    const s=d.defaultView.getComputedStyle(e);if(s.display==='none') continue;
+    const y=g.yOf(e),t=g.flowY(y.t),b=g.flowY(y.b);
+    if(b>end) end=b;
+    if(s.pageBreakBefore==='always'||s.breakBefore==='page') forced.push(t);
+    if(s.pageBreakAfter==='always'||s.breakAfter==='page') forced.push(b);
+    if(s.pageBreakInside==='avoid'||s.breakInside==='avoid') avoid.push({t,b});
+  }
+  forced.sort((a,b)=>a-b);
+  const out=[];let cur=g.top,fi=0,guard=0;
+  while(guard++<500){
+    while(fi<forced.length&&forced[fi]<=cur+1) fi++;
+    let nb=cur+g.usable;
+    if(fi<forced.length&&forced[fi]<nb){out.push({y:forced[fi],forced:true});cur=forced[fi];fi++;continue;}
+    if(nb>=end) break;
+    // a "keep together" block that would be cut moves whole to the next page
+    const a=avoid.find(x=>x.t>cur+1&&x.t<nb&&x.b>nb&&x.b-x.t<g.usable);
+    if(a) nb=a.t;
+    out.push({y:nb,forced:false});cur=nb;
+  }
+  return {g,breaks:out,end};
+}
+function jtDrawPageBreaks(d){
+  if(!d||!JT) return;
+  d.querySelectorAll('.zpb').forEach(e=>e.remove());
+  const note=$('jt-pb-note');
+  if(!jtPbOn()){if(note)note.textContent='';return;}
+  const r=jtPageBreaks(d);if(!r){if(note)note.textContent='';return;}
+  const {g,breaks}=r;
+  // a flow y back to a .zpage y (add back the bands above it)
+  const toPage=y=>{let p=y;for(const x of g.bands){if(x.top<=p+0.5)p+=x.h;}return p;};
+  breaks.forEach((bk,i)=>{
+    const el=d.createElement('div');el.className='zpb'+(bk.forced?' forced':'');
+    el.style.top=toPage(bk.y)+'px';
+    el.innerHTML='<span>'+(bk.forced?'⤓ Page break · ':'')+'Page '+(i+1)+' ends ▲ · ▼ Page '+(i+2)+'</span>';
+    g.page.appendChild(el);
+  });
+  g.page.style.minHeight=(Math.max(1,breaks.length+1)*jtToPx(g.pp.h)/g.scale)+'px';
+  if(note) note.textContent='≈ '+(breaks.length+1)+' page'+(breaks.length?'s':'')+' in Zuper’s PDF'+(g.scale!==1?' · scale '+Math.round(g.scale*100)+'%':'');
+}
+// What a page break applies to: the table ROW the selection sits in, else its block.
+function jtPbTarget(nd){
+  for(let t=nd;t&&t.id!==0;t=t.parent) if(t.tag==='tr') return {kind:'row',node:t};
+  const b=jtDragBlock(nd);return b?{kind:'block',node:b}:null;
+}
+function jtTableOfRow(tr){let t=tr.parent;while(t&&t.id!==0&&t.tag!=='table')t=t.parent;return t&&t.tag==='table'?t:null;}
+const jtFirstRow=tr=>{const tb=jtTableOfRow(tr);if(!tb) return true;const rows=jtRows(tb).filter(r=>!(r.parent&&r.parent.tag==='thead'));return rows[0]===tr;};
+const JT_PB_MARK='<div style="page-break-before: always"></div>';
+function jtIsPbMark(P,nd){
+  return !!nd&&nd.tag==='div'&&/page-break-before\s*:\s*always/i.test(P.src.slice(nd.start,nd.openEnd))&&!P.src.slice(nd.openEnd,nd.closeStart).trim();
+}
+function jtPrevSib(nd){
+  const sibs=nd.parent?nd.parent.children:[];let i=sibs.indexOf(nd)-1;
+  while(i>=0&&sibs[i].tag==='#comment')i--;return i>=0?sibs[i]:null;
+}
+// The node a page break goes in front of: the block, or the table whose first row this is.
+function jtPbAnchor(nd){
+  const t=jtPbTarget(nd);if(!t) return null;
+  if(t.kind==='block') return t.node;
+  return jtFirstRow(t.node)?jtTableOfRow(t.node):null;
+}
+function jtPbBefore(nd){const a=jtPbAnchor(nd),p=a&&jtPrevSib(a);return jtIsPbMark(JT.P,p)?p:null;}
+function jtAddPageBreak(id){
+  const nd=jtNode(id),t=nd&&jtPbTarget(nd);if(!t) return;
+  const src=JT.P.src,anchor=jtPbAnchor(nd);
+  if(anchor){
+    if(jtPbBefore(nd)) return jtMsg('There is already a page break before this.','info');
+    const ind=jtIndentOf(src,anchor.start),ins=JT_PB_MARK+(ind!=null?'\n'+ind:'');
+    const out=src.slice(0,anchor.start)+ins+src.slice(anchor.start);
+    if(jtBlockIssues(out).length&&!jtBlockIssues(src).length) return jtRefuse('A page break here would split a {{#…}} block.');
+    jtMsg('✓ Page break added — this '+(t.kind==='row'?'table':jtMoveNoun(anchor))+' now starts a new page in Zuper’s PDF. Ctrl+Z undoes it.','ok');
+    return jtCommit(out,nd.start+ins.length,nd.tag);
+  }
+  // A row in the middle of a table: close the table above it (so the box gets its bottom
+  // line on this page) and reopen an identical table on the next page.
+  const tr=t.node,table=jtTableOfRow(tr);
+  if(tr.parent.tag==='thead') return jtRefuse('This is the table’s header row — select a row below it.');
+  const sec=['tbody','tfoot'].includes(tr.parent.tag)?tr.parent:null;
+  const open=src.slice(table.start,table.openEnd).replace(/\sid\s*=\s*(["'])[^"']*\1/i,'');
+  const thead=table.children.find(c=>c.tag==='thead');
+  const tind=jtIndentOf(src,table.start)||'',rind=jtIndentOf(src,tr.start);
+  const at=rind!=null?tr.start-rind.length:tr.start;
+  const text=(sec?'</'+sec.tag+'>':'')+'</table>\n'+tind+JT_PB_MARK+'\n'+tind+open+(thead?src.slice(thead.start,thead.end):'')+(sec?src.slice(sec.start,sec.openEnd):'')+'\n'+(rind||'');
+  const out=src.slice(0,at)+text+src.slice(tr.start);
+  if(jtBlockIssues(out).length&&!jtBlockIssues(src).length) return jtRefuse('This row is inside a {{#…}} block (e.g. a repeating item loop), so the table can’t be split here.');
+  jtMsg('✓ Table split — the box now closes with its bottom line on this page and continues on a new page from this row. Ctrl+Z undoes it.','ok');
+  jtCommit(out,at+text.length,'tr');
+}
+function jtRemovePageBreak(id){
+  const nd=jtNode(id),m=nd&&jtPbBefore(nd);if(!m) return;
+  const src=JT.P.src,a=m.start;let b=m.end;
+  while(b<src.length&&(src[b]===' '||src[b]==='\t'))b++;if(src[b]==='\n')b++;
+  while(b<src.length&&(src[b]===' '||src[b]==='\t')&&b<nd.start)b++; // keep the next line's indent
+  jtMsg('✓ Page break removed (a split table stays as two tables — Undo puts it back together).','ok');
+  const out=src.slice(0,a)+src.slice(b);
+  jtCommit(out,nd.start-(b-a),nd.tag);
+}
+function jtKeepTogether(id,on){
+  const nd=jtNode(id),t=nd&&jtPbTarget(nd);if(!t) return;
+  const n=t.kind==='row'?(jtTableOfRow(t.node)||t.node):t.node;
+  jtSetStyle(n.id,{'page-break-inside':on?'avoid':''});
+}
+function jtCalibrateHere(id){
+  const d=$('jt-frame').contentDocument,el=d&&d.querySelector('[data-zid="'+id+'"]');if(!el) return;
+  const g=jtPageGeom(d);if(!g) return;
+  const r=jtPageBreaks(d),y=g.flowY(g.yOf(el).t);
+  const last=Math.max(g.top,...((r&&r.breaks)||[]).filter(b=>b.forced&&b.y<y-1).map(b=>b.y));
+  const dist=y-last;if(dist<40) return jtRefuse('That element is already at the top of a page.');
+  const pdfUsable=g.usable*g.scale,k=Math.max(1,Math.round(dist*g.scale/pdfUsable));
+  jtSetPdfScale(k*pdfUsable/dist*100);
+  jtMsg('✓ Page lines rescaled to '+Math.round(jtPdfScale()*100)+'% so page '+(k+1)+' starts at this element, as in Zuper’s PDF. Kept for this template (Page panel → PDF scale to change it).','ok');
+}
+function jtPageBreakHtml(nd){
+  const t=jtPbTarget(nd);if(!t) return '';
+  const has=!!jtPbBefore(nd);
+  const n=t.kind==='row'?(jtTableOfRow(t.node)||t.node):t.node;
+  const keep=/page-break-inside\s*:\s*avoid/i.test(JT.P.src.slice(n.start,n.openEnd));
+  const midRow=!jtPbAnchor(nd);
+  return '<div class="jt-sec"><div class="jt-ph">PDF pages</div><div class="jt-btns">'+
+    (has?'<button class="btn btn-o" onclick="jtRemovePageBreak('+nd.id+')">✕ Remove page break before</button>'
+        :'<button class="btn btn-o" onclick="jtAddPageBreak('+nd.id+')" title="'+(midRow?'Closes the table above this row (so the box gets its bottom line on this page) and continues it on a new page':'Starts a new page in Zuper’s PDF')+'">⤓ '+(midRow?'Split table &amp; new page here':'New page before this')+'</button>')+
+    '<button class="btn btn-o'+(keep?' on':'')+'" onclick="jtKeepTogether('+nd.id+','+(!keep)+')" title="page-break-inside: avoid — move the whole '+(t.kind==='row'?'table':'block')+' to the next page instead of cutting it">'+(keep?'✓ ':'')+'Keep together</button>'+
+    '<button class="btn btn-o" onclick="jtCalibrateHere('+nd.id+')" title="Only if the red page lines don’t match Zuper’s PDF: select the first thing at the top of a page in the real PDF and press this">📏 Zuper’s PDF starts a page here</button>'+
+    '</div><div class="jt-note" style="margin-top:4px">Red dashed lines in the preview = where Zuper’s PDF ends each page.</div></div>';
 }
 function jtMarkFrameSel(scroll){
   const d=$('jt-frame').contentDocument;if(!d) return;
@@ -11884,6 +12061,7 @@ function jtRenderInspector(){
       '<button class="btn btn-o" onclick="jtDuplicateColumn('+cell.id+')">⧉ Duplicate</button></div></div>');
   }
   h.push(jtLayoutHtml(nd));
+  h.push(jtPageBreakHtml(nd));
   h.push(dg?jtDivColumnsHtml(dg):jtColumnsHtml(nd));
   h.push(jtShowWhenHtml(nd));
   // Plain-text labels (the bits between tags and {{fields}})
@@ -12139,7 +12317,8 @@ function jtPageHtml(){
   return '<div class="jt-sec"><div class="jt-ph">Page</div><div class="jt-grid2">'+
     '<label class="jt-lab">Paper size'+sel('format',[['A3','A3'],['A4','A4'],['A5','A5'],['Letter','Letter'],['Legal','Legal'],['Tabloid','Tabloid']])+'</label>'+
     '<label class="jt-lab">Orientation'+sel('orientation',[['portrait','Portrait'],['landscape','Landscape']])+'</label></div>'+
-    '<div class="jt-lab" style="margin-top:6px">Margins (e.g. 10mm — a bare number is pixels)</div><div class="jt-grid4">'+['top','right','bottom','left'].map(m).join('')+'</div></div>';
+    '<div class="jt-lab" style="margin-top:6px">Margins (e.g. 10mm — a bare number is pixels)</div><div class="jt-grid4">'+['top','right','bottom','left'].map(m).join('')+'</div>'+
+    '<label class="jt-lab" style="margin-top:6px" title="Only changes where the preview draws its page lines — not saved to Zuper. Use 📏 on a selected element to match a real PDF.">PDF scale for page lines (%)<input type="number" min="20" max="500" step="1" value="'+Math.round(jtPdfScale()*100)+'" onchange="jtSetPdfScale(this.value,true)"></label></div>';
 }
 
 // ── Versions + Changes tab ──────────────────────────────────────────────────
