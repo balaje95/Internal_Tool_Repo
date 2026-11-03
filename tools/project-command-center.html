@@ -399,6 +399,59 @@ body.gt-on .drawer,body.gt-on .drawer-ov{display:none}
 .gt-dots{display:flex;gap:4px;flex-wrap:wrap}.gt-dots span{width:6px;height:6px;border-radius:50%;background:var(--border2)}.gt-dots span.on{background:var(--blue);width:16px;border-radius:3px}
 .gt-btns{display:flex;gap:6px;flex-shrink:0}
 .gt-never{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:12px;color:var(--text2);cursor:pointer;user-select:none}.gt-never input{margin:0;accent-color:var(--blue)}
+/* ── Release A: My Work, views, bulk, activity, blockers ── */
+.me-btn{display:inline-flex;align-items:center;gap:6px}.me-btn .avatar{width:20px;height:20px;font-size:9px}
+.modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:850;display:none;align-items:center;justify-content:center;padding:16px}
+.modal-ov.show{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.25);width:min(460px,100%);max-height:86vh;display:flex;flex-direction:column;overflow:hidden}
+.modal-hd{padding:16px 18px 6px;font-weight:700;font-size:15px}.modal-sub{padding:0 18px 10px;font-size:12px;color:var(--text2);line-height:1.5}
+.modal-body{padding:0 18px 12px;overflow:auto}.modal-ft{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.pick-list{display:flex;flex-direction:column;gap:2px;margin-top:8px;max-height:46vh;overflow:auto}
+.pick-item{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;cursor:pointer;font-size:13px}
+.pick-item:hover,.pick-item.on{background:var(--surface2)}.pick-item .dim{margin-left:auto;font-size:11px}
+.fb-right{margin-left:auto;display:flex;gap:6px;align-items:center;position:relative}
+.views-menu{position:absolute;top:calc(100% + 6px);right:0;width:320px;background:var(--surface);border:1px solid var(--border);border-radius:11px;box-shadow:0 14px 40px rgba(0,0,0,.18);z-index:600;padding:8px;display:none}
+.views-menu.show{display:block}
+.vm-sec{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);padding:8px 8px 4px}
+.vm-item{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:7px;font-size:12px;cursor:pointer}.vm-item:hover{background:var(--surface2)}
+.vm-item .vm-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vm-item .dim{font-size:10px}
+.vm-x{border:0;background:none;color:var(--text3);cursor:pointer;font-size:12px;padding:0 4px}.vm-x:hover{color:var(--red)}
+.vm-save{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--border);margin-top:6px;padding:8px}
+.vm-save input[type=text]{padding:7px 9px;border:1px solid var(--border2);border-radius:7px;background:var(--surface);color:var(--text);font-size:12px}
+.vm-save label{font-size:11px;color:var(--text2);display:flex;gap:6px;align-items:center}
+.bulk-bar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:720;background:var(--surface);border:1px solid var(--border2);border-radius:12px;box-shadow:0 14px 44px rgba(0,0,0,.22);padding:9px 12px;display:none;align-items:center;gap:8px;flex-wrap:wrap;max-width:calc(100vw - 32px);font-size:12px}
+body.bulk-on .main{padding-bottom:130px}
+.bulk-bar.show{display:flex}.bulk-bar b{font-size:13px}.bulk-bar .sep{width:1px;height:22px;background:var(--border2)}
+.bulk-bar select,.bulk-bar input{padding:5px 7px;border:1px solid var(--border2);border-radius:7px;background:var(--surface);color:var(--text);font-size:12px}
+.bulk-bar input[type=number]{width:64px}
+.sel-box{width:15px;height:15px;accent-color:var(--zuper);cursor:pointer;flex-shrink:0}
+.blk-chip{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:9px;background:var(--red-bg);color:var(--red);margin-left:6px;vertical-align:1px}
+.blk-chip.lo{background:var(--amber-bg);color:var(--amber)}
+.feed{display:flex;flex-direction:column;gap:8px}
+.feed-item{display:flex;gap:10px;align-items:flex-start}
+.feed-ico{width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:var(--surface3);color:var(--text2)}
+.feed-ico.c{background:var(--zuper-glow);color:var(--zuper)}.feed-ico.b{background:var(--red-bg);color:var(--red)}.feed-ico.s{background:var(--blue-bg);color:var(--blue)}
+.feed-main{flex:1;min-width:0}.feed-meta{font-size:11px;color:var(--text2)}.feed-meta b{color:var(--text)}
+.feed-text{font-size:12px;line-height:1.55;margin-top:2px;white-space:pre-wrap;word-wrap:break-word}
+.feed-item.cmt .feed-text{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:8px 11px}
+.feed-day{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin:8px 0 0}
+.mention{color:var(--zuper);font-weight:600}
+.composer{position:relative;margin-bottom:14px}
+.composer textarea{width:100%;min-height:64px;font-family:inherit;font-size:12px;padding:9px 11px;border:1px solid var(--border2);border-radius:9px;background:var(--surface);color:var(--text);resize:vertical}
+.composer .cbar{display:flex;gap:8px;align-items:center;margin-top:6px}
+.mention-pop{position:absolute;left:10px;top:100%;margin-top:-34px;background:var(--surface);border:1px solid var(--border2);border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,.18);z-index:30;min-width:220px;max-height:200px;overflow:auto;display:none}
+.mention-pop.show{display:block}.mention-pop div{padding:6px 10px;font-size:12px;cursor:pointer}.mention-pop div.on,.mention-pop div:hover{background:var(--surface2)}
+.seg.sm button{padding:4px 10px;font-size:11px}
+.mw-hello{font-size:13px;color:var(--text2);margin:-6px 0 14px}
+.mw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px;margin-bottom:16px}
+.mw-grid .card{margin:0}
+.mw-scroll{max-height:420px;overflow:auto}
+.blk-row{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;background:var(--surface);border:1px solid var(--border);border-radius:9px;margin-bottom:6px;cursor:pointer;font-size:12px}
+.blk-row:hover{border-color:var(--border2)}.blk-row.res{opacity:.65}
+.blk-row .blk-t{font-weight:600}.blk-row .blk-m{font-size:11px;color:var(--text2);margin-top:2px}
+.imp{display:inline-block;width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}.imp.High{background:var(--red)}.imp.Medium{background:var(--amber)}.imp.Low{background:var(--gray)}
+.role-ov{font-size:10px;color:var(--blue);margin-left:3px}
+@media (max-width:700px){.mw-grid{grid-template-columns:1fr}.views-menu{width:min(320px,calc(100vw - 32px))}}
 </style>
 </head>
 <body data-theme="light">
@@ -433,6 +486,7 @@ body.gt-on .drawer,body.gt-on .drawer-ov{display:none}
     <div class="topbar-actions">
       <div class="status-dot" id="statusDot"></div>
       <span class="status-txt" id="statusTxt">Ready</span>
+      <button class="top-btn me-btn" id="meBtn" onclick="openWhoAmI()" title="Who you are — used for My Work and as the author of your changes">👤 Who are you?</button>
       <button class="top-btn" onclick="guideStart()" title="Walk through this module">❔ Guide</button>
       <button class="top-btn" id="syncBtn" onclick="syncNow()" title="Pull the latest from Zoho Projects">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>Sync
@@ -457,12 +511,30 @@ body.gt-on .drawer,body.gt-on .drawer-ov{display:none}
         <div class="chart-note" style="margin-top:4px">The at-risk worklist, ETA changes and the go-lives expected this week and this month are in <a href="https://onboarding-intel.zuperops.com/horizon" target="_blank" rel="noopener">Onboarding Intelligence → Go-Live Horizon ↗</a>.</div>
       </div>
 
+      <div class="page" id="page-mywork">
+        <div class="page-hdr"><div><div class="page-title">My Work</div><div class="page-sub">Your tasks, projects, blockers and mentions in one place</div></div>
+          <div class="hdr-right"><span class="filter-label">Showing work for</span><select class="filter-select" id="mwWho" onchange="MW_WHO=this.value;renderMyWork()"></select></div></div>
+        <div id="mwHello" class="mw-hello"></div>
+        <div class="kpi-grid" id="mwKpi"></div>
+        <div id="mwBody"></div>
+      </div>
+
+      <div class="page" id="page-blockers">
+        <div class="page-hdr"><div><div class="page-title">Risks &amp; Blockers</div><div class="page-sub">What is holding projects up, who owns it and how long it has been open</div></div>
+          <div class="hdr-right"><select class="filter-select" id="blkStatus" onchange="renderBlockers()"><option value="Open">Open</option><option value="Resolved">Resolved</option><option value="">All</option></select>
+            <select class="filter-select" id="blkKind" onchange="renderBlockers()"></select></div></div>
+        <div class="kpi-grid" id="blkKpi"></div>
+        <div class="charts-grid" id="blkCharts"></div>
+        <div class="tbl-card" id="blkCard"><div class="tbl-hdr"><span class="tbl-title">Blockers</span><span class="tbl-pill" id="blkPill">—</span></div>
+          <div class="tbl-wrap"><table id="blkTable"><thead><tr><th data-k="imp">Impact</th><th data-k="title">Blocker</th><th data-k="proj">Project</th><th data-k="kind">Type</th><th data-k="owner">Owner</th><th data-k="raised">Raised</th><th data-k="age">Age</th><th data-k="target">Target</th><th data-k="status">Status</th></tr></thead><tbody id="blkTbl"></tbody></table></div></div>
+      </div>
+
       <div class="page" id="page-projects">
         <div class="page-hdr"><div><div class="page-title">Projects</div><div class="page-sub">All projects with health, task progress and ETA. Hours, ETA history, staffing and risk detail are in <a href="https://onboarding-intel.zuperops.com/onboarding-intelligence" target="_blank" rel="noopener">Onboarding Intelligence ↗</a></div></div>
           <div class="hdr-right"><select class="filter-select" id="projPhaseSel" onchange="renderProjects()"></select><select class="filter-select" id="projRagSel" onchange="renderProjects()"><option value="">All health</option><option value="R">🔴 At risk</option><option value="A">🟡 Watch</option><option value="G">🟢 On track</option></select></div></div>
         <div class="kpi-grid" id="projKpi"></div>
         <div class="charts-grid" id="projCharts"></div>
-        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">All projects</span><span class="tbl-pill" id="projPill">—</span></div>
+        <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title">All projects</span><div style="display:flex;gap:8px;align-items:center"><button class="top-btn" id="projSelBtn" onclick="toggleBulk('projects')" title="Select several projects to change their PM, BA, SA or CSM at once">☐ Select</button><span class="tbl-pill" id="projPill">—</span></div></div>
           <div class="tbl-wrap"><table id="projTable"><thead><tr id="projHead"></tr></thead><tbody id="projTbl"></tbody></table></div></div>
       </div>
 
@@ -483,7 +555,7 @@ body.gt-on .drawer,body.gt-on .drawer-ov{display:none}
         <div class="kpi-grid" id="taskKpi"></div>
         <div class="charts-grid" id="taskCharts"></div>
         <div class="tbl-card"><div class="tbl-hdr"><span class="tbl-title" id="taskTblTitle">Tasks by project</span>
-            <div style="display:flex;gap:8px;align-items:center"><input class="tbl-search" id="taskSearch" placeholder="Search project or task…" style="width:240px" oninput="renderTaskList()"><button class="top-btn" onclick="tpAll(true)">Expand all</button><button class="top-btn" onclick="tpAll(false)">Collapse all</button><button class="tbl-csv-btn" onclick="csvTasks()">⬇ CSV</button><span class="tbl-pill" id="taskPill">—</span></div></div>
+            <div style="display:flex;gap:8px;align-items:center"><input class="tbl-search" id="taskSearch" placeholder="Search project or task…" style="width:240px" oninput="renderTaskList()"><button class="top-btn" id="taskSelBtn" onclick="toggleBulk('tasks')" title="Select several tasks to mark done, reassign or move due dates at once">☐ Select</button><button class="top-btn" onclick="tpAll(true)">Expand all</button><button class="top-btn" onclick="tpAll(false)">Collapse all</button><button class="tbl-csv-btn" onclick="csvTasks()">⬇ CSV</button><span class="tbl-pill" id="taskPill">—</span></div></div>
           <div id="taskProjects" class="tp-list"></div></div>
       </div>
 
@@ -560,6 +632,8 @@ body.gt-on .drawer,body.gt-on .drawer-ov{display:none}
 <div class="drawer-ov" id="drawerOv" onclick="closeDrawer()"></div>
 <div class="drawer" id="drawer"></div>
 <div class="toast" id="toast"></div>
+<div class="bulk-bar" id="bulkBar"></div>
+<div class="modal-ov" id="modalOv" onclick="if(event.target===this)closeModal()"><div class="modal" id="modal"></div></div>
 <div id="gtSpot"></div><div id="gtPop" role="dialog" aria-live="polite"></div>
 
 <script>
@@ -596,7 +670,7 @@ const FEATURES={team:false,golives:false};
 const OI_URL='https://onboarding-intel.zuperops.com';
 
 let token='',DEMO=false,RAW=null,isDark=false,charts={},activePage='overview';
-let P=[],PBYID={},TBY={},OVBY={},PEOPLE=[],ACCOUNTS=[],SET={},STATUSES=[];
+let P=[],PBYID={},TBY={},OVBY={},PEOPLE=[],ACCOUNTS=[],SET={},STATUSES=[],PMETA={},BLK_BY={};
 // HubSpot deal id from the Zoho project's deal link (…/record/0-3/<id>).
 function dealIdOf(p){const m=String(p.deal_url||'').match(/(\d{6,})\/?(?:\?.*)?$/);return m?m[1]:null;}
 // Company name key for fuzzy matching: lowercase, no punctuation or legal suffixes.
@@ -649,11 +723,17 @@ function toggleTheme(){
 // API / AUTH
 // ═══════════════════════════════════════════════════════════════
 async function api(action,body){
-  if(DEMO)return demoApi(action,body);
-  const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json','x-pcc-token':token},body:JSON.stringify(Object.assign({action},body||{}))});
-  const j=await r.json().catch(()=>({error:'Bad response ('+r.status+')'}));
-  if(r.status===401&&action!=='login'){logout(true);throw new Error('Session expired — sign in again.');}
-  if(!r.ok||j.error)throw new Error(j.error||('HTTP '+r.status));
+  // Every write is signed with the name picked in "Who are you?"; writes return the activity lines they logged.
+  body=Object.assign({},body||{});if(!body.by&&action!=='login'){const n=myName();if(n)body.by=n;}
+  let j;
+  if(DEMO)j=await demoApi(action,body);
+  else{
+    const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json','x-pcc-token':token},body:JSON.stringify(Object.assign({action},body))});
+    j=await r.json().catch(()=>({error:'Bad response ('+r.status+')'}));
+    if(r.status===401&&action!=='login'){logout(true);throw new Error('Session expired — sign in again.');}
+    if(!r.ok||j.error)throw new Error(j.error||('HTTP '+r.status));
+  }
+  if(action!=='data'&&RAW&&j&&Array.isArray(j.activity))pushAct(j);
   return j;
 }
 async function doLogin(){
@@ -671,9 +751,12 @@ function logout(silent){
 async function enterApp(){
   $('loginScreen').style.display='none';$('appShell').style.display='flex';
   $('srcPill').textContent=DEMO?'Demo data':'Zoho Projects';$('srcPill').className='company-pill'+(DEMO?' demo':'');
-  await loadData();
-  let start='overview';try{const h=location.hash.replace('#','');if(h&&$('page-'+h))start=h;}catch(e){}
-  showPage(start);
+  await loadData();renderMeBtn();
+  // A shared link (#page?v=1&…) restores filters + options; a bare #page just opens it.
+  // With no page in the URL, people who said who they are land on My Work.
+  let h='';try{h=location.hash;}catch(e){}
+  if(!applyHash(h))showPage(myName()?'mywork':'overview');
+  if(!myName()&&!GT)openWhoAmI(true);
 }
 async function loadData(){
   setStatus('loading','Loading…');
@@ -722,6 +805,8 @@ function derive(){
   TBY={};(RAW.tasks||[]).forEach(t=>{(TBY[t.project_id]=TBY[t.project_id]||[]).push(t);});
   OVBY={};(RAW.overrides||[]).forEach(o=>{(OVBY[o.project_id]=OVBY[o.project_id]||[]).push(o);});
   const snapBy={};(RAW.snapshots||[]).forEach(s=>{(snapBy[s.project_id]=snapBy[s.project_id]||[]).push(s);});
+  PMETA={};(RAW.project_meta||[]).forEach(r=>PMETA[r.project_id]=r);
+  BLK_BY={};(RAW.blockers||[]).forEach(b=>(BLK_BY[b.project_id]=BLK_BY[b.project_id]||[]).push(b));
   const now=new Date(),today=t0();
   P=(RAW.projects||[]).filter(p=>!excl.has(String(p.name||'').toLowerCase().trim())).map(p=>{
     const tasks=TBY[p.id]||[];
@@ -756,6 +841,10 @@ function derive(){
     if(pps.length)x.pct=Math.round(pps.reduce((a,b)=>a+b,0)/pps.length);
     x.hasManual=PIPES.some(pp=>x.pipe[pp.k].manual||x.pipe[pp.k].items.length||x.pipe[pp.k].status);
     x.pm=p.pm_name||'';x.ba=p.ba_name||'';x.csm=p.csm_name||'';
+    // Team changes made in the Command Center (pcc_project_meta.roles) override Zoho's PM / BA / SA / CSM.
+    const ro=(PMETA[p.id]||{}).roles||{};x.zroles={pm:x.pm,ba:x.ba,sa:x.second,csm:x.csm};x.roleOv=Object.keys(ro);
+    if('pm' in ro)x.pm=ro.pm||'';if('ba' in ro)x.ba=ro.ba||'';if('sa' in ro)x.second=ro.sa||'';if('csm' in ro)x.csm=ro.csm||'';
+    x.blockers=BLK_BY[p.id]||[];x.openBlk=x.blockers.filter(b=>b.status!=='Resolved');
     // current stage = first pipeline/stage with open work
     x.stage='';x.stageIdx=99;
     for(let i=0;i<PIPES.length;i++){const pp=x.pipe[PIPES[i].k];
@@ -806,6 +895,9 @@ function derive(){
   (RAW.projects||[]).forEach(p=>{add(p.owner_name,p.owner_email);add(p.secondary_name,p.secondary_email);});
   (RAW.tasks||[]).forEach(t=>(t.owners||[]).forEach(o=>add(o.name,o.email)));
   Object.values(cfg).forEach(c=>{const k=c.email.toLowerCase();seen[k]=Object.assign({},seen[k]||{},{name:c.name||(seen[k]||{}).name,email:c.email});});
+  // PM / BA / CSM (and names typed in the tool) are names only — add them without creating duplicates.
+  const addName=n=>{if(n&&!Object.values(seen).some(s=>sameName(s.name,n)))seen['name:'+n.toLowerCase()]={name:n,email:null};};
+  P.forEach(p=>{addName(p.pm);addName(p.ba);addName(p.csm);addName(p.second);});(RAW.blockers||[]).forEach(b=>addName(b.owner_name));
   PEOPLE=Object.values(seen).map(s=>{const c=cfg[String(s.email||'').toLowerCase()]||{};
     return{name:c.name||s.name,email:s.email,role:c.role||'Onboarding',org:c.org||'Zuper',capacity:Number(c.capacity)||SET.targets.capacity_default,weekly_hours:Number(c.weekly_hours)||null,active:c.active!==false,configured:!!c.email};});
   deriveTimelogs();
@@ -866,7 +958,8 @@ function renderFilterBar(){
     <select class="filter-select" onchange="setF('partner',this.value)"><option value="">Direct + partners</option><option value="__partner"${F.partner==='__partner'?' selected':''}>All partners</option>${partners.map(v=>`<option value="${esc(v)}"${v===F.partner?' selected':''}>${esc(v)}</option>`).join('')}</select>
     <select class="filter-select" onchange="setF('owner',this.value)">${opts(uniq(p=>p.owner).concat(uniq(p=>p.second)).filter((v,i,a)=>a.indexOf(v)===i).sort(),F.owner,'All owners')}</select>
     <select class="filter-select" onchange="setF('industry',this.value)">${opts(uniq(p=>p.industry),F.industry,'All industries')}</select>
-    ${active?`<button class="filter-clear" onclick="clearF()">Clear filters</button>`:''}`;
+    ${active?`<button class="filter-clear" onclick="clearF()">Clear filters</button>`:''}
+    <div class="fb-right"><button class="top-btn" onclick="toggleViews(event)" title="Save this page with its filters, or open a saved view">☆ Views ▾</button><button class="top-btn" onclick="copyLink()" title="Copy a link to this page with the same filters">🔗 Copy link</button><div class="views-menu" id="viewsMenu"></div></div>`;
 }
 function setF(k,v){F[k]=v;try{localStorage.setItem('pcc_filters',JSON.stringify(F));}catch(e){}renderFilterBar();renderPage(activePage);}
 function clearF(){F.team=F.partner=F.owner=F.industry='';setF('period',F.period);}
@@ -876,6 +969,8 @@ try{Object.assign(F,JSON.parse(localStorage.getItem('pcc_filters')||'{}'));}catc
 // NAV
 // ═══════════════════════════════════════════════════════════════
 const ICON={
+  mywork:'<circle cx="11" cy="8" r="4"/><path d="M3 21v-1a7 7 0 0 1 12-4.9"/><path d="M16 18l2 2 4-4"/>',
+  blockers:'<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   overview:'<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
   dashboard:'<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><path d="M17 13v8M13 17h8"/>',
   projects:'<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>',
@@ -893,8 +988,8 @@ function renderSidebar(){
   const overdue=vp.filter(p=>p.preLive).reduce((s,p)=>s+p.overdue,0);
   const s=(RAW&&RAW.sync)||{};
   $('sidebar').innerHTML=
-    `<div class="sidebar-section">Overview</div>`+navItem('overview','Overview')+navItem('dashboard','My Dashboard')+
-    `<div class="sidebar-section">Delivery</div>`+navItem('projects','Projects',vp.filter(p=>p.preLive).length)+navItem('pipelines','Pipelines')+navItem('tasks','Tasks',overdue||null,true)+(FEATURES.golives?navItem('golives','Go-Lives'):'')+
+    `<div class="sidebar-section">Overview</div>`+navItem('mywork','My Work',myOverdueCount()||null,true)+navItem('overview','Overview')+navItem('dashboard','My Dashboard')+
+    `<div class="sidebar-section">Delivery</div>`+navItem('projects','Projects',vp.filter(p=>p.preLive).length)+navItem('pipelines','Pipelines')+navItem('tasks','Tasks',overdue||null,true)+navItem('blockers','Risks & Blockers',vp.reduce((t,p)=>t+p.openBlk.length,0)||null,true)+(FEATURES.golives?navItem('golives','Go-Lives'):'')+
     (FEATURES.team?`<div class="sidebar-section">People</div>`+navItem('team','Team Load'):'')+
     `<div class="sidebar-section">Post go-live</div>`+navItem('adoption','Adoption',ACCOUNTS.length||null)+
     `<div class="sidebar-section">Admin</div>`+navItem('accounts','Accounts')+navItem('settings','Settings',(!DEMO&&!s.zoho_connected)?'!':null,true)+
@@ -904,14 +999,15 @@ function showPage(id){
   if(FEATURES[id]===false)id='overview';
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const pg=$('page-'+id);if(pg)pg.classList.add('active');
+  if(BULK.ctx&&BULK.ctx!==id){BULK.ctx=null;BULK.sel.clear();renderBulkBtns();$('projHead').innerHTML='';}
   activePage=id;try{history.replaceState(null,'','#'+id);}catch(e){}
-  renderSidebar();try{renderPage(id);}finally{guideAuto(id);}
+  renderSidebar();try{renderPage(id);}finally{renderBulkBar();guideAuto(id);}
   $('mainContent').scrollTop=0;
 }
 function renderPage(id){
   Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}});charts={};
   const fn={overview:renderOverview,projects:renderProjects,pipelines:renderPipelines,tasks:renderTasks,golives:renderGoLives,
-    team:renderTeam,adoption:renderAdoption,accounts:renderAccounts,settings:renderSettings,dashboard:renderDashboardPage}[id];
+    team:renderTeam,adoption:renderAdoption,accounts:renderAccounts,settings:renderSettings,dashboard:renderDashboardPage,mywork:renderMyWork,blockers:renderBlockers}[id];
   if(fn)fn();
 }
 
@@ -1017,17 +1113,19 @@ function filterTable(id,q){const st=TBL[id];if(!st)return;st.q=q;st.page=1;const
 function pctCell(pct,cls){return `<div class="pct-cell"><div class="pbar ${cls||''}"><i style="width:${Math.max(0,Math.min(100,pct))}%"></i></div><span>${pct}%</span></div>`;}
 // Standard project row used by Projects and Go-Lives:
 // Health · Project · Status · Done · Current ETA (or Go-live) · ARR · Owner · Project Manager · BA · SA
-const PROJ_HEAD=dateLbl=>`<th data-k="rag">Health</th><th data-k="name">Project</th><th data-k="status">Status</th><th data-k="pct">Done</th><th data-k="date">${dateLbl}</th><th data-k="arr">ARR</th><th data-k="owner">Owner</th><th data-k="pm">Project Manager</th><th data-k="ba">BA</th><th data-k="sa">SA</th>`;
-function projectRow(p,dateMode){
+const PROJ_HEAD=(dateLbl,sel)=>(sel?`<th class="nosort" style="width:28px"><input type="checkbox" class="sel-box" title="Select all shown" onclick="bulkPickMany(shownIds(),this.checked)"></th>`:'')+`<th data-k="rag">Health</th><th data-k="name">Project</th><th data-k="status">Status</th><th data-k="pct">Done</th><th data-k="date">${dateLbl}</th><th data-k="arr">ARR</th><th data-k="owner">Owner</th><th data-k="pm">Project Manager</th><th data-k="ba">BA</th><th data-k="sa">SA</th>`;
+function projectRow(p,dateMode,sel){
   const d=dateMode==='golive'?p.liveD:p.etaD;
+  const ov=k=>(p.roleOv||[]).includes(k)?`<span class="role-ov" title="Changed in Command Center (Zoho: ${esc(p.zroles[k]||'nobody')})">✎</span>`:'';
+  const person=(n,k)=>(n?who(n):'<span class="dim">—</span>')+ov(k);
   const dCell=dateMode==='golive'?`<td class="dim">${fmtD(d)}</td>`
     :`<td class="dim">${fmtD(d)}${p.preLive&&p.etaD&&p.etaD<t0()?' <span class="badge br">passed</span>':p.slip>0?` <span class="slip pos" title="vs first ETA seen">+${p.slip}d</span>`:''}</td>`;
-  return{cells:`<td>${ragDot(p.rag,ragTip(p))}</td><td><b>${esc(p.name)}</b> <span class="dim mono">${esc(p.key||'')}</span>${dealIdOf(p)?` <a class="oi-link" href="${OI_URL}/deal/${dealIdOf(p)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Deal brief in Onboarding Intelligence: AI handover, stakeholders, staffing">brief ↗</a>`:''}</td><td><span class="badge ${badgeFor(p.status)}">${esc(p.status||'—')}</span></td>
+  return{id:p.id,cells:`${sel?`<td>${selBox(p.id)}</td>`:''}<td>${ragDot(p.rag,ragTip(p))}</td><td><b>${esc(p.name)}</b> <span class="dim mono">${esc(p.key||'')}</span>${blkChip(p)}${dealIdOf(p)?` <a class="oi-link" href="${OI_URL}/deal/${dealIdOf(p)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Deal brief in Onboarding Intelligence: AI handover, stakeholders, staffing">brief ↗</a>`:''}</td><td><span class="badge ${badgeFor(p.status)}">${esc(p.status||'—')}</span></td>
     <td title="P1–P4: ${PIPES.map(pp=>pp.k+' '+(p.pipe[pp.k].pct==null?'–':p.pipe[pp.k].pct+'%')).join(' · ')}">${pctCell(p.pct)}${p.hasManual?' <span class="dim" title="Includes manual pipeline updates">✎</span>':''}</td>${dCell}
-    <td class="num">${p.arr?fmt$(p.arr):'—'}</td><td>${who(p.owner)}</td><td>${p.pm?who(p.pm):'<span class="dim">—</span>'}</td><td>${p.ba?who(p.ba):'<span class="dim">—</span>'}</td><td>${p.second?who(p.second):'<span class="dim">—</span>'}</td>`,
+    <td class="num">${p.arr?fmt$(p.arr):'—'}</td><td>${who(p.owner)}</td><td>${person(p.pm,'pm')}</td><td>${person(p.ba,'ba')}</td><td>${person(p.second,'sa')}</td>`,
     sort:{rag:p.ragRank,name:p.name,status:p.status,pct:p.pct,date:d,arr:p.arr,owner:p.owner,pm:p.pm,ba:p.ba,sa:p.second},
     csv:[p.name,p.key,{R:'At risk',A:'Watch',G:'On track',N:''}[p.rag],p.why.join('; '),p.status,p.phase,p.pct,...PIPES.map(pp=>p.pipe[pp.k].pct),p.current_eta,p.baseline_eta,p.actual_go_live,p.arr,p.owner,p.pm,p.ba,p.second,p.csm,p.team,partnerKind(p)],
-    onclick:`openProject('${jsq(p.id)}')`};
+    onclick:sel?`bulkPick('${jsq(p.id)}',!BULK.sel.has('${jsq(p.id)}'));drawTable('projTbl')`:`openProject('${jsq(p.id)}')`};
 }
 const PROJ_CSV=['Project','Key','Health','Why','Status','Phase','% done','P1 %','P2 %','P3 %','P4 %','Current ETA','Baseline ETA','Go-live','ARR','Owner','Project Manager','BA','SA','CSM','Team','Direct/Partner'];
 
@@ -1105,6 +1203,8 @@ function copyDigest(){
   const sec=(t,a,f)=>{if(a.length){L.push('');L.push(`*${t}* (${a.length})`);a.slice(0,15).forEach(x=>L.push('• '+f(x)));}};
   sec('Went live',c.live,x=>x.p.name);sec('ETA slipped',c.slip,x=>`${x.p.name} ${x.meta} → ${fmtD(x.p.etaD)}`);
   sec('At risk',pre.filter(p=>p.rag==='R'),p=>`${p.name} (${p.owner||'no owner'}) — ${p.why.join('; ')}`);
+  const hiBlk=[];vp.forEach(p=>p.openBlk.filter(b=>b.impact==='High').forEach(b=>hiBlk.push({p,b})));
+  sec('High-impact blockers',hiBlk,x=>`${x.p.name}: ${x.b.title} (${x.b.kind}, ${x.b.owner_name||'no owner'}, open ${blkAge(x.b)}d)`);
   if(FEATURES.team){const over=PEOPLE.map(pr=>loadOf(pr)).filter(l=>l.util>100);sec('Over capacity',over,l=>`${l.name}: ${l.util}%`);}
   navigator.clipboard.writeText(L.join('\n')).then(()=>toast('Digest copied — paste into Slack or email.'),()=>toast('Could not copy to clipboard.'));
 }
@@ -1140,8 +1240,9 @@ function renderProjects(){
     makePie('prPartner',pk,pk.map(k=>pt[k]),pk.map((_,i)=>CL[(i+1)%CL.length]));legend('prPartnerLeg',pk.map(k=>`${k} (${pt[k]})`),pk.map((_,i)=>CL[(i+1)%CL.length]));
   });
   $('projPill').textContent=rows.length+' projects';
-  if(!$('projHead').innerHTML)$('projHead').innerHTML=PROJ_HEAD('Current ETA');
-  setTable('projTbl',rows.map(p=>projectRow(p)),PROJ_CSV,{sortK:'rag',title:'projects'});
+  const sel=bulkOn('projects');
+  if(!$('projHead').innerHTML)$('projHead').innerHTML=PROJ_HEAD('Current ETA',sel);
+  setTable('projTbl',rows.map(p=>projectRow(p,null,sel)),PROJ_CSV,{sortK:'rag',title:'projects'});
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1241,7 +1342,7 @@ function renderTaskList(){
       next:openAll.filter(t=>t.end_date).sort((a,b)=>pd(a.end_date)-pd(b.end_date))[0]};}).filter(Boolean);
   const srt=$('taskSort').value;
   groups.sort(srt==='open'?(a,b)=>b.open-a.open:srt==='eta'?(a,b)=>(a.p.etaD||9e15)-(b.p.etaD||9e15):srt==='name'?(a,b)=>a.p.name.localeCompare(b.p.name):(a,b)=>b.overdue-a.overdue||b.open-a.open);
-  TASK_LIST=groups;
+  TASK_LIST=groups;if(BULK.ctx==='tasks')setTimeout(renderBulkBar);
   $('taskTblTitle').textContent={overdue:'Overdue tasks',due7:'Due in the next 7 days',open:'Open tasks',unassigned:'Open, unassigned',done:'Completed in period'}[view]+' · by project';
   $('taskPill').textContent=`${groups.length} projects · ${groups.reduce((s,g)=>s+g.ts.length,0).toLocaleString()} tasks`;
   if(q)groups.forEach(g=>TP_OPEN.add(g.p.id));
@@ -1250,7 +1351,7 @@ function renderTaskList(){
     const byGrp={};g.ts.forEach(t=>{const k=(t.pipeline||'Other')+'|'+(t.stage||'')+'|'+(t.tasklist_name||'');(byGrp[k]=byGrp[k]||[]).push(t);});
     return `<div class="tp-card${open?' open':''}">
       <div class="tp-hd" onclick="tpToggle('${jsq(p.id)}')">
-        <span class="tp-caret">${open?'▾':'▸'}</span>${ragDot(p.rag,p.why.join(' · '))}
+        ${bulkOn('tasks')?`<input type="checkbox" class="sel-box" title="Select this project's ${g.ts.length} tasks"${g.ts.every(t=>BULK.sel.has(t.id))?' checked':''} onclick="event.stopPropagation();bulkPickMany(tpIds('${jsq(p.id)}'),this.checked)">`:''}<span class="tp-caret">${open?'▾':'▸'}</span>${ragDot(p.rag,p.why.join(' · '))}
         <div class="tp-name"><b>${esc(p.name)}</b><div class="tp-sub">${esc(p.status)} · ${esc(p.owner||'no owner')}${p.pm?' · PM '+esc(p.pm):''}${p.etaD?' · ETA '+fmtD(p.etaD):''}</div></div>
         <div style="width:150px">${pctCell(p.pct)}</div>
         <div class="tp-chips"><span class="tp-chip">${g.open} open</span>${g.overdue?`<span class="tp-chip red">${g.overdue} overdue</span>`:''}${g.due7?`<span class="tp-chip amber">${g.due7} due 7d</span>`:''}</div>
@@ -1774,7 +1875,7 @@ async function savePeople(){
 let drawerProject=null,drawerTab='overview';
 function openProject(id,tab,focus){
   const p=PBYID[id];if(!p){toast('Project is hidden by the current filters or settings.');return;}
-  TASK_VIEW=null;TASK_EDIT=null;OVDRAFT={};drawerProject=p;drawerTab=tab||'overview';
+  TASK_VIEW=null;TASK_EDIT=null;BLK_EDIT=null;OVDRAFT={};drawerProject=p;drawerTab=tab||'overview';
   if(drawerTab==='pipelines'&&/^P[1-9]$/.test(focus||''))PL_OPEN={pid:id,k:new Set([focus])};
   renderDrawer();$('drawerOv').style.display='block';requestAnimationFrame(()=>$('drawer').classList.add('open'));
   if(focus)setTimeout(()=>{const el=$('pls-'+focus);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},260);
@@ -1816,13 +1917,16 @@ async function ovReset(k){if(!confirm(`Clear manual updates for ${k}? Progress g
   try{const r=await api('override_save',{project_id:drawerProject.id,pipeline:k,manual_pct:null,status:null,note:null,items:[]});delete OVDRAFT[k];upsertOverride(r&&r.row);redrawLocal();toast(`${k} reset.`);}catch(e){toast(e.message,4000);}}
 
 function closeDrawer(){TASK_EDIT=null;TASK_VIEW=null;$('drawer').classList.remove('open');$('drawerOv').style.display='none';Object.keys(charts).filter(k=>k.startsWith('dr')).forEach(destroyChart);}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if($('modalOv').classList.contains('show')){closeModal();return;}closeDrawer();});
 function renderDrawer(){
   const p=drawerProject;const acc=ACCOUNTS.find(a=>a.proj&&a.proj.id===p.id);
-  const tabs=[['overview','Overview'],['pipelines','Pipelines ✎'],['tasks',`Tasks (${p.open} open)`],['timeline','Timeline'],['adoption','Adoption'],['history','History']];
+  if(drawerTab==='history')drawerTab='activity';
+  const nCmt=(RAW.comments||[]).filter(c=>c.project_id===p.id).length;
+  const tabs=[['overview','Overview'],['pipelines','Pipelines ✎'],['tasks',`Tasks (${p.open} open)`],['blockers',`Blockers${p.openBlk.length?` (${p.openBlk.length})`:''}`],['activity',`Activity${nCmt?` · ${nCmt} 💬`:''}`],['timeline','Timeline'],['adoption','Adoption']];
   $('drawer').innerHTML=`<div class="drawer-hd"><div class="drawer-title">${ragDot(p.rag)} ${esc(p.name)} <span class="dim mono" style="font-size:12px">${esc(p.key||'')}</span> ${phaseBadge(p.phase)} <span class="badge ${badgeFor(p.status)}">${esc(p.status)}</span><button class="drawer-close" onclick="closeDrawer()">✕</button></div>
-    <div class="drawer-meta"><span>Owner <b>${esc(p.owner||'—')}</b></span><span>PM <b>${esc(p.pm||'—')}</b></span><span>BA <b>${esc(p.ba||'—')}</b></span><span>SA <b>${esc(p.second||'—')}</b></span>${p.csm?`<span>CSM <b>${esc(p.csm)}</b></span>`:''}<span>Team <b>${esc(p.team||'—')}</b></span><span>${esc(partnerKind(p))}</span><span>ARR <b>${p.arr?fmt$(p.arr):'—'}</b></span>${p.conf!=null?`<span>Confidence <b>${p.conf}/5</b></span>`:''}</div>
+    <div class="drawer-meta"><span>Owner <b>${esc(p.owner||'—')}</b></span><span>PM <b>${esc(p.pm||'—')}</b></span><span>BA <b>${esc(p.ba||'—')}</b></span><span>SA <b>${esc(p.second||'—')}</b></span>${p.csm?`<span>CSM <b>${esc(p.csm)}</b></span>`:''}<span><a href="#" onclick="editRoles('${jsq(p.id)}');return false" title="Change PM, BA, SA or CSM here (Zoho is not changed)">✎ team${p.roleOv&&p.roleOv.length?' (changed here)':''}</a></span><span>Team <b>${esc(p.team||'—')}</b></span><span>${esc(partnerKind(p))}</span><span>ARR <b>${p.arr?fmt$(p.arr):'—'}</b></span>${p.conf!=null?`<span>Confidence <b>${p.conf}/5</b></span>`:''}</div>
     ${p.why.length?`<div class="drawer-meta" style="color:${p.rag==='R'?'var(--red)':'var(--amber)'}">${esc(p.why.join(' · '))}</div>`:''}
+    ${p.openBlk.length?`<div class="drawer-meta"><a href="#" style="color:var(--red)" onclick="drawerTab='blockers';renderDrawer();return false">⛔ ${p.openBlk.length} open blocker${p.openBlk.length>1?'s':''}: ${esc(p.openBlk.slice(0,2).map(b=>b.title).join(' · '))}${p.openBlk.length>2?' …':''}</a></div>`:''}
     <div class="drawer-links">${DEMO?'':`<a class="top-btn" target="_blank" rel="noopener" href="https://projects.zoho.com/portal/zuperinc#project/${encodeURIComponent(p.id)}">Open in Zoho ↗</a>`}${dealIdOf(p)?`<a class="top-btn" target="_blank" rel="noopener" href="${OI_URL}/deal/${dealIdOf(p)}" title="AI handover brief, staffing and go-live prediction">Deal brief (Onboarding Intelligence) ↗</a>`:''}${p.deal_url?`<a class="top-btn" target="_blank" rel="noopener" href="${esc(p.deal_url)}">HubSpot deal ↗</a>`:''}${p.zuper_company_id?`<span class="company-pill">Zuper acct ${esc(p.zuper_company_id)}</span>`:''}</div>
     <div class="drawer-tabs">${tabs.map(([k,l])=>`<div class="dtab${drawerTab===k?' active':''}" onclick="drawerTab='${k}';renderDrawer()">${l}</div>`).join('')}</div></div>
     <div class="drawer-body" id="drawerBody"></div>`;
@@ -1849,14 +1953,10 @@ function renderDrawer(){
     if(!acc){b.innerHTML=`<div class="empty">${p.postLive?'No adoption data — add this customer\'s Zuper API key under Accounts.':'Adoption tracking starts after go-live.'}${p.zuper_company_id?`<br><span class="dim">Accounts are matched on Zuper company id ${esc(p.zuper_company_id)}.</span>`:''}<br><button class="top-btn" style="margin-top:8px" onclick="closeDrawer();showPage('accounts')">Go to Accounts</button></div>`;return;}
     const m=acc.m;b.innerHTML=`<div class="notice">${healthBadge(acc.health)} score ${acc.score}/100 · pulled ${ago(acc.last_pulled)}</div><div class="kpi-grid">${kpiEnhHtml([{label:'Jobs (30d)',val:m.jobs_30d??'—',cls:'orange'},{label:'Field users',val:m.field_users_30d??'—',cls:'blue',sub:`of ${m.users_active??'—'}`},{label:'Quotes (30d)',val:m.quotes_30d??'—',cls:'purple'},{label:'Invoices (30d)',val:m.invoices_30d??'—',cls:'green'},{label:'Last job',val:acc.idle!=null?acc.idle+'d ago':'—',cls:'teal'}])}</div>
       <button class="top-btn" onclick="closeDrawer();$('adoptSel').value='${acc.id}';showPage('adoption')">Open full adoption view →</button>`;
-  }else if(drawerTab==='history'){
-    const s=p.snaps;const ev=[];
-    for(let i=1;i<s.length;i++){if(s[i].status!==s[i-1].status)ev.push({d:s[i].snap_date,t:`Status: ${s[i-1].status} → ${s[i].status}`});
-      if(s[i].current_eta!==s[i-1].current_eta)ev.push({d:s[i].snap_date,t:`ETA: ${fmtD(s[i-1].current_eta)} → ${fmtD(s[i].current_eta)}`});}
-    if(p.first_seen)ev.push({d:String(p.first_seen).slice(0,10),t:'First seen by Command Center'+(p.baseline_eta?` (baseline ETA ${fmtD(p.baseline_eta)})`:'')});
-    b.innerHTML=(s.length>1?`<div class="chart-card" style="margin-bottom:14px"><div class="chart-title">Tasks done over time</div><div class="chart-wrap" style="height:160px"><canvas id="drBurn"></canvas></div></div>`:'')+
-      (ev.length?ev.sort((a,b)=>a.d<b.d?1:-1).map(e=>`<div class="task-row"><span class="dim mono" style="width:80px">${fmtD(e.d)}</span><span class="tn">${esc(e.t)}</span></div>`).join(''):'<div class="empty">History builds from daily snapshots — changes will appear here.</div>');
-    if(s.length>1)later(()=>makeLine('drBurn',s.map(x=>fmtD(x.snap_date)),[{label:'Done',data:s.map(x=>x.tasks_closed),borderColor:'#22C55E',backgroundColor:'rgba(34,197,94,.1)',fill:true,tension:.3,pointRadius:1},{label:'Open',data:s.map(x=>x.tasks_open),borderColor:'#FD5000',pointRadius:1,tension:.3}]));
+  }else if(drawerTab==='activity'){
+    renderDrawerActivity(p,b);
+  }else if(drawerTab==='blockers'){
+    renderDrawerBlockers(p,b);
   }
 }
 // ═══════════════════════════════════════════════════════════════
@@ -2098,7 +2198,7 @@ function taskViewHtml(p){
 function taskRowHtml(t,now,grp){
   const due=pd(t.end_date),over=!t.is_completed&&due&&due<t0(),tid=jsq(t.id);
   return `<div class="task-row${t.is_completed?' done':''}${over?' over':''}" data-tid="${esc(t.id)}" data-grp="${esc(grp||'')}"${grp?` draggable="true" ondragstart="tdStart(event,'${tid}')" ondragend="tdEnd(event)" ondragover="tdOver(event)" ondragleave="tdLeave(event)" ondrop="tdDrop(event)"`:''} onclick="openTaskView('${jsq(t.project_id)}','${tid}')" title="Open task">
-    ${grp?'<span class="drag-h" title="Drag to re-order">⋮⋮</span>':''}<span class="chk click${t.is_completed?' on':''}" title="${t.is_completed?'Reopen':'Mark done'}" onclick="event.stopPropagation();tickTask('${tid}')">${t.is_completed?'✓':''}</span>
+    ${grp?'<span class="drag-h" title="Drag to re-order">⋮⋮</span>':''}${!grp&&bulkOn('tasks')?selBox(t.id):''}<span class="chk click${t.is_completed?' on':''}" title="${t.is_completed?'Reopen':'Mark done'}" onclick="event.stopPropagation();tickTask('${tid}')">${t.is_completed?'✓':''}</span>
     <span class="tn">${t.prefix?`<span class="dim mono" style="font-size:10px">${esc(t.prefix)}</span> `:''}${esc(t.name)}${stepChip(t)}${t.native?' <span class="src-tag cc">Command Center</span>':''}${t.edited?' <span class="src-tag cc" title="Edited in Command Center">edited</span>':''}${t.doneHere?` <span class="src-tag cc" title="Zoho still shows ${t.zohoDone?'done':'open'}">${t.is_completed?'done':'reopened'} here</span>`:''}${/high/i.test(t.priority||'')?' <span class="badge br">High</span>':''}</span>
     <span class="dim" style="font-size:11px">${esc(ownerNames(t)||'Unassigned')}</span><span class="dim" style="font-size:11px;width:70px;text-align:right">${fmtD(due)}</span>
     <span class="badge ${t.is_completed?'bg':over?'br':badgeFor(t.status)}">${esc(over?ddiff(t0(),due)+'d late':t.status||'')}</span>
@@ -2500,7 +2600,19 @@ function buildDemo(){
   const np=projects.find(p=>p.status==='Configuration')||projects[0];
   const native_tasks=[{id:'b1c2d3e4-0000-4000-8000-000000000001',project_id:np.id,name:'Walk customer through new inspection checklist',pipeline:'P2',stage:3,status:'In Progress',is_completed:false,owner_name:np.owner_name,owner_email:np.owner_email,end_date:ymd(new Date(today.getTime()+3*DAY)),priority:'High',notes:'Customer asked for a second session.',created_by:'Demo user',updated_by:'Demo user',created_at:new Date(today.getTime()-2*DAY).toISOString(),updated_at:new Date(today.getTime()-2*DAY).toISOString()},
     {id:'b1c2d3e4-0000-4000-8000-000000000002',project_id:np.id,name:'Confirm QuickBooks sync settings',pipeline:'P4',stage:2,status:'Open',is_completed:false,owner_name:null,end_date:ymd(new Date(today.getTime()-4*DAY)),created_by:'Demo user',created_at:new Date(today.getTime()-9*DAY).toISOString(),updated_at:new Date(today.getTime()-9*DAY).toISOString()}];
-  return{projects,tasks,milestones:[],snapshots:snaps,people:[],native_tasks,settings:{capacity:{public_holidays:[demoHoliday+' Demo public holiday']},timeoff:{[owners[3][0]]:[{from:ymd(new Date(demoLastMon.getTime()+3*DAY)),to:ymd(new Date(demoLastMon.getTime()+4*DAY)),note:'Family trip'}]}},accounts,adoption,timelogs,sync:{zoho_connected:true,projects_at:new Date().toISOString(),tasks_at:new Date().toISOString(),last:null}};
+  // Sample blockers, comments and activity on onboarding projects.
+  const preP=projects.filter(p=>!['Hyper Care','Completed','Moved to Support','Phase 2','Churned'].includes(p.status));
+  const iso=d=>new Date(today.getTime()-d*DAY).toISOString(),day=d=>ymd(new Date(today.getTime()-d*DAY));
+  const BT=[['Customer hasn\'t sent the price book export','Customer','High'],['QuickBooks sync failing on tax codes','Integration','High'],['Waiting on partner to finish data migration','Partner','Medium'],
+    ['Measurement report not attaching to proposals','Product / bug','Medium'],['Office manager on leave — training paused','Customer','Low'],['Need Connect number ported from old carrier','Internal','Medium']];
+  const blockers=BT.map(([title,kind,impact],i)=>{const p=preP[(i*3+1)%preP.length],res=i===4;return{id:'d0000000-0000-4000-8000-00000000000'+i,project_id:p.id,title,kind,impact,owner_name:i===5?null:owners[i%owners.length][0],
+    status:res?'Resolved':'Open',raised_on:day(4+i*6),target_date:i%2?day(-5+i):day(2),resolved_on:res?day(1):null,resolution:res?'Customer confirmed new training date':null,created_by:owners[(i+2)%owners.length][0],created_at:iso(4+i*6),updated_at:iso(1)};});
+  const comments=[{id:'c0000000-0000-4000-8000-000000000001',project_id:preP[1].id,body:`@${owners[0][0]} can you chase the price book on Thursday's call? Training is booked for next week.`,author:owners[1][0],mentions:[owners[0][0]],created_at:iso(1)},
+    {id:'c0000000-0000-4000-8000-000000000002',project_id:preP[1].id,body:'Kick-off went well — they want inspection templates first.',author:owners[0][0],mentions:[],created_at:iso(6)},
+    {id:'c0000000-0000-4000-8000-000000000003',project_id:preP[4].id,body:`Heads up @${owners[0][0]} — the QuickBooks tax codes need fixing before go-live.`,author:owners[3][0],mentions:[owners[0][0]],created_at:iso(2)}];
+  const activity=[{id:1,project_id:preP[1].id,at:iso(0.2),actor:owners[2][0],kind:'task',summary:'Marked “Customer Data Imported” done'},{id:2,project_id:preP[4].id,at:iso(1.5),actor:owners[3][0],kind:'pipeline',summary:'P4: status Blocked'}]
+    .concat(blockers.map((b,i)=>({id:10+i,project_id:b.project_id,at:b.created_at,actor:b.created_by,kind:'blocker',summary:`Raised ${b.impact.toLowerCase()}-impact ${b.kind.toLowerCase()} blocker “${b.title}”`})));
+  return{projects,tasks,milestones:[],snapshots:snaps,people:[],native_tasks,blockers,comments,activity,project_meta:[],settings:{capacity:{public_holidays:[demoHoliday+' Demo public holiday']},timeoff:{[owners[3][0]]:[{from:ymd(new Date(demoLastMon.getTime()+3*DAY)),to:ymd(new Date(demoLastMon.getTime()+4*DAY)),note:'Family trip'}]}},accounts,adoption,timelogs,sync:{zoho_connected:true,projects_at:new Date().toISOString(),tasks_at:new Date().toISOString(),last:null}};
 }
 function demoApi(action,body){
   if(!DEMO_DB)DEMO_DB=buildDemo();
@@ -2517,8 +2629,466 @@ function demoApi(action,body){
   if(action==='task_meta_save'){const L=DEMO_DB.task_meta=DEMO_DB.task_meta||[];(body.items||[]).forEach(x=>{let m=L.find(r=>r.task_id===x.task_id);if(!m){m={task_id:x.task_id,project_id:x.project_id,sort_order:null,hidden:false,done:null};L.push(m);}
     if('sort_order' in x)m.sort_order=x.sort_order;if('hidden' in x)m.hidden=!!x.hidden;if('done' in x){m.done=x.done;m.done_at=x.done?new Date().toISOString():null;}if('edits' in x)m.edits=x.edits;if('checks' in x)m.checks=x.checks;m.updated_by=body.by;m.updated_at=new Date().toISOString();});return Promise.resolve({ok:true});}
   if(action==='task_delete'){DEMO_DB.native_tasks=(DEMO_DB.native_tasks||[]).filter(x=>x.id!==body.id);return Promise.resolve({ok:true});}
+  const now=new Date().toISOString(),D=DEMO_DB,cp=x=>JSON.parse(JSON.stringify(x));
+  const act=(pid,kind,summary)=>{const a={id:Date.now()+Math.random(),project_id:pid,at:now,actor:body.by||null,kind,summary};(D.activity=D.activity||[]).push(a);return a;};
+  if(action==='comment_save'){const c={id:crypto.randomUUID(),project_id:body.project_id,body:body.body,mentions:body.mentions||[],author:body.by||null,created_at:now};(D.comments=D.comments||[]).push(c);return Promise.resolve({ok:true,comment:cp(c)});}
+  if(action==='comment_delete'){D.comments=(D.comments||[]).filter(c=>c.id!==body.id);return Promise.resolve({ok:true});}
+  if(action==='blocker_save'){const L=D.blockers=D.blockers||[];let b=body.id&&L.find(x=>x.id===body.id);const wasRes=b&&b.status==='Resolved';
+    const row=Object.assign({},body,{updated_by:body.by,updated_at:now,resolved_on:body.status==='Resolved'?(body.resolved_on||(b&&b.resolved_on)||ymd(t0())):null,raised_on:body.raised_on||ymd(t0())});delete row.by;
+    if(b)Object.assign(b,row);else{b=Object.assign(row,{id:crypto.randomUUID(),created_by:body.by,created_at:now});L.push(b);}
+    const a=act(b.project_id,'blocker',!body.id?`Raised ${b.impact.toLowerCase()}-impact ${b.kind.toLowerCase()} blocker “${b.title}”`:(b.status==='Resolved')!==wasRes?`${b.status==='Resolved'?'Resolved':'Re-opened'} blocker “${b.title}”`:`Updated blocker “${b.title}”`);
+    return Promise.resolve({ok:true,blocker:cp(b),activity:[cp(a)]});}
+  if(action==='blocker_delete'){const b=(D.blockers||[]).find(x=>x.id===body.id);D.blockers=(D.blockers||[]).filter(x=>x.id!==body.id);return Promise.resolve({ok:true,activity:b?[cp(act(b.project_id,'blocker',`Deleted blocker “${b.title}”`))]:[]});}
+  if(action==='project_meta_save'){const L=D.project_meta=D.project_meta||[];const rows=(body.project_ids||[]).map(pid=>{let m=L.find(x=>x.project_id===pid);if(!m){m={project_id:pid,roles:null};L.push(m);}
+      const r=Object.assign({},m.roles||{});Object.keys(body.roles).forEach(k=>{if(body.roles[k]===null)delete r[k];else r[k]=body.roles[k]||null;});m.roles=Object.keys(r).length?r:null;m.updated_by=body.by;m.updated_at=now;return cp(m);});
+    const desc=Object.keys(body.roles).map(k=>({pm:'Project Manager',ba:'BA',sa:'SA',csm:'CSM'}[k])+(body.roles[k]===null?' back to Zoho value':body.roles[k]?' set to '+body.roles[k]:' cleared')).join(', ');
+    return Promise.resolve({ok:true,rows,activity:(body.project_ids||[]).map(pid=>cp(act(pid,'project',desc)))});}
+  if(action==='tasks_bulk'){const nat=[],meta=[];(body.items||[]).forEach(x=>{
+      if(String(x.task_id).startsWith('pcc:')){const r=(D.native_tasks||[]).find(t=>t.id===x.task_id.slice(4));if(!r)return;
+        if('done' in x&&x.done!==null){r.is_completed=!!x.done;r.status=x.done?'Done':(r.status==='Done'?'Open':r.status);r.completed_at=x.done?now:null;}
+        ['owner_name','owner_email','end_date','priority'].forEach(k=>{if(k in x)r[k]=x[k];});r.updated_by=body.by;r.updated_at=now;nat.push(cp(r));if(!('hidden' in x))return;}
+      const L=D.task_meta=D.task_meta||[];let m=L.find(r=>r.task_id===x.task_id);if(!m){m={task_id:x.task_id,project_id:x.project_id,sort_order:null,hidden:false,done:null,edits:null,checks:null};L.push(m);}
+      if('hidden' in x)m.hidden=!!x.hidden;
+      if(!String(x.task_id).startsWith('pcc:')){if('done' in x){m.done=x.done;m.done_at=x.done?now:null;}
+        const e=Object.assign({},m.edits||{});let t=false;['owner_name','owner_email','end_date','priority'].forEach(k=>{if(k in x){e[k]=x[k];t=true;}});if(t)m.edits=e;}
+      m.updated_by=body.by;m.updated_at=now;meta.push(cp(m));});
+    const pids=Array.from(new Set((body.items||[]).map(x=>x.project_id)));
+    return Promise.resolve({ok:true,native:nat,meta,activity:pids.map(pid=>cp(act(pid,'task',`${(body.items||[]).filter(x=>x.project_id===pid).length} task(s) updated in bulk`)))});}
+  if(action==='view_save'){const cur=(D.settings.views||{list:[]}).list.filter(v=>v.name.toLowerCase()!==body.name.toLowerCase());cur.push({id:crypto.randomUUID(),name:body.name,hash:body.hash,by:body.by,at:now});D.settings.views={list:cur};return Promise.resolve({ok:true,views:cp(D.settings.views)});}
+  if(action==='view_delete'){D.settings.views={list:((D.settings.views||{}).list||[]).filter(v=>v.id!==body.id)};return Promise.resolve({ok:true,views:cp(D.settings.views)});}
   return Promise.reject(new Error('Not available with demo data.'));
 }
+// ═══════════════════════════════════════════════════════════════
+// IDENTITY — no sign-in yet: each person picks their name once (kept in this browser).
+// Used for My Work and as the author of comments, blockers and edits.
+// ═══════════════════════════════════════════════════════════════
+const sameName=(a,b)=>!!a&&!!b&&String(a).trim().toLowerCase()===String(b).trim().toLowerCase();
+const personOf=n=>PEOPLE.find(x=>sameName(x.name,n));
+function isPerson(n,email,who){if(!who)return false;if(sameName(n,who))return true;const pr=personOf(who);return !!(pr&&pr.email&&email&&String(email).toLowerCase()===pr.email.toLowerCase());}
+const taskIsFor=(t,who)=>(t.owners||[]).some(o=>isPerson(o.name,o.email,who));
+function rolesFor(p,who){const r=[];
+  if(isPerson(p.owner,p.owner_email,who))r.push('Owner');if(sameName(p.pm,who))r.push('PM');if(sameName(p.ba,who))r.push('BA');
+  if((p.roleOv||[]).includes('sa')?sameName(p.second,who):isPerson(p.second,p.secondary_email,who))r.push('SA');if(sameName(p.csm,who))r.push('CSM');return r;}
+function peopleNames(){return Array.from(new Set(PEOPLE.filter(x=>x.active).map(x=>x.name).filter(Boolean))).sort((a,b)=>a.localeCompare(b));}
+function renderMeBtn(){const b=$('meBtn');if(!b)return;const n=myName();b.innerHTML=n?`<span class="avatar">${esc(initials(n))}</span>${esc(n.split(/\s+/)[0])}`:'👤 Who are you?';}
+function openModal(html){$('modal').innerHTML=html;$('modalOv').classList.add('show');}
+function closeModal(){$('modalOv').classList.remove('show');}
+let WHO_LIST=[];
+function openWhoAmI(first){
+  WHO_LIST=peopleNames();
+  openModal(`<div class="modal-hd">${first?'Welcome — who are you?':'Who are you?'}</div>
+    <div class="modal-sub">Pick your name so <b>My Work</b> shows your tasks and projects, and your comments and changes carry your name. It's remembered in this browser; change it any time from the top bar.</div>
+    <div class="modal-body"><input class="tbl-search" id="whoQ" placeholder="Search your name…" oninput="drawWhoList()" style="width:100%">
+      <div class="pick-list" id="whoList"></div></div>
+    <div class="modal-ft"><span class="dim" style="font-size:11px;margin-right:auto">Not in the list? Type your full name and press Enter.</span><button class="top-btn" onclick="closeModal()">${first?'Skip for now':'Cancel'}</button></div>`);
+  drawWhoList();
+  setTimeout(()=>{const q=$('whoQ');if(!q)return;q.focus();q.onkeydown=e=>{if(e.key!=='Enter')return;const v=q.value.trim();if(!v)return;
+    const m=WHO_LIST.filter(n=>n.toLowerCase().includes(v.toLowerCase()));pickWho(m.length===1?m[0]:v);};},30);
+}
+function drawWhoList(){
+  const q=(($('whoQ')||{}).value||'').trim().toLowerCase(),me=myName();
+  const L=WHO_LIST.map((n,i)=>({n,i})).filter(x=>!q||x.n.toLowerCase().includes(q));
+  $('whoList').innerHTML=L.length?L.slice(0,80).map(x=>{const pr=personOf(x.n);
+    return `<div class="pick-item${sameName(x.n,me)?' on':''}" onclick="pickWho(WHO_LIST[${x.i}])"><span class="avatar">${esc(initials(x.n))}</span>${esc(x.n)}<span class="dim">${esc(pr&&pr.configured?pr.role:'')}</span></div>`;}).join('')
+    :`<div class="dim" style="padding:8px;font-size:12px">No match — press Enter to use “${esc(q)}”.</div>`;
+}
+function pickWho(n){n=String(n||'').trim().slice(0,80);if(!n)return;try{localStorage.setItem('pcc_me',n);}catch(e){}
+  MW_WHO=n;closeModal();renderMeBtn();toast(`Hi ${n.split(/\s+/)[0]} — My Work now shows your tasks and projects.`);
+  if(activePage==='mywork'||activePage==='overview')showPage('mywork');else renderPage(activePage);}
+
+// ═══════════════════════════════════════════════════════════════
+// MY WORK — tasks, projects, blockers, mentions and recent changes for one person
+// ═══════════════════════════════════════════════════════════════
+let MW_WHO='',MW_TV='soon';
+const mwActive=p=>p.preLive||p.phase==='Hypercare';
+function myOverdueCount(){const who=myName();if(!who||!RAW)return 0;const today=t0();
+  return(RAW.tasks||[]).filter(t=>!t.is_completed&&t.end_date&&pd(t.end_date)<today&&PBYID[t.project_id]&&mwActive(PBYID[t.project_id])&&taskIsFor(t,who)).length;}
+function renderMyWork(){
+  const me=myName();if(!MW_WHO)MW_WHO=me;
+  const names=peopleNames();if(MW_WHO&&!names.some(n=>sameName(n,MW_WHO)))names.unshift(MW_WHO);
+  $('mwWho').innerHTML=`<option value="">— pick a person —</option>`+names.map(n=>`<option value="${esc(n)}"${sameName(n,MW_WHO)?' selected':''}>${esc(n)}${sameName(n,me)?' (you)':''}</option>`).join('');
+  const who=MW_WHO;
+  if(!who){$('mwHello').innerHTML='';$('mwKpi').innerHTML='';
+    $('mwBody').innerHTML=`<div class="card"><div class="empty">Tell the Command Center who you are to see your tasks, projects and mentions.<br><button class="cta sm" style="margin-top:10px" onclick="openWhoAmI()">Pick your name</button></div></div>`;return;}
+  const today=t0(),in7=new Date(today.getTime()+7*DAY),now=new Date();
+  const mine=(RAW.tasks||[]).filter(t=>!t.is_completed&&PBYID[t.project_id]&&mwActive(PBYID[t.project_id])&&taskIsFor(t,who));
+  const over=mine.filter(t=>t.end_date&&pd(t.end_date)<today),soon=mine.filter(t=>t.end_date&&pd(t.end_date)>=today&&pd(t.end_date)<=in7);
+  const projs=P.filter(mwActive).map(p=>({p,roles:rolesFor(p,who)})).filter(x=>x.roles.length);
+  const blk=(RAW.blockers||[]).filter(b=>b.status!=='Resolved'&&PBYID[b.project_id]&&sameName(b.owner_name,who));
+  const ment=(RAW.comments||[]).filter(c=>PBYID[c.project_id]&&(c.mentions||[]).some(m=>sameName(m,who))&&(now-pd(c.created_at))<=30*DAY).sort((a,b)=>pd(b.created_at)-pd(a.created_at));
+  const pids=new Set(projs.map(x=>x.p.id));
+  const changes=[];projs.forEach(x=>projectFeed(x.p).forEach(e=>{if((now-e.at)<=7*DAY&&!sameName(e.actor,who))changes.push(Object.assign({pid:x.p.id},e));}));
+  changes.sort((a,b)=>b.at-a.at);
+  const self=sameName(who,me);
+  $('mwHello').innerHTML=self?`Hi ${esc(who.split(/\s+/)[0])} — here's what needs you today.`:`Viewing <b>${esc(who)}</b>'s work.`;
+  const jump=id=>`document.getElementById('${id}').scrollIntoView({behavior:'smooth',block:'start'})`;
+  $('mwKpi').innerHTML=kpiEnhHtml([
+    {label:'Overdue tasks',val:over.length,cls:'red',sub:over.length?'oldest '+ddiff(today,pd(over.map(t=>t.end_date).sort()[0]))+'d late':'nothing late',click:`MW_TV='soon';renderMyWork();${jump('mwTasks')}`,target:false},
+    {label:'Due in 7 days',val:soon.length,cls:'amber',click:`MW_TV='soon';renderMyWork();${jump('mwTasks')}`},
+    {label:'Open tasks',val:mine.length,cls:'blue',sub:'on active projects',click:`MW_TV='all';renderMyWork();${jump('mwTasks')}`},
+    {label:'My projects',val:projs.length,cls:'orange',sub:`${projs.filter(x=>x.p.rag==='R').length} at risk · ${projs.filter(x=>x.p.rag==='A').length} watch`,click:jump('mwProjCard')},
+    {label:'Blockers I own',val:blk.length,cls:'purple',sub:blk.filter(b=>b.impact==='High').length+' high impact',click:jump('mwBlk')},
+    {label:'Mentions (30d)',val:ment.length,cls:'teal',click:jump('mwMent')},
+  ]);
+  // tasks grouped by project
+  const tl=(MW_TV==='all'?mine:over.concat(soon)).slice().sort((a,b)=>(pd(a.end_date)||9e15)-(pd(b.end_date)||9e15));
+  const by={};tl.forEach(t=>(by[t.project_id]=by[t.project_id]||[]).push(t));
+  const tasksHtml=Object.keys(by).length?Object.keys(by).sort((a,b)=>(pd(by[a][0].end_date)||9e15)-(pd(by[b][0].end_date)||9e15)).map(pid=>{const p=PBYID[pid];
+    return `<div class="task-group"><div class="task-gh"><a href="#" onclick="openProject('${jsq(pid)}','tasks');return false" style="text-transform:none">${ragDot(p.rag,ragTip(p))} ${esc(p.name)}</a><span>${by[pid].length}</span></div>${by[pid].map(t=>taskRowHtml(t,now)).join('')}</div>`;}).join('')
+    :`<div class="empty">${MW_TV==='all'?'No open tasks assigned to '+esc(who)+'.':'Nothing overdue or due this week. 🎉'}</div>`;
+  const blkHtml=blk.length?blk.sort((a,b)=>BLK_IMP_RANK[a.impact]-BLK_IMP_RANK[b.impact]||String(a.raised_on).localeCompare(String(b.raised_on))).map(b=>blockerRowHtml(b,true)).join(''):'<div class="empty">No open blockers assigned to '+esc(who)+'.</div>';
+  const mentHtml=ment.length?`<div class="feed">${ment.slice(0,30).map(c=>feedItemHtml({at:pd(c.created_at),type:'comment',actor:c.author,text:c.body,c,pid:c.project_id},true)).join('')}</div>`:'<div class="empty">No one has mentioned '+esc(who)+' in the last 30 days.</div>';
+  const chHtml=changes.length?feedHtml(changes.slice(0,60),true):'<div class="empty">No changes by others on these projects in the last 7 days.</div>';
+  $('mwBody').innerHTML=`<div class="mw-grid">
+      <div class="card" id="mwTasks"><div class="card-title">${self?'My':'Their'} tasks <div class="seg sm" style="margin:0 0 0 auto">${[['soon','Overdue + this week'],['all','All open']].map(([k,l])=>`<button class="${MW_TV===k?'active':''}" onclick="MW_TV='${k}';renderMyWork()">${l}</button>`).join('')}</div></div><div class="mw-scroll">${tasksHtml}</div></div>
+      <div class="card" id="mwBlk"><div class="card-title">Blockers ${self?'I':'they'} own <span class="chart-badge">${blk.length} open</span></div><div class="mw-scroll">${blkHtml}</div></div>
+    </div>
+    <div class="tbl-card" id="mwProjCard"><div class="tbl-hdr"><span class="tbl-title">${self?'My':'Their'} projects</span><span class="tbl-pill">${projs.length}</span></div>
+      <div class="tbl-wrap"><table><thead><tr><th data-k="rag">Health</th><th data-k="name">Project</th><th data-k="role">${self?'My':'Their'} role</th><th data-k="status">Status</th><th data-k="pct">Done</th><th data-k="eta">Current ETA</th><th data-k="over">Overdue tasks</th><th data-k="blk">Open blockers</th></tr></thead><tbody id="mwProjTbl"></tbody></table></div></div>
+    <div class="mw-grid">
+      <div class="card" id="mwMent"><div class="card-title">Mentions <span class="chart-badge">last 30 days</span></div><div class="mw-scroll">${mentHtml}</div></div>
+      <div class="card"><div class="card-title">Recent changes on ${self?'my':'their'} projects <span class="chart-badge">last 7 days · by others and Zoho</span></div><div class="mw-scroll">${chHtml}</div></div>
+    </div>`;
+  setTable('mwProjTbl',projs.map(({p,roles})=>({cells:`<td>${ragDot(p.rag,ragTip(p))}</td><td><b>${esc(p.name)}</b>${blkChip(p)}</td><td>${roles.map(r=>`<span class="badge bb">${r}</span>`).join(' ')}</td><td><span class="badge ${badgeFor(p.status)}">${esc(p.status)}</span></td><td>${pctCell(p.pct)}</td>
+      <td class="dim">${fmtD(p.etaD)}${p.preLive&&p.etaD&&p.etaD<t0()?' <span class="badge br">passed</span>':''}</td><td>${p.overdue?`<span class="slip pos">${p.overdue}</span>`:'<span class="dim">0</span>'}</td><td>${p.openBlk.length||'<span class="dim">0</span>'}</td>`,
+    sort:{rag:p.ragRank,name:p.name,role:roles.join(','),status:p.status,pct:p.pct,eta:p.etaD,over:p.overdue,blk:p.openBlk.length},
+    csv:[p.name,roles.join(' / '),{R:'At risk',A:'Watch',G:'On track',N:''}[p.rag],p.status,p.pct,p.current_eta,p.overdue,p.openBlk.length],onclick:`openProject('${jsq(p.id)}')`})),
+    ['Project','Role','Health','Status','% done','Current ETA','Overdue tasks','Open blockers'],{sortK:'rag',title:'my-projects'});
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ACTIVITY + COMMENTS — one feed per project: comments, changes made in the tool
+// (pcc_activity) and Zoho status/ETA changes seen in the daily snapshots.
+// ═══════════════════════════════════════════════════════════════
+let FEED_F='all';
+function pushAct(r){if(r&&Array.isArray(r.activity)&&r.activity.length)RAW.activity=(RAW.activity||[]).concat(r.activity);}
+function projectFeed(p){
+  const out=[];
+  (RAW.comments||[]).forEach(c=>{if(c.project_id===p.id)out.push({at:pd(c.created_at),type:'comment',actor:c.author,text:c.body,c});});
+  (RAW.activity||[]).forEach(a=>{if(a.project_id===p.id)out.push({at:pd(a.at),type:a.kind==='blocker'?'blocker':'change',actor:a.actor,text:a.summary});});
+  const s=p.snaps||[];
+  for(let i=1;i<s.length;i++){
+    if(s[i].status!==s[i-1].status)out.push({at:pd(s[i].snap_date),type:'sync',actor:'Zoho',text:`Status: ${s[i-1].status} → ${s[i].status}`});
+    if(s[i].current_eta!==s[i-1].current_eta){const d=s[i].current_eta&&s[i-1].current_eta?ddiff(pd(s[i].current_eta),pd(s[i-1].current_eta)):null;
+      out.push({at:pd(s[i].snap_date),type:'sync',actor:'Zoho',text:`ETA: ${fmtD(s[i-1].current_eta)} → ${fmtD(s[i].current_eta)}${d?` (${d>0?'+':''}${d}d)`:''}`});}}
+  if(p.first_seen)out.push({at:pd(p.first_seen),type:'sync',actor:'Command Center',text:'First seen by Command Center'+(p.baseline_eta?` (baseline ETA ${fmtD(p.baseline_eta)})`:'')});
+  return out.filter(x=>x.at).sort((a,b)=>b.at-a.at);
+}
+function commentHtml(c){
+  let h=esc(c.body);
+  (c.mentions||[]).slice().sort((a,b)=>b.length-a.length).forEach(m=>{const e=esc('@'+m);h=h.split(e).join(`<span class="mention">${e}</span>`);});
+  return h.replace(/https?:\/\/[^\s<]+/g,u=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+}
+function whenTxt(d){const days=ddiff(t0(),new Date(d.getFullYear(),d.getMonth(),d.getDate()));return days<=1?ago(d.toISOString()):fmtD(d);}
+function feedItemHtml(e,showProj){
+  const ico=e.type==='comment'?`<span class="feed-ico c">${esc(initials(e.actor||'?'))}</span>`:e.type==='blocker'?'<span class="feed-ico b">⛔</span>':e.type==='sync'?'<span class="feed-ico s">Z</span>':`<span class="feed-ico">${esc(initials(e.actor||'?'))}</span>`;
+  const p=showProj&&e.pid?PBYID[e.pid]:null;
+  const del=e.type==='comment'&&e.c&&sameName(e.c.author,myName())&&!showProj?` · <a href="#" onclick="deleteComment('${e.c.id}');return false">delete</a>`:'';
+  const proj=p?` on <a href="#" onclick="openProject('${jsq(p.id)}','activity');return false">${esc(p.name)}</a>`:'';
+  return `<div class="feed-item${e.type==='comment'?' cmt':''}">${ico}<div class="feed-main"><div class="feed-meta"><b>${esc(e.actor||'Someone')}</b>${e.type==='comment'?' commented':''}${proj} · ${whenTxt(e.at)}${e.c&&e.c.edited_at?' · edited':''}${del}</div>
+    <div class="feed-text">${e.type==='comment'?commentHtml(e.c):esc(e.text)}</div></div></div>`;
+}
+function feedHtml(items,showProj){
+  let last='';return `<div class="feed">${items.map(e=>{const day=fmtD(e.at);const hd=day!==last?`<div class="feed-day">${ddiff(t0(),new Date(e.at.getFullYear(),e.at.getMonth(),e.at.getDate()))===0?'Today':day}</div>`:'';last=day;return hd+feedItemHtml(e,showProj);}).join('')}</div>`;
+}
+function renderDrawerActivity(p,b){
+  const all=projectFeed(p);
+  const items=all.filter(x=>FEED_F==='all'||(FEED_F==='comments'?x.type==='comment':x.type!=='comment'));
+  const nC=all.filter(x=>x.type==='comment').length;
+  const s=p.snaps;
+  b.innerHTML=`<div class="composer"><textarea id="cmtBox" maxlength="4000" placeholder="Post an update… type @ to mention someone (they'll see it in My Work)" oninput="mentionInput(this)" onkeydown="mentionKey(event)"></textarea><div class="mention-pop" id="mentionPop"></div>
+      <div class="cbar"><span class="dim" style="font-size:11px">${myName()?`Posting as <b>${esc(myName())}</b>`:'<a href="#" onclick="openWhoAmI();return false">Pick your name</a> to post'} · Ctrl+Enter to post</span><span style="flex:1"></span><button class="cta sm" id="cmtPost" onclick="postComment()">Post</button></div></div>
+    <div class="seg sm" style="margin-bottom:10px">${[['all',`Everything (${all.length})`],['comments',`Comments (${nC})`],['changes',`Changes (${all.length-nC})`]].map(([k,l])=>`<button class="${FEED_F===k?'active':''}" onclick="FEED_F='${k}';renderDrawer()">${l}</button>`).join('')}</div>
+    ${items.length?feedHtml(items):'<div class="empty">Nothing yet. Post the first update above — changes made in the Command Center and Zoho status/ETA changes show up here too.</div>'}
+    ${s.length>1?`<div class="chart-card" style="margin-top:16px"><div class="chart-title">Tasks done over time</div><div class="chart-wrap" style="height:150px"><canvas id="drBurn"></canvas></div></div>`:''}`;
+  if(s.length>1)later(()=>makeLine('drBurn',s.map(x=>fmtD(x.snap_date)),[{label:'Done',data:s.map(x=>x.tasks_closed),borderColor:'#22C55E',backgroundColor:'rgba(34,197,94,.1)',fill:true,tension:.3,pointRadius:1},{label:'Open',data:s.map(x=>x.tasks_open),borderColor:'#FD5000',pointRadius:1,tension:.3}]));
+}
+// @mention autocomplete
+let MENTION={list:[],i:0,start:-1};
+function mentionInput(el){
+  const v=el.value.slice(0,el.selectionStart),m=v.match(/(^|\s)@([^\s@][^@\n]{0,30})?$/);
+  if(!m){hideMention();return;}
+  const q=(m[2]||'').toLowerCase();MENTION.start=v.length-(m[2]||'').length-1;
+  MENTION.list=peopleNames().filter(n=>{const l=n.toLowerCase();return !q||l.startsWith(q)||l.split(/\s+/).some(w=>w.startsWith(q));}).slice(0,8);MENTION.i=0;
+  if(!MENTION.list.length){hideMention();return;}drawMention();
+}
+function drawMention(){const pop=$('mentionPop');if(!pop)return;pop.innerHTML=MENTION.list.map((n,i)=>`<div class="${i===MENTION.i?'on':''}" onmousedown="event.preventDefault();pickMention(${i})">${esc(n)}</div>`).join('');pop.classList.add('show');}
+function hideMention(){const pop=$('mentionPop');if(pop)pop.classList.remove('show');MENTION.list=[];}
+function mentionKey(e){
+  if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();postComment();return;}
+  if(!MENTION.list.length)return;
+  if(e.key==='ArrowDown'){e.preventDefault();MENTION.i=(MENTION.i+1)%MENTION.list.length;drawMention();}
+  else if(e.key==='ArrowUp'){e.preventDefault();MENTION.i=(MENTION.i-1+MENTION.list.length)%MENTION.list.length;drawMention();}
+  else if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();pickMention(MENTION.i);}
+  else if(e.key==='Escape'){e.stopPropagation();hideMention();}
+}
+function pickMention(i){const el=$('cmtBox'),n=MENTION.list[i];if(!el||!n)return;const pos=el.selectionStart;
+  el.value=el.value.slice(0,MENTION.start)+'@'+n+' '+el.value.slice(pos);const c=MENTION.start+n.length+2;el.focus();el.setSelectionRange(c,c);hideMention();}
+async function postComment(){
+  const el=$('cmtBox');if(!el)return;const text=el.value.trim();if(!text){el.focus();return;}
+  if(!myName()){openWhoAmI();return;}
+  const mentions=peopleNames().filter(n=>text.includes('@'+n));
+  const btn=$('cmtPost');btn.disabled=true;
+  try{const r=await api('comment_save',{project_id:drawerProject.id,body:text,mentions,by:myName()});
+    RAW.comments=(RAW.comments||[]).concat([r.comment]);FEED_F=FEED_F==='changes'?'all':FEED_F;renderDrawer();
+    toast(mentions.length?`Posted — ${mentions.join(', ')} will see it in My Work.`:'Posted.');
+    clearTimeout(PAGE_REDRAW);PAGE_REDRAW=setTimeout(()=>renderPage(activePage),300);}
+  catch(e){toast(e.message,4000);btn.disabled=false;}
+}
+async function deleteComment(id){if(!confirm('Delete this comment?'))return;
+  try{await api('comment_delete',{id});RAW.comments=(RAW.comments||[]).filter(c=>c.id!==id);renderDrawer();toast('Comment deleted.');}catch(e){toast(e.message,4000);}}
+
+// ═══════════════════════════════════════════════════════════════
+// RISKS & BLOCKERS — pcc_blockers. Structured: type, impact, owner, raised/target, resolution.
+// ═══════════════════════════════════════════════════════════════
+const BLK_KINDS=['Customer','Integration','Internal','Partner','Product / bug','Other'];
+const BLK_IMPACT=['High','Medium','Low'];
+const BLK_IMP_RANK={High:0,Medium:1,Low:2};
+const BLK_KIND_COLORS={'Customer':'#FD5000','Integration':'#3B82F6','Internal':'#A855F7','Partner':'#14B8A6','Product / bug':'#EF4444','Other':'#94A3B8'};
+let BLK_EDIT=null,BLK_KIND='';
+const blkAge=b=>ddiff(b.status==='Resolved'&&b.resolved_on?pd(b.resolved_on):t0(),pd(b.raised_on)||t0());
+function blkChip(p){const o=p.openBlk||[];if(!o.length)return '';const hi=o.some(b=>b.impact==='High');
+  return `<span class="blk-chip${hi?'':' lo'}" title="${esc(o.map(b=>`${b.impact}: ${b.title}`).join('\n'))}">⛔ ${o.length}</span>`;}
+function blockerRowHtml(b,showProj){
+  const p=PBYID[b.project_id],res=b.status==='Resolved',late=!res&&b.target_date&&pd(b.target_date)<t0();
+  return `<div class="blk-row${res?' res':''}" onclick="openBlocker('${jsq(b.project_id)}','${b.id}')"><span class="imp ${esc(b.impact)}" title="${esc(b.impact)} impact"></span>
+    <div style="flex:1;min-width:0"><div class="blk-t">${esc(b.title)}</div>
+      <div class="blk-m">${showProj&&p?esc(p.name)+' · ':''}${esc(b.kind)} · ${b.owner_name?esc(b.owner_name):'<span class="badge ba">no owner</span>'} · raised ${fmtD(b.raised_on)} (${blkAge(b)}d)${b.target_date?` · target <span class="${late?'slip pos':''}">${fmtD(b.target_date)}</span>`:''}${res?` · resolved ${fmtD(b.resolved_on)}`:''}</div>
+      ${res&&b.resolution?`<div class="blk-m">✓ ${esc(b.resolution)}</div>`:''}</div>
+    <span class="badge ${res?'bg':late?'br':'ba'}">${res?'Resolved':late?'Past target':'Open'}</span></div>`;
+}
+function openBlocker(pid,id){openProject(pid,'blockers');BLK_EDIT={pid,id:id||null};renderDrawer();later(()=>{const e=$('bfTitle');if(e)e.focus();});}
+function renderDrawerBlockers(p,b){
+  const list=(p.blockers||[]).slice().sort((x,y)=>(x.status==='Resolved')-(y.status==='Resolved')||BLK_IMP_RANK[x.impact]-BLK_IMP_RANK[y.impact]||String(y.raised_on).localeCompare(String(x.raised_on)));
+  const form=BLK_EDIT&&BLK_EDIT.pid===p.id?blockerFormHtml(p):'';
+  const open=list.filter(x=>x.status!=='Resolved'),res=list.filter(x=>x.status==='Resolved');
+  b.innerHTML=`<div class="tf-bar"><span class="dim">Log what is holding this project up — leadership sees every open blocker on Risks &amp; Blockers.</span>${form?'':`<button class="cta sm" onclick="BLK_EDIT={pid:'${jsq(p.id)}',id:null};renderDrawer();later(()=>{const e=$('bfTitle');if(e)e.focus();})">+ Add blocker</button>`}</div>${form}
+    ${open.length?open.map(x=>blockerRowHtml(x)).join(''):form?'':'<div class="empty">No open blockers.</div>'}
+    ${res.length?`<div class="task-gh" style="margin-top:14px"><span>Resolved</span><span>${res.length}</span></div>${res.map(x=>blockerRowHtml(x)).join('')}`:''}`;
+}
+function blockerFormHtml(p){
+  const r=BLK_EDIT.id?(RAW.blockers||[]).find(x=>x.id===BLK_EDIT.id):null;
+  const opt=(v,cur,l)=>`<option value="${esc(v)}"${String(v)===String(cur??'')?' selected':''}>${esc(l||v)}</option>`;
+  const people=peopleNames(),own=r?r.owner_name:myName();
+  const st=r?r.status:'Open';
+  return `<div class="card tf-card"><div class="card-title">${r?'Edit blocker':'New blocker'}</div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="fld" style="grid-column:1/-1"><label>What's blocking? *</label><input id="bfTitle" maxlength="300" value="${esc(r?r.title:'')}" placeholder="e.g. Customer hasn't sent the price book export"></div>
+      <div class="fld"><label>Type</label><select id="bfKind">${BLK_KINDS.map(k=>opt(k,r?r.kind:'Customer')).join('')}</select></div>
+      <div class="fld"><label>Impact</label><select id="bfImpact">${BLK_IMPACT.map(k=>opt(k,r?r.impact:'Medium')).join('')}</select></div>
+      <div class="fld"><label>Owner</label><select id="bfOwner">${opt('',own,'— no owner —')}${people.map(n=>opt(n,own)).join('')}${own&&!people.includes(own)?opt(own,own):''}</select></div>
+      <div class="fld"><label>Raised</label><input type="date" id="bfRaised" value="${r?r.raised_on||'':ymd(t0())}"></div>
+      <div class="fld"><label>Target date</label><input type="date" id="bfTarget" value="${r&&r.target_date||''}"></div>
+      <div class="fld"><label>Status</label><select id="bfStatus" onchange="$('bfResWrap').style.display=this.value==='Resolved'?'':'none'">${['Open','Resolved'].map(k=>opt(k,st)).join('')}</select></div>
+      <div class="fld" id="bfResWrap" style="grid-column:1/-1;${st==='Resolved'?'':'display:none'}"><label>How was it resolved?</label><input id="bfResolution" maxlength="2000" value="${esc(r&&r.resolution||'')}" placeholder="e.g. Customer sent the file; imported on 11/04"></div>
+      <div class="fld" style="grid-column:1/-1"><label>Notes</label><textarea id="bfNotes" rows="2" maxlength="4000" style="width:100%;font-family:inherit;font-size:12px;padding:8px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text)">${esc(r&&r.notes||'')}</textarea></div>
+    </div>
+    ${r?`<div class="chart-note">Raised by ${esc(r.created_by||'someone')} ${ago(r.created_at)}${r.updated_by&&r.updated_at!==r.created_at?` · last changed by ${esc(r.updated_by)} ${ago(r.updated_at)}`:''}</div>`:''}
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="cta sm" id="bfSave" onclick="saveBlocker()">${r?'Save changes':'Add blocker'}</button>${r&&r.status!=='Resolved'?`<button class="top-btn" onclick="$('bfStatus').value='Resolved';$('bfResWrap').style.display='';$('bfResolution').focus()">✓ Resolve</button>`:''}<button class="top-btn" onclick="BLK_EDIT=null;renderDrawer()">Cancel</button>
+      ${r?`<span style="flex:1"></span><button class="top-btn danger" onclick="deleteBlocker('${r.id}')">Delete</button>`:''}</div></div>`;
+}
+async function saveBlocker(){
+  if(!BLK_EDIT)return;const title=$('bfTitle').value.trim();if(!title){toast('Describe the blocker.');$('bfTitle').focus();return;}
+  const owner=$('bfOwner').value,pr=personOf(owner);
+  const body={id:BLK_EDIT.id||undefined,project_id:BLK_EDIT.pid,title,kind:$('bfKind').value,impact:$('bfImpact').value,owner_name:owner||null,owner_email:pr&&pr.email||null,
+    raised_on:$('bfRaised').value||null,target_date:$('bfTarget').value||null,status:$('bfStatus').value,resolution:$('bfResolution').value.trim()||null,notes:$('bfNotes').value.trim()||null,by:myName()||null};
+  $('bfSave').disabled=true;
+  try{const r=await api('blocker_save',body);const L=RAW.blockers=RAW.blockers||[];const i=L.findIndex(x=>x.id===r.blocker.id);if(i>=0)L[i]=r.blocker;else L.push(r.blocker);
+    BLK_EDIT=null;redrawLocal();toast(body.id?(body.status==='Resolved'?'Blocker resolved.':'Blocker updated.'):'Blocker added.');}
+  catch(e){toast(e.message,4000);const b=$('bfSave');if(b)b.disabled=false;}
+}
+async function deleteBlocker(id){const r=(RAW.blockers||[]).find(x=>x.id===id);if(!r||!confirm(`Delete blocker “${r.title}”? Resolving keeps the history; deleting removes it.`))return;
+  try{const res=await api('blocker_delete',{id,by:myName()||null});RAW.blockers=RAW.blockers.filter(x=>x.id!==id);BLK_EDIT=null;redrawLocal();toast('Blocker deleted.');}catch(e){toast(e.message,4000);}}
+function renderBlockers(){
+  const ks=$('blkKind');
+  ks.innerHTML=`<option value="">All types</option>`+BLK_KINDS.map(k=>`<option value="${esc(k)}"${k===BLK_KIND?' selected':''}>${esc(k)}</option>`).join('');
+  ks.onchange=()=>{BLK_KIND=ks.value;renderBlockers();};
+  const st=$('blkStatus').value,ids=new Set(VP().map(p=>p.id));
+  const all=(RAW.blockers||[]).filter(b=>ids.has(b.project_id));
+  const rows=all.filter(b=>(!st||b.status===st)&&(!BLK_KIND||b.kind===BLK_KIND));
+  const open=all.filter(b=>b.status!=='Resolved'),res=all.filter(b=>b.status==='Resolved');
+  const resP=res.filter(b=>F.period==='all'||inPeriod(pd(b.resolved_on)));
+  const avg=a=>a.length?Math.round(a.reduce((t,b)=>t+blkAge(b),0)/a.length):null;
+  const late=open.filter(b=>b.target_date&&pd(b.target_date)<t0());
+  const arrBlocked=Array.from(new Set(open.map(b=>b.project_id))).reduce((t,id)=>t+((PBYID[id]||{}).arr||0),0);
+  $('blkKpi').innerHTML=kpiEnhHtml([
+    {id:'bk-open',label:'Open blockers',val:open.length,raw:open.length,lower:true,cls:'red',sub:`on ${new Set(open.map(b=>b.project_id)).size} projects · ${fmt$(arrBlocked)} ARR`,click:"$('blkStatus').value='Open';renderBlockers()"},
+    {label:'High impact',val:open.filter(b=>b.impact==='High').length,cls:'orange',sub:'open'},
+    {label:'Past target date',val:late.length,cls:'amber',sub:'open'},
+    {label:'Avg age (open)',val:avg(open)!=null?avg(open)+'d':'—',cls:'purple',sub:'days since raised'},
+    {label:'No owner',val:open.filter(b=>!b.owner_name).length,cls:'blue',sub:'open'},
+    {label:'Resolved',val:resP.length,cls:'green',sub:(F.period==='all'?'all time':'in period')+(avg(resP)!=null?` · avg ${avg(resP)}d to resolve`:''),click:"$('blkStatus').value='Resolved';renderBlockers()"},
+  ]);
+  const byK=BLK_KINDS.map(k=>open.filter(b=>b.kind===k).length);
+  const buckets=[['0–7d',0,7],['8–14d',8,14],['15–30d',15,30],['31–60d',31,60],['60d+',61,1e9]];
+  const bAge=buckets.map(([,a,z])=>open.filter(b=>{const g=blkAge(b);return g>=a&&g<=z;}).length);
+  const weeks=[];for(let i=7;i>=0;i--)weeks.push(new Date(t0().getTime()-i*7*DAY));
+  const inWk=(d,e)=>d&&d>new Date(e-7*DAY)&&d<=new Date(e.getTime()+DAY-1);
+  $('blkCharts').innerHTML=chartCard('bkKind','Open blockers by type',open.length+' open',210,'bkKindLeg')+chartCard('bkAge','How long open blockers have been open',null,210,null)+chartCard('bkWk','Raised vs resolved per week',null,210,null,true);
+  later(()=>{makeDoughnut('bkKind',BLK_KINDS,byK,BLK_KINDS.map(k=>BLK_KIND_COLORS[k]),l=>{BLK_KIND=l;$('blkStatus').value='Open';renderBlockers();});
+    legend('bkKindLeg',BLK_KINDS.map((k,i)=>`${k} (${byK[i]})`),BLK_KINDS.map(k=>BLK_KIND_COLORS[k]));
+    makeBar('bkAge',buckets.map(b=>b[0]),bAge,['#22C55E','#84CC16','#EAB308','#F97316','#EF4444']);
+    makeCombo('bkWk',weeks.map(d=>fmtD(d)),[{type:'bar',label:'Raised',data:weeks.map(e=>all.filter(b=>inWk(pd(b.raised_on),e)).length),backgroundColor:'#EF4444',borderRadius:4},
+      {type:'bar',label:'Resolved',data:weeks.map(e=>res.filter(b=>inWk(pd(b.resolved_on),e)).length),backgroundColor:'#22C55E',borderRadius:4}]);});
+  $('blkPill').textContent=rows.length+' blockers';
+  setTable('blkTbl',rows.map(b=>{const p=PBYID[b.project_id]||{},resd=b.status==='Resolved',lt=!resd&&b.target_date&&pd(b.target_date)<t0();
+    return{cells:`<td><span class="imp ${esc(b.impact)}"></span> ${esc(b.impact)}</td><td><b>${esc(b.title)}</b>${resd&&b.resolution?`<div class="dim" style="font-size:11px">✓ ${esc(b.resolution)}</div>`:''}</td><td>${ragDot(p.rag,ragTip(p))} ${esc(p.name||'')}</td><td><span class="badge bgr">${esc(b.kind)}</span></td>
+      <td>${b.owner_name?who(b.owner_name):'<span class="badge ba">none</span>'}</td><td class="dim">${fmtD(b.raised_on)}</td><td>${blkAge(b)}d</td><td class="dim">${b.target_date?`<span class="${lt?'slip pos':''}">${fmtD(b.target_date)}</span>`:'—'}</td><td><span class="badge ${resd?'bg':lt?'br':'ba'}">${resd?'Resolved '+fmtD(b.resolved_on):lt?'Past target':'Open'}</span></td>`,
+      sort:{imp:BLK_IMP_RANK[b.impact],title:b.title,proj:p.name,kind:b.kind,owner:b.owner_name,raised:pd(b.raised_on),age:blkAge(b),target:pd(b.target_date),status:b.status},
+      csv:[b.title,p.name,b.kind,b.impact,b.owner_name,b.status,b.raised_on,blkAge(b),b.target_date,b.resolved_on,b.resolution,b.notes,b.created_by],
+      onclick:`openBlocker('${jsq(b.project_id)}','${b.id}')`};}),
+    ['Blocker','Project','Type','Impact','Owner','Status','Raised','Age (days)','Target','Resolved','Resolution','Notes','Raised by'],{sortK:'imp',title:'blockers'});
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SAVED VIEWS + SHAREABLE LINKS — the URL carries page, filters and page options:
+//   #tasks?v=1&period=month&owner=Priya%20Shah&view=overdue
+// Views are kept per browser ("Just me") or for the whole team (pcc_settings.views).
+// ═══════════════════════════════════════════════════════════════
+const PAGE_LABEL={mywork:'My Work',overview:'Overview',dashboard:'My Dashboard',projects:'Projects',pipelines:'Pipelines',tasks:'Tasks',blockers:'Risks & Blockers',golives:'Go-Lives',team:'Team Load',adoption:'Adoption',accounts:'Accounts',settings:'Settings'};
+function viewHash(){
+  const q=new URLSearchParams();q.set('v','1');
+  ['period','team','partner','owner','industry'].forEach(k=>{if(F[k]&&!(k==='period'&&F[k]==='all'))q.set(k,F[k]);});
+  const add=(k,v)=>{if(v)q.set(k,v);},pg=activePage;
+  if(pg==='projects'){add('phase',$('projPhaseSel').value);add('rag',$('projRagSel').value);add('q',TBL.projTbl&&TBL.projTbl.q);}
+  if(pg==='tasks'){add('view',$('taskView').value);add('sort',$('taskSort').value);add('q',$('taskSearch').value);}
+  if(pg==='pipelines'){add('pv',pipeView);add('sort',$('pipeSort').value);add('q',pipeQ);}
+  if(pg==='blockers'){add('status',$('blkStatus').value||'all');add('kind',BLK_KIND);add('q',TBL.blkTbl&&TBL.blkTbl.q);}
+  if(pg==='mywork')add('who',MW_WHO);
+  if(pg==='adoption')add('acc',$('adoptSel').value);
+  return '#'+pg+'?'+q.toString();
+}
+// Returns false when the hash names no page.
+function applyHash(h){
+  const [pg,qs]=String(h||'').replace(/^#/,'').split('?');if(!pg||!$('page-'+pg))return false;
+  const q=new URLSearchParams(qs||''),g=k=>q.get(k)||'';
+  if(q.get('v')){F.team=F.partner=F.owner=F.industry='';F.period='all';['period','team','partner','owner','industry'].forEach(k=>{if(g(k))F[k]=g(k);});
+    try{localStorage.setItem('pcc_filters',JSON.stringify(F));}catch(e){}renderFilterBar();
+    if(pg==='projects'){projPhase=g('phase');if(!projPhase&&$('projPhaseSel').options.length)$('projPhaseSel').value='';$('projRagSel').value=g('rag');TBL.projTbl=Object.assign(TBL.projTbl||{},{q:g('q'),page:1});}
+    if(pg==='tasks'){if(g('view'))$('taskView').value=g('view');if(g('sort'))$('taskSort').value=g('sort');$('taskSearch').value=g('q');}
+    if(pg==='pipelines'){pipeView=g('pv')||'progress';$('pipeSort').value=g('sort')||'pct';pipeQ=g('q');$('pipeSearch').value=pipeQ;}
+    if(pg==='blockers'){const s=g('status');$('blkStatus').value=s==='all'?'':(s||'Open');BLK_KIND=g('kind');TBL.blkTbl=Object.assign(TBL.blkTbl||{},{q:g('q'),page:1});}
+    if(pg==='mywork'&&g('who'))MW_WHO=g('who');
+    if(pg==='adoption'){const sel=$('adoptSel'),a=g('acc');sel.innerHTML=a?`<option value="${esc(a)}"></option>`:'';sel.value=a;}
+  }
+  showPage(pg);return true;
+}
+window.addEventListener('hashchange',()=>{if(RAW&&location.hash.includes('?'))applyHash(location.hash);});
+function copyLink(){
+  const h=viewHash();try{history.replaceState(null,'',h);}catch(e){}
+  const url=location.href.split('#')[0]+h;
+  navigator.clipboard.writeText(url).then(()=>toast('Link copied — it opens this page with the same filters. (Team members still sign in with the team password.)',4000),()=>{prompt('Copy this link:',url);});
+}
+function myViews(){try{return JSON.parse(localStorage.getItem('pcc_views')||'[]');}catch(e){return [];}}
+function teamViews(){return(((RAW&&RAW.settings)||{}).views||{}).list||[];}
+function toggleViews(e){e.stopPropagation();const m=$('viewsMenu');if(m.classList.contains('show')){m.classList.remove('show');return;}drawViews();m.classList.add('show');}
+document.addEventListener('click',e=>{const m=$('viewsMenu');if(m&&m.classList.contains('show')&&!m.contains(e.target))m.classList.remove('show');});
+function drawViews(){
+  const mine=myViews(),team=teamViews();
+  const item=(v,kind,i)=>`<div class="vm-item" onclick="openView('${kind}',${i})" title="${esc(v.hash)}"><span class="vm-name">${esc(v.name)}</span><span class="dim">${esc(PAGE_LABEL[v.hash.slice(1).split('?')[0]]||'')}${kind==='team'&&v.by?' · '+esc(v.by.split(/\s+/)[0]):''}</span><button class="vm-x" title="Delete view" onclick="event.stopPropagation();deleteView('${kind}',${i})">✕</button></div>`;
+  $('viewsMenu').innerHTML=`<div class="vm-sec">My views</div>${mine.length?mine.map((v,i)=>item(v,'me',i)).join(''):'<div class="dim" style="font-size:11px;padding:2px 8px 6px">None yet.</div>'}
+    <div class="vm-sec">Team views</div>${team.length?team.map((v,i)=>item(v,'team',i)).join(''):'<div class="dim" style="font-size:11px;padding:2px 8px 6px">None yet — tick “Share with the team” when saving.</div>'}
+    <div class="vm-save"><input type="text" id="vmName" maxlength="80" placeholder="Name this view, e.g. My at-risk P2 projects" onkeydown="if(event.key==='Enter')saveView()">
+      <label><input type="checkbox" id="vmTeam"> Share with the team</label><button class="cta sm" onclick="saveView()">Save current view</button>
+      <div class="dim" style="font-size:10px">Saves this page with its filters, search and options (${esc(PAGE_LABEL[activePage]||activePage)}).</div></div>`;
+  $('viewsMenu').onclick=e=>e.stopPropagation();
+}
+function openView(kind,i){const v=(kind==='team'?teamViews():myViews())[i];if(!v)return;$('viewsMenu').classList.remove('show');applyHash(v.hash);try{history.replaceState(null,'',v.hash);}catch(e){}toast('View: '+v.name);}
+async function saveView(){
+  const name=$('vmName').value.trim();if(!name){$('vmName').focus();return;}
+  const hash=viewHash();
+  if($('vmTeam').checked){
+    try{const r=await api('view_save',{name,hash,by:myName()||null});RAW.settings=RAW.settings||{};RAW.settings.views=r.views;toast('Saved for the whole team.');}catch(e){toast(e.message,4000);return;}
+  }else{const L=myViews().filter(v=>v.name.toLowerCase()!==name.toLowerCase());L.push({name,hash,at:new Date().toISOString()});try{localStorage.setItem('pcc_views',JSON.stringify(L));}catch(e){}toast('View saved.');}
+  drawViews();
+}
+async function deleteView(kind,i){
+  if(kind==='me'){const L=myViews();L.splice(i,1);try{localStorage.setItem('pcc_views',JSON.stringify(L));}catch(e){}drawViews();return;}
+  const v=teamViews()[i];if(!v||!confirm(`Delete the team view “${v.name}” for everyone?`))return;
+  try{const r=await api('view_delete',{id:v.id});RAW.settings.views=r.views;drawViews();}catch(e){toast(e.message,4000);}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BULK ACTIONS — Tasks page (done / reopen / assign / due date / priority / hide) and
+// Projects page (PM / BA / SA / CSM). Zoho is never written to.
+// ═══════════════════════════════════════════════════════════════
+let BULK={ctx:null,sel:new Set()};
+function toggleBulk(ctx){BULK.ctx=BULK.ctx===ctx?null:ctx;BULK.sel=new Set();renderBulkBtns();
+  if(ctx==='projects'){$('projHead').innerHTML='';renderProjects();}else renderTaskList();renderBulkBar();}
+function renderBulkBtns(){[['projSelBtn','projects'],['taskSelBtn','tasks']].forEach(([id,c])=>{const b=$(id);if(b)b.textContent=BULK.ctx===c?'✕ Stop selecting':'☐ Select';});}
+function bulkOn(ctx){return BULK.ctx===ctx&&activePage===ctx;}
+function bulkPick(id,on){on?BULK.sel.add(id):BULK.sel.delete(id);renderBulkBar();}
+function bulkPickMany(ids,on){ids.forEach(id=>on?BULK.sel.add(id):BULK.sel.delete(id));if(BULK.ctx==='tasks')renderTaskList();else drawTable('projTbl');renderBulkBar();}
+const tpIds=pid=>((TASK_LIST.find(g=>g.p.id===pid)||{}).ts||[]).map(t=>t.id);
+function shownIds(){if(BULK.ctx==='tasks')return TASK_LIST.flatMap(g=>g.ts.map(t=>t.id));
+  const st=TBL.projTbl;if(!st)return [];const q=(st.q||'').trim().toLowerCase();return st.rows.filter(r=>!q||(r.text||r.cells.replace(/<[^>]+>/g,' ').toLowerCase()).includes(q)).map(r=>r.id);}
+function selBox(id){return `<input type="checkbox" class="sel-box"${BULK.sel.has(id)?' checked':''} onclick="event.stopPropagation();bulkPick('${jsq(id)}',this.checked)" title="Select">`;}
+function renderBulkBar(){
+  const bar=$('bulkBar'),on=!!BULK.ctx&&activePage===BULK.ctx;document.body.classList.toggle('bulk-on',on);if(!on){bar.classList.remove('show');return;}
+  const n=BULK.sel.size,shown=shownIds().length,people=peopleNames();
+  const head=`<b>${n} selected</b><button class="top-btn" onclick="bulkPickMany(shownIds(),true)">Select all shown (${shown})</button>${n?`<button class="top-btn" onclick="BULK.sel.clear();bulkPickMany([],true)">Clear</button>`:''}<span class="sep"></span>`;
+  const dis=n?'':' disabled';
+  if(BULK.ctx==='tasks'){
+    bar.innerHTML=head+`<button class="cta sm" onclick="bulkTasks({done:true},'Marked done')"${dis}>✓ Mark done</button><button class="top-btn" onclick="bulkTasks({done:false},'Reopened')"${dis}>Reopen</button><span class="sep"></span>
+      Assign <select id="bkOwner"><option value="">— pick —</option><option value="__none">Unassigned</option>${people.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('')}</select><button class="top-btn" onclick="bulkAssign()"${dis}>Apply</button><span class="sep"></span>
+      Due <input type="date" id="bkDue"><button class="top-btn" onclick="bulkDue()"${dis}>Set</button>
+      Move <input type="number" id="bkShift" value="7" step="1"> days<button class="top-btn" onclick="bulkShift()"${dis}>Move</button><span class="sep"></span>
+      <select id="bkPri" onchange="if(this.value)bulkTasks({priority:this.value==='__none'?null:this.value},'Priority set');this.value=''"${dis}><option value="">Priority…</option>${TASK_PRIORITIES.map(p=>`<option>${p}</option>`).join('')}<option value="__none">No priority</option></select>
+      <button class="top-btn danger" onclick="if(confirm('Hide '+BULK.sel.size+' task(s) from the Command Center? They stay in Zoho and can be restored from each project.'))bulkTasks({hidden:true},'Hidden')"${dis}>Hide</button>
+      <span class="dim" style="font-size:10px">Saved in Command Center — Zoho is not changed</span>`;
+  }else{
+    bar.innerHTML=head+`Set <select id="bkRole"><option value="pm">Project Manager</option><option value="ba">BA</option><option value="sa">SA</option><option value="csm">CSM</option></select> to
+      <select id="bkPerson"><option value="">— pick —</option><option value="__zoho">↺ Back to the Zoho value</option><option value="__none">Nobody</option>${people.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('')}</select>
+      <button class="cta sm" onclick="bulkRoles()"${dis}>Apply</button><span class="dim" style="font-size:10px">Saved in Command Center — Zoho is not changed</span>`;
+  }
+  bar.classList.add('show');
+}
+function selTasks(){const all=(RAW.tasks||[]).concat(HIDDEN_TASKS);return [...BULK.sel].map(id=>all.find(t=>t.id===id)).filter(Boolean);}
+async function bulkTasks(change,label,shift){
+  const ts=selTasks();if(!ts.length){toast('Select tasks first.');return;}
+  const items=ts.map(t=>{const ch=typeof change==='function'?change(t):Object.assign({},change);if(!ch)return null;
+    // Zoho tasks: a "done here" override only when it differs from Zoho (same rule as ticking one task).
+    if('done' in ch&&!t.native)ch.done=ch.done===t.zohoDone?null:ch.done;
+    return Object.assign({task_id:t.id,project_id:t.project_id},ch);}).filter(Boolean);
+  if(!items.length){toast('Nothing to change for the selected tasks.');return;}
+  setStatus('loading',`Updating ${items.length} tasks…`);
+  try{const r=await api('tasks_bulk',{items,by:myName()||null,shift_days:shift||undefined});
+    (r.native||[]).forEach(upsertNative);
+    const L=RAW.task_meta=RAW.task_meta||[];(r.meta||[]).forEach(m=>{const i=L.findIndex(x=>x.task_id===m.task_id);if(i>=0)L[i]=m;else L.push(m);});
+    BULK.sel.clear();redrawLocal();renderBulkBar();setStatus('ok',`${label} · ${items.length} tasks`);
+    toast(`${label} — ${items.length} task${items.length>1?'s':''}${items.length<ts.length?` (${ts.length-items.length} skipped: no due date)`:''}.`,3500);}
+  catch(e){setStatus('warn',e.message);toast(e.message,5000);}
+}
+function bulkAssign(){const v=$('bkOwner').value;if(!v){toast('Pick a person.');return;}const n=v==='__none'?null:v,pr=n&&personOf(n);
+  bulkTasks({owner_name:n,owner_email:pr&&pr.email||null},n?'Assigned to '+n:'Unassigned');}
+function bulkDue(){const v=$('bkDue').value;if(!v){toast('Pick a date.');return;}bulkTasks({end_date:v},'Due '+fmtD(v));}
+function bulkShift(){const n=Math.round(Number($('bkShift').value));if(!n){toast('Enter how many days to move (use a minus for earlier).');return;}
+  bulkTasks(t=>{const d=pd(t.end_date);return d?{end_date:ymd(new Date(d.getFullYear(),d.getMonth(),d.getDate()+n))}:null;},`Due dates moved ${n>0?'+':''}${n}d`,n);}
+async function bulkRoles(){
+  const role=$('bkRole').value,v=$('bkPerson').value,ids=[...BULK.sel];
+  if(!ids.length){toast('Select projects first.');return;}if(!v){toast('Pick a person.');return;}
+  await saveRoles(ids,{[role]:v==='__zoho'?null:v==='__none'?'':v});BULK.sel.clear();renderBulkBar();
+}
+async function saveRoles(ids,roles){
+  setStatus('loading','Saving…');
+  try{const r=await api('project_meta_save',{project_ids:ids,roles,by:myName()||null});
+    const L=RAW.project_meta=RAW.project_meta||[];(r.rows||[]).forEach(m=>{const i=L.findIndex(x=>x.project_id===m.project_id);if(i>=0)L[i]=m;else L.push(m);});
+    redrawLocal();setStatus('ok','Saved');toast(`Updated ${ids.length} project${ids.length>1?'s':''} (Zoho unchanged).`);}
+  catch(e){setStatus('warn',e.message);toast(e.message,5000);}
+}
+// One project's team (from the drawer)
+function editRoles(pid){
+  const p=PBYID[pid];if(!p)return;const people=peopleNames();
+  const sel=(k,cur)=>`<select id="er_${k}" style="width:100%;padding:7px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text)"><option value="__zoho">↺ Zoho value: ${esc(p.zroles[k]||'nobody')}</option><option value=""${(p.roleOv||[]).includes(k)&&!cur?' selected':''}>Nobody</option>${people.concat(cur&&!people.includes(cur)?[cur]:[]).map(n=>`<option value="${esc(n)}"${(p.roleOv||[]).includes(k)&&n===cur?' selected':''}>${esc(n)}</option>`).join('')}</select>`;
+  openModal(`<div class="modal-hd">Project team — ${esc(p.name)}</div><div class="modal-sub">Changes are saved in the Command Center and override the Zoho values here (Zoho itself is not changed).</div>
+    <div class="modal-body"><div class="form-grid" style="grid-template-columns:1fr 1fr">${[['pm','Project Manager'],['ba','BA'],['sa','SA'],['csm','CSM']].map(([k,l])=>`<div class="fld"><label>${l}</label>${sel(k,{pm:p.pm,ba:p.ba,sa:p.second,csm:p.csm}[k])}</div>`).join('')}</div></div>
+    <div class="modal-ft"><button class="top-btn" onclick="closeModal()">Cancel</button><button class="cta sm" onclick="saveRolesForm('${jsq(pid)}')">Save</button></div>`);
+}
+async function saveRolesForm(pid){const p=PBYID[pid],roles={};
+  ['pm','ba','sa','csm'].forEach(k=>{const v=$('er_'+k).value,had=(p.roleOv||[]).includes(k),cur={pm:p.pm,ba:p.ba,sa:p.second,csm:p.csm}[k];
+    if(v==='__zoho'){if(had)roles[k]=null;}else if(!had||v!==cur)roles[k]=v;});
+  closeModal();if(!Object.keys(roles).length){toast('No changes.');return;}await saveRoles([pid],roles);}
+
 // ═══════════════════════════════════════════════════════════════
 // GUIDED TOUR — per-module pop-up walkthrough (Back / Next / ✕).
 // Opens automatically the first time someone visits a module; the
@@ -2528,6 +3098,19 @@ const GUIDE_SEEN_KEY='pcc_guide_done';
 const GT_SKIP={}; // modules closed with Skip or the close icon stay quiet until the page is reloaded
 const cardByTitle=t=>{const h=[...document.querySelectorAll('.page.active .card-title,.page.active .tbl-title')].find(e=>e.textContent.trim().toLowerCase().startsWith(t.toLowerCase()));return h?h.closest('.card,.tbl-card'):null;};
 const GUIDE={
+  mywork:[
+    {sel:'#meBtn',title:'Who you are',body:'Pick your name once — My Work uses it, and your comments, blockers and edits carry it. Change it any time here.'},
+    {sel:'#mwKpi',title:'Your day at a glance',body:'Overdue tasks, what is due this week, your projects (as Owner, PM, BA, SA or CSM), blockers you own and mentions. Click a card to jump to it.'},
+    {sel:'#mwTasks',title:'Your tasks',body:'Overdue and due-this-week first; switch to All open. Tick a task done or click it for details.'},
+    {sel:'#mwProjCard',title:'Your projects',body:'Every active project where you have a role, with health, progress, ETA, overdue tasks and open blockers.'},
+    {sel:'#mwMent',title:'Mentions',body:'When someone types @your name in a project’s Activity tab, it shows up here.'},
+    {sel:'#page-mywork .hdr-right',title:'Look at anyone’s work',body:'Pick a teammate to see their list — handy for 1:1s and covering for someone.'},
+  ],
+  blockers:[
+    {sel:'#blkKpi',title:'Blockers across projects',body:'Open blockers, high impact, past their target date, average age and resolved — following the filters at the top.'},
+    {sel:'#blkCharts',title:'Why projects are stuck',body:'Open blockers by type (customer, integration, internal, partner, product), how long they have been open, and raised vs resolved per week.'},
+    {sel:'#blkCard',title:'Every blocker',body:'Click one to open it in its project. Add new blockers from a project’s Blockers tab.'},
+  ],
   overview:[
     {sel:'#sidebar',title:'Modules',body:'Every module lives here: Delivery (Projects, Pipelines, Tasks), Post go-live (Adoption) and Admin. Deals, staffing, capacity and risk worklists are in Onboarding Intelligence. Red badges flag things that need attention.'},
     {sel:'#filterBar',title:'Filters apply everywhere',body:'Pick a date range, team, Direct vs Partner and owner. Every module, KPI and chart follows these filters.'},
@@ -2606,7 +3189,7 @@ function guideStart(page){
   GT={page,steps,i:0,never:false};
   document.body.classList.add('gt-on');guideShow();
 }
-function guideAuto(page){if(guideSeen()[page]||GT_SKIP[page]||GT||!GUIDE[page])return;setTimeout(()=>{if(activePage===page&&!GT&&$('appShell').offsetParent!==null)guideStart(page);},450);}
+function guideAuto(page){if(guideSeen()[page]||GT_SKIP[page]||GT||!GUIDE[page])return;setTimeout(()=>{if(activePage===page&&!GT&&$('appShell').offsetParent!==null&&!$('modalOv').classList.contains('show'))guideStart(page);},450);}
 function guideClose(finished){if(GT){if(finished||GT.never)guideMark(GT.page);else GT_SKIP[GT.page]=1;}GT=null;document.body.classList.remove('gt-on');['gtSpot','gtPop'].forEach(id=>{const e=$(id);if(e)e.style.display='none';});}
 function guideGo(d){if(!GT)return;const n=GT.i+d;if(n<0)return;if(n>=GT.steps.length){guideClose(true);return;}GT.i=n;guideShow();}
 function guideShow(){

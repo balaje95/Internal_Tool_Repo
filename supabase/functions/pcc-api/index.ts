@@ -110,7 +110,7 @@ async function setSetting(key: string, value: unknown) {
   if (error) throw new Error(error.message);
 }
 // Keys the browser may read/write. zoho_* / sync_state / cron_secret / auth are server-only.
-const PUBLIC_SETTINGS = new Set(["phase_map", "rag", "targets", "general", "exclude", "billing_import", "capacity", "timeoff"]);
+const PUBLIC_SETTINGS = new Set(["phase_map", "rag", "targets", "general", "exclude", "billing_import", "capacity", "timeoff", "views"]);
 
 // Zoho Self Client credentials: Edge secrets win; otherwise the pair saved from Settings →
 // Connect Zoho (server-only row, never returned to the browser).
@@ -283,6 +283,64 @@ function cleanEdits(e: any) {
   if ("notes" in e) out.notes = s(e.notes, 4000) || null;
   return Object.keys(out).length ? out : null;
 }
+
+// ─── activity log (pcc_activity) ─────────────────────────────────────────────
+// Every write made in the tool leaves a one-line entry on the project's timeline.
+// Logging never fails the write it describes.
+type Act = { project_id: string; actor: string | null; kind: string; summary: string };
+async function logActivity(rows: Act[]) {
+  const clean = rows.filter((r) => r && r.project_id && r.summary).map((r) => ({
+    project_id: String(r.project_id).slice(0, 40), actor: r.actor ? String(r.actor).slice(0, 80) : null,
+    kind: String(r.kind).slice(0, 30), summary: String(r.summary).slice(0, 500),
+  }));
+  if (!clean.length) return [];
+  const { data } = await db.from("pcc_activity").insert(clean).select("*");
+  return data || [];
+}
+// "“A”, “B” and 3 more"
+function nameList(names: string[]) {
+  const q = names.filter(Boolean).map((n) => `“${String(n).slice(0, 80)}”`);
+  return q.length <= 3 ? q.join(", ") : q.slice(0, 2).join(", ") + ` and ${q.length - 2} more`;
+}
+// Task names for Zoho ids and tool ids ('pcc:<uuid>'), applying name edits made here.
+async function taskNames(ids: string[]) {
+  const out = new Map<string, string>();
+  const z = ids.filter((x) => /^\d+$/.test(x)), n = ids.filter((x) => x.startsWith("pcc:")).map((x) => x.slice(4));
+  if (z.length) { const { data } = await db.from("pcc_tasks").select("id,name").in("id", z); (data || []).forEach((r: any) => out.set(String(r.id), r.name)); }
+  if (n.length) { const { data } = await db.from("pcc_native_tasks").select("id,name").in("id", n); (data || []).forEach((r: any) => out.set("pcc:" + r.id, r.name)); }
+  return out;
+}
+// task_meta_save → activity: done/reopened, edited, hidden/restored, checklist steps. Re-ordering is not logged.
+async function logMetaActivity(items: any[], prev: Map<any, any>, rows: any[], by: string | null) {
+  const names = await taskNames(rows.map((r) => r.task_id));
+  const ev: Act[] = [];
+  const EL: Record<string, string> = { name: "name", owner_name: "assignee", status: "status", priority: "priority", pipeline: "pipeline", stage: "stage", start_date: "start date", end_date: "due date", notes: "notes" };
+  for (const r of rows) {
+    const x = items.find((i: any) => String(i.task_id) === r.task_id) || {};
+    const p: any = prev.get(r.task_id) || {};
+    const n = `“${names.get(r.task_id) || "task"}”`;
+    const add = (summary: string) => ev.push({ project_id: r.project_id, actor: by, kind: "task", summary });
+    if ("done" in x && (p.done ?? null) !== r.done) add(r.done === true ? `Marked ${n} done` : r.done === false ? `Reopened ${n}` : `${n} back to its Zoho status`);
+    if ("hidden" in x && !!p.hidden !== r.hidden) add(r.hidden ? `Hid ${n} from Command Center` : `Restored ${n}`);
+    if ("edits" in x && JSON.stringify(p.edits ?? null) !== JSON.stringify(r.edits ?? null)) {
+      const ks = Object.keys(r.edits || {}).filter((k) => k in EL && JSON.stringify((p.edits || {})[k]) !== JSON.stringify(r.edits[k]));
+      add(r.edits ? `Edited ${n}` + (ks.length ? ": " + ks.map((k) => EL[k]).join(", ") : "") : `Cleared Command Center edits on ${n}`);
+    }
+    if ("checks" in x) {
+      const before = new Set(p.checks || []), now = (r.checks || []) as string[];
+      const ticked = now.filter((c) => !before.has(c));
+      if (ticked.length) add(`Ticked step${ticked.length > 1 ? "s" : ""} on ${n}: ${nameList(ticked)}`);
+    }
+  }
+  return logActivity(ev.slice(0, 50));
+}
+const sstr = (v: any, max = 120) => (v === null || v === undefined || String(v).trim() === "" ? null : String(v).trim().slice(0, max));
+const sdate = (v: any) => (v && /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? String(v) : null);
+const UUID_RE = /^[0-9a-f-]{36}$/i;
+const BLOCKER_KINDS = ["Customer", "Integration", "Internal", "Partner", "Product / bug", "Other"];
+const BLOCKER_IMPACT = ["High", "Medium", "Low"];
+const ROLE_KEYS = ["pm", "ba", "sa", "csm"];
+const ROLE_LABEL: Record<string, string> = { pm: "Project Manager", ba: "BA", sa: "SA", csm: "CSM" };
 
 function normTask(t: any, projectId: string) {
   const owners = (t.owners_and_work?.owners || [])
@@ -734,7 +792,8 @@ async function readAll(table: string, cols: string, filter?: (q: any) => any) {
 async function readData() {
   const since = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
   const tlSince = new Date(Date.now() - 98 * 86400000).toISOString().slice(0, 10); // 14 weeks
-  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing, billing_sheet, timelogs, native_tasks, task_meta] = await Promise.all([
+  const actSince = new Date(Date.now() - 120 * 86400000).toISOString();
+  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing, billing_sheet, timelogs, native_tasks, task_meta, comments, blockers, activity, project_meta] = await Promise.all([
     readAll("pcc_projects", "id,key,name,status,status_closed,owner_name,owner_email,secondary_name,secondary_email,ba_name,pm_name,csm_name,extra,team,partner,industry,arr,potential_arr,confidence,start_date,current_eta,baseline_eta,actual_go_live,zuper_company_id,company_login_name,deal_url,comments,tech_stack,business_tag,percent_complete,tasks_open,tasks_closed,milestones_open,milestones_closed,created_time,modified_time,first_seen,tasks_synced_at"),
     readAll("pcc_tasks", "id,project_id,pipeline,stage,tasklist_name,name,status,is_completed,owners,start_date,end_date,modified_time,created_time,prefix,priority,sequence"),
     readAll("pcc_milestones", "id,project_id,name,pipeline,start_date,end_date,status,is_closed"),
@@ -749,6 +808,10 @@ async function readData() {
     readAll("pcc_timelogs", "log_date,owner_name,owner_id,project_id,project_name,task_name,minutes,bill_status", (q) => q.gte("log_date", tlSince)),
     readAll("pcc_native_tasks", "*"),
     readAll("pcc_task_meta", "*"),
+    readAll("pcc_comments", "*"),
+    readAll("pcc_blockers", "*"),
+    readAll("pcc_activity", "*", (q) => q.gte("at", actSince)),
+    readAll("pcc_project_meta", "*"),
   ]);
   const settings: any = {};
   let syncState: any = {}, zohoConnected = false;
@@ -760,6 +823,7 @@ async function readData() {
   const { data: lastLog } = await db.from("pcc_sync_log").select("at,ok,detail").order("id", { ascending: false }).limit(1);
   return {
     projects, tasks, milestones, snapshots, people, settings, accounts, adoption, overrides, billing, billing_sheet, timelogs, native_tasks, task_meta,
+    comments, blockers, activity, project_meta,
     sync: {
       ...syncState,
       zoho_connected: zohoConnected,
@@ -866,9 +930,22 @@ Deno.serve(async (req) => {
         const row = { project_id: pid, pipeline: pipe, manual_pct: Number.isFinite(pct as number) ? pct : null,
           status: body.status ? String(body.status).slice(0, 40) : null, note: body.note ? String(body.note).slice(0, 2000) : null,
           items, updated_at: new Date().toISOString() };
+        const { data: prevOv } = await db.from("pcc_pipeline_overrides").select("*").eq("project_id", pid).eq("pipeline", pipe).maybeSingle();
         const { error } = await db.from("pcc_pipeline_overrides").upsert(row);
         if (error) throw new Error(error.message);
-        return json({ ok: true, row });
+        // Describe what changed (checklist ticks are frequent, so they are summarised).
+        const parts: string[] = [];
+        const po: any = prevOv || {};
+        if ((po.manual_pct ?? null) !== row.manual_pct) parts.push(row.manual_pct === null ? "back to automatic %" : `manual ${row.manual_pct}%`);
+        if ((po.status || null) !== row.status) parts.push(row.status ? `status ${row.status}` : "status cleared");
+        if ((po.note || null) !== row.note) parts.push(row.note ? "note updated" : "note cleared");
+        const pd = new Set((po.items || []).filter((i: any) => i.done).map((i: any) => i.id));
+        const ticked = items.filter((i: any) => i.done && !pd.has(i.id)).map((i: any) => i.text);
+        const added = items.filter((i: any) => !(po.items || []).some((x: any) => x.id === i.id)).length;
+        if (ticked.length) parts.push("ticked " + nameList(ticked));
+        if (added && !ticked.length) parts.push(`${added} checklist item${added > 1 ? "s" : ""} added`);
+        const activity = parts.length ? await logActivity([{ project_id: pid, actor: sstr(body.by, 80), kind: "pipeline", summary: `${pipe}: ${parts.join(" · ")}` }]) : [];
+        return json({ ok: true, row, activity });
       }
 
       case "billing_save": {
@@ -917,7 +994,7 @@ Deno.serve(async (req) => {
       }
 
       case "settings_save": {
-        if (!PUBLIC_SETTINGS.has(body.key) || body.key === "billing_import") return json({ error: "unknown setting" }, 400);
+        if (!PUBLIC_SETTINGS.has(body.key) || body.key === "billing_import" || body.key === "views") return json({ error: "unknown setting" }, 400);
         // Shape checks: a wrong shape here would break loading for everyone.
         const v = body.value, isObj = v && typeof v === "object" && !Array.isArray(v);
         const okShape = body.key === "exclude" ? Array.isArray(v) && v.every((x: any) => typeof x === "string")
@@ -992,11 +1069,11 @@ Deno.serve(async (req) => {
         const status = s(body.status, 40) || "Open";
         const done = /^(done|completed|closed)$/i.test(status);
         const id = body.id && /^[0-9a-f-]{36}$/i.test(String(body.id)) ? String(body.id) : null;
-        let prevDone = false;
+        let prevDone = false, prevRow: any = null;
         if (id) {
-          const { data: prev } = await db.from("pcc_native_tasks").select("is_completed").eq("id", id).maybeSingle();
+          const { data: prev } = await db.from("pcc_native_tasks").select("*").eq("id", id).maybeSingle();
           if (!prev) return json({ error: "That task no longer exists." }, 404);
-          prevDone = !!prev.is_completed;
+          prevDone = !!prev.is_completed; prevRow = prev;
         }
         const pipe = /^P[1-9]$/.test(String(body.pipeline || "")) ? String(body.pipeline) : null;
         const stage = Number(body.stage) >= 1 && Number(body.stage) <= 9 ? Math.round(Number(body.stage)) : null;
@@ -1014,15 +1091,30 @@ Deno.serve(async (req) => {
           : db.from("pcc_native_tasks").insert({ ...row, created_by: row.updated_by });
         const { data, error } = await q.select("*").single();
         if (error) throw new Error(error.message);
-        return json({ ok: true, task: data });
+        let summary = "";
+        if (!prevRow) summary = `Added task “${name}”` + (row.owner_name ? ` for ${row.owner_name}` : "") + (done ? " (done)" : "");
+        else if (done !== prevDone) summary = `${done ? "Completed" : "Reopened"} “${name}”`;
+        else {
+          const ch: string[] = [];
+          if ((prevRow.owner_name || null) !== row.owner_name) ch.push(row.owner_name ? `assigned to ${row.owner_name}` : "unassigned");
+          if ((prevRow.end_date || null) !== row.end_date) ch.push(row.end_date ? `due ${row.end_date}` : "due date cleared");
+          if ((prevRow.status || null) !== row.status) ch.push(`status ${row.status}`);
+          if (prevRow.name !== name) ch.push(`renamed from “${prevRow.name}”`);
+          if ((prevRow.priority || null) !== row.priority) ch.push(row.priority ? `${row.priority} priority` : "priority cleared");
+          summary = ch.length ? `Updated “${name}”: ${ch.join(", ")}` : "";
+        }
+        const activity = summary ? await logActivity([{ project_id: pid, actor: row.updated_by, kind: "task", summary }]) : [];
+        return json({ ok: true, task: data, activity });
       }
 
       case "task_delete": {
         const id = String(body.id || "");
         if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "id required" }, 400);
+        const { data: prev } = await db.from("pcc_native_tasks").select("project_id,name").eq("id", id).maybeSingle();
         const { error } = await db.from("pcc_native_tasks").delete().eq("id", id);
         if (error) throw new Error(error.message);
-        return json({ ok: true });
+        const activity = prev ? await logActivity([{ project_id: prev.project_id, actor: sstr(body.by, 80), kind: "task", summary: `Deleted task “${prev.name}”` }]) : [];
+        return json({ ok: true, activity });
       }
 
       // Full detail for one task (description is kept out of `data` to keep it light). Zoho tasks
@@ -1072,7 +1164,189 @@ Deno.serve(async (req) => {
         }).filter((r: any) => r.project_id);
         const { error } = await db.from("pcc_task_meta").upsert(rows);
         if (error) throw new Error(error.message);
-        return json({ ok: true, saved: rows.length });
+        const activity = await logMetaActivity(items, pm, rows, by);
+        return json({ ok: true, saved: rows.length, activity });
+      }
+
+      // Bulk changes to many tasks (Zoho or tool) in one call. Tool tasks are updated in place;
+      // Zoho tasks get Command Center overrides in pcc_task_meta (Zoho is never written to).
+      // items: [{task_id, project_id, done?, hidden?, owner_name?, owner_email?, end_date?, priority?}]
+      case "tasks_bulk": {
+        const items = (Array.isArray(body.items) ? body.items : []).slice(0, 500);
+        const by = sstr(body.by, 80);
+        const now = new Date().toISOString();
+        const nat = items.filter((x: any) => /^pcc:[0-9a-f-]{36}$/i.test(String(x.task_id || "")));
+        const zoho = items.filter((x: any) => /^\d+$/.test(String(x.task_id || "")));
+        if (!nat.length && !zoho.length) return json({ error: "No tasks selected." }, 400);
+        const changed: any[] = [];
+        // tool tasks
+        if (nat.length) {
+          const { data: prev } = await db.from("pcc_native_tasks").select("*").in("id", nat.map((x: any) => x.task_id.slice(4)));
+          const pmap = new Map((prev || []).map((r: any) => [r.id, r]));
+          for (const x of nat) {
+            const p: any = pmap.get(x.task_id.slice(4));
+            if (!p) continue;
+            const patch: any = { updated_by: by, updated_at: now };
+            if ("done" in x && x.done !== null) {
+              patch.is_completed = !!x.done; patch.status = x.done ? "Done" : (p.status === "Done" ? "Open" : p.status);
+              patch.completed_at = x.done ? (p.completed_at || now) : null;
+            }
+            if ("owner_name" in x) { patch.owner_name = sstr(x.owner_name); patch.owner_email = sstr(x.owner_email, 200); }
+            if ("end_date" in x) patch.end_date = sdate(x.end_date);
+            if ("priority" in x) patch.priority = sstr(x.priority, 20);
+            const { data: up, error: e1 } = await db.from("pcc_native_tasks").update(patch).eq("id", p.id).select("*").single();
+            if (e1) throw new Error(e1.message);
+            changed.push({ native: up });
+            if (x.hidden !== undefined) zoho.push({ task_id: x.task_id, project_id: p.project_id, hidden: !!x.hidden });
+          }
+        }
+        // Zoho tasks (and hide for any task) → pcc_task_meta
+        let metaRows: any[] = [];
+        if (zoho.length) {
+          const ids = zoho.map((x: any) => String(x.task_id));
+          const { data: prev } = await db.from("pcc_task_meta").select("*").in("task_id", ids);
+          const pm = new Map((prev || []).map((r: any) => [r.task_id, r]));
+          metaRows = zoho.map((x: any) => {
+            const p: any = pm.get(String(x.task_id)) || {};
+            const r: any = { task_id: String(x.task_id), project_id: String(x.project_id || p.project_id || "").slice(0, 40),
+              sort_order: p.sort_order ?? null, hidden: !!p.hidden, done: p.done ?? null, done_at: p.done_at ?? null,
+              edits: p.edits ?? null, checks: p.checks ?? null, updated_by: by ?? p.updated_by ?? null, updated_at: now };
+            if ("hidden" in x) r.hidden = !!x.hidden;
+            if ("done" in x) { r.done = x.done === null ? null : !!x.done; r.done_at = x.done ? (p.done ? p.done_at : now) : null; }
+            const e: any = Object.assign({}, p.edits || {});
+            let touched = false;
+            if ("owner_name" in x) { e.owner_name = x.owner_name || null; e.owner_email = x.owner_email || null; touched = true; }
+            if ("end_date" in x) { e.end_date = x.end_date || null; touched = true; }
+            if ("priority" in x) { e.priority = x.priority || null; touched = true; }
+            if (touched) r.edits = cleanEdits(e);
+            return r;
+          }).filter((r: any) => r.project_id);
+          const { error: e2 } = await db.from("pcc_task_meta").upsert(metaRows);
+          if (e2) throw new Error(e2.message);
+        }
+        // One activity line per project.
+        const names = await taskNames(items.map((x: any) => String(x.task_id)));
+        const what: string[] = [];
+        const s0 = items[0] || {};
+        if ("done" in s0) what.push(s0.done ? "marked done" : "reopened");
+        if ("owner_name" in s0) what.push(s0.owner_name ? `assigned to ${s0.owner_name}` : "unassigned");
+        if ("end_date" in s0) what.push(body.shift_days ? `due date moved ${Number(body.shift_days) > 0 ? "+" : ""}${Number(body.shift_days)}d` : s0.end_date ? `due ${s0.end_date}` : "due date cleared");
+        if ("priority" in s0) what.push(s0.priority ? `${s0.priority} priority` : "priority cleared");
+        if ("hidden" in s0) what.push(s0.hidden ? "hidden from Command Center" : "restored");
+        const byProj = new Map<string, string[]>();
+        items.forEach((x: any) => { const pid = String(x.project_id || ""); if (!pid) return; if (!byProj.has(pid)) byProj.set(pid, []); byProj.get(pid)!.push(names.get(String(x.task_id)) || "task"); });
+        const activity = await logActivity([...byProj].map(([pid, ns]) => ({ project_id: pid, actor: by, kind: "task",
+          summary: `${ns.length > 1 ? ns.length + " tasks" : "Task"} ${what.join(", ")}: ${nameList(ns)}` })));
+        return json({ ok: true, native: changed.map((c) => c.native), meta: metaRows, activity });
+      }
+
+      // ─── comments ───────────────────────────────────────────────────────────
+      case "comment_save": {
+        const pid = sstr(body.project_id, 40), text = String(body.body || "").trim().slice(0, 4000);
+        if (!pid || !text) return json({ error: "Write something first." }, 400);
+        const mentions = (Array.isArray(body.mentions) ? body.mentions : []).map((m: any) => String(m).slice(0, 80)).slice(0, 20);
+        const id = UUID_RE.test(String(body.id || "")) ? String(body.id) : null;
+        const q = id
+          ? db.from("pcc_comments").update({ body: text, mentions, edited_at: new Date().toISOString() }).eq("id", id)
+          : db.from("pcc_comments").insert({ project_id: pid, body: text, mentions, author: sstr(body.by, 80) });
+        const { data, error } = await q.select("*").single();
+        if (error) throw new Error(error.message);
+        return json({ ok: true, comment: data });
+      }
+      case "comment_delete": {
+        const id = String(body.id || "");
+        if (!UUID_RE.test(id)) return json({ error: "id required" }, 400);
+        const { error } = await db.from("pcc_comments").delete().eq("id", id);
+        if (error) throw new Error(error.message);
+        return json({ ok: true });
+      }
+
+      // ─── risks & blockers ───────────────────────────────────────────────────
+      case "blocker_save": {
+        const pid = sstr(body.project_id, 40), title = sstr(body.title, 300);
+        if (!pid || !title) return json({ error: "Project and a short description are required." }, 400);
+        const id = UUID_RE.test(String(body.id || "")) ? String(body.id) : null;
+        let prev: any = null;
+        if (id) {
+          const r = await db.from("pcc_blockers").select("*").eq("id", id).maybeSingle();
+          prev = r.data; if (!prev) return json({ error: "That blocker no longer exists." }, 404);
+        }
+        const status = body.status === "Resolved" ? "Resolved" : "Open";
+        const by = sstr(body.by, 80);
+        const row: any = {
+          project_id: pid, title, kind: BLOCKER_KINDS.includes(body.kind) ? body.kind : "Other",
+          impact: BLOCKER_IMPACT.includes(body.impact) ? body.impact : "Medium",
+          owner_name: sstr(body.owner_name), owner_email: sstr(body.owner_email, 200), status,
+          raised_on: sdate(body.raised_on) || (prev && prev.raised_on) || new Date().toISOString().slice(0, 10),
+          target_date: sdate(body.target_date),
+          resolved_on: status === "Resolved" ? (sdate(body.resolved_on) || (prev && prev.resolved_on) || new Date().toISOString().slice(0, 10)) : null,
+          resolution: sstr(body.resolution, 2000), notes: sstr(body.notes, 4000), updated_by: by, updated_at: new Date().toISOString(),
+        };
+        const q = id ? db.from("pcc_blockers").update(row).eq("id", id) : db.from("pcc_blockers").insert({ ...row, created_by: by });
+        const { data, error } = await q.select("*").single();
+        if (error) throw new Error(error.message);
+        let summary: string;
+        if (!prev) summary = `Raised ${row.impact.toLowerCase()}-impact ${row.kind.toLowerCase()} blocker “${title}”` + (row.owner_name ? ` (owner ${row.owner_name})` : "");
+        else if (prev.status !== status) summary = `${status === "Resolved" ? "Resolved" : "Re-opened"} blocker “${title}”` + (status === "Resolved" && row.resolution ? `: ${row.resolution}` : "");
+        else {
+          const ch: string[] = [];
+          if (prev.owner_name !== row.owner_name) ch.push(row.owner_name ? `owner ${row.owner_name}` : "owner cleared");
+          if (prev.impact !== row.impact) ch.push(`impact ${row.impact}`);
+          if ((prev.target_date || null) !== row.target_date) ch.push(row.target_date ? `target ${row.target_date}` : "target cleared");
+          if (prev.kind !== row.kind) ch.push(`type ${row.kind}`);
+          summary = `Updated blocker “${title}”` + (ch.length ? ": " + ch.join(", ") : "");
+        }
+        const activity = await logActivity([{ project_id: pid, actor: by, kind: "blocker", summary }]);
+        return json({ ok: true, blocker: data, activity });
+      }
+      case "blocker_delete": {
+        const id = String(body.id || "");
+        if (!UUID_RE.test(id)) return json({ error: "id required" }, 400);
+        const { data: prev } = await db.from("pcc_blockers").select("project_id,title").eq("id", id).maybeSingle();
+        const { error } = await db.from("pcc_blockers").delete().eq("id", id);
+        if (error) throw new Error(error.message);
+        const activity = prev ? await logActivity([{ project_id: prev.project_id, actor: sstr(body.by, 80), kind: "blocker", summary: `Deleted blocker “${prev.title}”` }]) : [];
+        return json({ ok: true, activity });
+      }
+
+      // ─── project role overrides (PM / BA / SA / CSM) — Zoho is not updated ──
+      // body: {project_ids:[...], roles:{pm?:name|null, ...}}  null clears the override (back to Zoho).
+      case "project_meta_save": {
+        const ids = (Array.isArray(body.project_ids) ? body.project_ids : []).map((x: any) => String(x).slice(0, 40)).filter(Boolean).slice(0, 500);
+        const roles = body.roles && typeof body.roles === "object" ? body.roles : {};
+        const keys = Object.keys(roles).filter((k) => ROLE_KEYS.includes(k));
+        if (!ids.length || !keys.length) return json({ error: "Pick projects and a role." }, 400);
+        const by = sstr(body.by, 80), now = new Date().toISOString();
+        const { data: prev } = await db.from("pcc_project_meta").select("*").in("project_id", ids);
+        const pm = new Map((prev || []).map((r: any) => [r.project_id, r]));
+        const rows = ids.map((pid: string) => {
+          const r: any = Object.assign({}, (pm.get(pid) as any)?.roles || {});
+          keys.forEach((k) => { if (roles[k] === null) delete r[k]; else r[k] = sstr(roles[k]); });
+          return { project_id: pid, roles: Object.keys(r).length ? r : null, updated_by: by, updated_at: now };
+        });
+        const { error } = await db.from("pcc_project_meta").upsert(rows);
+        if (error) throw new Error(error.message);
+        const desc = keys.map((k) => roles[k] === null ? `${ROLE_LABEL[k]} back to Zoho value` : sstr(roles[k]) ? `${ROLE_LABEL[k]} set to ${sstr(roles[k])}` : `${ROLE_LABEL[k]} cleared`).join(", ");
+        const activity = await logActivity(ids.map((pid: string) => ({ project_id: pid, actor: by, kind: "project", summary: desc })));
+        return json({ ok: true, rows, activity });
+      }
+
+      // ─── team saved views (pcc_settings.views = {list:[{id,name,hash,by,at}]}) ──
+      case "view_save": {
+        const name = sstr(body.name, 80), hash = sstr(body.hash, 1500);
+        if (!name || !hash || !hash.startsWith("#")) return json({ error: "Name the view." }, 400);
+        const cur: any = (await getSetting("views")) || {};
+        const list = Array.isArray(cur.list) ? cur.list : [];
+        const v = { id: crypto.randomUUID(), name, hash, by: sstr(body.by, 80), at: new Date().toISOString() };
+        const next = list.filter((x: any) => x.name.toLowerCase() !== name.toLowerCase()).concat([v]).slice(-100);
+        await setSetting("views", { list: next });
+        return json({ ok: true, views: { list: next } });
+      }
+      case "view_delete": {
+        const cur: any = (await getSetting("views")) || {};
+        const next = (Array.isArray(cur.list) ? cur.list : []).filter((x: any) => x.id !== body.id);
+        await setSetting("views", { list: next });
+        return json({ ok: true, views: { list: next } });
       }
 
       // Diagnostic (maintenance credential only): GET a Zoho Projects path and report its shape.
