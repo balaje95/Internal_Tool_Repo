@@ -608,6 +608,13 @@ input[type=checkbox]{accent-color:var(--primary)}
     <button class="btn btn-o" style="font-size:.74rem;padding:5px 10px" onclick="rescanCpqUsage()" title="Re-read proposal templates and service packages">↻ Rescan</button>
     <span id="cpq-filter-note" style="font-size:.7rem;color:var(--text-sub)"></span>
   </div>
+  <!-- Customer Category filter — Customers only. Populated by syncCustCatRow(). -->
+  <div id="custcat-filter-row" style="display:none;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+    <span style="font-size:.74rem;font-weight:600;color:var(--lbl)">Category:</span>
+    <select id="custcat-filter" class="inp" style="width:240px;font-size:.82rem;padding:6px 10px" onchange="applyFilters()"></select>
+    <button class="btn btn-o" style="font-size:.74rem;padding:5px 10px" onclick="selectOnlyShown()" title="Clear the current selection and tick only the rows this filter shows (across all pages)">☑ Select only these</button>
+    <span id="custcat-filter-note" style="font-size:.7rem;color:var(--text-sub)"></span>
+  </div>
   <div id="recipe-row" style="display:none;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
     <span style="font-size:.74rem;font-weight:600;color:var(--lbl)">Recipes:</span>
     <select id="recipe-select" class="inp" style="width:200px;font-size:.82rem;padding:6px 10px"><option value="">— saved recipes —</option></select>
@@ -847,17 +854,23 @@ input[type=checkbox]{accent-color:var(--primary)}
 <div class="card" id="update-card" style="display:none">
   <div class="sec-title">✏ Bulk Update Selected Records</div>
   <div id="upd-warn" class="msg msg-warn" style="margin-bottom:14px">⚠ Select records above first.</div>
-  <div class="msg msg-info" style="margin-bottom:14px;font-size:.8rem">Updates send a <code>PATCH</code> request to the module endpoint with the single field/value you specify. Use dry-run first to verify the API accepts the change.</div>
-  <div class="grid2" style="max-width:560px;margin-bottom:14px">
+  <div class="msg msg-info" style="margin-bottom:14px;font-size:.8rem" id="upd-info">Pick the field to update — its valid values are loaded from the account. Dry run shows exactly what would change; a real run updates <b>one</b> record first, reads it back, and only continues if nothing else on it was changed.</div>
+  <div style="max-width:560px;margin-bottom:14px">
+    <div class="field-lbl">Field to update</div>
+    <select class="inp" id="upd-field-sel" onchange="updFieldChanged()"></select>
+  </div>
+  <div id="upd-field-ui" style="margin-bottom:14px"></div>
+  <div class="grid2" id="upd-custom" style="max-width:560px;margin-bottom:14px;display:none">
     <div>
       <div class="field-lbl">Field Name (API key)</div>
-      <input class="inp" id="upd-field" placeholder="e.g. customer_type, status" style="font-family:monospace">
+      <input class="inp" id="upd-field" placeholder="e.g. customer_type, status" style="font-family:monospace" oninput="updRenderPreview()">
     </div>
     <div>
       <div class="field-lbl">New Value <span style="font-weight:400;color:var(--text-sub)">(JSON or plain text)</span></div>
-      <input class="inp" id="upd-value" placeholder='e.g. COMMERCIAL or true or 42'>
+      <input class="inp" id="upd-value" placeholder='e.g. COMMERCIAL or true or 42' oninput="updRenderPreview()">
     </div>
   </div>
+  <div id="upd-preview" style="margin-bottom:14px"></div>
   <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:12px 14px;background:var(--th-bg);border-radius:8px;border:1px solid var(--border);margin-bottom:14px">
     <label style="display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:600;cursor:pointer">
       <input type="checkbox" id="upd-dryrun" checked onchange="updateUpdPill()">
@@ -1587,7 +1600,7 @@ const MODULES={
       _mo_type:_poTypeOf(r)||'—',
       _mo_status:r.material_request_status||r.purchase_order_status||r.status||'—',
       _total:r.total_price||r.purchase_order_total||r.total||'—'}))},
-  customers:{label:'Customers',uid:['customer_uid','uid','_id'],del:'customers',cols:[{h:'Name',f:['customer_first_name','customer_last_name']},{h:'Email',f:'customer_email'},{h:'Phone',f:'customer_phone'},{h:'Type',f:'customer_type'},{h:'Created',f:'created_at'}]},
+  customers:{label:'Customers',uid:['customer_uid','uid','_id'],del:'customers',cols:[{h:'Name',f:['customer_first_name','customer_last_name']},{h:'Email',f:'customer_email'},{h:'Phone',f:'customer_phone'},{h:'Type',f:'customer_type'},{h:'Category',f:'_cat'},{h:'Created',f:'created_at'}],transform:(recs)=>recs.map(r=>({...r,_cat:custCatName(r)}))},
   property:{label:'Properties',uid:['property_uid','uid','_id'],del:'property',preDelete:deactivatePropertyBeforeDelete,cols:[{h:'Name',f:'property_name'},{h:'Address',f:'property_address'},{h:'City',f:'city'},{h:'Status',f:'property_status'},{h:'Created',f:'created_at'}]},
   organization:{label:'Organizations',uid:['organization_uid','uid','_id'],del:'organization',cols:[{h:'Name',f:'organization_name'},{h:'Email',f:'organization_email'},{h:'Active',f:'is_active'},{h:'Created',f:'created_at'}]},
   assets:{label:'Assets',uid:['asset_uid','uid','_id'],del:'assets',cols:[{h:'Name',f:'asset_name'},{h:'Serial #',f:'serial_number'},{h:'Type',f:'asset_type'},{h:'Status',f:'asset_status'},{h:'Created',f:'created_at'}]},
@@ -2193,6 +2206,7 @@ async function doFetch(){
     filtRecs=[...allRecs];renderTable();
     // Parts & Services: fill the "In CPQ" and "Vendors" columns (non-blocking).
     if(modKey()==='product') annotateProductColumns().catch(err=>console.warn('[ZDM] product annotate failed',err));
+    syncCustCatRow();
   }catch(e){
     console.error('[ZDM] Fetch error:',e);
     showMsg('fetch-msg','✗ '+e.message,'err');
@@ -2347,6 +2361,47 @@ async function annotateProductCpqUsage(){
   };
   applyFilters();
   syncCpqFilterRow();
+}
+
+// ── Customers: Category column + filter ──────────────────────────────────
+// Filter key: category_uid, '__none' (no category / deleted one), '__unknown' (list
+// row carries no customer_category key at all — we can't tell, so never lump it in "none").
+function custCatKey(r){
+  if(!r||!('customer_category' in r)) return '__unknown';
+  const c=r.customer_category;
+  if(!c||(typeof c==='object'&&(c.is_deleted||!c.category_uid))) return '__none';
+  return typeof c==='object'?c.category_uid:String(c);
+}
+function custCatName(r){
+  const k=custCatKey(r);
+  if(k==='__unknown') return '?';
+  if(k==='__none') return '—';
+  return (typeof r.customer_category==='object'&&r.customer_category.category_name)||k;
+}
+function syncCustCatRow(){
+  const row=$('custcat-filter-row');if(!row) return;
+  const on=modKey()==='customers'&&allRecs.length>0;
+  row.style.display=on?'flex':'none';
+  if(!on) return;
+  const sel=$('custcat-filter'),prev=sel.value,groups=new Map();
+  allRecs.forEach(r=>{const k=custCatKey(r);if(!groups.has(k))groups.set(k,{name:custCatName(r),n:0});groups.get(k).n++;});
+  const named=[...groups.entries()].filter(([k])=>!k.startsWith('__')).sort((a,b)=>a[1].name.localeCompare(b[1].name));
+  const opt=(k,label,n)=>'<option value="'+esc(k)+'">'+esc(label)+' ('+n+')</option>';
+  sel.innerHTML='<option value="">All categories ('+allRecs.length+')</option>'+
+    named.map(([k,g])=>opt(k,g.name,g.n)).join('')+
+    (groups.has('__none')?opt('__none','— No category',groups.get('__none').n):'')+
+    (groups.has('__unknown')?opt('__unknown','? Not in list data',groups.get('__unknown').n):'');
+  if([...sel.options].some(o=>o.value===prev)) sel.value=prev;
+  const unk=groups.has('__unknown')?groups.get('__unknown').n:0;
+  $('custcat-filter-note').textContent=unk===allRecs.length?'⚠ This account’s customer list does not include the category, so it can’t be filtered here.':unk?unk+' record(s) don’t show a category in the list data.':'';
+}
+// Replace the selection with exactly the filtered rows (all pages).
+function selectOnlyShown(){
+  selUids=new Set(filtRecs.map(r=>String(r[uidField]||'')).filter(Boolean));
+  _selectAllMode=false;hideSellAllBanner();renderRows();updSel();
+  const sa=$('selall');if(sa) sa.checked=filtRecs.length>0;
+  showMsg('fetch-msg','☑ Selected only the '+selUids.size+' record(s) shown by the filter — anything selected before was cleared.','info');
+  if($('update-card')&&$('update-card').style.display==='block') showUpdate();
 }
 
 // Show/hide the CPQ filter row and keep its note honest about what a blank means.
@@ -7228,7 +7283,9 @@ function applyFilters(){
   const fromVal=$('df-from')?$('df-from').value:'';
   const toVal=$('df-to')?$('df-to').value:'';
   const cpqVal=(modKey()==='product'&&$('cpq-filter'))?$('cpq-filter').value:'';
+  const catVal=(modKey()==='customers'&&$('custcat-filter'))?$('custcat-filter').value:'';
   filtRecs=allRecs.filter(r=>{
+    if(catVal&&custCatKey(r)!==catVal) return false;
     if(cpqVal){
       if(cpqVal==='in'&&!r._cpqUsed) return false;
       if(cpqVal==='out'&&r._cpqUsed) return false;
@@ -7301,12 +7358,150 @@ document.addEventListener('click',e=>{
 
 // ── FEAT-1: BULK UPDATE ENGINE ───────────────────────────────────────────────
 let _updRunning=false,_updPaused=false,_updCancelled=false,_updDryCtx=null,_updFailUids=[],_updLogRows=[];
+// Field registry: per module, the fields offered in the picker. `ref` fields load their
+// valid values from the account (e.g. customer categories) so the user picks instead of
+// typing UIDs. Write shapes come from Zuper's own web app (customers.module chunk,
+// 2026-11-05): the customer form sends PUT customers/{uid} {customer:{…,customer_category:"<category_uid>"}}
+// — a flat PATCH {field:value} (the old behaviour) is rejected.
+const UPD_FIELDS={
+  customers:[
+    {key:'customer_category',label:'Customer Category',type:'ref',
+      load:async()=>{
+        const r=await zkReq(null,'GET','customers/category?sort_by=display_order');
+        if(!r.ok) throw new Error(r.status+' '+r.msg);
+        const raw=Array.isArray(r.body?.data)?r.body.data:Array.isArray(r.body)?r.body:[];
+        return raw.filter(c=>c&&c.category_uid&&!c.is_deleted).map(c=>({value:c.category_uid,label:c.category_name||'(unnamed)',desc:c.category_description||'',color:c.category_color||c.color||''}));
+      },
+      current:r=>{const c=r.customer_category;if(c===undefined)return undefined;if(!c||c.is_deleted)return '';return typeof c==='object'?(c.category_uid||''):String(c);},
+      verify:(rec,v)=>{const c=rec.customer_category;const now=c&&typeof c==='object'?(c.is_deleted?'':c.category_uid||''):(c||'');return now===(v||'');},
+      applyLocal:(rec,v,opt)=>{rec.customer_category=v?{category_uid:v,category_name:opt?opt.label:''}:null;rec._cat=custCatName(rec);},
+      clearLabel:'— No category (remove it)'},
+    {key:'customer_company_name',label:'Company Name',type:'text'},
+    {key:'customer_description',label:'Description',type:'text'},
+    {key:'customer_type',label:'Customer Type',type:'text',hint:'Usually INDIVIDUAL or COMMERCIAL'},
+  ],
+  product:[
+    {key:'price',label:'Price',type:'number'},
+    {key:'purchase_price',label:'Purchase Price',type:'number'},
+    {key:'uom',label:'Unit of Measure',type:'text'},
+  ],
+  assets:[{key:'asset_description',label:'Description',type:'text'}],
+  jobs:[{key:'job_priority',label:'Priority',type:'text',hint:'e.g. LOW, MEDIUM, HIGH, URGENT'}],
+};
+// Write contracts. Reuses the Toolkit's ZK_EDIT (defined later in the file) so there is
+// one source of truth; modules without a contract fall back to the legacy flat PATCH.
+function updWriter(mk){return (typeof ZK_EDIT!=='undefined'&&ZK_EDIT[mk])?ZK_EDIT[mk].put:null;}
+function updReadPath(mk,uid){const cfg=MODULES[mk]||{};if(cfg.dryRunSkipGet) return null;return (cfg.del||mk)+'/'+encodeURIComponent(uid);}
+let _updOpts=[],_updOptsFor='',_updSel=null,_updCtx=null;
+function updSelectedRecs(){return allRecs.filter(r=>selUids.has(String(r[uidField]||'')));}
+function updDef(){const k=$('upd-field-sel').value;return (UPD_FIELDS[modKey()]||[]).find(f=>f.key===k)||null;}
 function showUpdate(){
   if(!selUids.size){alert('Select at least one record first.');return;}
   const warn=$('upd-warn');if(warn) warn.textContent='⚠ '+selUids.size+' record(s) selected for update.';
   updateUpdPill();
+  const defs=UPD_FIELDS[modKey()]||[];
+  const sel=$('upd-field-sel'),prev=sel.value;
+  sel.innerHTML=defs.map(f=>'<option value="'+esc(f.key)+'">'+esc(f.label)+'</option>').join('')+'<option value="__custom">Other field (advanced — type the API key)</option>';
+  if(prev&&[...sel.options].some(o=>o.value===prev)) sel.value=prev;
   $('update-card').style.display='block';
   $('update-card').scrollIntoView({behavior:'smooth',block:'start'});
+  updFieldChanged();
+}
+async function updFieldChanged(){
+  const def=updDef(),ui=$('upd-field-ui');
+  $('upd-custom').style.display=def?'none':'grid';
+  _updSel=null;
+  if(!def){ui.innerHTML='';updRenderPreview();return;}
+  if(def.type==='ref'){
+    const tag=baseUrl()+'|'+String(apiKey()).slice(-8)+'|'+modKey()+':'+def.key;
+    if(_updOptsFor!==tag){
+      ui.innerHTML='<div class="jt-note">Loading '+esc(def.label)+' options from the account…</div>';
+      try{_updOpts=await def.load();_updOptsFor=tag;}
+      catch(e){ui.innerHTML='<div class="msg msg-err">✗ Could not load '+esc(def.label)+' options: '+esc(e.message)+'</div>';return;}
+      if(updDef()!==def) return; // user switched field while loading
+    }
+    updRenderRefOptions();
+  }else{
+    ui.innerHTML='<div class="field-lbl">New '+esc(def.label)+(def.hint?' <span style="font-weight:400;color:var(--text-sub)">('+esc(def.hint)+')</span>':'')+'</div>'+
+      '<input class="inp" id="upd-simple-val" style="max-width:560px" '+(def.type==='number'?'type="number" step="any"':'')+' oninput="updRenderPreview()">';
+  }
+  updRenderPreview();
+}
+function updRenderRefOptions(){
+  const def=updDef();if(!def) return;
+  const recs=updSelectedRecs(),count={};let unknown=0;
+  recs.forEach(r=>{const v=def.current(r);if(v===undefined)unknown++;else count[v]=(count[v]||0)+1;});
+  const opts=[..._updOpts];if(def.clearLabel) opts.push({value:'',label:def.clearLabel,desc:''});
+  const q=(($('upd-ref-q')&&$('upd-ref-q').value)||'').toLowerCase();
+  const row=o=>{
+    const sw=o.color?'<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:'+esc(o.color)+';border:1px solid var(--border)"></span>':'';
+    const n=count[o.value]||0;
+    return '<label style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:6px;cursor:pointer;'+(_updSel===o.value?'background:var(--th-bg);outline:1.5px solid var(--primary)':'')+'">'+
+      '<input type="radio" name="upd-ref" value="'+esc(o.value)+'"'+(_updSel===o.value?' checked':'')+' onchange="_updSel=this.value;updRenderRefOptions()">'+sw+
+      '<span style="font-weight:600">'+esc(o.label)+'</span>'+(o.desc?'<span class="jt-note">'+esc(o.desc)+'</span>':'')+
+      '<span class="jt-note" style="margin-left:auto">'+(n?n+' selected record'+(n===1?' is':'s are')+' in this now':'')+'</span></label>';
+  };
+  const shown=opts.filter(o=>!q||o.label.toLowerCase().includes(q));
+  $('upd-field-ui').innerHTML='<div class="field-lbl">Set '+esc(def.label)+' to <span style="font-weight:400;color:var(--text-sub)">('+_updOpts.length+' in this account)</span></div>'+
+    (_updOpts.length>8?'<input class="inp" id="upd-ref-q" placeholder="Search…" style="max-width:320px;margin-bottom:6px" value="'+esc(q)+'" oninput="updRenderRefOptions();this.focus();this.setSelectionRange(this.value.length,this.value.length)">':'')+
+    '<div style="max-height:280px;overflow-y:auto;padding:6px;background:var(--inp-bg);border:1px solid var(--border);border-radius:8px;max-width:760px">'+
+    (shown.length?shown.map(row).join(''):'<div class="jt-note" style="padding:8px">'+(_updOpts.length?'No match.':'No '+esc(def.label)+' options exist in this account yet — create them in Zuper first.')+'</div>')+'</div>'+
+    (unknown?'<div class="jt-note" style="margin-top:6px">'+unknown+' selected record(s) don’t show their current '+esc(def.label)+' in the list data — they will all be written.</div>':'');
+  updRenderPreview();
+}
+// Returns the update spec from the UI, or {error}.
+function updSpec(){
+  const def=updDef();
+  if(def){
+    if(def.type==='ref'){
+      if(_updSel===null) return {error:'Choose the '+def.label+' to set.'};
+      const opt=_updOpts.find(o=>o.value===_updSel)||null;
+      return {def,field:def.key,value:_updSel,valueLabel:opt?opt.label:(def.clearLabel||'(empty)'),opt};
+    }
+    const raw=(($('upd-simple-val')||{}).value||'').trim();
+    if(def.type==='number'){if(raw===''||isNaN(parseFloat(raw))) return {error:'Enter a number for '+def.label+'.'};return {def,field:def.key,value:parseFloat(raw),valueLabel:raw};}
+    return {def,field:def.key,value:raw,valueLabel:raw||'(empty)'};
+  }
+  const field=($('upd-field').value||'').trim(),rawVal=($('upd-value').value||'').trim();
+  if(!field) return {error:'Enter the field name to update.'};
+  if(!rawVal) return {error:'Enter a value (use null or "" if intentional).'};
+  let value;try{value=JSON.parse(rawVal);}catch{value=rawVal;}
+  return {def:null,field,value,valueLabel:rawVal};
+}
+function updCurrent(def,rec,field){
+  if(def&&def.current) return def.current(rec);
+  const v=field.split('.').reduce((o,k)=>o==null?undefined:o[k],rec);
+  return v;
+}
+function updDisplay(def,v){
+  if(v===undefined) return '?';
+  if(def&&def.type==='ref'){if(!v) return '∅';const o=_updOpts.find(x=>x.value===v);return o?o.label:v;}
+  if(v===null||v==='') return '∅';
+  return typeof v==='object'?JSON.stringify(v):String(v);
+}
+// Splits selected UIDs into to-change vs already-set (from the loaded list data).
+function updPlan(spec){
+  const recs=updSelectedRecs(),byUid=new Map(recs.map(r=>[String(r[uidField]||''),r]));
+  const change=[],same=[];
+  for(const uid of selUids){
+    const r=byUid.get(uid),cur=r?updCurrent(spec.def,r,spec.field):undefined;
+    const eq=cur!==undefined&&(spec.def&&spec.def.type==='ref'?(cur||'')===(spec.value||''):JSON.stringify(cur)===JSON.stringify(spec.value));
+    (eq?same:change).push({uid,rec:r,cur});
+  }
+  return {change,same};
+}
+function updRenderPreview(){
+  const out=$('upd-preview');if(!out) return;
+  const spec=updSpec();
+  if(spec.error){out.innerHTML='';return;}
+  const {change,same}=updPlan(spec);
+  const w=updWriter(modKey());
+  const how=w?(()=>{const [m,p,b]=w('UIDX',{[spec.field]:spec.value});return (m+' '+p+' '+JSON.stringify(b)).replace(/UIDX/g,'{uid}');})():'PATCH '+(modCfg().del||modKey())+'/{uid} '+JSON.stringify({[spec.field]:spec.value})+'  ⚠ no confirmed write contract for this module';
+  out.innerHTML='<div style="font-size:.82rem;margin-bottom:6px"><b>'+change.length+'</b> record(s) will be set to <b>'+esc(spec.valueLabel)+'</b>'+(same.length?' · <span class="jt-note">'+same.length+' already have it — skipped</span>':'')+'</div>'+
+    '<div class="jt-note" style="margin-bottom:6px;font-family:monospace;word-break:break-all">'+esc(how)+'</div>'+
+    (change.length?'<div style="max-height:220px;overflow:auto;max-width:760px"><table class="zk-tbl" style="width:100%;font-size:.8rem"><thead><tr><th style="text-align:left">Record</th><th style="text-align:left">Now</th><th style="text-align:left">New</th></tr></thead><tbody>'+
+      change.slice(0,200).map(c=>'<tr><td>'+esc(c.rec?_histName(c.rec):c.uid)+'</td><td style="color:var(--red-d)">'+esc(updDisplay(spec.def,c.cur))+'</td><td style="color:var(--green-d)">'+esc(spec.valueLabel)+'</td></tr>').join('')+
+      (change.length>200?'<tr><td colspan="3" class="jt-note">…and '+(change.length-200)+' more</td></tr>':'')+'</tbody></table></div>':'');
 }
 function hideUpdate(){
   if(_updRunning&&!confirm('An update is in progress. Cancel and close?')) return;
@@ -7326,15 +7521,40 @@ function _updLogLine(uid,level,msg){
   el.appendChild(d);el.scrollTop=el.scrollHeight;
   _updLogRows.push({uid,status:level==='ok'?'success':level==='warn'?'warning':'failed',message:msg});
 }
-async function hitUpdate(uid,field,value,dry){
+function _updFilled(v){return v!=null&&v!==''&&!(Array.isArray(v)&&!v.length)&&!(typeof v==='object'&&!Array.isArray(v)&&!Object.keys(v).length);}
+// Real-run safety: write ONE record, read it back, and confirm (a) the field took the new
+// value and (b) nothing else on the record was blanked (a partial PUT that replaces the
+// whole record would do that). Any doubt → stop before the rest are touched.
+async function updCanary(uid,spec){
+  const mk=modKey(),w=updWriter(mk),rp=updReadPath(mk,uid);
+  if(!w) return Object.assign(await hitUpdate(uid,spec,false),{canary:'no-contract'});
+  let before=null;
+  if(rp){const b=await zkReq(null,'GET',rp);if(b.ok) before=b.body?.data||b.body;}
+  const r=await zkReq(null,...w(uid,{[spec.field]:spec.value}));
+  if(!r.ok) return {ok:false,stop:true,msg:r.status+' '+r.msg};
+  if(!before) return {ok:true,msg:r.status+' updated (no read-back for this module — check one record in Zuper)'};
+  const a=await zkReq(null,'GET',rp),after=a.ok?(a.body?.data||a.body):null;
+  if(!after) return {ok:true,stop:true,msg:r.status+' updated, but the read-back failed — stopped so you can check this record in Zuper first'};
+  const took=spec.def&&spec.def.verify?spec.def.verify(after,spec.value):JSON.stringify(updCurrent(null,after,spec.field))===JSON.stringify(spec.value);
+  if(!took) return {ok:false,stop:true,msg:'Zuper answered '+r.status+' but '+spec.field+' did not change on read-back — stopped'};
+  const top=spec.field.split('.')[0];
+  const lost=Object.keys(before).filter(k=>k!==top&&!/(_at|_time|updated|modified)$/i.test(k)&&_updFilled(before[k])&&!_updFilled(after[k]));
+  if(lost.length) return {ok:true,stop:true,msg:'updated, but these fields came back empty: '+lost.join(', ')+' — stopped before touching any other record'};
+  return {ok:true,msg:r.status+' updated · verified by read-back (no other fields changed)'};
+}
+async function hitUpdate(uid,spec,dry){
+  const {field,value}=spec;
   const cfg=modCfg();
   const endpoint=cfg.del||modKey();
   const url=baseUrl()+endpoint+'/'+encodeURIComponent(uid);
   if(dry){
+    if(spec.def){const r=allRecs.find(x=>String(x[uidField]||'')===uid);return{ok:true,msg:'would set '+spec.def.label+': '+updDisplay(spec.def,r?updCurrent(spec.def,r,field):undefined)+' → '+spec.valueLabel+' (dry run — nothing sent)'};}
     if(cfg.dryRunSkipGet) return{ok:true,msg:'200 would update (simulated — module has no GET-by-ID)'};
-    try{const res=await fetch(url,{method:'GET',headers:getHdrs()});if(res.ok)return{ok:true,msg:'200 found (dry run — PATCH not sent)'};return{ok:false,msg:res.status+' not found'};}
+    try{const res=await fetch(url,{method:'GET',headers:getHdrs()});if(res.ok)return{ok:true,msg:'200 found (dry run — nothing sent)'};return{ok:false,msg:res.status+' not found'};}
     catch(e){return{ok:false,msg:'Network: '+e.message};}
   }
+  const w=updWriter(modKey());
+  if(w){const r=await zkReq(null,...w(uid,{[field]:value}));return r.ok?{ok:true,msg:r.status+' updated'}:{ok:false,msg:r.status+' '+r.msg};}
   try{
     const body={[field]:value};
     const res=await fetch(url,{method:'PATCH',headers:hdrs(),body:JSON.stringify(body)});
@@ -7344,7 +7564,12 @@ async function hitUpdate(uid,field,value,dry){
   }catch(e){return{ok:false,msg:'Network: '+e.message};}
 }
 async function _waitUpdUnpause(){while(_updPaused&&!_updCancelled)await new Promise(r=>setTimeout(r,200));}
-async function runUpdateEngine(uids,field,value,dry){
+function _updApplyLocal(uid,spec){
+  const r=allRecs.find(x=>String(x[uidField]||'')===uid);if(!r) return;
+  if(spec.def&&spec.def.applyLocal) spec.def.applyLocal(r,spec.value,spec.opt);
+  else if(!spec.field.includes('.')) r[spec.field]=spec.value;
+}
+async function runUpdateEngine(uids,spec,dry){
   _updLogRows=[];
   const logEl=$('upd-log');logEl.innerHTML='';logEl.style.display='block';
   $('upd-log-actions').style.display='none';
@@ -7356,28 +7581,36 @@ async function runUpdateEngine(uids,field,value,dry){
   $('upd-cancel-btn').style.display='inline-flex';
   _updRunning=true;_updPaused=false;_updCancelled=false;
   const conc=parseInt($('upd-concurrency').value)||3;
-  let ok=0,fail=0,done=0,idx=0;const okUids=[],failUids_=[];
+  let ok=0,fail=0,done=0,idx=0,stopped='';const okUids=[],failUids_=[];
+  const tick=()=>{done++;$('upd-prog-bar').style.width=(done/uids.length*100).toFixed(1)+'%';$('upd-prog-lbl').textContent=done+' / '+uids.length+' processed';};
+  const record=(uid,r)=>{
+    if(r.ok){ok++;okUids.push(uid);$('upd-rs-ok').textContent=ok;_updLogLine(uid,r.stop?'warn':'ok',r.msg);if(!dry)_updApplyLocal(uid,spec);}
+    else{fail++;failUids_.push(uid);$('upd-rs-fail').textContent=fail;_updLogLine(uid,'err',r.msg);}
+    tick();
+  };
+  if(!dry&&uids.length){
+    $('upd-prog-lbl').textContent='Updating 1 record first and reading it back…';
+    const r=await updCanary(uids[0],spec);record(uids[0],r);idx=1;
+    if(r.stop||!r.ok) stopped=r.msg;
+  }
   async function worker(){
     while(true){
-      if(_updCancelled) return;
+      if(_updCancelled||stopped) return;
       await _waitUpdUnpause();
       const i=idx++;if(i>=uids.length) return;
       const uid=uids[i];
-      const r=await hitUpdate(uid,field,value,dry);
-      if(r.ok){ok++;okUids.push(uid);$('upd-rs-ok').textContent=ok;_updLogLine(uid,'ok',r.msg);}
-      else{fail++;failUids_.push(uid);$('upd-rs-fail').textContent=fail;_updLogLine(uid,'err',r.msg);}
-      done++;$('upd-prog-bar').style.width=(done/uids.length*100).toFixed(1)+'%';
-      $('upd-prog-lbl').textContent=done+' / '+uids.length+' processed';
+      record(uid,await hitUpdate(uid,spec,dry));
     }
   }
-  await Promise.all(Array.from({length:Math.min(conc,uids.length)},worker));
+  if(!stopped) await Promise.all(Array.from({length:Math.min(conc,uids.length)},worker));
   _updRunning=false;
   $('upd-run-btn').disabled=false;$('upd-pause-btn').style.display='none';$('upd-cancel-btn').style.display='none';
   $('upd-log-actions').style.display='block';
-  $('upd-prog-lbl').textContent=_updCancelled?'⚠ Cancelled at '+done+'/'+uids.length+' — '+ok+' OK, '+fail+' failed':'✓ Complete — '+ok+' OK, '+fail+' failed';
+  $('upd-prog-lbl').textContent=stopped?'⛔ Stopped after the first record — '+stopped:_updCancelled?'⚠ Cancelled at '+done+'/'+uids.length+' — '+ok+' OK, '+fail+' failed':'✓ Complete — '+ok+' OK, '+fail+' failed';
+  if(!dry&&ok){try{renderRows();}catch(e){}try{syncCustCatRow();}catch(e){}updRenderPreview();if(spec.def&&spec.def.type==='ref')updRenderRefOptions();}
   if(dry&&okUids.length&&!_updCancelled){
-    _updDryCtx={uids:okUids,field,value};
-    $('upd-proceed-btn').textContent='→ PATCH '+okUids.length+' record(s) — REAL UPDATE';
+    _updDryCtx={uids:okUids,spec};
+    $('upd-proceed-btn').textContent='→ Update '+okUids.length+' record(s) — REAL UPDATE';
     $('upd-proceed-btn').style.display='inline-flex';
   }
   if(failUids_.length&&!_updCancelled){
@@ -7389,31 +7622,30 @@ async function runUpdateEngine(uids,field,value,dry){
 async function startUpdate(){
   if(!apiKey()){alert('API key missing.');return;}
   if(!selUids.size){alert('No records selected.');return;}
-  const field=($('upd-field').value||'').trim();
-  const rawVal=($('upd-value').value||'').trim();
-  if(!field){alert('Enter the field name to update.');return;}
-  if(!rawVal){alert('Enter a value (use null or "" if intentional).');return;}
-  let value;try{value=JSON.parse(rawVal);}catch{value=rawVal;}
+  const spec=updSpec();
+  if(spec.error){alert(spec.error);return;}
+  const {change,same}=updPlan(spec);
+  const uids=change.map(c=>c.uid);
+  if(!uids.length){alert('All '+same.length+' selected record(s) already have '+spec.valueLabel+' — nothing to update.');return;}
   const dry=$('upd-dryrun').checked;
-  const uids=Array.from(selUids);
-  const action=dry?'DRY RUN — check '+uids.length+' record(s) then show PATCH preview':'⚠ PATCH '+uids.length+' record(s): set "'+field+'" = '+rawVal;
-  if(!confirm(action+'\n\nAccount: '+$('s-account').textContent))return;
-  await runUpdateEngine(uids,field,value,dry);
+  const label=spec.def?spec.def.label:spec.field;
+  const action=dry?'DRY RUN — preview '+uids.length+' record(s) (nothing is sent)':'⚠ UPDATE '+uids.length+' record(s): set '+label+' = '+spec.valueLabel+'\n\nThe first record is updated and read back before the rest.';
+  if(!confirm(action+(same.length?'\n'+same.length+' already set — skipped.':'')+'\n\nAccount: '+$('s-account').textContent))return;
+  _updCtx=spec;
+  await runUpdateEngine(uids,spec,dry);
 }
 async function proceedUpdateReal(){
   if(!_updDryCtx) return;
-  const{uids,field,value}=_updDryCtx;_updDryCtx=null;
-  if(!confirm('⚠ PATCH '+uids.length+' record(s): set "'+field+'" = '+JSON.stringify(value)+'\n\nAccount: '+$('s-account').textContent))return;
-  await runUpdateEngine(uids,field,value,false);
+  const{uids,spec}=_updDryCtx;_updDryCtx=null;
+  if(!confirm('⚠ UPDATE '+uids.length+' record(s): set '+(spec.def?spec.def.label:spec.field)+' = '+spec.valueLabel+'\n\nThe first record is updated and read back before the rest.\n\nAccount: '+$('s-account').textContent))return;
+  _updCtx=spec;
+  await runUpdateEngine(uids,spec,false);
 }
 async function retryUpdate(){
-  if(!_updFailUids.length) return;
+  if(!_updFailUids.length||!_updCtx) return;
   if(!confirm('Retry '+_updFailUids.length+' failed record(s)?')) return;
   const uids=[..._updFailUids];_updFailUids=[];
-  const field=($('upd-field').value||'').trim();
-  const rawVal=($('upd-value').value||'').trim();
-  let value;try{value=JSON.parse(rawVal);}catch{value=rawVal;}
-  await runUpdateEngine(uids,field,value,$('upd-dryrun').checked);
+  await runUpdateEngine(uids,_updCtx,$('upd-dryrun').checked);
 }
 function toggleUpdatePause(){
   if(!_updRunning) return;
@@ -9632,6 +9864,8 @@ function onModuleChange(){
   _cpqScan={state:'idle',summary:'',used:0,trusted:false};
   const cpqFilterSel=$('cpq-filter');if(cpqFilterSel) cpqFilterSel.value='';
   const cpqFilterRow=$('cpq-filter-row');if(cpqFilterRow) cpqFilterRow.style.display='none';
+  if($('custcat-filter')) $('custcat-filter').value='';
+  if($('custcat-filter-row')) $('custcat-filter-row').style.display='none';
   if($('update-card')) $('update-card').style.display='none';
   clearUndoBuffer();
   // Import button only for product module
