@@ -139,5 +139,13 @@ const TOOLS = [
     "tag": "Beta",
     "updated": "2026-10-15",
     "help": "Leadership view of every onboarding project, synced from Zoho Projects (no exports). Overview: projects in onboarding, go-lives vs the monthly target, off-track count, ARR in flight, days to go-live, on-time %, plus a 'what changed this week' panel and a copy-to-Slack weekly digest. Projects: health (red/amber/green with the reasons), phase, P1–P4 pipeline progress, current stage, ETA vs first-seen baseline, and a forecast from each project's task pace; click any row for the full drawer (pipelines and stages, Gantt timeline, Zoho tasks, adoption, history). Pipelines: a Stage 1–5 heatmap across P1 Lead Intake → P4 Revenue and where projects get stuck. Tasks: overdue, due soon and unassigned Zoho tasks. Go-Lives: delivered vs target, ETA vs pace for the next six months. Team Load: weighted project load vs each person's capacity, plus an eight-week task heatmap. Adoption: add a customer's Zuper API key under Accounts and daily usage (jobs, active field users, quotes, invoices, last activity) turns into a health score with Day 7/30/60/90 milestones. My Dashboard: drag-and-drop widgets, like the Dashboard Builder. Sign in with the team password; 'Explore with demo data' on the sign-in screen shows sample projects."
+  },
+  {
+    "name": "Pipeline Checklist Builder",
+    "description": "Build a customer's onboarding pipeline checklist from their discovery answers",
+    "file": "tools/pipeline-checklist-builder.html",
+    "icon": "✅",
+    "updated": "2026-11-05",
+    "help": "Runs entirely in your browser — no login, no API key. Step 1, Customer profile: answer the discovery questions (customer type, services, work type, repairs, roof types, data migration source, supplier ordering, lead sources, canvassing, HubSpot, real estate, financing, recurring services, multi-trade and multi-structure jobs, permits, warranty); each answer decides which checklist items appear, and clicking a selected answer clears it. Step 2, Add-on checklists: the profile switches add-ons on automatically (Commercial, Siding, Gutters, Insurance, Repair flow, Permits, Recurring services, Multi-trade, Multi-structure proposal, Safety checklist), and you can add or remove any by hand. Step 3, Checklist: the Lead, Inspection, Production and Revenue pipelines plus Go-Live & Handover, with add-on items placed inside the pipeline they belong to, owners (PM / SA / BA) and due dates; tick an item only once it is tested in the customer's account. Progress saves in this browser; print it or export it to Word (.docx). Dark mode and Start over are in the top bar."
   }
 ];

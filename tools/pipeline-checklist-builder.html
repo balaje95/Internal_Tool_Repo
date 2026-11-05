@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pipeline Checklist Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{
+  --ink:#1F3A5F; --text:#1d2633; --muted:#5d6878; --faint:#8a94a3;
+  --accent:#E8711A; --accent-soft:#fdeee2;
+  --bg:#ffffff; --panel:#F2F4F7; --surface:#ffffff; --rule:#d9dee6; --rule-strong:#C9D1DB;
+  --on:#1F3A5F; --on-text:#ffffff; --done:#2f7d55; --done-soft:#e5f3eb;
+  color-scheme: light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ink:#a9c4e6; --text:#e4e9f0; --muted:#a3adbb; --faint:#7d8898;
+    --accent:#f08a3c; --accent-soft:#3a2716;
+    --bg:#0e1621; --panel:#15202e; --surface:#192636; --rule:#2a394b; --rule-strong:#34465b;
+    --on:#a9c4e6; --on-text:#0e1621; --done:#6cc497; --done-soft:#17321f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#a9c4e6; --text:#e4e9f0; --muted:#a3adbb; --faint:#7d8898;
+  --accent:#f08a3c; --accent-soft:#3a2716;
+  --bg:#0e1621; --panel:#15202e; --surface:#192636; --rule:#2a394b; --rule-strong:#34465b;
+  --on:#a9c4e6; --on-text:#0e1621; --done:#6cc497; --done-soft:#17321f;
+  color-scheme: dark;
+}
+html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 80px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "Public Sans",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;font-variant-numeric:tabular-nums}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* top bar */
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--rule)}
+.bar-in{max-width:1180px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.cust{flex:1 1 280px;min-width:0}
+.cust label{display:block;font-size:12px;color:var(--muted);font-weight:600}
+.cust input{width:100%;border:0;background:transparent;font-size:22px;font-weight:800;color:var(--ink);padding:0;letter-spacing:-.01em}
+.cust input::placeholder{color:var(--faint);font-weight:700}
+.prog{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.prog b{color:var(--text);font-size:15px}
+.meter{width:120px;height:6px;border-radius:3px;background:var(--panel);overflow:hidden}
+.meter i{display:block;height:100%;background:var(--done);width:0;transition:width .25s}
+.actions{display:flex;gap:8px}
+.btn{border:1px solid var(--rule-strong);background:var(--surface);border-radius:8px;padding:8px 14px;font-weight:600;font-size:14px;cursor:pointer}
+.btn:hover{border-color:var(--ink)}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--on-text)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--muted)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.build{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px solid var(--rule)}
+.build .btn{padding:10px 18px;font-size:15px}
+.build-note{font-size:13px;color:var(--muted)}
+.build-note b{color:var(--accent)}
+.refs{margin-top:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px 24px}
+.refs-h{grid-column:1/-1;font-size:13px;font-weight:700;color:var(--ink)}
+.refs label{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.refs label span{flex:none;min-width:150px;color:var(--text);font-weight:600}
+.refs input{flex:1;min-width:0;border:0;border-bottom:1px solid var(--rule-strong);background:transparent;padding:3px 0;font-size:13px}
+.locked{border:1px dashed var(--rule-strong);border-radius:12px;padding:36px 28px;text-align:center;background:var(--panel)}
+.locked h3{margin:0 0 6px;font-size:18px;color:var(--ink)}
+.locked p{margin:0 auto;color:var(--muted);max-width:56ch}
+.locked ol{display:inline-block;text-align:left;margin:14px auto 0;padding-left:20px;color:var(--text);font-size:14px}
+.locked li.ok{color:var(--done);text-decoration:line-through}
+
+main{max-width:1180px;margin:0 auto;padding:24px 24px 80px}
+.step{margin:8px 0 36px}
+.step-h{display:flex;align-items:baseline;gap:12px;margin:0 0 4px}
+.step-n{font-weight:800;color:var(--accent);font-size:15px}
+h2{font-size:22px;margin:0;color:var(--ink);letter-spacing:-.01em}
+.lede{color:var(--muted);margin:0 0 16px;max-width:70ch}
+
+/* profile */
+.qs{display:grid;grid-template-columns:repeat(auto-fill,minmax(500px,1fr));gap:0 32px;border-top:1px solid var(--rule)}
+.q{display:grid;grid-template-columns:minmax(150px,210px) 1fr;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--rule)}
+.q-l{font-weight:600;font-size:14px}
+.q-l small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill{border:1px solid var(--rule-strong);background:var(--surface);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer;white-space:nowrap}
+.pill:hover{border-color:var(--ink)}
+.pill[aria-pressed="true"]{background:var(--on);border-color:var(--on);color:var(--on-text);font-weight:600}
+.unanswered{margin-top:12px;font-size:13px;color:var(--muted)}
+.unanswered b{color:var(--accent)}
+
+/* tag strip */
+.tags{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px;font-size:13px;color:var(--muted)}
+.tag{font-size:11px;font-weight:800;color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:2px 7px;letter-spacing:.02em;white-space:nowrap}
+
+/* add-ons */
+.addons{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.ao{position:relative;border:1px solid var(--rule-strong);border-radius:10px;background:var(--surface);padding:12px 12px 10px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px;min-height:108px}
+.ao:hover{border-color:var(--ink)}
+.ao[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);background:var(--panel)}
+.ao-top{display:flex;align-items:center;gap:8px;padding-right:24px}
+.ao-letter{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;font-weight:800;font-size:13px;background:var(--panel);color:var(--muted);flex:none}
+.ao[aria-pressed="true"] .ao-letter{background:var(--accent);color:#fff}
+.ao-name{font-weight:700;font-size:14px;line-height:1.25}
+.ao-pipes{font-size:12px;color:var(--muted)}
+.ao-state{margin-top:auto;font-size:12px;font-weight:600;color:var(--faint)}
+.ao[aria-pressed="true"] .ao-state{color:var(--ink)}
+.ao-box{position:absolute;top:12px;right:12px;width:18px;height:18px;border-radius:4px;border:1.5px solid var(--rule-strong);display:grid;place-items:center}
+.ao[aria-pressed="true"] .ao-box{background:var(--ink);border-color:var(--ink)}
+.ao[aria-pressed="true"] .ao-box::after{content:"";width:9px;height:5px;border:2px solid var(--on-text);border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+
+/* checklist */
+.toc{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 18px}
+.toc a{font-size:13px;text-decoration:none;color:var(--text);border:1px solid var(--rule);border-radius:999px;padding:4px 10px;background:var(--surface);white-space:nowrap}
+.toc a:hover{border-color:var(--ink)}
+.toc a span{color:var(--muted);margin-left:4px}
+.toc a.complete span{color:var(--done)}
+.sec{margin:0 0 32px;scroll-margin-top:90px}
+.sec-h{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-bottom:8px}
+.sec-h h3{margin:0;font-size:19px;color:var(--ink)}
+.sec-h .kind{font-size:12px;font-weight:700;color:var(--accent)}
+.sec-count{margin-left:auto;font-size:13px;color:var(--muted)}
+.sec-count.complete{color:var(--done);font-weight:700}
+.ref{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin:0 0 8px}
+.ref input{border:0;border-bottom:1px solid var(--rule-strong);background:transparent;padding:2px 0;min-width:220px;font-size:13px}
+.done-when{border-left:3px solid var(--accent);padding:2px 0 2px 12px;margin:0 0 12px;font-size:14px;color:var(--muted);max-width:90ch}
+.done-when b{color:var(--accent);font-weight:700}
+.tbl{border:1px solid var(--rule-strong);border-radius:8px;overflow:hidden;background:var(--surface)}
+.grp{background:var(--panel);font-weight:700;font-size:13px;color:var(--ink);padding:6px 14px;border-top:1px solid var(--rule)}
+.grp:first-child{border-top:0}
+.row{display:grid;grid-template-columns:40px 28px 1fr 96px 138px;gap:10px;align-items:center;padding:9px 14px;border-top:1px solid var(--rule)}
+.row.checked .it-t,.row.checked .it-d{color:var(--faint)}
+.row.checked .it-t{text-decoration:line-through;text-decoration-color:var(--rule-strong)}
+.cb{appearance:none;width:22px;height:22px;border:1.5px solid var(--rule-strong);border-radius:5px;margin:0;cursor:pointer;display:grid;place-items:center;background:var(--surface)}
+.cb:checked{background:var(--done);border-color:var(--done)}
+.cb:checked::after{content:"";width:10px;height:5px;border:2px solid #fff;border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.it-n{color:var(--faint);font-size:13px;text-align:right}
+.it{font-size:14px;line-height:1.45;min-width:0}
+.it .tag{margin-right:6px;vertical-align:1px}
+.row.addon .it-n{color:var(--accent)}
+.it-t{font-weight:700}
+.it-d{color:var(--muted)}
+.resp{font-size:12px;font-weight:700;color:var(--ink);text-align:center}
+.due{border:1px solid var(--rule);border-radius:6px;padding:4px 6px;font-size:13px;background:var(--surface);width:100%}
+.empty{padding:24px;border:1px dashed var(--rule-strong);border-radius:10px;color:var(--muted)}
+.print-only{display:none}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--on-text);padding:10px 16px;border-radius:8px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+
+@media (max-width:720px){
+  .qs{grid-template-columns:1fr}
+  .q{grid-template-columns:1fr}
+  .row{grid-template-columns:30px 1fr;grid-template-areas:"cb it" ". meta";row-gap:6px}
+  .row .cb{grid-area:cb}.row .it-n{display:none}.row .it{grid-area:it}
+  .row .meta{grid-area:meta;display:flex;gap:10px;align-items:center}
+  .row .meta .resp{text-align:left}
+  .meter{display:none}
+}
+@media (min-width:721px){.row .meta{display:contents}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+@media print{
+  :root{--bg:#fff;--surface:#fff;--panel:#F2F4F7;--text:#1d2633;--ink:#1F3A5F;--muted:#555;--rule:#d9dee6;--rule-strong:#C9D1DB;--accent:#E8711A;--accent-soft:#fdeee2;--done:#2f7d55;color-scheme:light}
+  .bar,.no-print,.toc,.toast{display:none!important}
+  .print-only{display:block}
+  main{padding:0;max-width:none}
+  body{font-size:11px}
+  .row{grid-template-columns:22px 20px 1fr 70px 80px;padding:5px 8px;break-inside:avoid}
+  .it{font-size:11px}
+  .due{border:0;padding:0;font-size:11px}
+  .cb{width:14px;height:14px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .grp,.tag,.cb:checked{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .sec{break-inside:auto}
+  .sec-h{break-after:avoid}
+  .ref input{border:0}
+  .ref input::placeholder{color:transparent}
+  .ph{font-size:20px;font-weight:800;color:var(--ink);margin:0}
+  .psum{font-size:11px;color:#333;margin:6px 0 16px;columns:2;column-gap:24px}
+  .psum div{break-inside:avoid;padding:1px 0}
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="bar-in">
+    <div class="cust">
+      <label for="cust">Pipeline checklist for</label>
+      <input id="cust" placeholder="Customer name" autocomplete="off">
+    </div>
+    <div class="prog" aria-live="polite"><div class="meter"><i id="meter"></i></div><span id="progtxt"></span></div>
+    <div class="actions">
+      <button class="btn quiet" id="theme" type="button" aria-label="Switch to dark theme">Dark mode</button>
+      <button class="btn quiet" id="reset" type="button">Start over</button>
+      <button class="btn" id="print" type="button">Print</button>
+      <button class="btn primary" id="export" type="button">Export to Word</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="print-only">
+    <p class="ph" id="p-title"></p>
+    <div class="psum" id="p-sum"></div>
+  </div>
+
+  <section class="step no-print" aria-labelledby="h-prof">
+    <div class="step-h"><span class="step-n">1</span><h2 id="h-prof">Customer profile</h2></div>
+    <p class="lede">Answer during discovery. Each answer decides which items appear in the checklist below. Click a selected answer again to clear it.</p>
+    <div class="qs" id="qs"></div>
+    <div class="unanswered" id="unans"></div>
+    <div class="tags" id="tagstrip"></div>
+  </section>
+
+  <section class="step no-print" aria-labelledby="h-ao">
+    <div class="step-h"><span class="step-n">2</span><h2 id="h-ao">Add-on checklists</h2></div>
+    <p class="lede">The profile turns add-ons on automatically. Click a card to add or remove one by hand.</p>
+    <div class="addons" id="addons"></div>
+    <div class="refs" id="refs"></div>
+    <div class="build"><button class="btn primary" id="build" type="button">Build checklist</button><span class="build-note" id="buildnote"></span></div>
+  </section>
+
+  <section class="step" aria-labelledby="h-cl">
+    <div class="step-h no-print"><span class="step-n">3</span><h2 id="h-cl">Checklist</h2></div>
+    <p class="lede no-print" id="cl-lede">Tick an item only after it is tested in the customer’s account. Add-on items sit inside the pipeline they belong to, marked with their tag.</p>
+    <nav class="toc" id="toc" aria-label="Jump to section"></nav>
+    <div id="secs"></div>
+  </section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ---------- DATA ---------- */
+const SA = 'SA / BA', PM = 'PM', BOTH = 'PM + SA / BA';
+
+const QUESTIONS = [
+  { id: 'q1', label: 'Customer type', opts: ['Residential', 'Commercial', 'Both'], tags: a => (a === 'Commercial' || a === 'Both') ? ['COMMERCIAL'] : [] },
+  { id: 'q2', label: 'Services offered', hint: 'Check OI or confirm with the customer. Never assume.', opts: ['Roofing only', 'Roofing + Siding', 'Roofing + Gutters', 'Roofing + Siding + Gutters', 'Roofing + other trades'], tags: a => [...(/Siding/.test(a || '') ? ['SIDING'] : []), ...(/Gutters/.test(a || '') ? ['GUTTERS'] : [])] },
+  { id: 'q3', label: 'Work type', opts: ['Retail only', 'Insurance only', 'Retail + Insurance'], tags: a => /Insurance/.test(a || '') ? ['INSURANCE'] : [] },
+  { id: 'q13', label: 'Repair work?', opts: ['Yes', 'No'], tags: a => a === 'Yes' ? ['REPAIR'] : [] },
+  { id: 'q5', label: 'Roof types', hint: 'CPQ & PO templates are built per roof type.', opts: ['Asphalt shingle', 'Metal', 'Tile', 'Flat (TPO / EPDM)', 'Multiple'], tags: () => [] },
+  { id: 'q9', label: 'Migrating data from', multi: true, hint: 'Pick all that apply.', opts: ['CompanyCam', 'JobNimbus', 'AccuLynx', 'Other', 'None'], tags: a => listOf(a).some(v => v !== 'None') ? ['MIGRATION'] : [] },
+  { id: 'q10', label: 'Supplier ordering', multi: true, hint: 'Pick all that apply.', opts: ['ABC', 'SRS', 'QXO (Beacon)', 'None'], tags: a => listOf(a).some(v => v !== 'None') ? ['SUPPLIER'] : [] },
+  { id: 'q11', label: 'Manufacturer defined by customer?', hint: 'If No, Golden Account defaults stay unchanged.', opts: ['Yes', 'No'], tags: () => [] },
+  { id: 'q6', label: 'Marketplace / third-party lead sources?', opts: ['Yes', 'No'], tags: a => a === 'Yes' ? ['MARKETPLACE'] : [] },
+  { id: 'q7', label: 'Door-to-door canvassing?', opts: ['Yes', 'No'], tags: a => a === 'Yes' ? ['CANVASS'] : [] },
+  { id: 'q8', label: 'Uses HubSpot?', opts: ['Yes', 'No'], tags: a => a === 'Yes' ? ['HUBSPOT'] : [] },
+  { id: 'q4', label: 'Works with real estate?', opts: ['Yes', 'No'], tags: a => a === 'Yes' ? ['REAL ESTATE'] : [] },
+  { id: 'q12', label: 'Offers financing?', opts: ['Yes', 'No'], tags: a => a === 'Yes' ? ['FINANCING'] : [] },
+  { id: 'q14', label: 'Recurring / maintenance services?', opts: ['Yes', 'No'], tags: a => a === 'Yes' ? ['RECURRING'] : [] },
+  { id: 'q15', label: 'Multi-trade jobs (2+ trades on one job)?', opts: ['Yes', 'No'], tags: a => a === 'Yes' ? ['MULTI-TRADE'] : [] },
+  { id: 'q16', label: 'Multi-structure jobs (house + garage, shed…)?', opts: ['Yes', 'No'], tags: a => a === 'Yes' ? ['MULTI-STRUCTURE'] : [] },
+  { id: 'q17', label: 'Permits pulled for jobs?', opts: ['Yes', 'No'], tags: a => a === 'Yes' ? ['PERMITS'] : [] },
+  { id: 'q18', label: 'Offers warranty?', opts: ['Yes', 'No'], tags: a => a === 'Yes' ? ['WARRANTY'] : [] },
+];
+
+/* item: [id, tag|null, title, desc (string or fn(ctx)), resp] ; groups: [[groupName, items]] */
+const CORE = [
+  { id: 'lead', name: 'Lead Pipeline', done: 'Customer starts taking leads in Zuper, and every lead follows the agreed qualification map.', groups: [
+    ['Setup', [
+      ['L1', null, 'Customer profile completed', 'pre-discovery form and OI reviewed; services confirmed with the customer', PM],
+      ['L2', null, 'Golden Account cloned & tailored', c => `categories for every service line (${c.services}), Retail / Insurance / Repair, Residential / Commercial; lead statuses, roles & permissions`, SA],
+      ['L3', null, 'Project flow configured', 'project category tracks each job Lead → Inspection → Won/Lost → Production → AR → Closed', SA],
+      ['L4', null, 'Lead intake methodology agreed', c => `how leads come in, get assigned and worked${c.custType ? ' — for ' + c.custType : ''}`, PM],
+      ['L5', null, 'Core lead sources connected', 'Calling (Zuper Connect number ported or forwarded, 10DLC submitted) and Referral', SA],
+      ['L6', null, 'Website widget live', 'Instant Estimate, Lead Capture, Estimate & Book or Online Booking; creates contact, property & job; shared via link, QR code or embed', SA],
+      ['L7', 'MARKETPLACE', 'Marketplace sources connected', 'Angi, Thumbtack, Modernize, Google LSA, Meta, GHL flowing into Zuper with source tagged', SA],
+      ['L8', 'CANVASS', 'Canvass leads flowing', 'door-to-door leads land in Zuper; skip-qualification rule set if agreed', SA],
+      ['L9', null, 'Lead qualification mapped by source', 'which sources go through the qualification checklist and which start directly at Inspection (do not remove trigger question)', BOTH],
+      ['L10', 'HUBSPOT', 'HubSpot integration', 'Deals ↔ Jobs and Deals ↔ Appointments syncing', SA],
+      ['L11', 'REAL ESTATE', 'Real estate leads', 'agent / realtor contacts set up as a lead source and linked to properties', SA],
+      ['L12', null, 'Lead follow-up automations', c => `speed-to-lead templates, attempt cadence, Do Not Contact / SMS opt-out${c.on('MARKETPLACE') ? '; marketplace drips' : ''}`, SA],
+      ['L13', 'MIGRATION', 'Data migration complete', c => `from ${c.migFrom}: jobs, properties, customers, parts & services; spot-checked; final delta sync booked`, SA],
+    ]],
+    ['Validate & Adopt', [
+      ['L14', null, 'End-to-end test passed', 'a test lead from each active source follows the qualification map into an inspection job', PM],
+      ['L15', null, 'Training, walkthrough & reverse KT', 'office staff trained and run a lead end-to-end while we watch', PM],
+    ]],
+  ] },
+  { id: 'insp', name: 'Inspection Pipeline', done: 'Inspection → mobile checklist with measurements → CPQ proposal sent → e-signed → Job Review approved → production job created; quote prices match the customer’s current CRM.', groups: [
+    ['Setup', [
+      ['I1', null, 'Inspection flow configured', c => {
+        const extra = [c.on('INSURANCE') && 'Insurance', c.on('COMMERCIAL') && 'Commercial'].filter(Boolean);
+        return `Retail / Repair status flows with parent statuses & permissions${extra.length ? '; ' + extra.join(' and ') + ' flows' : ''}`;
+      }, SA],
+      ['I2', null, 'Status-level checklists', 'mandatory per status; answers & photos push to notes and proposal', SA],
+      ['I3', null, 'Measurement tools connected', 'Hover / EagleView / QuickMeasure / file import populate CPQ tokens before the visit', SA],
+      ['I4', 'SUPPLIER', 'Supplier integration connected', c => `${c.supplier} linked; branches, pricing & availability syncing`, SA],
+      ['I5', null, 'PO templates built by customer (product master)', c => `products mapped to supplier SKUs, colors & prices per roof type${c.roof ? ' (' + c.roof + ')' : ''}${c.mfr === 'No' ? '; no manufacturer defined → Golden Account defaults unchanged' : ''}`, SA],
+      ['I6', null, 'CPQ setup (task list)', 'template count locked within 3 customer meetings max; build 1 GBB or 3 separate options; tokens drive quantities', SA],
+      ['I7', null, 'Proposal content received', c => `hero pages, layouts, T&C and policies are owned and supplied by the customer${c.on('FINANCING') ? '; financing options included' : ''}`, PM],
+      ['I8', 'INSURANCE', 'Insurance claim steps', 'adjuster, engineer, public adjuster & appraisal meetings with auto-created appointments; no coverage promises', SA],
+      ['I9', 'INSURANCE', 'Insurance details captured', 'RCV, ACV, depreciation, deductible; pre- and post-supplement stages', SA],
+      ['I10', null, 'E-sign & change orders', 'service agreement attached; accept/reject moves job to Won/Lost; re-send for signature on changes', SA],
+      ['I11', null, 'Job Review gate', 'post-sign check of scope, materials & documents before the production job is created', SA],
+    ]],
+    ['Validate & Adopt', [
+      ['I12', null, 'Test quote matches current CRM', 'a real quote sent and compared line by line with the customer’s current CRM prices', PM],
+      ['I13', null, 'End-to-end test passed', 'on mobile: inspection → proposal → e-sign → Job Review → production job with correct task list', PM],
+      ['I14', null, 'Training, walkthrough & reverse KT', 'a sales rep completes an inspection and sends a proposal without help', PM],
+    ]],
+  ] },
+  { id: 'prod', name: 'Production Pipeline', done: 'Approved job → PO → WO → scheduled → completed → Work Completion certificate signed; customer understands how a proposal flows into POs and invoices.', groups: [
+    ['Setup', [
+      ['P1', null, 'Users & licensing provisioned', 'PM validates counts for sales, subs, technicians and production team', PM],
+      ['P2', null, 'Production flow configured', 'permit → materials ordered → scheduled → in progress → work complete → QC; task templates & forms per status', SA],
+      ['P3', null, 'Material order / PO templates', 'quantities flow from the proposal; all POs fulfilled moves job to Pre Production; partial deliveries handled', SA],
+      ['P4', null, 'Work order template', 'crews and subs set up; WO totals verified (no $0 totals)', SA],
+      ['P5', null, 'Scheduling & notifications', 'scheduling moves job to Schedule Confirmed; homeowner notice, 24h reminder, crew notifications', SA],
+      ['P6', null, 'Crew mobile setup', 'production checklist (safety, photos, sign-off), timesheet / clock-in rules', SA],
+      ['P7', null, 'Work Completion certificate', 'template set up; QC walkthrough and change orders signed', SA],
+    ]],
+    ['Validate & Adopt', [
+      ['P8', null, 'Customer walkthrough of the flow', 'proposal → PO → WO → invoice shown on a live job', PM],
+      ['P9', null, 'End-to-end test passed', 'approved job → PO → WO → scheduled → completed on mobile → certificate signed', PM],
+      ['P10', null, 'Training, walkthrough & reverse KT', 'PM and every crew lead run a job from the app independently', PM],
+    ]],
+  ] },
+  { id: 'rev', name: 'Revenue Pipeline', done: 'Work Complete → invoice → payment collected → synced to QuickBooks → AR updated → warranty & review request sent.', groups: [
+    ['Setup', [
+      ['R1', null, 'QBO sync', 'items, income accounts & tax mapped; invoice, payment & WO sync tested with no duplicates', SA],
+      ['R2', null, 'Zuper Pay configured', 'merchant approved with correct industry code; ACH / card fees & surcharge; manual card entry hidden (PCI)', SA],
+      ['R3', null, 'Invoice template & rules', c => `deposit / progress / final; auto-trigger on Work Complete; sent / paid updates job status${c.on('COMMERCIAL') ? '; retainage for commercial jobs' : ''}`, SA],
+      ['R4', null, 'Job costing & commissions', 'margin method, overhead %, labor rates, commission rules', SA],
+      ['R5', 'INSURANCE', 'Insurance money tracked', 'first check (ACV − deductible), deductible, supplements, final check (depreciation + supplements)', SA],
+      ['R6', null, 'AR & collections', 'quote and invoice follow-up reminders (NET terms), aging view, escalation owner', SA],
+      ['R7', null, 'Closeout automations', c => `${c.on('WARRANTY') ? 'warranty registration, ' : ''}CSAT, Google review request`, SA],
+    ]],
+    ['Validate & Adopt', [
+      ['R8', null, 'End-to-end test passed', 'test job → invoice → payment → QBO sync → receipt; totals match', PM],
+      ['R9', null, 'Reports confirmed', 'revenue, AR and job profitability checked against known jobs', PM],
+      ['R10', null, 'Training, walkthrough & reverse KT', 'office / accounting run invoicing & collections; owner reads the dashboard', PM],
+    ]],
+  ] },
+  { id: 'golive', name: 'Go-Live & Handover', done: 'Customer signs off every pipeline, goes live and is handed over to the CSM.', groups: [
+    ['All pipelines', [
+      ['G1', null, 'UAT sign-off', 'customer confirms each pipeline in writing', PM],
+      ['G2', 'MIGRATION', 'Final data sync', 'delta migration run just before go-live; old system read-only', SA],
+      ['G3', null, 'Soft launch', 'pilot jobs run live; issues logged in one shared tracker', PM],
+      ['G4', null, 'Hypercare', '~2 weeks of priority support; open bugs owned and dated', BOTH],
+      ['G5', null, 'CSM handover', 'handover notes filed, 30-day check-in booked, go-live date updated in Zoho', PM],
+    ]],
+  ] },
+];
+
+const VAL = 'Validate & Adopt';
+const ADDONS = [
+  { id: 'A', name: 'Repair flow', tag: 'REPAIR', pipes: 'Inspection, Production, Revenue', done: 'A repair request goes from first call to a completed, paid job without using the full replacement flow.', groups: [
+    ['Lead & Inspection', [
+      ['A1', null, 'Repair category & status flow', 'own Repair category with a lighter flow: request → diagnosis visit → quote → scheduled → complete', SA],
+      ['A2', null, 'Repair intake questions', 'leak location, roof age, active leak / emergency flag that prioritises scheduling', SA],
+      ['A3', null, 'Diagnosis checklist', 'before / after photos, cause found, materials used; answers push to notes and the quote', SA],
+      ['A4', null, 'Repair pricing', 'flat-rate or line-item repair template (no full GBB); service-call / diagnostic fee if charged', SA],
+      ['A5', null, 'Repair → replacement handoff', 'when it can’t be repaired, convert to a Retail or Insurance inspection without re-entering data', SA]]],
+    ['Production & Revenue', [
+      ['A6', null, 'Repair work order & scheduling', 'single-visit WO, crew notified, homeowner reminder', SA],
+      ['A7', null, 'Invoice on completion', 'invoice raised at Work Complete; collect on site where Zuper Pay is used', SA]]],
+    [VAL, [
+      ['A8', null, 'End-to-end test passed', 'repair lead → diagnosis → quote → completed → paid', PM],
+      ['A9', null, 'Training, walkthrough & reverse KT', 'office books a repair and a tech completes it from the app', PM]]]] },
+  { id: 'B', name: 'Recurring services', tag: 'RECURRING', pipes: 'Lead, Production, Revenue', done: 'One service plan creates the right visits and invoices for its full term without manual work.', groups: [
+    ['Setup', [
+      ['B1', null, 'Service plans defined', 'what’s included, visit frequency, term and price, agreed with the customer', PM],
+      ['B2', null, 'Service contract set up', 'contract creates visits automatically on the agreed schedule', SA],
+      ['B3', null, 'Visit checklist & report', 'maintenance checklist with photos; visit report sent to the homeowner', SA],
+      ['B4', null, 'Recurring billing', 'per visit or per term; card on file / auto-pay where Zuper Pay is used', SA],
+      ['B5', null, 'Reminders & renewals', 'upcoming-visit reminders and a renewal notice before the term ends', SA],
+      ['B6', null, 'Upsell path', 'issues found on a visit create a repair or replacement lead', SA]]],
+    [VAL, [
+      ['B7', null, 'End-to-end test passed', 'test contract → visits created → completed → invoiced', PM],
+      ['B8', null, 'Training, walkthrough & reverse KT', 'office sells and schedules a plan; a tech completes a visit', PM]]]] },
+  { id: 'C', name: 'Siding', tag: 'SIDING', pipes: 'Inspection, Production', done: 'A siding quote built from measurements matches the customer’s current prices and flows into PO and WO.', groups: [
+    ['Setup', [
+      ['C1', null, 'Siding category & flow', 'siding service line with inspection and production statuses (reuse roofing flow where it fits)', SA],
+      ['C2', null, 'Siding measurement tokens exist', 'wall area, openings, inside / outside corners, starter, J-channel, soffit & fascia from Hover or file import', SA],
+      ['C3', null, 'Siding CPQ templates built', 'per product line (vinyl, fiber cement, engineered wood…); GBB or separate options; tokens drive quantities', SA],
+      ['C4', null, 'Siding products & PO template', 'products mapped to supplier SKUs, colors and prices', SA],
+      ['C5', null, 'Siding inspection checklist', 'photos per elevation, damage, existing material, trim and wrap notes', SA],
+      ['C6', null, 'Siding work order & crew checklist', 'tear-off, wrap, install, trim and clean-up photos', SA]]],
+    [VAL, [
+      ['C7', null, 'Test quote matches current CRM', 'real siding quote compared line by line with the customer’s current prices', PM],
+      ['C8', null, 'End-to-end test passed', 'measurement → proposal → e-sign → PO → WO', PM],
+      ['C9', null, 'Training, walkthrough & reverse KT', 'a rep quotes siding without help', PM]]]] },
+  { id: 'D', name: 'Gutters', tag: 'GUTTERS', pipes: 'Inspection, Production', done: 'A gutter quote built from measurements matches the customer’s current prices and flows into PO and WO.', groups: [
+    ['Setup', [
+      ['D1', null, 'Gutter category & flow', 'gutter service line with inspection and production statuses', SA],
+      ['D2', null, 'Gutter measurement tokens exist', 'gutter LF, downspout count & LF, inside / outside miters, end caps, outlets, guard LF', SA],
+      ['D3', null, 'Gutter CPQ templates built', 'seamless 5" / 6", half-round, guards; color options; tokens drive quantities', SA],
+      ['D4', null, 'Gutter products & PO template', 'coil, hangers, downspouts, guards mapped to supplier SKUs and prices', SA],
+      ['D5', null, 'Gutter inspection & crew checklists', 'fascia condition, pitch, downspout placement, before / after photos', SA]]],
+    [VAL, [
+      ['D6', null, 'Test quote matches current CRM', 'real gutter quote compared line by line', PM],
+      ['D7', null, 'End-to-end test passed', 'measurement → proposal → e-sign → PO → WO', PM],
+      ['D8', null, 'Training, walkthrough & reverse KT', 'a rep quotes gutters without help', PM]]]] },
+  { id: 'E', name: 'Multi-trade jobs', tag: 'MULTI-TRADE', pipes: 'Inspection, Production, Revenue', done: 'One customer buys more than one trade on a single proposal, and each trade gets its own PO, WO and costs.', groups: [
+    ['Setup', [
+      ['E1', null, 'Trade add-ons done first', 'each trade’s own checklist (Siding, Gutters) completed before combining', PM],
+      ['E2', null, 'Job structure decided', 'one job with trade sections, or a parent job with a job per trade', BOTH],
+      ['E3', null, 'Combined proposal', 'each trade as its own section with options; one e-signature', SA],
+      ['E4', null, 'POs & WOs split by trade', 'separate supplier orders and crews / subs per trade', SA],
+      ['E5', null, 'Production sequencing', 'trade order and dependencies in scheduling (e.g. roof before gutters)', SA],
+      ['E6', null, 'Invoicing & job costing per trade', 'revenue and margin visible per trade', SA]]],
+    [VAL, [
+      ['E7', null, 'End-to-end test passed', 'multi-trade proposal → e-sign → POs / WOs per trade → invoiced', PM],
+      ['E8', null, 'Training, walkthrough & reverse KT', 'a rep builds a multi-trade proposal without help', PM]]]] },
+  { id: 'F', name: 'Commercial', tag: 'COMMERCIAL', pipes: 'Inspection, Revenue', done: 'A commercial bid flows from opportunity to signed contract and is billed with progress invoices and retainage.', groups: [
+    ['Setup', [
+      ['F1', null, 'Commercial category & flow', 'bid / estimate stages for a longer sales cycle with several decision makers', SA],
+      ['F2', null, 'Organizations & contacts', 'company with multiple contacts (owner, property manager, AP) and multiple properties', SA],
+      ['F3', null, 'Commercial CPQ', 'templates per system (TPO, EPDM, metal, coatings); per-square or line-item pricing', SA],
+      ['F4', null, 'Bid proposal & documents', 'scope, exclusions, alternates; COI and lien waivers attached', SA],
+      ['F5', null, 'Progress billing & retainage', 'milestone / schedule-of-values invoices; retainage held and released', SA]]],
+    [VAL, [
+      ['F6', null, 'End-to-end test passed', 'bid → signed → progress invoice → retainage release', PM],
+      ['F7', null, 'Training, walkthrough & reverse KT', 'estimator sends a commercial bid without help', PM]]]] },
+  { id: 'G', name: 'Permits', tag: 'PERMITS', pipes: 'Production', done: 'No job is scheduled without an approved permit, and every permit is closed out before Work Complete.', groups: [
+    ['Setup', [
+      ['G1', null, 'Permit statuses in production', 'permit needed → applied → approved; job can’t be scheduled until approved', SA],
+      ['G2', null, 'Permit details captured', 'jurisdiction, permit #, fee, applied and approved dates', SA],
+      ['G3', null, 'Permit task & documents', 'task auto-created for the permit owner; application and permit attached to the job', SA],
+      ['G4', null, 'Permit fee handling', 'passed through on the proposal or invoice if the customer charges it', SA],
+      ['G5', null, 'Final inspection close-out', 'final inspection result recorded before Work Complete', SA]]],
+    [VAL, [
+      ['G6', null, 'End-to-end test passed', 'permit applied → approved → scheduled → final inspection passed', PM],
+      ['G7', null, 'Training, walkthrough & reverse KT', 'permit owner runs a permit from the job without help', PM]]]] },
+  { id: 'H', name: 'Safety checklist (as a task)', tag: 'SAFETY', pipes: 'Production', done: 'Every production job gets a safety task the crew lead must complete before work starts.', groups: [
+    ['Setup', [
+      ['H1', null, 'Safety checklist built as a task template', 'PPE, fall protection & anchors, ladders, site hazards, power lines, weather; photo required', SA],
+      ['H2', null, 'Auto-created on production jobs', 'created when the job reaches Scheduled / In Progress; assigned to the crew lead', SA],
+      ['H3', null, 'Mandatory before work starts', 'job can’t move to In Progress until the safety task is complete', SA],
+      ['H4', null, 'Records kept', 'completed task and photos saved on the job for audits', SA],
+      ['H5', null, 'Customer’s own safety program loaded', 'their policy, toolbox talk or forms, if they have one', PM]]],
+    [VAL, [
+      ['H6', null, 'End-to-end test passed', 'crew lead completes the safety task on mobile before starting', PM],
+      ['H7', null, 'Training, walkthrough & reverse KT', 'every crew lead completes one live', PM]]]] },
+  { id: 'I', name: 'Insurance (end-to-end)', tag: 'INSURANCE', pipes: 'Inspection, Production, Revenue', done: 'An insurance claim job runs from first contact to final check with every amount tracked. Items marked “ties to” also sit in the core pipelines; tick them once.', groups: [
+    ['Lead', [
+      ['I1', null, 'Insurance lead intake', 'carrier, claim #, date of loss and storm event captured on the lead', SA],
+      ['I2', null, 'Contingency / authorization agreement', 'signed before the adjuster meeting', SA]]],
+    ['Inspection', [
+      ['I5', null, 'Scope & proposal built to scope', 'carrier scope / loss statement attached; proposal matches the approved scope', SA]]],
+    ['Production & Revenue', [
+      ['I6', null, 'Supplements tracked', 'supplement requested → approved, with amounts', SA],
+      ['I8', null, 'Depreciation release', 'completion documents sent to the carrier; final invoice raised', SA]]],
+    [VAL, [
+      ['I9', null, 'End-to-end test passed', 'claim job from lead → approval → build → final check', PM],
+      ['I10', null, 'Training, walkthrough & reverse KT', 'office runs a claim job without help', PM]]]] },
+  { id: 'J', name: 'Multi-structure proposal', tag: 'MULTI-STRUCTURE', pipes: 'Inspection, Production', done: 'One proposal prices each structure separately, and the homeowner can accept all or some of them.', groups: [
+    ['Setup', [
+      ['J1', null, 'Structures captured', 'main house, detached garage, shed, etc. on the property', SA],
+      ['J2', null, 'Measurements per structure', 'separate reports or structure-level tokens so quantities don’t mix', SA],
+      ['J3', null, 'CPQ per structure', 'template applied per structure; roof type and product can differ', SA],
+      ['J4', null, 'Proposal layout', 'section and subtotal per structure plus grand total; optional structures', SA],
+      ['J5', null, 'POs & WOs per structure', 'split or combined, as agreed with the customer', SA]]],
+    [VAL, [
+      ['J6', null, 'Test quote matches current CRM', 'multi-structure quote compared line by line', PM],
+      ['J7', null, 'End-to-end test passed', 'proposal → partial / full acceptance → POs and WOs correct', PM]]]] },
+];
+
+
+/* where each add-on item lands: pipeline id; '*' = Validate & Adopt group */
+const PLACE = {
+  A3:'insp',A4:'insp',A5:'insp',A6:'prod',A7:'rev',A8:'insp*',A9:'insp*',
+  B1:'lead',B2:'prod',B3:'prod',B4:'rev',B5:'rev',B6:'lead',B7:'prod*',B8:'prod*',
+  C1:'insp',C2:'insp',C3:'insp',C4:'insp',C5:'insp',C6:'prod',C7:'insp*',C8:'insp*',C9:'insp*',
+  D1:'insp',D2:'insp',D3:'insp',D4:'insp',D5:'insp',D6:'insp*',D7:'insp*',D8:'insp*',
+  E1:'insp',E2:'insp',E3:'insp',E4:'prod',E5:'prod',E6:'rev',E7:'prod*',E8:'insp*',
+  F3:'insp',F4:'insp',F5:'rev',F6:'rev*',F7:'insp*',
+  G1:'prod',G2:'prod',G3:'prod',G4:'prod',G5:'prod',G6:'prod*',G7:'prod*',
+  H1:'prod',H2:'prod',H3:'prod',H4:'prod',H5:'prod',H6:'prod*',H7:'prod*',
+  I2:'insp',I5:'insp',I6:'prod',I8:'rev',I9:'rev*',I10:'insp*',
+  J1:'insp',J2:'insp',J3:'insp',J4:'insp',J5:'prod',J6:'insp*',J7:'insp*',
+};
+
+/* ---------- LOGIC ---------- */
+function listOf(a) { return Array.isArray(a) ? a : (a ? [a] : []); }
+function computeTags(answers) {
+  const set = new Set();
+  for (const q of QUESTIONS) for (const t of q.tags(answers[q.id])) set.add(t);
+  return set;
+}
+function autoAddons(tags) {
+  const m = {};
+  for (const a of ADDONS) m[a.id] = a.id === 'H' ? true : tags.has(a.tag);
+  return m;
+}
+function effectiveAddons(state) {
+  const auto = autoAddons(computeTags(state.answers));
+  const out = {};
+  for (const a of ADDONS) out[a.id] = state.addonOverride[a.id] !== undefined ? state.addonOverride[a.id] : auto[a.id];
+  return { auto, on: out };
+}
+function ctxFor(state) {
+  const a = state.answers, tags = computeTags(a);
+  const services = ['roofing'];
+  if (/Siding/.test(a.q2 || '')) services.push('siding');
+  if (/Gutters/.test(a.q2 || '')) services.push('gutters');
+  if (a.q2 === 'Roofing + other trades') services.push('other trades');
+  return {
+    on: t => tags.has(t),
+    services: a.q2 ? services.join(', ') : 'roofing, gutters, siding, windows, solar…',
+    custType: a.q1 === 'Both' ? 'Residential and Commercial' : (a.q1 || 'Residential and Commercial'),
+    migFrom: (() => { const l = listOf(a.q9).filter(v => v !== 'None').map(v => v === 'Other' ? 'other system' : v); return l.length ? l.join(' + ') : 'CompanyCam / JobNimbus / AccuLynx'; })(),
+    supplier: (() => { const l = listOf(a.q10).filter(v => v !== 'None'); return l.length ? l.join(' + ') : 'ABC / SRS / QXO (Beacon)'; })(),
+    roof: a.q5 || '', mfr: a.q11 || '',
+  };
+}
+/* returns pipeline sections with add-on items merged in:
+   {key, name, done, groups:[{name, items:[{key,n,tag,title,desc,resp}]}]} */
+function buildSections(state) {
+  const tags = computeTags(state.answers), ctx = ctxFor(state), { on } = effectiveAddons(state);
+  const fmt = (it, tag, key) => ({ key, tag, title: it[2], desc: typeof it[3] === 'function' ? it[3](ctx) : it[3], resp: it[4] });
+  // collect add-on items by pipeline
+  const extra = {};
+  for (const a of ADDONS) {
+    if (!on[a.id]) continue;
+    for (const [, items] of a.groups) for (const it of items) {
+      const p = PLACE[it[0]]; if (!p) continue;
+      const pipe = p.replace('*', ''), val = p.endsWith('*');
+      (extra[pipe] = extra[pipe] || { setup: [], val: [] })[val ? 'val' : 'setup'].push(fmt(it, a.tag, 'addon:' + it[0]));
+    }
+  }
+  return CORE.map(sec => {
+    const ex = extra[sec.id] || { setup: [], val: [] };
+    let n = 0;
+    const groups = sec.groups.map(([g, items], gi) => {
+      let list = items.filter(it => !it[1] || tags.has(it[1])).map(it => fmt(it, it[1], sec.id + ':' + it[0]));
+      const isVal = g === 'Validate & Adopt';
+      if (isVal) list = list.concat(ex.val);
+      else if (gi === 0) list = list.concat(ex.setup, sec.groups.length === 1 ? ex.val : []);
+      return { name: g, items: list };
+    }).filter(g => g.items.length);
+    for (const g of groups) for (const it of g.items) it.n = ++n;
+    return { key: sec.id, name: sec.name, done: sec.done, groups };
+  });
+}
+
+/* ---------- DOCX ---------- */
+function xe(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function docxFiles(state) {
+  const NAVY = '1F3A5F', ORANGE = 'E8711A', GREY = '666666';
+  const run = (t, o = {}) => `<w:r><w:rPr>${o.b ? '<w:b/><w:bCs/>' : ''}${o.i ? '<w:i/><w:iCs/>' : ''}${o.c ? `<w:color w:val="${o.c}"/>` : ''}${o.sz ? `<w:sz w:val="${o.sz}"/><w:szCs w:val="${o.sz}"/>` : ''}</w:rPr><w:t xml:space="preserve">${xe(t)}</w:t></w:r>`;
+  const para = (runs, ppr = '') => `<w:p><w:pPr>${ppr}</w:pPr>${runs}</w:p>`;
+  const BD = '<w:tcBorders><w:top w:val="single" w:color="C9D1DB" w:sz="4" w:space="0"/><w:left w:val="single" w:color="C9D1DB" w:sz="4" w:space="0"/><w:bottom w:val="single" w:color="C9D1DB" w:sz="4" w:space="0"/><w:right w:val="single" w:color="C9D1DB" w:sz="4" w:space="0"/></w:tcBorders>';
+  const MAR = '<w:tcMar><w:top w:w="70" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="70" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tcMar><w:vAlign w:val="center"/>';
+  const tc = (w, content, fill, span) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${span ? `<w:gridSpan w:val="${span}"/>` : ''}${BD}${fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>` : ''}${MAR}</w:tcPr>${content}</w:tc>`;
+  const tr = (cells, header) => `<w:tr><w:trPr>${header ? '<w:tblHeader/>' : '<w:cantSplit/>'}</w:trPr>${cells}</w:tr>`;
+  const tbl = (widths, rows) => `<w:tbl><w:tblPr><w:tblW w:w="${widths.reduce((a, b) => a + b, 0)}" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="10" w:type="dxa"/><w:right w:w="10" w:type="dxa"/></w:tblCellMar><w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/></w:tblPr><w:tblGrid>${widths.map(w => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>${rows}</w:tbl>`;
+  const CTR = '<w:jc w:val="center"/>';
+  const hdr = (widths, labels, center) => tr(widths.map((w, i) => tc(w, para(run(labels[i], { b: 1, c: 'FFFFFF', sz: 18 }), center[i] ? CTR : ''), NAVY)).join(''), true);
+  const checkbox = checked => `<w:sdt><w:sdtPr><w:rPr><w:rFonts w:ascii="MS Gothic" w:eastAsia="MS Gothic" w:hAnsi="MS Gothic"/><w:sz w:val="24"/></w:rPr><w14:checkbox><w14:checked w14:val="${checked ? 1 : 0}"/><w14:checkedState w14:val="2612" w14:font="MS Gothic"/><w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/></w14:checkbox></w:sdtPr><w:sdtContent><w:r><w:rPr><w:rFonts w:ascii="MS Gothic" w:eastAsia="MS Gothic" w:hAnsi="MS Gothic"/><w:sz w:val="24"/></w:rPr><w:t>${checked ? '☒' : '☐'}</w:t></w:r></w:sdtContent></w:sdt>`;
+  const H1 = (t, pb) => para(run(t, { b: 1, c: NAVY, sz: 30 }), `<w:pStyle w:val="Heading1"/><w:keepNext/>${pb ? '<w:pageBreakBefore/>' : ''}<w:spacing w:before="360" w:after="80"/>`);
+  const done = t => para(run('Done when: ', { b: 1, c: ORANGE }) + run(t, { i: 1 }), '<w:keepNext/><w:pBdr><w:left w:val="single" w:color="E8711A" w:sz="18" w:space="8"/></w:pBdr><w:spacing w:after="160"/>');
+  const fmtDate = d => { if (!d) return ''; const [y, m, dd] = d.split('-'); return `${m}/${dd}/${y}`; };
+
+  const cust = state.customer || 'Customer';
+  let body = '';
+  body += para(run('ROOFING ONBOARDING', { b: 1, c: ORANGE, sz: 18 }), '<w:spacing w:after="40"/>');
+  body += para(run(`Pipeline Checklist — ${cust}`, { b: 1, c: NAVY, sz: 40 }), '<w:spacing w:after="60"/>');
+  const today = new Date();
+  body += para(run(`Generated ${today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}. Tick a box only after the item is tested in the customer’s account.`, { c: GREY }), '<w:pBdr><w:bottom w:val="single" w:color="C9D1DB" w:sz="6" w:space="6"/></w:pBdr><w:spacing w:after="200"/>');
+
+  // profile summary
+  body += H1('Customer Profile');
+  const PW = [4200, 5880];
+  let prow = hdr(PW, ['Question', 'Answer'], [0, 0]);
+  for (const q of QUESTIONS) {
+    const a = listOf(state.answers[q.id]).join(', ');
+    prow += tr(tc(PW[0], para(run(q.label, { b: 1, sz: 18 }))) + tc(PW[1], para(run(a || 'Not answered', { sz: 18, c: a ? NAVY : '999999', i: !a })) ));
+  }
+  body += tbl(PW, prow);
+  const sections = buildSections(state);
+  const onAdd = ADDONS.filter(a => effectiveAddons(state).on[a.id]);
+  body += H1('Add-on Checklists');
+  if (onAdd.length) {
+    const AW = [3000, 2000, 5080];
+    let arow = hdr(AW, ['Add-on', 'Tag', 'Reference account'], [0, 0, 0]);
+    for (const a of onAdd) {
+      const ref = (state.refs || {})[a.id] || '';
+      arow += tr(tc(AW[0], para(run(a.id + '  ', { b: 1, c: ORANGE, sz: 18 }) + run(a.name, { b: 1, sz: 18 }))) + tc(AW[1], para(run(a.tag, { b: 1, c: ORANGE, sz: 16 }))) + tc(AW[2], para(run(ref || '—', { sz: 18, c: ref ? NAVY : '999999' }))));
+    }
+    body += tbl(AW, arow);
+    body += para(run('Add-on items are merged into the pipelines below, marked with their tag.', { i: 1, c: GREY, sz: 18 }), '<w:spacing w:before="80"/>');
+  } else body += para(run('None selected.', { i: 1, c: GREY }));
+
+  const W = [450, 6130, 1300, 1150, 1050];
+  sections.forEach((s, si) => {
+    body += H1(s.name, si === 0);
+    if (s.done) body += done(s.done);
+    let rows = hdr(W, ['#', 'Checklist item', 'Responsible', 'Due by', 'Status'], [1, 0, 1, 1, 1]);
+    for (const g of s.groups) {
+      rows += tr(tc(10080, para(run(g.name, { b: 1, c: NAVY, sz: 18 })), 'F2F4F7', 5));
+      for (const it of g.items) {
+        const chk = !!state.checks[it.key];
+        const item = (it.tag ? run(it.tag + '  ', { b: 1, c: ORANGE, sz: 15 }) : '') + run(it.title, { b: 1, sz: 18 }) + run(' — ' + it.desc, { sz: 18 });
+        rows += tr(
+          tc(W[0], para(run(String(it.n), { c: GREY, sz: 18 }), CTR)) +
+          tc(W[1], para(item)) +
+          tc(W[2], para(run(it.resp, { b: 1, c: NAVY, sz: 18 }), CTR)) +
+          tc(W[3], para(run(fmtDate((state.due || {})[it.key]), { sz: 18 }), CTR)) +
+          tc(W[4], `<w:p><w:pPr>${CTR}</w:pPr>${checkbox(chk)}</w:p>`));
+      }
+    }
+    body += tbl(W, rows);
+  });
+
+  const footer = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:color w:val="999999"/><w:sz w:val="16"/></w:rPr><w:t xml:space="preserve">${xe(cust)} · Pipeline Checklist · Page </w:t></w:r><w:r><w:rPr><w:color w:val="999999"/><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:color w:val="999999"/><w:sz w:val="16"/></w:rPr><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:rPr><w:color w:val="999999"/><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:color w:val="999999"/><w:sz w:val="16"/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:color w:val="999999"/><w:sz w:val="16"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`;
+
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" mc:Ignorable="w14"><w:body>${body}<w:sectPr><w:footerReference w:type="default" r:id="rId2"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial" w:cs="Arial"/><w:sz w:val="20"/><w:szCs w:val="20"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="252" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:color w:val="1F3A5F"/><w:sz w:val="30"/></w:rPr></w:style><w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style></w:styles>`;
+  return {
+    '[Content_Types].xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>`,
+    '_rels/.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
+    'word/_rels/document.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/></Relationships>`,
+    'word/document.xml': doc,
+    'word/styles.xml': styles,
+    'word/footer1.xml': footer,
+  };
+}
+if (typeof module !== 'undefined') module.exports = { QUESTIONS, CORE, ADDONS, computeTags, effectiveAddons, buildSections, docxFiles };
+
+</script>
+<script>
+(function(){
+const KEY='pipeline-checklist-builder-v1';
+let state={customer:'',answers:{},addonOverride:{},checks:{},due:{},refs:{},built:false};
+try{const s=JSON.parse(localStorage.getItem(KEY)||'null'); if(s) state=Object.assign(state,s);}catch(e){}
+for(const m of ['checks','due']) for(const k of Object.keys(state[m])){const x=k.match(/^addon-[A-J]:(.+)$/); if(x){state[m]['addon:'+x[1]]=state[m][k]; delete state[m][k];}}
+const allAnswered=()=>QUESTIONS.every(q=>state.answers[q.id]);
+const ready=()=>allAnswered()&&state.built;
+let theme='light'; try{theme=localStorage.getItem(KEY+'-theme')||'light'}catch(e){}
+let saveT; function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}},250)}
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+function renderProfile(){
+  $('qs').innerHTML=QUESTIONS.map(q=>`<div class="q"><div class="q-l" id="ql-${q.id}">${esc(q.label)}${q.hint?`<small>${esc(q.hint)}</small>`:''}</div>
+    <div class="pills" role="group" aria-labelledby="ql-${q.id}">${q.opts.map(o=>`<button type="button" class="pill" data-q="${q.id}" data-v="${esc(o)}" aria-pressed="${listOf(state.answers[q.id]).includes(o)}">${esc(o)}</button>`).join('')}</div></div>`).join('');
+}
+function renderMeta(){
+  const n=QUESTIONS.filter(q=>!state.answers[q.id]).length;
+  $('unans').innerHTML=n?`<b>${n} of ${QUESTIONS.length}</b> questions still to answer. The checklist is built once all are done.`:'All questions answered.';
+  const tags=[...computeTags(state.answers)];
+  $('tagstrip').innerHTML=tags.length?'Profile turns on '+tags.map(t=>`<span class="tag">${esc(t)}</span>`).join(''):'No tagged items turned on yet.';
+}
+function renderAddons(){
+  const {auto,on}=effectiveAddons(state);
+  $('addons').innerHTML=ADDONS.map(a=>{
+    const o=on[a.id], manual=state.addonOverride[a.id]!==undefined;
+    const st=o?(manual?'Added by you':(a.id==='H'?'On for all jobs':'On from profile')):(manual&&auto[a.id]?'Removed by you':'Off');
+    return `<button type="button" class="ao" data-ao="${a.id}" aria-pressed="${o}">
+      <span class="ao-box" aria-hidden="true"></span>
+      <span class="ao-top"><span class="ao-letter">${a.id}</span><span class="ao-name">${esc(a.name)}</span></span>
+      <span class="ao-pipes">${esc(a.pipes)}</span>
+      <span class="ao-state">${st}</span></button>`;
+  }).join('');
+  const act=ADDONS.filter(a=>on[a.id]);
+  $('refs').innerHTML=act.length?`<div class="refs-h">Reference accounts (optional)</div>`+act.map(a=>`<label><span>${a.id} · ${esc(a.name)}</span><input data-ref="${a.id}" value="${esc(state.refs[a.id]||'')}" placeholder="Account to look at before configuring"></label>`).join(''):'';
+  const left=QUESTIONS.filter(q=>!state.answers[q.id]).length;
+  $('build').disabled=left>0;
+  $('build').textContent=state.built?'Checklist built':'Build checklist';
+  $('buildnote').innerHTML=left?`Answer the <b>${left} remaining</b> profile question${left>1?'s':''} to build the checklist.`:(state.built?'Changes to the profile or add-ons update the checklist straight away.':'Profile complete. Confirm the add-ons above, then build.');
+}
+let sections=[];
+function renderChecklist(){
+  const lock=!ready();
+  document.body.classList.toggle('is-locked',lock);
+  $('print').disabled=lock; $('export').disabled=lock;
+  $('cl-lede').hidden=lock; $('toc').hidden=lock;
+  if(lock){
+    sections=[];
+    const left=QUESTIONS.filter(q=>!state.answers[q.id]).length;
+    $('secs').innerHTML=`<div class="locked"><h3>Your checklist appears here</h3>
+      <p>It is built from the profile and add-ons, so it stays hidden until both are done.</p>
+      <ol><li class="${left?'':'ok'}">Answer all ${QUESTIONS.length} profile questions${left?` (${left} left)`:''}</li>
+      <li class="${state.built?'ok':''}">Confirm the add-ons and click Build checklist</li></ol></div>`;
+    renderCounts(); return;
+  }
+  sections=buildSections(state);
+  const rowsHtml=s=>s.groups.map(g=>`<div class="grp">${esc(g.name)}</div>`+g.items.map(it=>{
+    const c=!!state.checks[it.key], ad=it.key.startsWith('addon:');
+    return `<div class="row${c?' checked':''}${ad?' addon':''}" data-row="${it.key}">
+      <input type="checkbox" class="cb" data-chk="${it.key}" ${c?'checked':''} aria-label="${esc(it.title)}">
+      <span class="it-n">${it.n}</span>
+      <div class="it">${it.tag?`<span class="tag">${esc(it.tag)}</span>`:''}<span class="it-t">${esc(it.title)}</span> <span class="it-d">— ${esc(it.desc)}</span></div>
+      <div class="meta"><span class="resp">${esc(it.resp)}</span>
+      <input type="date" class="due" data-due="${it.key}" value="${esc(state.due[it.key]||'')}" aria-label="Due by: ${esc(it.title)}"></div>
+    </div>`}).join('')).join('');
+  $('secs').innerHTML=sections.map(s=>`<section class="sec" id="${s.key}">
+    <div class="sec-h"><h3>${esc(s.name)}</h3><span class="sec-count" data-count="${s.key}"></span></div>
+    <p class="done-when"><b>Done when:</b> ${esc(s.done)}</p>
+    <div class="tbl">${rowsHtml(s)}</div></section>`).join('');
+  renderCounts();
+}
+function renderCounts(){
+  let tot=0,dn=0; const toc=[];
+  for(const s of sections){
+    const items=s.groups.flatMap(g=>g.items); const d=items.filter(i=>state.checks[i.key]).length;
+    tot+=items.length; dn+=d;
+    const el=document.querySelector(`[data-count="${s.key}"]`);
+    if(el){el.textContent=`${d} of ${items.length} done`;el.classList.toggle('complete',d===items.length&&items.length>0)}
+    toc.push(`<a href="#${s.key}" class="${d===items.length?'complete':''}">${esc(s.name.replace(' Pipeline',''))}<span>${d}/${items.length}</span></a>`);
+  }
+  $('toc').innerHTML=toc.join('');
+  $('progtxt').innerHTML=sections.length?`<b>${dn}</b> of ${tot} done`:'Not built yet';
+  $('meter').style.width=tot?(dn/tot*100)+'%':'0';
+  // print header
+  $('p-title').textContent='Pipeline Checklist — '+(state.customer||'Customer');
+  const eo=effectiveAddons(state).on; const ad=ADDONS.filter(a=>eo[a.id]).map(a=>a.id+' '+a.name+(state.refs[a.id]?` (ref: ${state.refs[a.id]})`:'')).join(', ')||'None';
+  $('p-sum').innerHTML=QUESTIONS.map(q=>`<div><b>${esc(q.label)}</b> ${esc(listOf(state.answers[q.id]).join(', ')||'—')}</div>`).join('')+`<div><b>Add-ons:</b> ${esc(ad)}</div>`;
+}
+function all(){renderProfile();renderMeta();renderAddons();renderChecklist();}
+
+document.addEventListener('click',e=>{
+  const p=e.target.closest('.pill');
+  if(p){const q=p.dataset.q,v=p.dataset.v,Q=QUESTIONS.find(x=>x.id===q);
+    if(Q.multi){let l=listOf(state.answers[q]); if(l.includes(v)) l=l.filter(x=>x!==v); else l=v==='None'?['None']:l.filter(x=>x!=='None').concat(v); if(l.length) state.answers[q]=l; else delete state.answers[q];}
+    else if(state.answers[q]===v) delete state.answers[q]; else state.answers[q]=v;
+    renderProfile();renderMeta();renderAddons();renderChecklist();save();
+    const again=document.querySelector(`.pill[data-q="${q}"][data-v="${CSS.escape(v)}"]`); if(again) again.focus(); return;}
+  const a=e.target.closest('.ao');
+  if(a){const id=a.dataset.ao; const {auto,on}=effectiveAddons(state); const next=!on[id];
+    if(next===auto[id]) delete state.addonOverride[id]; else state.addonOverride[id]=next;
+    renderAddons();renderChecklist();save(); const again=document.querySelector(`.ao[data-ao="${id}"]`); if(again) again.focus(); return;}
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.dataset.chk){state.checks[t.dataset.chk]=t.checked; if(!t.checked) delete state.checks[t.dataset.chk];
+    t.closest('.row').classList.toggle('checked',t.checked); renderCounts(); save();}
+  if(t.dataset.due!==undefined){ if(t.value) state.due[t.dataset.due]=t.value; else delete state.due[t.dataset.due]; save();}
+});
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.id==='cust'){state.customer=t.value; renderCounts(); save();}
+  if(t.dataset.ref){ if(t.value) state.refs[t.dataset.ref]=t.value; else delete state.refs[t.dataset.ref]; save();}
+});
+$('cust').value=state.customer||'';
+
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('show'),2600)}
+$('print').addEventListener('click',()=>window.print());
+$('build').addEventListener('click',()=>{ if(!allAnswered()) return; state.built=true; renderAddons(); renderChecklist(); save();
+  $('h-cl').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}); toast('Checklist built'); });
+function applyTheme(){document.documentElement.setAttribute('data-theme',theme); const b=$('theme'); b.textContent=theme==='dark'?'Light mode':'Dark mode'; b.setAttribute('aria-label',theme==='dark'?'Switch to light theme':'Switch to dark theme');}
+$('theme').addEventListener('click',()=>{theme=theme==='dark'?'light':'dark'; applyTheme(); try{localStorage.setItem(KEY+'-theme',theme)}catch(e){}});
+applyTheme();
+$('reset').addEventListener('click',()=>{
+  if(!confirm('Clear the profile, add-ons, ticks and dates for this checklist?')) return;
+  state={customer:'',answers:{},addonOverride:{},checks:{},due:{},refs:{},built:false}; $('cust').value=''; all(); save(); toast('Started over');
+});
+
+let downloads=null;
+if(window.claude&&typeof window.claude.use==='function'){
+  window.claude.use('downloads').then(d=>{downloads=d}).catch(()=>{});
+}
+$('export').addEventListener('click',async()=>{
+  if(typeof JSZip==='undefined'){toast('Word export could not load. Check your connection and reload.');return;}
+  const btn=$('export'); btn.disabled=true;
+  try{
+    const files=docxFiles(state); const z=new JSZip();
+    for(const k in files) z.file(k,files[k]);
+    const blob=await z.generateAsync({type:'blob',compression:'DEFLATE'});
+    const safe=(state.customer||'Customer').replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'_')||'Customer';
+    const filename=`${safe}_Pipeline_Checklist.docx`;
+    if(downloads){
+      try{await downloads.save({filename,data:blob}); toast('Exported to Word');}
+      catch(err){ if(err&&err.code==='declined') toast('Export cancelled'); else toast('Export isn’t available here'); }
+    }else{
+      const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000); toast('Exported to Word');
+    }
+  }finally{btn.disabled=false}
+});
+all();
+})();
+</script>
+</body>
+</html>
