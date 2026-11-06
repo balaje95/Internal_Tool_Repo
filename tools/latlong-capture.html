@@ -576,7 +576,7 @@ function exportRows(data, suffix){
   const ws = XLSX.utils.json_to_sheet(data, { header: outCols });
   ws['!cols'] = outCols.map(c => ({ wch: Math.min(Math.max(String(c).length + 4, 12), 40) }));
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, 'Geocoded', ws);
+  XLSX.utils.book_append_sheet(wb, ws, 'Geocoded');
   const stamp = new Date().toISOString().slice(0, 10);
   XLSX.writeFile(wb, 'latlong_' + suffix + '_' + stamp + '.xlsx');
 }
