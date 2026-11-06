@@ -793,7 +793,7 @@ async function readData() {
   const since = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
   const tlSince = new Date(Date.now() - 98 * 86400000).toISOString().slice(0, 10); // 14 weeks
   const actSince = new Date(Date.now() - 120 * 86400000).toISOString();
-  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing, billing_sheet, timelogs, native_tasks, task_meta, comments, blockers, activity, project_meta] = await Promise.all([
+  const [projects, tasks, milestones, snapshots, people, settingsRows, accounts, adoption, overrides, billing, billing_sheet, timelogs, native_tasks, task_meta, comments, blockers, activity, project_meta, checklists] = await Promise.all([
     readAll("pcc_projects", "id,key,name,status,status_closed,owner_name,owner_email,secondary_name,secondary_email,ba_name,pm_name,csm_name,extra,team,partner,industry,arr,potential_arr,confidence,start_date,current_eta,baseline_eta,actual_go_live,zuper_company_id,company_login_name,deal_url,comments,tech_stack,business_tag,percent_complete,tasks_open,tasks_closed,milestones_open,milestones_closed,created_time,modified_time,first_seen,tasks_synced_at"),
     readAll("pcc_tasks", "id,project_id,pipeline,stage,tasklist_name,name,status,is_completed,owners,start_date,end_date,modified_time,created_time,prefix,priority,sequence"),
     readAll("pcc_milestones", "id,project_id,name,pipeline,start_date,end_date,status,is_closed"),
@@ -812,6 +812,7 @@ async function readData() {
     readAll("pcc_blockers", "*"),
     readAll("pcc_activity", "*", (q) => q.gte("at", actSince)),
     readAll("pcc_project_meta", "*"),
+    readAll("pcc_checklists", "id,customer,project_id,progress,updated_at,updated_by,pushed_at,pushed_by,archived").catch(() => []),
   ]);
   const settings: any = {};
   let syncState: any = {}, zohoConnected = false;
@@ -823,7 +824,7 @@ async function readData() {
   const { data: lastLog } = await db.from("pcc_sync_log").select("at,ok,detail").order("id", { ascending: false }).limit(1);
   return {
     projects, tasks, milestones, snapshots, people, settings, accounts, adoption, overrides, billing, billing_sheet, timelogs, native_tasks, task_meta,
-    comments, blockers, activity, project_meta,
+    comments, blockers, activity, project_meta, checklists,
     sync: {
       ...syncState,
       zoho_connected: zohoConnected,
@@ -1347,6 +1348,169 @@ Deno.serve(async (req) => {
         const next = (Array.isArray(cur.list) ? cur.list : []).filter((x: any) => x.id !== body.id);
         await setSetting("views", { list: next });
         return json({ ok: true, views: { list: next } });
+      }
+
+      // ─── Pipeline Checklist Builder (tools/pipeline-checklist-builder.html) ───────────
+      // Checklists live in pcc_checklists (whole builder state as JSON, optimistic `rev`).
+      // "Send to Command Center" mirrors the checklist items into pcc_native_tasks, tagged
+      // source = "cl:<checklist id>:<item key>", so re-sending updates the same tasks.
+      case "cl_list": {
+        const rows = await readAll("pcc_checklists", "id,customer,project_id,progress,tpl_version,archived,rev,created_by,updated_by,created_at,updated_at,pushed_at,pushed_by");
+        const pids = [...new Set(rows.map((r: any) => r.project_id).filter(Boolean))];
+        const names = new Map<string, string>();
+        if (pids.length) { const { data: pn } = await db.from("pcc_projects").select("id,name").in("id", pids); (pn || []).forEach((p: any) => names.set(p.id, p.name)); }
+        rows.forEach((r: any) => { r.project_name = r.project_id ? names.get(r.project_id) || null : null; });
+        const tpl: any = (await getSetting("checklist_templates")) || { versions: [] };
+        return json({ ok: true, checklists: rows, templates: tpl });
+      }
+      case "cl_get": {
+        const id = String(body.id || "");
+        if (!UUID_RE.test(id)) return json({ error: "id required" }, 400);
+        const { data: row } = await db.from("pcc_checklists").select("*").eq("id", id).maybeSingle();
+        if (!row) return json({ error: "That checklist no longer exists." }, 404);
+        const { data: linked } = await db.from("pcc_native_tasks").select("source,project_id,is_completed,status,owner_name,end_date,updated_at,updated_by").like("source", `cl:${id}:%`);
+        return json({ ok: true, checklist: row, linked: linked || [] });
+      }
+      case "cl_save": {
+        const st = body.state && typeof body.state === "object" ? body.state : null;
+        if (!st) return json({ error: "state required" }, 400);
+        if (JSON.stringify(st).length > 600_000) return json({ error: "This checklist is too large to save." }, 400);
+        const by = sstr(body.by, 80), now = new Date().toISOString();
+        const pr = body.progress && typeof body.progress === "object" ? body.progress : {};
+        const row: any = {
+          customer: sstr(body.customer, 200) || "", state: st, updated_by: by, updated_at: now,
+          progress: { done: +pr.done || 0, total: +pr.total || 0, na: +pr.na || 0, overdue: +pr.overdue || 0 },
+          tpl_version: Math.max(0, Math.round(+body.tpl_version || 0)),
+        };
+        if ("archived" in body) row.archived = !!body.archived;
+        const id = body.id ? String(body.id) : "";
+        if (!id) {
+          const { data, error } = await db.from("pcc_checklists").insert({ ...row, created_by: by, rev: 1 }).select("*").single();
+          if (error) throw new Error(error.message);
+          return json({ ok: true, checklist: data });
+        }
+        if (!UUID_RE.test(id)) return json({ error: "bad id" }, 400);
+        const base = Math.round(+body.base_rev || 0);
+        const { data: up, error } = await db.from("pcc_checklists").update({ ...row, rev: base + 1 }).eq("id", id).eq("rev", base).select("*");
+        if (error) throw new Error(error.message);
+        if (!up || !up.length) {
+          const { data: cur } = await db.from("pcc_checklists").select("*").eq("id", id).maybeSingle();
+          if (!cur) return json({ error: "That checklist no longer exists." }, 404);
+          return json({ conflict: true, checklist: cur }, 409);
+        }
+        return json({ ok: true, checklist: up[0] });
+      }
+      case "cl_delete": {
+        const id = String(body.id || "");
+        if (!UUID_RE.test(id)) return json({ error: "id required" }, 400);
+        const { data: row } = await db.from("pcc_checklists").select("customer,project_id").eq("id", id).maybeSingle();
+        // Tasks already sent to the Command Center are removed only when asked; otherwise they
+        // stay on the project as ordinary tool tasks.
+        if (body.remove_tasks) await db.from("pcc_native_tasks").delete().like("source", `cl:${id}:%`);
+        else await db.from("pcc_native_tasks").update({ source: null }).like("source", `cl:${id}:%`);
+        const { error } = await db.from("pcc_checklists").delete().eq("id", id);
+        if (error) throw new Error(error.message);
+        const activity = row && row.project_id ? await logActivity([{ project_id: row.project_id, actor: sstr(body.by, 80), kind: "checklist",
+          summary: `Deleted the pipeline checklist for ${row.customer || "this customer"}` + (body.remove_tasks ? " and its tasks" : " (its tasks were kept)") }]) : [];
+        return json({ ok: true, activity });
+      }
+      case "cl_projects": {
+        const projects = await readAll("pcc_projects", "id,name,status,status_closed,owner_name,pm_name,ba_name,csm_name,start_date,current_eta,actual_go_live,industry");
+        const meta = await readAll("pcc_project_meta", "project_id,roles");
+        const people = await readAll("pcc_people", "name,email,role,active");
+        const linked = await readAll("pcc_checklists", "id,customer,project_id", (q) => q.not("project_id", "is", null));
+        return json({ ok: true, projects, project_meta: meta, people, linked, industry: await industryFilter() });
+      }
+      case "cl_push": {
+        const id = String(body.id || ""), pid = String(body.project_id || "").trim(), by = sstr(body.by, 80);
+        if (!UUID_RE.test(id) || !pid) return json({ error: "Pick a project." }, 400);
+        const { data: cl } = await db.from("pcc_checklists").select("id,customer,project_id,progress").eq("id", id).maybeSingle();
+        if (!cl) return json({ error: "Save the checklist first." }, 404);
+        const { data: proj } = await db.from("pcc_projects").select("id,name").eq("id", pid).maybeSingle();
+        if (!proj) return json({ error: "Unknown project." }, 400);
+        const tasks = (Array.isArray(body.tasks) ? body.tasks : []).slice(0, 800);
+        const prefix = `cl:${id}:`;
+        const { data: existing } = await db.from("pcc_native_tasks").select("*").like("source", prefix + "%");
+        const ex = new Map((existing || []).map((r: any) => [r.source, r]));
+        const now = new Date().toISOString();
+        let added = 0, updated = 0, removed = 0, moved = 0;
+        const keep = new Set<string>();
+        const inserts: any[] = [];
+        for (const t of tasks) {
+          const key = sstr(t.key, 120);
+          const name = sstr(t.name, 300);
+          if (!key || !name) continue;
+          const source = prefix + key;
+          keep.add(source);
+          const done = !!t.done;
+          const row: any = {
+            project_id: pid, name, pipeline: /^P[1-9]$/.test(String(t.pipeline || "")) ? String(t.pipeline) : null, stage: null,
+            tasklist_name: sstr(t.tasklist_name, 200), owner_name: sstr(t.owner_name), end_date: sdate(t.end_date),
+            notes: sstr(t.notes, 4000), is_completed: done,
+          };
+          const prev: any = ex.get(source);
+          if (!prev) {
+            inserts.push({ ...row, source, status: done ? "Done" : "Open", completed_at: done ? now : null, created_by: by, updated_by: by, updated_at: now });
+            continue;
+          }
+          if (prev.project_id !== pid) moved++;
+          const patch: any = {};
+          for (const k of ["project_id", "name", "pipeline", "tasklist_name", "owner_name", "end_date", "notes"]) if ((prev[k] ?? null) !== (row[k] ?? null)) patch[k] = row[k];
+          if (!!prev.is_completed !== done) {
+            patch.is_completed = done; patch.status = done ? "Done" : (prev.status === "Done" ? "Open" : prev.status);
+            patch.completed_at = done ? now : null;
+          }
+          if (Object.keys(patch).length) {
+            const { error } = await db.from("pcc_native_tasks").update({ ...patch, updated_by: by, updated_at: now }).eq("id", prev.id);
+            if (error) throw new Error(error.message);
+            updated++;
+          }
+        }
+        for (let i = 0; i < inserts.length; i += 200) {
+          const { error } = await db.from("pcc_native_tasks").insert(inserts.slice(i, i + 200));
+          if (error) throw new Error(error.message);
+        }
+        added = inserts.length;
+        const gone = (existing || []).filter((r: any) => !keep.has(r.source)).map((r: any) => r.id);
+        if (gone.length) {
+          const { error } = await db.from("pcc_native_tasks").delete().in("id", gone);
+          if (error) throw new Error(error.message);
+          removed = gone.length;
+        }
+        await db.from("pcc_checklists").update({ project_id: pid, pushed_at: now, pushed_by: by }).eq("id", id);
+        const pr: any = body.progress || cl.progress || {};
+        const parts = [added && `${added} added`, updated && `${updated} updated`, removed && `${removed} removed`].filter(Boolean).join(", ") || "no changes";
+        const rows: Act[] = [{ project_id: pid, actor: by, kind: "checklist",
+          summary: `Sent the pipeline checklist${cl.customer ? " for " + cl.customer : ""} from the Checklist Builder: ${parts} — ${+pr.done || 0} of ${+pr.total || 0} done` }];
+        if (cl.project_id && cl.project_id !== pid) rows.push({ project_id: cl.project_id, actor: by, kind: "checklist", summary: `Pipeline checklist${cl.customer ? " for " + cl.customer : ""} moved to ${proj.name}` });
+        const activity = await logActivity(rows);
+        const { data: linked } = await db.from("pcc_native_tasks").select("source,project_id,is_completed,status,owner_name,end_date,updated_at,updated_by").like("source", prefix + "%");
+        return json({ ok: true, added, updated, removed, moved, project_id: pid, pushed_at: now, linked: linked || [], activity });
+      }
+      case "cl_unlink": {
+        const id = String(body.id || "");
+        if (!UUID_RE.test(id)) return json({ error: "id required" }, 400);
+        const { data: cl } = await db.from("pcc_checklists").select("customer,project_id").eq("id", id).maybeSingle();
+        if (!cl) return json({ error: "That checklist no longer exists." }, 404);
+        if (body.remove_tasks) await db.from("pcc_native_tasks").delete().like("source", `cl:${id}:%`);
+        else await db.from("pcc_native_tasks").update({ source: null }).like("source", `cl:${id}:%`);
+        await db.from("pcc_checklists").update({ project_id: null, pushed_at: null, pushed_by: null }).eq("id", id);
+        const activity = cl.project_id ? await logActivity([{ project_id: cl.project_id, actor: sstr(body.by, 80), kind: "checklist",
+          summary: `Unlinked the pipeline checklist${cl.customer ? " for " + cl.customer : ""}` + (body.remove_tasks ? " and removed its tasks" : " (its tasks were kept)") }]) : [];
+        return json({ ok: true, activity });
+      }
+      // Team edits to the checklist items. Each save is a new numbered version; checklists
+      // remember the version they were built from and are only moved to a newer one on request.
+      case "cl_tpl_save": {
+        const ov = body.ov && typeof body.ov === "object" ? body.ov : null;
+        if (!ov) return json({ error: "Nothing to save." }, 400);
+        if (JSON.stringify(ov).length > 300_000) return json({ error: "Too many edits in one version." }, 400);
+        const cur: any = (await getSetting("checklist_templates")) || { versions: [] };
+        const versions = Array.isArray(cur.versions) ? cur.versions : [];
+        const v = versions.reduce((m: number, x: any) => Math.max(m, +x.v || 0), 0) + 1;
+        const next = versions.concat([{ v, at: new Date().toISOString(), by: sstr(body.by, 80), note: sstr(body.note, 300), ov }]);
+        await setSetting("checklist_templates", { versions: next });
+        return json({ ok: true, templates: { versions: next }, v });
       }
 
       // Diagnostic (maintenance credential only): GET a Zoho Projects path and report its shape.
