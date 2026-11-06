@@ -241,16 +241,66 @@ function buildLine(street, city, state, zip, country){
 // ── GEOCODE (single address) ────────────────────────────────────────────────
 function provider(){ const r = document.querySelector('input[name=provider]:checked'); return r ? r.value : 'free'; }
 function isUS(country){ return !country || /^(us|usa|u\.s\.a?\.?|united states( of america)?)$/i.test(String(country).trim()); }
+// One lookup per distinct address per run: repeated addresses (and billing = service)
+// reuse the same promise instead of hitting the service again.
+let _geoCache = new Map();
+// Addresses the Census batch pre-pass already answered: uid → result, or a known miss.
+let _censusBatch = new Map();
+function addrKey(street, city, state, zip, country){
+  return [street, city, state, normZip(zip), country].map(s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ')).join('|');
+}
 async function geocode(street, city, state, zip, country){
-  if (provider() === 'google') return geocodeGoogle(street, city, state, zip, country);
-  return geocodeFree(street, city, state, zip, country);
+  const k = provider() + '|' + addrKey(street, city, state, zip, country);
+  if (!_geoCache.has(k)){
+    const p = (provider() === 'google' ? geocodeGoogle : geocodeFree)(street, city, state, zip, country);
+    _geoCache.set(k, p);
+    p.catch(() => _geoCache.delete(k));   // let a thrown (network) error be retried
+  }
+  return _geoCache.get(k);
+}
+
+// Bulk pre-pass: send every distinct US address to the Census batch geocoder through
+// /api/census-batch (500 per request, 4 requests in parallel). Anything it matches
+// never needs a per-row lookup. If the proxy is unavailable (e.g. file opened
+// locally) this quietly does nothing and the per-row path handles everything.
+const BATCH_SIZE = 500, BATCH_PARALLEL = 4;
+async function censusBatchPrepass(addrs, onProgress){
+  _censusBatch = new Map();
+  const us = addrs.filter(a => isUS(a.country) && a.street);
+  if (!us.length) return { matched: 0, sent: 0, ok: true };
+  const chunks = [];
+  for (let i = 0; i < us.length; i += BATCH_SIZE) chunks.push(us.slice(i, i + BATCH_SIZE));
+  let next = 0, done = 0, matched = 0, failed = 0;
+  async function worker(){
+    while (next < chunks.length && !stopReq){
+      const chunk = chunks[next++];
+      try{
+        const r = await fetch('/api/census-batch', { method:'POST', headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ rows: chunk.map((a, i) => [String(i), a.street, a.city, a.state, normZip(a.zip)]) }) });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+        chunk.forEach((a, i) => {
+          const hit = d.results && d.results[String(i)];
+          if (hit){ matched++; _censusBatch.set(a.key, { lat: Number(hit.lat).toFixed(6), lng: Number(hit.lng).toFixed(6), ok:true, msg:'', source:'US Census' }); }
+          else _censusBatch.set(a.key, null);   // known Census miss → go straight to OpenStreetMap
+        });
+      }catch(e){ failed++; }
+      done += chunk.length;
+      if (onProgress) onProgress(done, us.length, matched);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(BATCH_PARALLEL, chunks.length) }, worker));
+  return { matched, sent: us.length, ok: failed < chunks.length };
 }
 
 // Free path: US Census first (US only, address-level), then OpenStreetMap.
 async function geocodeFree(street, city, state, zip, country){
   const z = normZip(zip);
   let censusMsg = '';
-  if (isUS(country)){
+  const pre = _censusBatch.get(addrKey(street, city, state, zip, country));
+  if (pre) return pre;
+  if (pre === null) censusMsg = 'Census: no match';
+  else if (isUS(country)){
     try{
       const g = await geocodeCensus(buildLine(street, city, state, z, ''));
       if (g.ok) return g;
@@ -301,9 +351,11 @@ async function geocodeCensus(line){
 // OpenStreetMap Nominatim: max 1 request/second (usage policy) — enforced globally.
 let _osmNext = 0;
 async function geocodeOSM(street, city, state, zip, country){
-  const wait = _osmNext - Date.now();
-  if (wait > 0) await delay(wait);
-  _osmNext = Date.now() + 1100;
+  // Reserve the next 1.1s slot synchronously so parallel workers queue up instead
+  // of all reading the same _osmNext and firing together.
+  const slot = Math.max(Date.now(), _osmNext);
+  _osmNext = slot + 1100;
+  if (slot > Date.now()) await delay(slot - Date.now());
   const p = new URLSearchParams({ format:'jsonv2', limit:'1', addressdetails:'0' });
   if (street) p.set('street', street);
   if (city) p.set('city', city);
@@ -443,8 +495,47 @@ async function run(){
   [c.lat, c.lng, c.bLat, c.bLng, GS, GR, GSRC, BGS, BGR, BGSRC].forEach(k => { if (!outCols.includes(k)) outCols.push(k); });
 
   const total = rows.length;
-  for (let i = 0; i < total; i++){
-    if (stopReq){ addLog('skip', i, '(stopped)', '', '', 'Stopped by user'); break; }
+  _geoCache = new Map(); _censusBatch = new Map();
+  // Downloads stay usable during the run: they export whatever rows are finished.
+  $('dlAll').disabled = $('dlOk').disabled = $('dlFail').disabled = false;
+
+  // ── Free mode: bulk Census pre-pass over every distinct address ─────────
+  if (provider() === 'free'){
+    const seen = new Map();
+    const add = (street, city, state, zip, country) => {
+      if (!street || (!city && !normZip(zip))) return;
+      const key = addrKey(street, city, state, zip, country);
+      if (!seen.has(key)) seen.set(key, { key, street, city, state, zip, country });
+    };
+    rows.forEach(r => {
+      add(val(r, c.street), val(r, c.city), val(r, c.state), val(r, c.zip), val(r, c.country));
+      add(val(r, c.bStreet), val(r, c.bCity), val(r, c.bState), val(r, c.bZip), val(r, c.bCountry) || val(r, c.country));
+    });
+    $('statusTxt').textContent = 'Bulk-matching ' + seen.size + ' addresses with US Census…';
+    const t0 = Date.now();
+    const pre = await censusBatchPrepass([...seen.values()], (d, n, m) => {
+      $('statusTxt').textContent = 'Bulk-matching with US Census… ' + d + ' / ' + n + ' (' + m + ' matched)';
+    });
+    const box = $('logBox'), div = document.createElement('div');
+    div.className = 'log-line log-info';
+    div.textContent = pre.ok
+      ? 'US Census bulk match: ' + pre.matched + ' of ' + pre.sent + ' US addresses in ' + ((Date.now() - t0) / 1000).toFixed(1) + 's. The rest go to OpenStreetMap (1 per second).'
+      : 'US Census bulk match unavailable — looking addresses up one at a time instead.';
+    box.appendChild(div);
+    $('statusTxt').textContent = 'Processing…';
+  }
+
+  // Rows run in parallel; results[i] keeps the original row order for the export.
+  // (OpenStreetMap stays at 1 request/second however many workers run.)
+  const PARALLEL = provider() === 'google' ? 10 : 8;
+  let nextRow = 0, doneRows = 0;
+  async function worker(){
+    while (nextRow < total){
+      if (stopReq) return;
+      await processRow(nextRow++);
+    }
+  }
+  async function processRow(i){
     const src = rows[i];
     const out = Object.assign({}, src);
 
@@ -504,28 +595,28 @@ async function run(){
     out[c.bLat] = bLatV; out[c.bLng] = bLngV;
     out[BGS] = bStatus; out[BGR] = bMsg; out[BGSRC] = bSrc;
 
-    results.push(out);
+    results[i] = out;
 
     // Counters keyed on the service geocode outcome.
     if (sStatus === 'success'){ cOk++; addLog('ok', i, buildLine(street, city, state, zip, ''), sLat, sLng, sSrc); }
     else if (sStatus === 'skipped'){ cSkip++; addLog('skip', i, buildLine(street, city, state, zip, '') || '(no address)', '', '', sMsg); }
     else { cFail++; addLog('fail', i, buildLine(street, city, state, zip, ''), '', '', sMsg); }
     updateStats();
-    updateProgress(i + 1, total);
-
-    if (i < total - 1) await delay(80);
+    updateProgress(++doneRows, total);
   }
+
+  await Promise.all(Array.from({ length: Math.min(PARALLEL, total) }, worker));
+  if (stopReq) addLog('skip', doneRows, '(stopped)', '', '', 'Stopped by user — ' + doneRows + ' of ' + total + ' rows done');
+  results = results.filter(Boolean);
 
   running = false;
   $('btnStart').disabled = false; $('btnStop').disabled = true;
   $('statusTxt').textContent = stopReq ? '■ Stopped' : '✓ Complete';
-  if (results.length){
-    $('dlAll').disabled = false;
-    $('dlOk').disabled = false;
-    $('dlFail').disabled = false;
-    buildResultsTable();
-  }
+  $('dlAll').disabled = $('dlOk').disabled = $('dlFail').disabled = !results.length;
+  if (results.length) buildResultsTable();
 }
+// Rows finished so far (results is sparse while a parallel run is in progress).
+function doneResults(){ return results.filter(Boolean); }
 
 function delay(ms){ return new Promise(r => setTimeout(r, ms)); }
 
@@ -547,6 +638,7 @@ function addLog(status, idx, addr, lat, lng, msg){
   div.className = 'log-line ' + cls;
   div.textContent = ts + '  #' + (idx + 1) + '  ' + String(addr).slice(0, 70) + '  ' + detail;
   box.appendChild(div);
+  while (box.childElementCount > 400) box.removeChild(box.firstChild);   // keep the DOM light on big files
   box.scrollTop = box.scrollHeight;
 }
 
@@ -601,12 +693,12 @@ fi.addEventListener('change', () => { if (fi.files.length) readFile(fi.files[0])
 document.querySelectorAll('input[name=provider]').forEach(r => r.addEventListener('change', () => { $('googleKeyBox').style.display = provider() === 'google' ? 'block' : 'none'; }));
 $('btnStart').addEventListener('click', run);
 $('btnStop').addEventListener('click', () => { stopReq = true; $('statusTxt').textContent = 'Stopping…'; });
-$('dlAll').addEventListener('click', () => exportRows(results, 'full'));
-$('dlOk').addEventListener('click', () => exportRows(results.filter(r => r[GS] === 'success'), 'geocoded'));
+$('dlAll').addEventListener('click', () => exportRows(doneResults(), running ? 'partial' : 'full'));
+$('dlOk').addEventListener('click', () => exportRows(doneResults().filter(r => r[GS] === 'success'), 'geocoded'));
 // "Needs attention" = the service address didn't geocode (failed or skipped) OR the
 // billing address failed. Filtering on the service status alone hid every
 // billing-only failure from the one export meant to surface problem rows.
-$('dlFail').addEventListener('click', () => exportRows(results.filter(r => r[GS] !== 'success' || r[BGS] === 'failed'), 'failed'));
+$('dlFail').addEventListener('click', () => exportRows(doneResults().filter(r => r[GS] !== 'success' || r[BGS] === 'failed'), 'failed'));
 </script>
 </body>
 </html>
