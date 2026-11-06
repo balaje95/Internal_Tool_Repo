@@ -91,7 +91,14 @@
 
   <!-- STEP 1: API key -->
   <div class="step" id="step1">
-    <h2><span class="num">1</span> Google Maps Geocoding API key</h2>
+    <h2><span class="num">1</span> Geocoding service</h2>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;font-size:13px;">
+      <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="radio" name="provider" value="free" checked style="margin-top:3px">
+        <span><b>Free — no API key</b> (US Census Geocoder, falls back to OpenStreetMap)<br><span class="hint" style="margin:0">Best for US addresses. Census matches are address-level. Addresses Census can't match, and non-US addresses, go to OpenStreetMap, which is limited to 1 request per second. Results that only matched a street (not the house number) are marked <i>approximate</i>. Results that matched only a city or area are marked failed.</span></span></label>
+      <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="radio" name="provider" value="google" style="margin-top:3px">
+        <span><b>Google Maps</b> (needs a Geocoding API key)</span></label>
+    </div>
+    <div id="googleKeyBox" style="display:none">
     <p class="hint">Runs entirely in your browser — your key is sent only to Google's Geocoding API and is <b>never</b> stored or written into any export. The key must have the <b>Geocoding API</b> enabled; if it's referrer-restricted, allow this site's domain.</p>
     <div class="field" style="max-width:560px;">
       <label for="apiKey">API key</label>
@@ -99,6 +106,7 @@
         <input type="password" id="apiKey" autocomplete="off" placeholder="Paste your Google Maps Geocoding API key…" />
         <button type="button" class="eye" id="eyeBtn" title="Show / hide">👁</button>
       </div>
+    </div>
     </div>
   </div>
 
@@ -172,7 +180,7 @@ const GEO_MAX_TRIES = 4;
 const GEO_RETRY_STATUSES = new Set(['OVER_QUERY_LIMIT','UNKNOWN_ERROR']);
 // Columns the tool appends to the sheet.
 const LAT='Latitude', LNG='Longitude', BLAT='Billing Latitude', BLNG='Billing Longitude';
-const GS='Geocode_Status', GR='Geocode_Reason', BGS='Billing_Geocode_Status', BGR='Billing_Geocode_Reason';
+const GS='Geocode_Status', GR='Geocode_Reason', BGS='Billing_Geocode_Status', BGR='Billing_Geocode_Reason', GSRC='Geocode_Source', BGSRC='Billing_Geocode_Source';
 
 const $ = id => document.getElementById(id);
 
@@ -231,7 +239,91 @@ function buildLine(street, city, state, zip, country){
 }
 
 // ── GEOCODE (single address) ────────────────────────────────────────────────
+function provider(){ const r = document.querySelector('input[name=provider]:checked'); return r ? r.value : 'free'; }
+function isUS(country){ return !country || /^(us|usa|u\.s\.a?\.?|united states( of america)?)$/i.test(String(country).trim()); }
 async function geocode(street, city, state, zip, country){
+  if (provider() === 'google') return geocodeGoogle(street, city, state, zip, country);
+  return geocodeFree(street, city, state, zip, country);
+}
+
+// Free path: US Census first (US only, address-level), then OpenStreetMap.
+async function geocodeFree(street, city, state, zip, country){
+  const z = normZip(zip);
+  let censusMsg = '';
+  if (isUS(country)){
+    try{
+      const g = await geocodeCensus(buildLine(street, city, state, z, ''));
+      if (g.ok) return g;
+      censusMsg = g.msg;
+    }catch(e){ censusMsg = 'Census: ' + e.message; }
+  }
+  try{
+    const g = await geocodeOSM(street, city, state, z, isUS(country) ? 'United States' : country);
+    if (!g.ok && censusMsg) g.msg = censusMsg + ' · ' + g.msg;
+    return g;
+  }catch(e){
+    return { lat:'', lng:'', ok:false, msg: (censusMsg ? censusMsg + ' · ' : '') + 'OpenStreetMap: ' + e.message, source:'' };
+  }
+}
+
+// The Census geocoder sends no CORS headers but supports JSONP, so it is called
+// through a <script> tag with a one-off callback.
+let _jsonpSeq = 0;
+function jsonp(url, timeoutMs){
+  return new Promise((resolve, reject) => {
+    const cb = '__geo_cb_' + (++_jsonpSeq);
+    const s = document.createElement('script');
+    const done = () => { delete window[cb]; s.remove(); clearTimeout(t); };
+    const t = setTimeout(() => { done(); reject(new Error('timed out')); }, timeoutMs || 20000);
+    window[cb] = d => { done(); resolve(d); };
+    s.onerror = () => { done(); reject(new Error('request failed')); };
+    s.src = url + (url.includes('?') ? '&' : '?') + 'format=jsonp&callback=' + cb;
+    document.head.appendChild(s);
+  });
+}
+async function geocodeCensus(line){
+  const url = 'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&address=' + encodeURIComponent(line);
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++){
+    if (attempt) await delay(800 * attempt);
+    try{
+      const d = await jsonp(url, 20000);
+      const m = d && d.result && d.result.addressMatches;
+      if (m && m.length){
+        const c = m[0].coordinates;
+        return { lat: Number(c.y).toFixed(6), lng: Number(c.x).toFixed(6), ok:true, msg:'', source:'US Census' };
+      }
+      return { lat:'', lng:'', ok:false, msg:'Census: no match', source:'' };
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr;
+}
+// OpenStreetMap Nominatim: max 1 request/second (usage policy) — enforced globally.
+let _osmNext = 0;
+async function geocodeOSM(street, city, state, zip, country){
+  const wait = _osmNext - Date.now();
+  if (wait > 0) await delay(wait);
+  _osmNext = Date.now() + 1100;
+  const p = new URLSearchParams({ format:'jsonv2', limit:'1', addressdetails:'0' });
+  if (street) p.set('street', street);
+  if (city) p.set('city', city);
+  if (state) p.set('state', state);
+  if (zip) p.set('postalcode', zip);
+  if (country) p.set('country', country);
+  const r = await fetch('https://nominatim.openstreetmap.org/search?' + p.toString());
+  if (r.status === 429) throw new Error('rate limited — try again later');
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const d = await r.json();
+  if (!d.length) return { lat:'', lng:'', ok:false, msg:'OpenStreetMap: no match', source:'' };
+  const hit = d[0], rank = Number(hit.place_rank || 0);
+  // 30 = house/building, 26–29 = street-level, lower = city/area only (not useful as a site location).
+  if (rank < 26) return { lat:'', lng:'', ok:false, msg:'OpenStreetMap: matched only the ' + (hit.addresstype || 'area') + ', not the street', source:'' };
+  return { lat: Number(hit.lat).toFixed(6), lng: Number(hit.lon).toFixed(6), ok:true,
+           msg: rank < 30 ? 'Approximate — matched the street, not the exact house number' : '',
+           source: 'OpenStreetMap' + (rank < 30 ? ' (approximate)' : '') };
+}
+
+async function geocodeGoogle(street, city, state, zip, country){
   const key = $('apiKey').value.trim();
   if (!key) throw new Error('No API key');
   const z = normZip(zip);
@@ -253,7 +345,7 @@ async function geocode(street, city, state, zip, country){
     const d = await r.json();
     if (d.status === 'OK' && d.results && d.results.length){
       const loc = d.results[0].geometry.location;
-      return { lat: loc.lat.toFixed(6), lng: loc.lng.toFixed(6), ok:true, msg:'' };
+      return { lat: loc.lat.toFixed(6), lng: loc.lng.toFixed(6), ok:true, msg:'', source:'Google' };
     }
     lastMsg = 'Google: ' + d.status + (d.error_message ? ' – ' + d.error_message : '');
     if (!GEO_RETRY_STATUSES.has(d.status)) return { lat:'', lng:'', ok:false, msg: lastMsg };
@@ -326,7 +418,7 @@ function renderRef(){
 async function run(){
   if (running) return;
   const key = $('apiKey').value.trim();
-  if (!key){ alert('Enter your Google Maps Geocoding API key in step 1.'); return; }
+  if (provider() === 'google' && !key){ alert('Enter your Google Maps Geocoding API key in step 1, or choose the free option.'); return; }
   if (!rows.length){ alert('Upload a spreadsheet first.'); return; }
 
   running = true; stopReq = false;
@@ -348,7 +440,7 @@ async function run(){
   };
   // Final export column order = original columns + any appended ones not already present.
   outCols = columns.slice();
-  [c.lat, c.lng, c.bLat, c.bLng, GS, GR, BGS, BGR].forEach(k => { if (!outCols.includes(k)) outCols.push(k); });
+  [c.lat, c.lng, c.bLat, c.bLng, GS, GR, GSRC, BGS, BGR, BGSRC].forEach(k => { if (!outCols.includes(k)) outCols.push(k); });
 
   const total = rows.length;
   for (let i = 0; i < total; i++){
@@ -359,7 +451,7 @@ async function run(){
     const street = val(src, c.street), city = val(src, c.city), state = val(src, c.state);
     const country = val(src, c.country), zip = normZip(val(src, c.zip));
 
-    let sLat = '', sLng = '', sStatus = 'failed', sMsg = '';
+    let sLat = '', sLng = '', sStatus = 'failed', sMsg = '', sSrc = '';
     // 'skipped' (not 'failed') for rows we never sent to Google — the summary bar
     // already counts these under "Skipped", so leaving the exported
     // Geocode_Status as 'failed' contradicted the on-screen number.
@@ -370,12 +462,12 @@ async function run(){
     } else {
       try{
         const g = await geocode(street, city, state, zip, country);
-        if (g.ok){ sLat = g.lat; sLng = g.lng; sStatus = 'success'; }
+        if (g.ok){ sLat = g.lat; sLng = g.lng; sStatus = 'success'; sMsg = g.msg || ''; sSrc = g.source || ''; }
         else { sStatus = 'failed'; sMsg = g.msg; }
       }catch(e){ sStatus = 'failed'; sMsg = e.message; }
     }
     out[c.lat] = sLat; out[c.lng] = sLng;
-    out[GS] = sStatus; out[GR] = sMsg;
+    out[GS] = sStatus; out[GR] = sMsg; out[GSRC] = sSrc;
 
     // ── Billing ──────────────────────────────────────────────────────────
     const bStreet = val(src, c.bStreet), bCity = val(src, c.bCity), bState = val(src, c.bState);
@@ -391,9 +483,9 @@ async function run(){
       bState.toLowerCase()  === state.toLowerCase()  &&
       bZip.toLowerCase()    === zip.toLowerCase();
 
-    let bLatV = '', bLngV = '', bStatus = '', bMsg = '';
+    let bLatV = '', bLngV = '', bStatus = '', bMsg = '', bSrc = '';
     if (sStatus === 'success' && (!hasBilling || sameAsService)){
-      bLatV = sLat; bLngV = sLng; bStatus = 'copied_service';
+      bLatV = sLat; bLngV = sLng; bStatus = 'copied_service'; bSrc = sSrc;
       bMsg = hasBilling ? 'Billing address matches service address.' : 'Billing not provided. Copied service coordinates.';
     } else if (hasBilling){
       if (!bStreet){ bStatus = 'failed'; bMsg = 'Billing Street is missing.'; }
@@ -401,7 +493,7 @@ async function run(){
       else {
         try{
           const g = await geocode(bStreet, bCity, bState, bZip, bCountry || country);
-          if (g.ok){ bLatV = g.lat; bLngV = g.lng; bStatus = 'success'; }
+          if (g.ok){ bLatV = g.lat; bLngV = g.lng; bStatus = 'success'; bMsg = g.msg || ''; bSrc = g.source || ''; }
           else { bStatus = 'failed'; bMsg = g.msg; }
         }catch(e){ bStatus = 'failed'; bMsg = 'Billing geocode error: ' + e.message; }
       }
@@ -410,12 +502,12 @@ async function run(){
       bStatus = 'skipped'; bMsg = 'Billing not provided and service address not geocoded.';
     }
     out[c.bLat] = bLatV; out[c.bLng] = bLngV;
-    out[BGS] = bStatus; out[BGR] = bMsg;
+    out[BGS] = bStatus; out[BGR] = bMsg; out[BGSRC] = bSrc;
 
     results.push(out);
 
     // Counters keyed on the service geocode outcome.
-    if (sStatus === 'success'){ cOk++; addLog('ok', i, buildLine(street, city, state, zip, ''), sLat, sLng, ''); }
+    if (sStatus === 'success'){ cOk++; addLog('ok', i, buildLine(street, city, state, zip, ''), sLat, sLng, sSrc); }
     else if (sStatus === 'skipped'){ cSkip++; addLog('skip', i, buildLine(street, city, state, zip, '') || '(no address)', '', '', sMsg); }
     else { cFail++; addLog('fail', i, buildLine(street, city, state, zip, ''), '', '', sMsg); }
     updateStats();
@@ -450,7 +542,7 @@ function addLog(status, idx, addr, lat, lng, msg){
   const box = $('logBox');
   const ts = new Date().toLocaleTimeString('en-US', { hour12:false });
   const cls = status === 'ok' ? 'log-ok' : status === 'skip' ? 'log-skip' : 'log-err';
-  const detail = status === 'ok' ? ('→ [' + lat + ', ' + lng + ']') : (msg || status);
+  const detail = status === 'ok' ? ('→ [' + lat + ', ' + lng + ']' + (msg ? '  (' + msg + ')' : '')) : (msg || status);
   const div = document.createElement('div');
   div.className = 'log-line ' + cls;
   div.textContent = ts + '  #' + (idx + 1) + '  ' + String(addr).slice(0, 70) + '  ' + detail;
@@ -464,7 +556,7 @@ function buildResultsTable(){
   if (!results.length){ wrap.style.display = 'none'; return; }
   const nameCols = columns.filter(c => /name|company|customer|street|city|state|zip/i.test(c)).slice(0, 5);
   const coordCols = outCols.filter(c => [ref.latitude||LAT, ref.longitude||LNG, ref.billing_latitude||BLAT, ref.billing_longitude||BLNG].includes(c));
-  const show = [...new Set([...nameCols, ...coordCols, GS, GR])];
+  const show = [...new Set([...nameCols, ...coordCols, GS, GSRC, GR])];
   let html = '<table><thead><tr>' + show.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr></thead><tbody>';
   results.slice(0, 50).forEach(row => {
     html += '<tr>' + show.map(h => {
@@ -506,6 +598,7 @@ dz.addEventListener('drop', e => {
   if (e.dataTransfer.files.length) readFile(e.dataTransfer.files[0]);
 });
 fi.addEventListener('change', () => { if (fi.files.length) readFile(fi.files[0]); });
+document.querySelectorAll('input[name=provider]').forEach(r => r.addEventListener('change', () => { $('googleKeyBox').style.display = provider() === 'google' ? 'block' : 'none'; }));
 $('btnStart').addEventListener('click', run);
 $('btnStop').addEventListener('click', () => { stopReq = true; $('statusTxt').textContent = 'Stopping…'; });
 $('dlAll').addEventListener('click', () => exportRows(results, 'full'));
