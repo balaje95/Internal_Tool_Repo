@@ -183,6 +183,7 @@
         </div>
         <button class="primary" id="btnConnect" style="width:100%">Connect</button>
         <div id="connStatus"></div>
+        <div id="varStatus"></div>
       </div>
 
       <div class="panel">
@@ -327,14 +328,18 @@ const CAT = [
     ["Favourite Technician Update","customer.favourite_technician_update",false],["New Note","customer.new_note",false],
     ["New Customer Card","customer.new_card",false],["Remove Customer Card","customer.remove_card",false]
   ]},
+  // Quotes are the `estimate` module in Zuper (REST /api/estimate, trigger estimate.update),
+  // so their trigger keys live in the estimate.* namespace. estimate.update and
+  // invoice.new are confirmed from live workflows (ZuperHuman skill, Nov 2026); the rest
+  // follow the same naming and stay "inferred" until the node library confirms them.
   { label:"Quotes", module:"QUOTE", events:[
-    ["New Quote","quote.create",false],["Quote Update","quote.update",false],["Quote Status Update","quote.status_update",false],
-    ["Quote Deposit Payment","quote.deposit_payment",false],["Print Quote","quote.print",false],["Send Quote","quote.send",false],
-    ["Quote New Note","quote.new_note",false],["Quote New Attachment","quote.new_attachment",false],
-    ["Quote Delete Attachment","quote.delete_attachment",false],["Quote Delete Note","quote.delete_note",false],["Quote Delete","quote.delete",false]
+    ["New Quote","estimate.new",false],["Quote Update","estimate.update",true],["Quote Status Update","estimate.status_update",false],
+    ["Quote Deposit Payment","estimate.deposit_payment",false],["Print Quote","estimate.print",false],["Send Quote","estimate.send",false],
+    ["Quote New Note","estimate.new_note",false],["Quote New Attachment","estimate.new_attachment",false],
+    ["Quote Delete Attachment","estimate.delete_attachment",false],["Quote Delete Note","estimate.delete_note",false],["Quote Delete","estimate.delete",false]
   ]},
   { label:"Invoices", module:"INVOICE", events:[
-    ["New Invoice","invoice.create",false],["Invoice Update","invoice.update",false],["Invoice Status Update","invoice.status_update",false],
+    ["New Invoice","invoice.new",true],["Invoice Update","invoice.update",false],["Invoice Status Update","invoice.status_update",false],
     ["Invoice Payment","invoice.payment",false],["Print Invoice","invoice.print",false],["Send Invoice","invoice.send",false],
     ["Invoice New Note","invoice.new_note",false],["Invoice Attachment","invoice.new_attachment",false],
     ["Invoice Delete Attachment","invoice.delete_attachment",false],["Invoice Delete Note","invoice.delete_note",false],["Invoice Delete","invoice.delete",false]
@@ -372,7 +377,7 @@ const COMPILE_SUPPORT = {
   create_job:"golden/api",   // POST /jobs {job:{…}} — the golden template proves it
   create_customer:"api",     // POST /customers, flat payload — same as Data Manager migrate
   http_request:"api",        // the builder's own HTTP node
-  update_job:"guess"         // PUT /jobs/{uid} and /jobs/{uid}/status — unverified
+  update_job:"api"           // PUT /jobs/{uid}/status {status_uid} (verified); PUT /jobs {job:{job_uid,…}} for category
 };
 /* Extra editable fields per op, rendered generically. create_job / update_job keep
    their own richer layouts below. */
@@ -463,8 +468,65 @@ async function connect(){
   const arr=cats&&cats.ok&&(cats.data.data||cats.data.categories||cats.data)||[];
   S.categories=Array.isArray(arr)?arr.filter(x=>x&&x.category_name):[];
   S.categories.forEach(c=>{ S.statuses[c.category_name]=(c.statuses||c.job_statuses||[]); });
-  setStatus($("#connStatus"),"ok",`Live on <b>${S.company}</b> &middot; <b>${S.categories.length}</b> categories loaded.`);
-  renderActions(); probeConditions();
+  // The job_statuses array inside /jobs/category can come back empty; the real list is
+  // GET /jobs/status/{category_uid} → data.job_statuses[]. Fill the gaps, 4 at a time.
+  const gaps=S.categories.filter(c=>c.category_uid&&!(S.statuses[c.category_name]||[]).length);
+  if(gaps.length){
+    setStatus($("#connStatus"),"ok",`Live on <b>${esc(S.company)}</b> &middot; loading statuses for ${gaps.length} categories&hellip;`,true);
+    let gi=0;
+    await Promise.all(Array.from({length:Math.min(4,gaps.length)},async()=>{
+      while(gi<gaps.length){
+        const c=gaps[gi++];
+        const r=await zget(S.base,"/jobs/status/"+encodeURIComponent(c.category_uid)).catch(()=>null);
+        const d=r&&r.ok&&r.data&&(r.data.data||r.data);
+        const list=(d&&(d.job_statuses||d.statuses))||(Array.isArray(d)?d:[]);
+        if(Array.isArray(list)&&list.length) S.statuses[c.category_name]=list;
+      }
+    }));
+  }
+  setStatus($("#connStatus"),"ok",`Live on <b>${esc(S.company)}</b> &middot; <b>${S.categories.length}</b> categories loaded.`);
+  renderActions(); probeConditions(); checkVariables();
+}
+
+/* ================= workflow Variables =================
+   Every generated graph starts with a Configs code node reading VARIABLE.BASE_URL,
+   VARIABLE.API_KEY and VARIABLE.ZUPER_COMPANY_TIMEZONE, and appends paths such as
+   "/jobs" to BASE_URL. A missing variable, or a BASE_URL with a trailing slash or
+   without /api, makes every HTTP node fail at run time — so check them up front.
+   GET /api/variables pages with `count`, not `limit`; sensitive values come back masked. */
+const REQUIRED_VARS=["BASE_URL","API_KEY","ZUPER_COMPANY_TIMEZONE"];
+async function checkVariables(){
+  const el=$("#varStatus"); if(!el) return;
+  const host=workflowHost(); if(!host){ el.innerHTML=""; return; }
+  setStatus(el,"","Checking workflow Variables&hellip;",true);
+  const r=await zget(host.replace(/\/$/,""),"/variables?page=1&count=100").catch(()=>null);
+  if(!r||!r.ok||(r.data&&r.data.type==="error")){
+    S.vars=null;
+    setStatus(el,"err","Couldn&rsquo;t read workflow Variables (HTTP "+((r&&r.status)||"?")+"). Make sure <code class=\"k\">BASE_URL</code>, <code class=\"k\">API_KEY</code> and <code class=\"k\">ZUPER_COMPANY_TIMEZONE</code> exist before testing.");
+    autoBuild(); return;
+  }
+  const d=r.data, list=(d&&(d.data||d.variables))||(Array.isArray(d)?d:[]);
+  const byName={}; (Array.isArray(list)?list:[]).forEach(v=>{ if(v&&v.key_name) byName[String(v.key_name).trim()]=v; });
+  S.vars=byName;
+  const issues=varIssues();
+  setStatus(el,issues.length?"err":"ok",issues.length
+    ? "<b>Workflow Variables</b>"+issues.map(x=>"<div style=\"margin-top:4px\">&#9888; "+x+"</div>").join("")
+    : "Workflow Variables OK &middot; "+REQUIRED_VARS.map(k=>"<code class=\"k\">"+k+"</code>").join(" "));
+  autoBuild();
+}
+function varIssues(){
+  if(!S.vars) return [];
+  const out=[];
+  const missing=REQUIRED_VARS.filter(k=>!S.vars[k]);
+  if(missing.length) out.push("Missing: "+missing.map(k=>"<code class=\"k\">"+k+"</code>").join(", ")+" — the Configs node reads these, so every HTTP node fails until they are added (Workflow Builder → Variables).");
+  const bu=S.vars.BASE_URL;
+  if(bu&&!bu.is_sensitive&&typeof bu.value==="string"&&bu.value&&!/\*{4,}/.test(bu.value)){
+    const v=bu.value.trim();
+    if(/\/$/.test(v)) out.push("<code class=\"k\">BASE_URL</code> ends in a slash (<code class=\"k\">"+esc(v)+"</code>) — generated URLs would read <code class=\"k\">…//jobs</code>. Remove the trailing slash.");
+    else if(!/\/api$/.test(v)) out.push("<code class=\"k\">BASE_URL</code> is <code class=\"k\">"+esc(v)+"</code> — generated nodes append <code class=\"k\">/jobs</code> etc., so it must end in <code class=\"k\">/api</code>.");
+    else if(S.base&&v.replace(/\/api$/,"")!==S.base.replace(/\/api$/,"")) out.push("<code class=\"k\">BASE_URL</code> (<code class=\"k\">"+esc(v)+"</code>) points at a different host than this account (<code class=\"k\">"+esc(S.base)+"</code>).");
+  }
+  return out;
 }
 
 /* ================= node library =================
@@ -477,7 +539,9 @@ async function connect(){
 
    What this fixes: every trigger except customer.create currently exports with a
    placeholder ID, and the action nodes use IDs captured from one account's export. */
-const NODE_LIB_PATHS=["master_nodes","master_node","nodes/master","node_masters","nodes","node_library","actions","triggers","apps","catalog"];
+// `nodes` is the documented catalogue route (GET /api/nodes — node catalogue with
+// form-field schemas, limited to the company's enabled modules); the rest are fallbacks.
+const NODE_LIB_PATHS=["nodes","master_nodes","master_node","nodes/master","node_masters","node_library","actions","triggers","apps","catalog"];
 const LS_NODELIB="zwc_node_library_v1";
 try{ const saved=JSON.parse(localStorage.getItem(LS_NODELIB)||"null"); if(saved&&saved.byKey) S.nodeLib=saved; }catch(e){}
 
@@ -604,8 +668,29 @@ async function fetchNodeLibrary(){
   const trigs=Object.values(found).filter(x=>x.type==="TRIGGER"||/\./.test(x.action_key)).length;
   setStatus($("#nodeLibStatus"),"ok","<b>"+n+"</b> node types ("+trigs+" trigger"+(trigs===1?"":"s")+") from "+esc(from)+
     ". Exports now use these IDs.");
-  syncEventKey();
+  { const k=$("#tEventKey").value.trim(); if(mergeAccountTriggers()){ fillModules(); if(k) applyTrigger(k); } else syncEventKey(); }
   autoBuild();
+}
+/* Trigger keys the account's own workflows (or the /nodes catalogue) actually use,
+   added to the When dropdowns when the built-in list lacks them — so a key is picked
+   from real usage rather than typed by hand. */
+function mergeAccountTriggers(){
+  const lib=S.nodeLib&&S.nodeLib.byKey; if(!lib) return 0;
+  let added=0;
+  for(const x of Object.values(lib)){
+    const k=x.action_key||"";
+    if(x.type!=="TRIGGER"||!/^[a-z_]+\.[a-z_]+$/.test(k)) continue;
+    if(CAT.some(c=>c.events.some(e=>e[1]===k))) continue;
+    const mod=MODMAP[k.split(".")[0]];
+    let grp=mod&&CAT.find(c=>c.module===mod);
+    if(!grp){
+      grp=CAT.find(c=>c.fromAccount);
+      if(!grp){ grp={label:"Other (from your account)",module:k.split(".")[0].toUpperCase(),events:[],fromAccount:true}; CAT.push(grp); }
+    }
+    grp.events.push([(x.name&&x.name!==k?x.name:k)+" • account",k,true]);
+    added++;
+  }
+  return added;
 }
 function renderNodeLib(){
   const el=$("#nodeLibList"); if(!el) return;
@@ -630,9 +715,36 @@ $("#btnNodeLib").addEventListener("click",fetchNodeLibrary);
    route that does work from a browser: the account's existing workflows have already
    run, and each run records the trigger's own output. Fire the event in Zuper, then
    read it back from the run history. */
-const RUN_LIST_PATHS=[uid=>"workflows/"+uid+"/executions",uid=>"workflows/"+uid+"/runs",uid=>"workflows/"+uid+"/history",
-                      uid=>"workflows/"+uid+"/logs",uid=>"executions?workflow_uid="+uid,uid=>"execution?workflow_uid="+uid,
-                      uid=>"workflow_executions?workflow_uid="+uid,uid=>"logs?workflow_uid="+uid];
+/* Documented run-history contract (workflow-builder API, ZuperHuman skill):
+     list   GET /api/workflows/execution_history?filter.workflow_uid=<wf>&filter.mode=live&limit=N
+            (plain `workflow_uid` is ignored — it must be filter.workflow_uid)
+     detail GET /api/workflows/<wf>/executions/<exec> → per-node records in node_execution[],
+            each with execution_data (output / error / status).
+   Guessed routes such as /executions/list answer 500 "Database error", so none are tried. */
+function runListPath(wfUid,limit){
+  return "workflows/execution_history?filter.workflow_uid="+encodeURIComponent(wfUid)+
+    "&filter.mode=live&exclude_skipped_executions=true&sort=DESC&sort_by=created_at&page=1&limit="+(limit||3);
+}
+function runDetailPath(wfUid,execUid){
+  return "workflows/"+encodeURIComponent(wfUid)+"/executions/"+encodeURIComponent(execUid);
+}
+// The trigger node's own output inside an execution detail.
+function triggerBodyFromExecution(detail,trigNode){
+  const d=(detail&&(detail.data||detail))||{};
+  const list=d.node_execution||d.node_executions||(d.execution&&d.execution.node_execution)||[];
+  if(Array.isArray(list)&&list.length){
+    const ids=new Set([trigNode&&trigNode.id,trigNode&&trigNode.node_uid,trigNode&&trigNode.action_key].filter(Boolean));
+    const hit=list.find(x=>ids.has(x.node_id)||ids.has(x.node_uid)||ids.has(x.id)||x.action_type==="TRIGGER"||/trigger/i.test(String(x.node_type||"")));
+    if(hit){
+      let ed=hit.execution_data!=null?hit.execution_data:hit.output;
+      if(typeof ed==="string"){ try{ ed=JSON.parse(ed); }catch(e){} }
+      const first=Array.isArray(ed)?ed[0]:ed;
+      const body=(first&&((first.data&&first.data.body)||first.body))||harvestBody(ed);
+      if(body&&typeof body==="object") return body;
+    }
+  }
+  return harvestBody(d);
+}
 const LS_PAYLOADS="zwc_trigger_payloads_v1";
 try{ const p=JSON.parse(localStorage.getItem(LS_PAYLOADS)||"null"); if(p&&p.byKey) S.payloads=p; }catch(e){}
 
@@ -743,45 +855,41 @@ async function capturePayloads(){
     fromPinned++;
   }
 
-  // 3. Run history, if any route serves it. Probed on the first workflow only.
-  const tried=new Set();
-  let runPath="";
-  const first=wfs.find(w=>w.workflow_uid||w.uid||w._id);
-  if(first){
-    const wuid=first.workflow_uid||first.uid||first._id;
-    for(const mk of RUN_LIST_PATHS){
-      const p=mk(wuid);
-      const label=p.replace(wuid,"{uid}");
-      tried.add(label);                                  // record BEFORE awaiting, so a
-      let r=null;                                        // network failure still shows up
-      try{ r=await zget(base,"/"+p); }catch(e){ continue; }
-      if(r&&r.ok){
-        const d=r.data,list=(d&&(d.data||d.executions||d.runs||d.logs))||(Array.isArray(d)?d:[]);
-        if(Array.isArray(list)&&list.length){ runPath=label; break; }
+  // 3. Live run history through the documented execution API: newest live runs of each
+  //    workflow whose trigger still lacks a real body, then the trigger node's output
+  //    from the run detail. One workflow per trigger key is enough.
+  let runErr="",runsRead=0;
+  const runPath="execution_history → executions/{uid}";
+  const pending=[];
+  const keysQueued=new Set();
+  for(const wf of wfs){
+    const wuid=wf.workflow_uid||wf.uid||wf._id; if(!wuid) continue;
+    const trig=(wf.nodes||[]).find(n=>n.action_type==="TRIGGER");
+    const key=(trig&&trig.action_key)||wf.trigger_event_name||""; if(!key) continue;
+    if((byKey[key]&&byKey[key].body)||keysQueued.has(key)) continue;
+    keysQueued.add(key); pending.push({wf,wuid,trig,key});
+  }
+  for(let i=0;i<pending.length&&i<25;i++){
+    const {wf,wuid,trig,key}=pending[i];
+    setStatus($("#payloadStatus"),"","Reading live runs "+(i+1)+" of "+Math.min(pending.length,25)+" ("+esc(key)+")&hellip;",true);
+    try{
+      const r=await zget(base,"/"+runListPath(wuid,3));
+      if(!r||!r.ok||(r.data&&r.data.type==="error")){ runErr=runErr||("execution_history → HTTP "+((r&&r.status)||"?")); continue; }
+      const d=r.data, list=(d&&(d.data||d.executions))||(Array.isArray(d)?d:[]);
+      for(const run of (Array.isArray(list)?list:[]).slice(0,3)){
+        const exec=run.execution_uid||run.uid||run._id; if(!exec) continue;
+        const det=await zget(base,"/"+runDetailPath(wuid,exec)).catch(()=>null);
+        runsRead++;
+        const body=det&&det.ok&&triggerBodyFromExecution(det.data,trig);
+        if(!body) continue;
+        const cur=byKey[key]||{action_key:key,observed:[]};
+        byKey[key]={...cur,body,paths:{...payloadPaths(body),...(cur.paths||{})},at:new Date().toISOString(),
+          from:"live run of "+esc(wf.workflow_name||"a workflow")+" ("+String(run.created_at||"").slice(0,10)+")"};
+        fromRuns++; break;
       }
-    }
+    }catch(e){ runErr=runErr||e.message; }
   }
-  if(runPath){
-    setStatus($("#payloadStatus"),"","Run history found — reading payloads&hellip;",true);
-    for(const wf of wfs.slice(0,20)){
-      const wuid=wf.workflow_uid||wf.uid||wf._id; if(!wuid) continue;
-      const trig=(wf.nodes||[]).find(n=>n.action_type==="TRIGGER");
-      const key=(trig&&trig.action_key)||wf.trigger_event_name||""; if(!key) continue;
-      if(byKey[key]&&byKey[key].body) continue;          // already have a real body
-      try{
-        const r=await zget(base,"/"+runPath.replace("{uid}",wuid));
-        const d=r&&r.ok&&r.data;
-        const list=(d&&(d.data||d.executions||d.runs||d.logs))||(Array.isArray(d)?d:[]);
-        for(const run of (list||[]).slice(0,3)){
-          const body=harvestBody(run);
-          if(!body) continue;
-          const cur=byKey[key]||{action_key:key,observed:[]};
-          byKey[key]={...cur,body,paths:{...payloadPaths(body),...(cur.paths||{})},at:new Date().toISOString(),from:"run history ("+runPath+")"};
-          fromRuns++; break;
-        }
-      }catch(e){}
-    }
-  }
+  const tried=new Set(runErr?[runErr]:[]);
 
   S.payloads={byKey,at:new Date().toISOString()};
   try{ localStorage.setItem(LS_PAYLOADS,JSON.stringify(S.payloads)); }catch(e){}
@@ -789,8 +897,8 @@ async function capturePayloads(){
   renderPayloads();
   const have=Object.keys(byKey).length;
   if(!have){
-    setStatus($("#payloadStatus"),"err","Read "+wfs.length+" workflow(s), but none addresses its trigger through an expression and none has a pinned sample."+
-      "<br><span style=\"font-size:10.5px\">Run-history routes tried: "+esc([...tried].join(" · "))+"</span>");
+    setStatus($("#payloadStatus"),"err","Read "+wfs.length+" workflow(s) and "+runsRead+" live run(s), but found no trigger payloads. Fire the event once in Zuper on a workflow that is published and active, then capture again (runs can lag a few minutes)."+
+      (tried.size?"<br><span style=\"font-size:10.5px\">Run history: "+esc([...tried].join(" · "))+"</span>":""));
   }else{
     const bits=[];
     if(fromExpr) bits.push(fromExpr+" from existing expressions");
@@ -798,7 +906,8 @@ async function capturePayloads(){
     if(fromRuns) bits.push(fromRuns+" from run history");
     setStatus($("#payloadStatus"),"ok","<b>"+have+"</b> trigger"+(have===1?"":"s")+" with known field paths"+
       (bits.length?" ("+bits.join(", ")+")":"")+". Generated nodes address these directly."+
-      (runPath?"":"<br><span style=\"font-size:10.5px\">No run-history route answered, so full payload bodies are unavailable — paths came from how your workflows already read their triggers, which is the same information.</span>"));
+      (fromRuns?"<br><span style=\"font-size:10.5px\">Full bodies read via "+esc(runPath)+".</span>":
+        "<br><span style=\"font-size:10.5px\">No live run returned a trigger body"+(runErr?" ("+esc(runErr)+")":"")+" — paths came from how your workflows already read their triggers.</span>"));
   }
   autoBuild();
 }
@@ -941,7 +1050,7 @@ function actionFields(a,i){
   if(a.op==="update_job"){
     return `<div class="row"><div class="field" style="margin:0"><label>Move to category</label>${catOptions(f.jobCategory,i)}</div>
         <div class="field" style="margin:0"><label>Set status</label>${statusOptions(f.jobCategory,f.jobStatus,i)}</div></div>
-      <div class="hint">Status must exist inside the target category. Category + status resolve to UIDs in the account at run time.</div>`;
+      <div class="hint">The status is looked up inside this category at run time (<code class="k">GET /jobs/status/{category}</code>), so the category is required even when the job stays where it is. The same status name often exists in several categories.</div>`;
   }
   // Generic renderer for the rest, driven by ACTION_FIELD_SPECS.
   const spec=ACTION_FIELD_SPECS[a.op];
@@ -1058,7 +1167,7 @@ function runAuto(){
 }
 
 /* ---- local natural-language parser (runs entirely in the browser) ---- */
-const MODMAP={customer:"CUSTOMER",job:"JOB",quote:"QUOTE",invoice:"INVOICE",payment:"PAYMENT"};
+const MODMAP={customer:"CUSTOMER",job:"JOB",quote:"QUOTE",estimate:"QUOTE",invoice:"INVOICE",payment:"PAYMENT"};
 function catCandidates(){
   const known=["Production - Metal Roof","Production - Roof","Production - Gutters","Production - Siding","Production - Windows","Qualification","Inspection","Production"];
   const live=S.categories.map(c=>c.category_name);
@@ -1259,11 +1368,12 @@ function mergeActions(list){
 const TRIGGER_RX=[
     [/customer[^.]*\b(updated|update|edited|edit)\b/,"customer.update"],
     [/\b(new|created|create|added)\b[^.]*\bcustomer\b|\bcustomer\b[^.]*\b(created|is created|new|added)\b/,"customer.create"],
-    [/\bquote\b[^.]*\b(accepted|won|approved)\b|\b(accepted|won|approved)\b[^.]*\bquote\b|\bquote\b[^.]*\bstatus\b/,"quote.status_update"],
-    [/\b(new|created)\b[^.]*\bquote\b|\bquote\b[^.]*\b(created|new)\b/,"quote.create"],
+    [/\b(quote|estimate|proposal)\b[^.]*\b(accepted|won|approved)\b|\b(accepted|won|approved)\b[^.]*\b(quote|estimate|proposal)\b|\b(quote|estimate|proposal)\b[^.]*\bstatus\b/,"estimate.status_update"],
+    [/\b(quote|estimate|proposal)\b[^.]*\b(updated|update|edited|changed)\b/,"estimate.update"],
+    [/\b(new|created)\b[^.]*\b(quote|estimate|proposal)\b|\b(quote|estimate|proposal)\b[^.]*\b(created|new)\b/,"estimate.new"],
     [/\binvoice\b[^.]*\b(paid|payment)\b|\bpayment\b[^.]*\binvoice\b/,"invoice.payment"],
     [/\binvoice\b[^.]*\bstatus\b/,"invoice.status_update"],
-    [/\b(new|created)\b[^.]*\binvoice\b|\binvoice\b[^.]*\b(created|new)\b/,"invoice.create"],
+    [/\b(new|created)\b[^.]*\binvoice\b|\binvoice\b[^.]*\b(created|new)\b/,"invoice.new"],
     [/\bjob\b[^.]*\b(status|stage|moved|updated)\b|\bstatus\b[^.]*\bjob\b/,"job.status_update"],
     [/\b(new|created)\b[^.]*\bjob\b|\bjob\b[^.]*\b(created|new)\b/,"job.new"],
     [/\bpayment\b[^.]*\b(received|new|created|made)\b/,"payment.create"]
@@ -1312,7 +1422,7 @@ function routeDescription(raw){
     const fc=fromM?findCategoryIn(fromM[1]):"";
     if(fc&&!ifs.some(l=>/categor/i.test(l))) ifs.push("job category is "+fc);
   }
-  if(key==="quote.status_update"&&!ifs.some(l=>/status/i.test(l))){
+  if(key==="estimate.status_update"&&!ifs.some(l=>/status/i.test(l))){
     const qs=/accepted/.test(lt)?"Accepted":/approved/.test(lt)?"Approved":/declined|rejected/.test(lt)?"Declined":/sent/.test(lt)?"Sent":/won/.test(lt)?"Won":"";
     if(qs) ifs.push("quote status is "+qs);
   }
@@ -1590,11 +1700,46 @@ function compileFactory(spec,warns){
       return;
     }
     if(act.operation==="update_job"){
-      const getCats=mkHttp("Get Categories"+(ai||""),"GET","{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/category?populate_statuses=true","",nextPos());
-      const resolve=mkCode("Resolve"+(ai||""),`const cats=(($.getNodeData('Get Categories${ai||""}')[0].data.body)&&(($.getNodeData('Get Categories${ai||""}')[0].data.body.data)||$.getNodeData('Get Categories${ai||""}')[0].data.body))||[];\nconst toCat=cats.find(c=>(c.category_name||'').trim()===${JSON.stringify((act.fields.jobCategory||"").trim())});\nconst statuses=(toCat&&(toCat.statuses||toCat.job_statuses))||[];\nconst toStat=${JSON.stringify(act.fields.jobStatus||"")}?statuses.find(s=>(s.status_name||s.job_status_name||'').trim()===${JSON.stringify((act.fields.jobStatus||"").trim())}):null;\n${trigResolver(trig.action_name,spec.when.event_name)}return { jobUid, categoryPayload:{job:{job_category: toCat?toCat.category_uid:null}}, statusPayload:{job_status_uid: toStat?toStat.status_uid:null} }`,nextPos());
+      /* Verified contracts (ZuperHuman skill + Zuper web bundle):
+           category  PUT /jobs              {job:{job_uid, job_category}}   — no uid in the path
+           status    PUT /jobs/{uid}/status {status_uid}
+           statuses  GET /jobs/status/{category_uid} → data.job_statuses[]  — the list
+                     inside /jobs/category can come back empty, so it is not relied on.
+         Status names can carry trailing spaces and repeat across categories, so the
+         status is matched trimmed and always inside the chosen category. */
+      const f=act.fields||{}, sx=ai?String(ai):"";
+      const catName=(f.jobCategory||"").trim(), statName=(f.jobStatus||"").trim();
+      const B="{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}";
+      if(!catName){ warns.push("Update Job needs a category: statuses are looked up inside a category, and the same status name exists in several. Pick one in the action."); }
+      const getCats=mkHttp("Get Categories"+sx,"GET",B+"/jobs/category","",nextPos());
+      const resolve=mkCode("Resolve Job"+sx,
+        trigResolver(trig.action_name,spec.when.event_name)+
+        catsFrom("Get Categories"+sx)+
+        `const toCat = cats.find(c => (c.category_name||'').trim().toLowerCase() === ${JSON.stringify(catName.toLowerCase())});\n`+
+        `if(!jobUid) throw new Error('No job uid in the trigger payload');\n`+
+        `if(!toCat) throw new Error('Job category not found: ' + ${JSON.stringify(catName)});\n`+
+        `return { jobUid, categoryUid: toCat.category_uid, categoryPayload: { job: { job_uid: jobUid, job_category: toCat.category_uid } } };`,nextPos());
       nodes.push(getCats,resolve); conns.push(link(prev,getCats.id),edge(getCats.id,resolve.id)); prev=resolve.id;
-      if(act.fields.jobCategory){const up=mkHttp("Update Category"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['categoryPayload']}}`,nextPos());nodes.push(up);conns.push(link(prev,up.id));prev=up.id;}
-      if(act.fields.jobStatus){const up=mkHttp("Update Status"+(ai||""),"PUT",`{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}/jobs/{{$.getNodeData('Resolve${ai||""}')[0]['data']['jobUid']}}/status`,`{{$.getNodeData('Resolve${ai||""}')[0]['data']['statusPayload']}}`,nextPos());nodes.push(up);conns.push(link(prev,up.id));prev=up.id;}
+      const R=`$.getNodeData('Resolve Job${sx}')[0]['data']`;
+      if(catName){
+        const up=mkHttp("Update Category"+sx,"PUT",B+"/jobs",`{{${R}['categoryPayload']}}`,nextPos());
+        nodes.push(up); conns.push(edge(prev,up.id)); prev=up.id;
+        warns.push("Update Category sends a partial <code>PUT /jobs {job:{job_uid, job_category}}</code>. Run it once on a sandbox job and read the job back to confirm no other field was cleared.");
+      }
+      if(statName){
+        const getSt=mkHttp("Get Statuses"+sx,"GET",`${B}/jobs/status/{{${R}['categoryUid']}}`,"",nextPos());
+        const pick=mkCode("Pick Status"+sx,
+          `const _s = $.getNodeData(${JSON.stringify("Get Statuses"+sx)})[0].data.body;\n`+
+          `const d = (_s && (_s.data || _s)) || {};\n`+
+          `const list = d.job_statuses || d.statuses || (Array.isArray(d) ? d : []);\n`+
+          `const st = list.find(s => (s.status_name||'').trim().toLowerCase() === ${JSON.stringify(statName.toLowerCase())});\n`+
+          `if(!st) throw new Error('Status ' + ${JSON.stringify(statName)} + ' not found in category ' + ${JSON.stringify(catName)});\n`+
+          `return { jobUid: ${R}['jobUid'], statusPayload: { status_uid: st.status_uid } };`,nextPos());
+        const put=mkHttp("Update Status"+sx,"PUT",`${B}/jobs/{{$.getNodeData('Pick Status${sx}')[0]['data']['jobUid']}}/status`,
+          `{{$.getNodeData('Pick Status${sx}')[0]['data']['statusPayload']}}`,nextPos());
+        nodes.push(getSt,pick,put); conns.push(edge(prev,getSt.id),edge(getSt.id,pick.id),edge(pick.id,put.id)); prev=put.id;
+        warns.push("Update Status sends the minimal <code>{status_uid}</code>. If <b>"+esc(statName)+"</b> has a required status checklist, Zuper may also need <code>checklist[]</code> answers — test it on one job first.");
+      }
     } else {
       // Recognised by the parser, no proven endpoint to build from. Say which, so the
       // export is not mistaken for a complete workflow.
@@ -1603,7 +1748,101 @@ function compileFactory(spec,warns){
     }
   });
 
+  // Two-output nodes (HTTP Request: success/error) leave through `two-a` with
+  // output_value:true — that is how the captured golden workflow wires them. A plain
+  // `one-a` edge from such a node does not attach to any of its handles.
+  const byId={}; nodes.forEach(n=>byId[n.id]=n);
+  for(const e of conns){
+    const s=byId[e.source];
+    if(s&&s.output===2&&e.sourceHandle==="one-a"){
+      e.sourceHandle="two-a"; e.output_value=true; e.id=`reactflow__edge-${e.source}two-a-${e.target}a`;
+    }
+  }
   return [{workflow_name:autoName(),workflow_description:$("#genDesc").value.trim(),workflow_icon:GOLDEN[0].workflow_icon,nodes,connections:conns,meta_data:{variables:{},total_nodes:nodes.length,initial_nodes:[]}}];
+}
+
+/* ================= pre-flight checks =================
+   Failure patterns from the ZuperHuman debugging playbook and casebook (real account
+   investigations, Oct–Nov 2026), checked against the spec and the compiled graph.
+   Each item: level ok | warn | todo. */
+function preflight(spec,w){
+  const out=[], add=(level,text)=>out.push({level,text});
+  const ev=spec.when.event_name||"";
+  const nodes=(w&&w.nodes)||[];
+  const https=nodes.filter(n=>n.action_key==="http_request");
+  const blob=JSON.stringify(nodes);
+
+  // Variables the Configs node reads.
+  varIssues().forEach(t=>add("warn",t));
+  if(S.base&&!S.vars) add("todo","Workflow Variables not verified — confirm <code>BASE_URL</code> (ending in <code>/api</code>, no trailing slash), <code>API_KEY</code> and <code>ZUPER_COMPANY_TIMEZONE</code> exist.");
+
+  // Silent failures.
+  if(https.length){
+    const cont=https.filter(n=>((n.form_fields||{}).error_action||{}).value==="CONTINUE");
+    if(cont.length) add("warn",cont.length+" HTTP node(s) use <code>error_action: CONTINUE</code> — a failed call still ends the run as COMPLETED. Use STOP or add an error branch.");
+    else add("ok","HTTP nodes stop on error, so a failed write shows as a FAILED run instead of a silent COMPLETED.");
+    add("todo","The <code>API_KEY</code> variable's user needs a role that can edit these records — a Field Executive key gets 403 on <code>PUT /jobs</code>.");
+  }
+
+  // Self-trigger loops: an update trigger that writes the same module.
+  const trigMod=MODMAP[ev.split(".")[0]]||"";
+  const writesSame=spec.actions.some(a=>a.module===trigMod&&a.action_type==="Update");
+  if(/\.(update|status_update)$/.test(ev)&&writesSame)
+    add("warn","<b>"+esc(ev)+"</b> fires on the same kind of change this workflow makes — it can re-trigger itself. Set loop prevention on the trigger (e.g. <code>loop_prevention: SAME</code>) and/or exclude the API-key user in <i>Excluded users</i>.");
+  if(ev==="estimate.update")
+    add("todo","Quote Update fires on every edit, including CPQ and other workflows. Add an <code>is_proposal</code> / status filter on the trigger and skip quotes whose deposit is collected or an option is accepted.");
+
+  // Data that is not there yet.
+  if(ev==="customer.create"&&spec.actions.some(a=>a.operation==="create_job"))
+    add("ok","New Customer → Create Job matches the captured golden workflow.");
+  if(/^(job\.new|customer\.create|estimate\.new)$/.test(ev)&&spec.conditions.length)
+    add("todo","Create-type triggers fire once. If a condition reads a field that is filled a few seconds later (e.g. by another workflow or a form), it is still empty here — the run ends on FALSE and never re-fires.");
+  if(/^invoice\./.test(ev)&&/jobUid/.test(blob))
+    add("warn","Invoice triggers: invoices with no linked job make job lookups fail with <code>module_uid required</code>. Branch when the job is missing.");
+  if(spec.actions.length>1||/^job\./.test(ev))
+    add("todo","If another workflow fires on the same event (e.g. creates a project on quote approval), the two race. Chain them, or add a delay + re-fetch.");
+
+  // Conditions.
+  if(spec.conditions.length&&!payloadFor(ev))
+    add("warn","No real <b>"+esc(ev)+"</b> payload captured, so the If/Else paths are the usual layout, not confirmed. Capture one (left panel).");
+  if(spec.conditions.length)
+    add("todo","Trigger filters apply to test runs too: pinned data that does not match ends as SKIPPED. Pin a matching record when testing.");
+
+  // Email / attachments.
+  spec.actions.filter(a=>a.operation==="send_email").forEach(a=>{
+    const t=JSON.stringify(a.fields||{});
+    if(/attach|pdf|job card|invoice copy|warranty/i.test(t))
+      add("warn","The Send Email node has <b>no attachments</b>. To email a PDF use a Code node: <code>POST /jobs/{uid}/card</code> → <code>/misc/upload</code> → <code>/invoice/{uid}/attachments</code> → <code>/invoice/{uid}/send</code> (the HTTP node corrupts binary PDFs).");
+  });
+  if(/\/invoice\/[^"]*\/send|\/card\b/.test(blob))
+    add("todo","PDF/send endpoints are rate-limited (429) for API calls — throttle, retry with backoff, and never test <code>/send</code> against a real customer.");
+
+  // Secrets and test-only values.
+  https.forEach(n=>{
+    const ff=n.form_fields||{};
+    const txt=JSON.stringify([ff.url,ff.json_body,ff.header_parameters,ff.password]);
+    if(/(api[_-]?key|token|secret|password|bearer)["':=\s]+[A-Za-z0-9._-]{12,}/i.test(txt)&&!/variable\.|getNodeData\('Configs'\)/i.test(txt))
+      add("warn","<b>"+esc(n.action_name)+"</b> looks like it carries a hardcoded credential. Move it to a workflow Variable (<code>{{ variable.NAME }}</code>, sensitive) and rotate it.");
+    if(/\b(test|example\.com|webhook\.site|requestbin|localhost)\b/i.test(String((ff.url||{}).value||"")))
+      add("todo","<b>"+esc(n.action_name)+"</b> points at a test URL — replace it before go-live.");
+  });
+  spec.actions.forEach(a=>{
+    const r=String((a.fields||{}).recipient||"");
+    if(/@/.test(r)&&/test|example|\+/i.test(r)) add("todo","Test recipient <code>"+esc(r)+"</code> — clear it before go-live.");
+  });
+
+  add("todo","Pushed workflows stay DRAFT and inactive. Test on a sandbox first; the owner publishes and activates.");
+  return out;
+}
+function preflightHtml(items){
+  if(!items||!items.length) return "";
+  const ic={ok:"&#10003;",warn:"&#9888;",todo:"&#9744;"}, col={ok:"#16A34A",warn:"var(--warn,#B45309)",todo:"var(--faint,#64748B)"};
+  const order={warn:0,todo:1,ok:2};
+  return '<div style="margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:10px 12px">'+
+    '<div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:6px">pre-flight checks &middot; from real account investigations</div>'+
+    items.slice().sort((a,b)=>order[a.level]-order[b.level]).map(i=>
+      '<div style="display:flex;gap:8px;font-size:11.5px;line-height:1.45;margin-top:5px"><span style="color:'+col[i.level]+';flex:0 0 14px;font-weight:700">'+ic[i.level]+'</span><span>'+i.text+'</span></div>').join("")+
+    '</div>';
 }
 function compileToBuilder(quiet){
   const spec=buildSpec(); const warns=[];
@@ -1620,7 +1859,7 @@ function compileToBuilder(quiet){
   if(goldenFits) wf=compileCreateGolden(spec,warns);
   else wf=compileFactory(spec,warns);
   rebuildCanvas(wf[0]);
-  return {wf,warns,via:goldenFits?"captured template":"assembled"};
+  return {wf,warns,spec,via:goldenFits?"captured template":"assembled"};
 }
 
 /* ================= canvas preview =================
@@ -1713,7 +1952,7 @@ function autoBuild(){
     '<div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:8px">'+
       'built automatically &middot; '+w.nodes.length+' nodes &middot; '+esc(c.via)+'</div>'+
     renderFlowPreview(w)+
-    warnHtml(c.warns);
+    warnHtml(c.warns)+preflightHtml(preflight(c.spec,w));
   _lastBuild=c;
 }
 
@@ -1752,17 +1991,49 @@ $("#btnExport").addEventListener("click",()=>{
 $("#btnPush").addEventListener("click",()=>{
   const c=compileToBuilder(); if(!c) return;
   if(!S.base){toast("Connect to an account first.");return;}
+  const w0=c.wf[0];
   openModal("Push to Workflow Builder",`
-    <div class="note">Pushes to <code>workflows/import</code> on <b>${esc(workflowHost()||"the workflow service")}</b> — the same endpoint the Data Manager tool imports workflows through, so this is a known-good path. It always creates a <b>new</b> workflow and never overwrites an existing one. It arrives inactive; publish it in the Workflow Builder once you have checked the nodes.</div>
-    ${renderFlowPreview(c.wf[0])}
+    <div class="note">Creates a <b>new draft</b> on <b>${esc(workflowHost()||"the workflow service")}</b> with <code>POST /api/workflows</code>, then reads it back. If that is refused it falls back to <code>workflows/import</code> (the Data Manager path). It never overwrites an existing workflow and is <b>never published or activated</b> here — test it, then publish in the Workflow Builder.</div>
+    <div style="margin:8px 0 4px;font-size:12px">Account: <b>${esc(S.company||"?")}</b> — check this is the sandbox / intended account before pushing.</div>
+    ${renderFlowPreview(w0)}
     ${warnHtml(c.warns)}
+    ${preflightHtml(preflight(c.spec,w0))}
+    <div id="validateResult"></div>
     <pre class="out">${JSON.stringify(c.wf,null,2).replace(/</g,"&lt;")}</pre>
-    <div style="display:flex;gap:10px;margin-top:12px"><button class="primary mini" id="doPush">Attempt push</button><button class="ghost mini" id="dl2">Download instead</button></div>
+    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap"><button class="ghost mini" id="doValidate">Validate</button><button class="primary mini" id="doPush">Create draft</button><button class="ghost mini" id="dl2">Download instead</button></div>
     <div id="pushResult"></div>`);
   $("#dl2").onclick=()=>{const b=new Blob([JSON.stringify(c.wf,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=autoName().replace(/[^a-z0-9]+/gi,"_")+".json";a.click();toast("Downloaded");};
+  $("#doValidate").onclick=()=>validateWorkflow(w0);
+  validateWorkflow(w0);
   $("#doPush").onclick=async()=>{
     const wfHost=workflowHost();
-    setStatus($("#pushResult"),"","Uploading to "+esc(wfHost)+"workflows/import&hellip;",true);
+    // 1. Documented create: POST /api/workflows {workflow:{…}} → inactive draft, revision 1.
+    //    (POST /api/v2/workflows is 404, and a body without the `workflow` wrapper 504s.)
+    setStatus($("#pushResult"),"","Creating draft via "+esc(wfHost)+"workflows&hellip;",true);
+    try{
+      const body={workflow:{workflow_name:w0.workflow_name,workflow_description:w0.workflow_description||"",
+        workflow_icon:w0.workflow_icon,nodes:w0.nodes,connections:w0.connections,meta_data:w0.meta_data}};
+      const r=await fetch(wfHost+"workflows",{method:"POST",headers:zHeaders(true),body:JSON.stringify(body)});
+      const txt=await r.text(); let d=null; try{ d=JSON.parse(txt); }catch(e){}
+      const uid=d&&(d.workflow_uid||(d.data&&(d.data.workflow_uid||d.data.uid)));
+      if(r.ok&&d&&d.type!=="error"&&uid){
+        // Read it back — a 200 is not proof the nodes landed.
+        const back=await zget(wfHost.replace(/\/$/,""),"/workflows/"+encodeURIComponent(uid)).catch(()=>null);
+        const bw=back&&back.ok&&back.data&&(back.data.data||back.data);
+        const n=bw&&Array.isArray(bw.nodes)?bw.nodes.length:null;
+        const match=n===w0.nodes.length;
+        setStatus($("#pushResult"),match?"ok":"err",
+          (match?"Draft created and read back":"Draft created, but the read-back shows "+(n==null?"no nodes":n+" of "+w0.nodes.length+" nodes"))+
+          " &middot; <code class=\"k\">"+esc(uid)+"</code> &middot; inactive, unpublished."+
+          "<div style=\"margin-top:6px;font-size:11px\">Next: open it in the Workflow Builder, test on a sandbox record, clear any test-only values, then publish + activate.</div>");
+        S.wfCache=null;
+        return;
+      }
+      setStatus($("#pushResult"),"","Create answered HTTP "+r.status+(d&&d.message?" ("+esc(d.message)+")":"")+" — falling back to workflows/import&hellip;",true);
+    }catch(e){
+      setStatus($("#pushResult"),"","Create was blocked ("+esc(e.message||String(e))+") — falling back to workflows/import&hellip;",true);
+    }
+    // 2. Fallback: import.
     try{
       // Same contract Data Manager's workflow import uses, which is known to work:
       // multipart form with the workflow ARRAY as a JSON file part, and no explicit
@@ -1778,8 +2049,32 @@ $("#btnPush").addEventListener("click",()=>{
   };
 });
 
+/* POST /api/v2/workflows/nodes/validate {nodes, connections} → structured report:
+   {type, message, validation:{is_valid, summary:{error_count}, …}, data: blocking errors}.
+   Read-only; nothing is saved. */
+async function validateWorkflow(w){
+  const el=$("#validateResult"); if(!el) return;
+  const host=workflowHost();
+  if(!host){ el.innerHTML=""; return; }
+  setStatus(el,"","Validating with the workflow service&hellip;",true);
+  try{
+    const r=await fetch(host+"v2/workflows/nodes/validate",{method:"POST",headers:zHeaders(true),
+      body:JSON.stringify({nodes:w.nodes,connections:w.connections})});
+    const txt=await r.text(); let d=null; try{ d=JSON.parse(txt); }catch(e){}
+    if(!d){ setStatus(el,"err","Validator answered HTTP "+r.status+" without JSON."); return; }
+    const v=d.validation||{};
+    const errs=[].concat(Array.isArray(d.data)?d.data:[],Array.isArray(v.errors)?v.errors:[]);
+    const fmt=x=>typeof x==="string"?esc(x):esc([x.node_name||x.action_name||x.node_id||x.node||"",x.message||x.error||x.reason||JSON.stringify(x)].filter(Boolean).join(": "));
+    const ok=(v.is_valid===true)||(d.type==="success"&&!errs.length);
+    const cnt=(v.summary&&v.summary.error_count)!=null?v.summary.error_count:errs.length;
+    setStatus(el,ok?"ok":"err",
+      (ok?"Validator: <b>valid</b>":"Validator: <b>"+cnt+" error"+(cnt===1?"":"s")+"</b>"+(d.message?" — "+esc(d.message):""))+
+      (errs.length?"<div style=\"margin-top:4px;font-size:11px\">"+errs.slice(0,12).map(x=>"&middot; "+fmt(x)).join("<br>")+"</div>":""));
+  }catch(e){ setStatus(el,"err","Validator unreachable ("+esc(e.message||String(e))+"). You can still push or export."); }
+}
+
 /* init */
-fillModules(); renderActions(); updateDock();
+mergeAccountTriggers(); fillModules(); renderActions(); updateDock();
 </script>
 <script src="../assets/back-link.js"></script>
 <script src="../assets/zuper-panel-bridge.js"></script>
