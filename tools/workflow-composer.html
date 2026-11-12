@@ -211,7 +211,7 @@
         <div id="payloadList"></div>
       </div>
 
-      <div class="panel">
+      <div class="panel" style="display:none">
         <p class="eyebrow">Describe it all</p>
         <div class="field">
           <label for="genDesc">One sentence, split into the three boxes <span id="autoTag"></span></label>
@@ -226,6 +226,29 @@ Optional — this box only fills in the When / If / Then boxes on the right. Typ
 
     <main class="flow">
       <div class="spine"></div>
+
+      <section class="stage">
+        <div class="node">AI</div>
+        <div class="card">
+          <h3>Describe the workflow <span class="tag">plain English</span></h3>
+          <p class="d">Say what should happen, in your own words. The trigger, checks and steps are worked out for you using the team's Zuper workflow knowledge and this account's own categories, statuses and triggers.</p>
+          <div class="field">
+            <textarea id="aiPrompt" style="min-height:110px" placeholder="e.g. Set the purchase order title to the associated job's title whenever a PO is created.
+
+e.g. When a job in Inspection moves to Approved, create a Production job for the same customer due in 3 days and copy the job notes."></textarea>
+            <div class="hint">Ctrl+Enter to build. Connect an account first so the design uses its real categories, statuses and trigger keys.</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="primary" id="btnAiBuild">Build workflow</button>
+            <span id="aiElapsed" class="hint" style="margin:0"></span>
+          </div>
+          <div id="aiStatus"></div>
+          <div id="aiResult"></div>
+        </div>
+      </section>
+
+      <details id="manualBuilder" style="margin:0 0 18px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--faint);padding:6px 0 10px 58px">Manual builder (When / If / Then) — optional, for hand-building simple flows</summary>
 
       <section class="stage when">
         <div class="node">W</div>
@@ -280,6 +303,7 @@ send a notification to the customer"></textarea>
           <button class="addbtn" id="btnAddAct">+ Add action</button>
         </div>
       </section>
+      </details>
 
       <section class="stage">
         <div class="node">&#9881;</div>
@@ -1167,7 +1191,7 @@ function runAuto(){
 }
 
 /* ---- local natural-language parser (runs entirely in the browser) ---- */
-const MODMAP={customer:"CUSTOMER",job:"JOB",quote:"QUOTE",estimate:"QUOTE",invoice:"INVOICE",payment:"PAYMENT"};
+const MODMAP={customer:"CUSTOMER",job:"JOB",quote:"QUOTE",estimate:"QUOTE",invoice:"INVOICE",payment:"PAYMENT",purchase_order:"PURCHASE_ORDER"};
 function catCandidates(){
   const known=["Production - Metal Roof","Production - Roof","Production - Gutters","Production - Siding","Production - Windows","Qualification","Inspection","Production"];
   const live=S.categories.map(c=>c.category_name);
@@ -1457,7 +1481,8 @@ function buildSpec(){
 }
 function updateDock(){
   const ev=currentEvent(),nc=conds.filter(c=>c.field).length,na=acts.length;
-  $("#dockSummary").innerHTML=`<b>WHEN</b> ${currentModule()} · ${ev[1]} &nbsp;›&nbsp; <b>IF</b> ${nc} cond &nbsp;›&nbsp; <b>THEN</b> ${na} action${na!==1?"s":""}`;
+  if(aiMode()){ const p=S.aiPlan; $("#dockSummary").innerHTML=`<b>${esc(p.workflow_name||"Workflow")}</b> &nbsp;·&nbsp; ${esc((p.trigger&&p.trigger.event_key)||"")} &nbsp;·&nbsp; ${(p.steps||[]).length} steps`; }
+  else $("#dockSummary").innerHTML=`<b>WHEN</b> ${currentModule()} · ${ev[1]} &nbsp;›&nbsp; <b>IF</b> ${nc} cond &nbsp;›&nbsp; <b>THEN</b> ${na} action${na!==1?"s":""}`;
   // Hand edits rebuild the graph too, not just typing in the description.
   if(typeof autoBuild==="function") autoBuild();
 }
@@ -1831,6 +1856,7 @@ function preflight(spec,w){
     if(/@/.test(r)&&/test|example|\+/i.test(r)) add("todo","Test recipient <code>"+esc(r)+"</code> — clear it before go-live.");
   });
 
+  (spec.todos||[]).forEach(t=>add("todo",esc(t)));
   add("todo","Pushed workflows stay DRAFT and inactive. Test on a sandbox first; the owner publishes and activates.");
   return out;
 }
@@ -1845,6 +1871,12 @@ function preflightHtml(items){
     '</div>';
 }
 function compileToBuilder(quiet){
+  if(aiMode()){
+    const warns=[];
+    const wf=compilePlan(S.aiPlan,warns);
+    rebuildCanvas(wf[0]);
+    return {wf,warns,spec:planSpec(S.aiPlan),via:"designed from your prompt",plan:S.aiPlan};
+  }
   const spec=buildSpec(); const warns=[];
   if(!spec.actions.length){ if(!quiet) toast("Add or describe an action first."); return null; }
   let wf;
@@ -1860,6 +1892,183 @@ function compileToBuilder(quiet){
   else wf=compileFactory(spec,warns);
   rebuildCanvas(wf[0]);
   return {wf,warns,spec,via:goldenFits?"captured template":"assembled"};
+}
+
+/* ================= prompt → workflow (AI) =================
+   The prompt goes to /api/workflow-ai with facts about the connected account; the
+   server asks Claude (with the team's condensed Zuper workflow knowledge) for a plan of
+   steps. The plan holds only logic — trigger key, step kinds, paths, code, conditions.
+   Node identities, Configs, headers, handles and layout are produced here, by the same
+   builders the manual path uses, so the export stays importable. */
+S.aiPlan=null;
+function aiMode(){ const d=$("#manualBuilder"); return !!S.aiPlan&&!(d&&d.open); }
+
+function aiContext(){
+  const lib=(S.nodeLib&&S.nodeLib.byKey)||{};
+  const pl=(S.payloads&&S.payloads.byKey)||{};
+  return {
+    trigger_keys_in_account:Object.values(lib).filter(x=>x.type==="TRIGGER").map(x=>({key:x.action_key,name:x.name})),
+    trigger_catalog:CAT.flatMap(c=>c.events.map(e=>({key:e[1],label:e[0],confirmed:!!e[2]}))),
+    captured_trigger_paths:Object.fromEntries(Object.values(pl).map(p=>[p.action_key,(p.observed&&p.observed.length?p.observed:Object.values(p.paths||{})).slice(0,25)])),
+    job_categories:S.categories.slice(0,60).map(c=>({name:c.category_name,statuses:(S.statuses[c.category_name]||[]).map(s=>String(s.status_name||s.job_status_name||s).trim()).slice(0,40)})),
+    workflow_variables:S.vars?Object.keys(S.vars):"unknown",
+    node_types_in_account:Object.keys(lib).filter(k=>lib[k].type!=="TRIGGER")
+  };
+}
+
+let _aiTimer=null;
+async function aiBuild(){
+  const prompt=$("#aiPrompt").value.trim();
+  if(!prompt){ setStatus($("#aiStatus"),"err","Describe what the workflow should do."); return; }
+  if(!S.base||!S.key){ setStatus($("#aiStatus"),"err","Connect an account first (left panel) — the design uses its real categories, statuses and trigger keys."); return; }
+  const btn=$("#btnAiBuild"); btn.disabled=true;
+  const t0=Date.now();
+  clearInterval(_aiTimer);
+  _aiTimer=setInterval(()=>{ $("#aiElapsed").textContent=Math.round((Date.now()-t0)/1000)+"s"; },1000);
+  setStatus($("#aiStatus"),"","Designing the workflow&hellip; this usually takes 20–60 seconds.",true);
+  try{
+    const r=await fetch("/api/workflow-ai",{method:"POST",
+      headers:{"Content-Type":"application/json","x-zuper-key":S.key,"x-zuper-base":S.base},
+      body:JSON.stringify({prompt,context:aiContext()})});
+    const txt=await r.text(); let d=null; try{ d=JSON.parse(txt); }catch(e){}
+    if(!r.ok||!d||!d.plan){
+      const msg=(d&&(d.message||d.error))||("HTTP "+r.status);
+      const hint=r.status===503?"<br><span style=\"font-size:11px\">An admin needs to add <code class=\"k\">ANTHROPIC_API_KEY</code> under Vercel → Project → Settings → Environment Variables, then redeploy.</span>"
+        :r.status===404?"<br><span style=\"font-size:11px\">The AI endpoint isn&rsquo;t reachable from here — open the tool from the dashboard site, not a local file.</span>":"";
+      setStatus($("#aiStatus"),"err","Couldn&rsquo;t build: "+esc(msg)+hint);
+      return;
+    }
+    const plan=d.plan;
+    if(plan.clarifying_question&&!(plan.steps||[]).length){
+      setStatus($("#aiStatus"),"err","Need one detail: "+esc(plan.clarifying_question));
+      return;
+    }
+    S.aiPlan=plan;
+    const md=$("#manualBuilder"); if(md) md.open=false;
+    renderPlan(plan);
+    setStatus($("#aiStatus"),"ok","Built <b>"+esc(plan.workflow_name)+"</b> &middot; "+(plan.steps||[]).length+" steps &middot; "+Math.round((Date.now()-t0)/1000)+"s. Review the steps, then Validate / Create draft from the bar below."+
+      (plan.clarifying_question?"<div style=\"margin-top:4px\">&#9888; Open question: "+esc(plan.clarifying_question)+"</div>":""));
+    updateDock();
+  }catch(e){
+    setStatus($("#aiStatus"),"err","Request failed: "+esc(e.message||String(e)));
+  }finally{
+    clearInterval(_aiTimer); $("#aiElapsed").textContent=""; btn.disabled=false;
+  }
+}
+$("#btnAiBuild").addEventListener("click",aiBuild);
+$("#aiPrompt").addEventListener("keydown",e=>{ if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); aiBuild(); } });
+$("#manualBuilder").addEventListener("toggle",()=>updateDock());
+
+const KIND_LABEL={http:"HTTP Request",code:"Code",if_else:"If / Else"};
+function stepDetail(s){
+  if(s.kind==="http") return '<code class="k">'+esc(s.method||"GET")+" "+esc(s.path||"")+'</code>'+(s.body_expr?'<div style="font-size:10px;color:var(--faint);margin-top:2px">body: '+esc(s.body_expr)+'</div>':"");
+  if(s.kind==="if_else") return (s.conditions||[]).map(c=>'<code class="k">'+esc(c.value1)+" "+esc(c.operation)+" &ldquo;"+esc(c.value2)+"&rdquo;</code>").join(" <b>"+esc(s.combine||"AND")+"</b> ");
+  if(s.kind==="code") return '<details><summary style="cursor:pointer;font-size:11px">view code</summary><pre class="out" style="max-height:240px;margin-top:6px">'+esc(s.code||"")+'</pre></details>';
+  return "";
+}
+function renderPlan(plan){
+  const el=$("#aiResult"); if(!el) return;
+  const steps=plan.steps||[];
+  const tr=plan.trigger||{};
+  const list=(title,arr,icon)=>arr&&arr.length?'<div style="margin-top:10px"><div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)">'+title+'</div>'+
+    arr.map(x=>'<div style="font-size:11.5px;margin-top:4px">'+icon+" "+esc(x)+"</div>").join("")+"</div>":"";
+  const th='style="text-align:left;padding:6px 8px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)"';
+  const td='style="padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;font-size:12px;word-break:break-word"';
+  const row=(n,name,kind,purpose,detail)=>`<tr><td ${td}>${n}</td><td ${td}><b>${name}</b></td><td ${td}>${kind}</td><td ${td}>${purpose}</td><td ${td}>${detail}</td></tr>`;
+  const branchTag=s=>s.branch?' <span style="font-size:10px;color:'+(s.branch==="true"?"#16A34A":"#DC2626")+'">('+esc(s.branch)+(s.after?" of "+esc(s.after):"")+')</span>':"";
+  el.innerHTML=
+    '<div style="margin-top:14px;font-size:12.5px;line-height:1.5">'+esc(plan.summary||"")+'</div>'+
+    '<div style="overflow-x:auto;margin-top:10px;border:1px solid var(--line);border-radius:10px"><table style="width:100%;border-collapse:collapse;min-width:640px">'+
+      `<thead><tr><th ${th}>#</th><th ${th}>Step</th><th ${th}>Type</th><th ${th}>What it does</th><th ${th}>Call / logic</th></tr></thead><tbody>`+
+      row("&#9889;",esc(tr.label||tr.event_key),"Trigger",esc(tr.why||""),'<code class="k">'+esc(tr.event_key||"")+'</code>'+(libNode(tr.event_key)?' <span class="live-badge"><span class="p"></span>in your account</span>':''))+
+      row("&#9881;","Configs","Code","Reads BASE_URL, API_KEY and timezone from workflow Variables","<code class=\"k\">VARIABLE.*</code>")+
+      steps.map((s,i)=>row(i+1,esc(s.name)+branchTag(s),esc(KIND_LABEL[s.kind]||s.kind),esc(s.purpose||""),stepDetail(s))).join("")+
+    '</tbody></table></div>'+
+    list("Assumptions",plan.assumptions,"&#8226;")+
+    list("Unverified endpoints — test on a sandbox and read the record back",plan.unverified_endpoints,"&#9888;")+
+    list("Before go-live",plan.go_live_todos,"&#9744;");
+}
+
+// Plan → Workflow Builder graph.
+function mkIfElseRaw(name,combine,conds,pos){
+  const d=nodeDefs("if_else");
+  return {id:`if_else_if_else${uuid()}`,color:d.color,input:1,output:2,module:"",node_uid:uuid(),position:pos,is_active:true,
+    node_icon:d.icon,node_name:d.node_name,action_key:d.action_key,action_name:name,action_type:"ACTION",credentials:{},
+    description:"Route items to different branch",
+    form_fields:{combine:{type:"FIXED",value:combine||"AND"},conditions:(conds||[]).map(c=>({
+      value1:{type:"EXPRESSION",value:c.value1||""},value2:{type:"FIXED",value:c.value2==null?"":c.value2},
+      field_key:"STRING",operation:{type:"FIXED",value:c.operation||"EQUAL_TO"}}))},
+    node_category:d.node_category,master_node_uid:d.master_node_uid,node_display_name:d.display};
+}
+function compilePlan(plan,warns){
+  const tr=plan.trigger||{};
+  const ev=String(tr.event_key||"").trim();
+  const trig=mkTriggerNode(ev,"",warns);
+  if(tr.label) trig.action_name=tr.label;           // code reads the trigger by this name
+  if(tr.module) trig.module=tr.module;
+  const step=150,ROW_H=165,X0=-465,Y0=30;
+  let col=0;
+  const pos=(lane)=>({x:X0+(col++)*step,y:Y0+(lane||0)*ROW_H});
+  trig.position=pos(0);
+  const cfg=mkCode("Configs","const zuperBaseURL = VARIABLE.BASE_URL\nconst zuperApiKey = VARIABLE.API_KEY\nconst timeZone = VARIABLE.ZUPER_COMPANY_TIMEZONE\nreturn { zuperBaseURL, zuperApiKey, timeZone }",pos(0));
+  const nodes=[trig,cfg], conns=[triggerEdge(trig.id,cfg.id)];
+  const byName={Configs:cfg}; byName[trig.action_name]=trig;
+  const BASE="{{$.getNodeData('Configs')[0]['data']['zuperBaseURL']}}";
+  const laneOf={};
+  let prevNode=cfg;
+  for(const s of (plan.steps||[])){
+    let name=String(s.name||"Step").trim();
+    if(name==="Configs"||name===trig.action_name) { warns.push("Step named “"+esc(name)+"” clashes with a built-in node and was skipped."); continue; }
+    if(byName[name]){ warns.push("Two steps are named “"+esc(name)+"”; the second was renamed, so check references to it."); name+=" 2"; }
+    const src=(s.after&&byName[s.after])||prevNode;
+    const lane=(src.action_key==="if_else"&&s.branch==="false")?(laneOf[src.id]||0)+1:(laneOf[src.id]||0);
+    let n;
+    if(s.kind==="http"){
+      let p=String(s.path||"").trim();
+      const url=/^https?:\/\//i.test(p)?p:BASE+(p.startsWith("/")?p:"/"+p);
+      n=mkHttp(name,(s.method||"GET").toUpperCase(),url,s.body_expr||"",pos(lane));
+      if(!s.path) warns.push("<b>"+esc(name)+"</b> has no path.");
+    }else if(s.kind==="if_else"){
+      n=mkIfElseRaw(name,s.combine,s.conditions,pos(lane));
+      if(!(s.conditions||[]).length) warns.push("<b>"+esc(name)+"</b> has no conditions.");
+    }else{
+      const code=String(s.code||"");
+      n=mkCode(name,code||"return {};",pos(lane));
+      if(!/\breturn\b/.test(code)) warns.push("Code step <b>"+esc(name)+"</b> has no <code>return</code> — later steps can&rsquo;t read its output.");
+      if(/\\"/.test(code)) warns.push("Code step <b>"+esc(name)+"</b> contains <code>\\\"</code>, which the builder&rsquo;s editor rejects — swap to single quotes.");
+    }
+    laneOf[n.id]=lane;
+    nodes.push(n); byName[name]=n;
+    if(src.action_key==="if_else") conns.push(s.branch==="false"?edgeBranch(src.id,n.id,"two-b",false):edgeBranch(src.id,n.id,"two-a",true));
+    else if(src.action_type==="TRIGGER") conns.push(triggerEdge(src.id,n.id));
+    else if(src.output===2) conns.push(edgeBranch(src.id,n.id,"two-a",true));
+    else conns.push(edge(src.id,n.id));
+    prevNode=n;
+  }
+  // References to steps that do not exist break at run time — say so now.
+  const names=new Set(Object.keys(byName));
+  const refs=new Set(); const rx=/getNodeData\(\s*\\?['"]([^'"\\]+)\\?['"]\s*\)/g; let m;
+  const txt=JSON.stringify(nodes.map(n=>n.form_fields));
+  while((m=rx.exec(txt))) refs.add(m[1]);
+  [...refs].filter(r=>!names.has(r)).forEach(r=>warns.push("A step reads <code>$.getNodeData('"+esc(r)+"')</code> but no step has that name."));
+  (plan.unverified_endpoints||[]).forEach(u=>warns.push("Unverified endpoint: <code>"+esc(u)+"</code> — run once on a sandbox record and read it back."));
+  return [{workflow_name:plan.workflow_name||"Workflow",workflow_description:plan.summary||"",workflow_icon:GOLDEN[0].workflow_icon,
+    nodes,connections:conns,meta_data:{variables:{},total_nodes:nodes.length,initial_nodes:[]}}];
+}
+// A spec-shaped summary of the plan so the pre-flight checks apply to it too.
+const PATH_MOD=[[/^\/?jobs\b/,"JOB"],[/^\/?customers/,"CUSTOMER"],[/^\/?estimate/,"QUOTE"],[/^\/?invoice/,"INVOICE"],[/^\/?purchase_order/,"PURCHASE_ORDER"]];
+function planSpec(plan){
+  const steps=plan.steps||[];
+  return {
+    when:{event_name:(plan.trigger&&plan.trigger.event_key)||"",module_name:(plan.trigger&&plan.trigger.module)||""},
+    conditions:steps.filter(s=>s.kind==="if_else").flatMap(s=>s.conditions||[]).map(c=>({field:c.value1,operator:c.operation,value:c.value2})),
+    actions:steps.filter(s=>s.kind==="http"&&s.method&&s.method!=="GET").map(s=>{
+      const mod=(PATH_MOD.find(p=>p[0].test(String(s.path||"").replace(/^\{\{[^}]*\}\}/,"")))||[0,"OTHERS"])[1];
+      return {module:mod,action_type:s.method==="POST"?"Create":"Update",operation:s.method==="POST"?"create":"update",fields:{}};
+    }),
+    plan:true,
+    todos:plan.go_live_todos||[]
+  };
 }
 
 /* ================= canvas preview =================
@@ -1984,7 +2193,7 @@ $("#btnJson").addEventListener("click",()=>{
 $("#btnExport").addEventListener("click",()=>{
   const c=compileToBuilder(); if(!c) return;
   const b=new Blob([JSON.stringify(c.wf,null,2)],{type:"application/json"});const a=document.createElement("a");
-  a.href=URL.createObjectURL(b); a.download=autoName().replace(/[^a-z0-9]+/gi,"_")+".json"; a.click(); URL.revokeObjectURL(a.href);
+  a.href=URL.createObjectURL(b); a.download=(c.wf[0].workflow_name||autoName()).replace(/[^a-z0-9]+/gi,"_")+".json"; a.click(); URL.revokeObjectURL(a.href);
   toast("Exported — import via Workflow Builder → Import");
   if(c.warns.length) openModal("Exported with notes",warnHtml(c.warns)+'<div class="hint" style="margin-top:8px">The file downloaded. Review the notes above before importing.</div>');
 });
@@ -2002,7 +2211,7 @@ $("#btnPush").addEventListener("click",()=>{
     <pre class="out">${JSON.stringify(c.wf,null,2).replace(/</g,"&lt;")}</pre>
     <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap"><button class="ghost mini" id="doValidate">Validate</button><button class="primary mini" id="doPush">Create draft</button><button class="ghost mini" id="dl2">Download instead</button></div>
     <div id="pushResult"></div>`);
-  $("#dl2").onclick=()=>{const b=new Blob([JSON.stringify(c.wf,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=autoName().replace(/[^a-z0-9]+/gi,"_")+".json";a.click();toast("Downloaded");};
+  $("#dl2").onclick=()=>{const b=new Blob([JSON.stringify(c.wf,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=(c.wf[0].workflow_name||autoName()).replace(/[^a-z0-9]+/gi,"_")+".json";a.click();toast("Downloaded");};
   $("#doValidate").onclick=()=>validateWorkflow(w0);
   validateWorkflow(w0);
   $("#doPush").onclick=async()=>{

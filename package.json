@@ -1,0 +1,8 @@
+{
+  "name": "internal-tools-dashboard",
+  "private": true,
+  "description": "Static tools site + Vercel serverless functions in api/",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0"
+  }
+}
