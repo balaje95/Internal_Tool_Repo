@@ -69,7 +69,7 @@
   th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
   th{position:sticky;top:0;background:var(--panel2);z-index:2;font-weight:600;color:var(--muted);font-size:.74rem;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
   tr:hover td{background:var(--rowhover)}
-  td select{width:100%;min-width:230px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:6px 8px;font-size:.82rem}
+  td select,td input.custpick{width:100%;min-width:230px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:6px 8px;font-size:.82rem}
   .chip{display:inline-block;background:var(--chip);border-radius:12px;padding:2px 9px;font-size:.74rem;color:var(--accent2);margin:1px 3px 1px 0}
   .chip.exist{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
   .chip.none{background:var(--warnbg);color:var(--warn)}
@@ -183,7 +183,11 @@
         <tbody id="tbody"></tbody>
       </table>
     </div>
-    <p class="small muted" id="rowcount" style="margin-bottom:0"></p>
+    <datalist id="custList"></datalist>
+    <div class="flex" style="margin-top:8px">
+      <p class="small muted" id="rowcount" style="margin:0"></p>
+      <button class="btn sec small hidden" id="moreBtn" onclick="showMore()">Show more</button>
+    </div>
   </div>
 
   <!-- 4. APPLY -->
@@ -400,8 +404,30 @@ function customerOptionsHtml(){
   });
   return h;
 }
+// The per-row picker is an <input list="custList"> sharing ONE <datalist>.
+// It used to be a full <select> of every customer in every row, i.e.
+// properties × customers <option> nodes (300k on a 1116×268 account), all
+// rebuilt on each search keystroke / add / remove, which froze larger accounts.
+let custLabelToUid={};
 function buildCustomerSelect(){
   $('bulkCustomer').innerHTML='<option value="">— choose a customer —</option>'+customerOptionsHtml().replace('<option value="">— add a customer… —</option>','');
+  custLabelToUid={};
+  const seen={};
+  let h='';
+  [...customers].sort((a,b)=>custName(a).localeCompare(custName(b))).forEach(c=>{
+    const cu=custUid(c);if(!cu)return;
+    let lbl=custLabel(c);
+    if(seen[lbl])lbl+=' · '+cu.slice(0,8); // keep labels unique so each maps to one UID
+    seen[lbl]=1;custLabelToUid[lbl]=cu;
+    h+='<option value="'+esc(lbl)+'"></option>';
+  });
+  $('custList').innerHTML=h;
+}
+function resolveCustomer(v){
+  v=String(v||'').trim();if(!v)return '';
+  if(custLabelToUid[v])return custLabelToUid[v];
+  if(custByUid[v])return v; // a pasted customer UID works too
+  return '';
 }
 
 /* ---------- render ---------- */
@@ -421,11 +447,19 @@ function matchesSearch(p){
     ||propAddr(p).toLowerCase().includes(q)
     ||String(propUid(p)).toLowerCase().includes(q);
 }
+// Only the first `_limit` matching rows are put in the DOM; "Show more" extends it.
+// Bulk select / bulk add / apply still act on ALL matching rows, not just visible ones.
+const PAGE_ROWS=300;
+let _limit=PAGE_ROWS,_lastQuery='';
+function showMore(){_limit+=PAGE_ROWS;renderRows();}
 function renderRows(){
   const tb=$('tbody');tb.innerHTML='';
+  const q=$('search').value+'|'+$('filter').value;
+  if(q!==_lastQuery){_lastQuery=q;_limit=PAGE_ROWS;}
   const rows=properties.filter(p=>matchesSearch(p)&&matchesFilter(p));
   if(!rows.length){tb.innerHTML='<tr><td colspan="6" class="muted small" style="padding:16px">No properties match this filter.</td></tr>';}
-  for(const p of rows){
+  const frag=document.createDocumentFragment();
+  for(const p of rows.slice(0,_limit)){
     const uid=propUid(p);
     const existing=propCustomerUids(p);
     const st=staged[uid]||[];
@@ -438,11 +472,15 @@ function renderRows(){
       '<td>'+esc(propName(p))+'</td>'+
       '<td class="muted small">'+esc(propAddr(p)||'—')+'</td>'+
       '<td>'+custCell+'</td>'+
-      '<td><select data-uid="'+esc(uid)+'" onchange="onCustomerAdd(this)">'+customerOptionsHtml()+'</select></td>'+
+      '<td><input class="custpick" list="custList" data-uid="'+esc(uid)+'" placeholder="type to add a customer…" onchange="onCustomerAdd(this)"></td>'+
       '<td class="status '+(st.length?'pend':'')+'">'+(st.length?st.length+' staged':'')+'</td>';
-    tb.appendChild(tr);
+    frag.appendChild(tr);
   }
-  $('rowcount').textContent=rows.length+' of '+properties.length+' properties shown';
+  tb.appendChild(frag);
+  const shown=Math.min(rows.length,_limit);
+  $('rowcount').textContent=(shown<rows.length?'Showing '+shown+' of '+rows.length+' matching':rows.length+' of '+properties.length+' properties shown')+(rows.length!==properties.length&&shown<rows.length?' ('+properties.length+' total)':'');
+  $('moreBtn').classList.toggle('hidden',shown>=rows.length);
+  if(shown<rows.length)$('moreBtn').textContent='Show '+Math.min(PAGE_ROWS,rows.length-shown)+' more';
   const allVis=rows.length&&rows.every(p=>selected.has(propUid(p)));
   $('selAll').checked=!!allVis;
 }
@@ -471,7 +509,8 @@ function removeStaged(pUid,cUid){
   renderRows();updateStats();
 }
 function onCustomerAdd(sel){
-  const pUid=sel.dataset.uid,cUid=sel.value;if(!cUid)return;
+  const pUid=sel.dataset.uid,cUid=resolveCustomer(sel.value);
+  if(!cUid){if(sel.value.trim()){sel.value='';sel.placeholder='no match — pick from the list';}return;}
   addStaged(pUid,cUid);
   renderRows();updateStats();
 }
@@ -667,13 +706,29 @@ async function updatePropertyCustomers(propUidVal,addCustomers,dry){
   // type/success field reported a write that had actually gone through as failed
   // and kept it staged.
   if((jd&&(jd.type==='success'||jd.success===true))||(put.ok&&!explicitFail)){
+    // Verify: the write REPLACES the customer set, so a concurrent edit of the
+    // same property (another tab/user) can leave links missing while the PUT
+    // still says success. Re-read and only report success if every customer
+    // we meant to keep or add is actually on the property.
+    let after=null;
+    for(let attempt=0;attempt<3&&!after;attempt++){
+      if(attempt)await delay(500*Math.pow(2,attempt-1));
+      try{
+        const r=await fetch(_base+'property/'+propUidVal,{headers:getHdrs()});
+        if(r.ok){const d=await r.json().catch(()=>({}));const c=d&&(d.data||d.property);if(c&&typeof c==='object'&&!Array.isArray(c))after=c;}
+      }catch(e){}
+    }
     // Cache the fresh, un-stripped record — `p` has had child_properties,
     // parent_property, no_of_jobs and the organization object removed for the
     // write, and storing that degraded the in-memory table after an apply.
-    const cached=JSON.parse(JSON.stringify(full));
-    cached.property_customers=merged.map(cu=>({customer:{customer_uid:cu}}));
+    const cached=JSON.parse(JSON.stringify(after||full));
+    if(!after)cached.property_customers=merged.map(cu=>({customer:{customer_uid:cu}}));
     propByUid[propUidVal]=cached;
-    return {ok:true,msg:'Linked '+newN+' customer(s) → "'+propName(p)+'"'};
+    if(!after)return {ok:true,msg:'Linked '+newN+' customer(s) → "'+propName(p)+'" (could not re-read to verify)'};
+    const now=propCustomerUids(after);
+    const missing=merged.filter(cu=>!now.includes(cu));
+    if(missing.length)return {ok:false,msg:'saved, but on re-read '+missing.length+' customer(s) are NOT on "'+propName(p)+'": '+missing.map(nameOfCust).join(', ')+' (was the property edited elsewhere at the same time?) — re-run to retry'};
+    return {ok:true,msg:'Linked '+newN+' customer(s) → "'+propName(p)+'" (verified, '+now.length+' total)'};
   }
   return {ok:false,msg:(jd&&jd.message)||('HTTP '+put.status)};
 }
@@ -706,7 +761,7 @@ async function apply(dry){
   }
   await Promise.all(Array.from({length:Math.min(CONC,list.length)},worker));
   log('— DONE — '+ok+' property write(s) succeeded, '+fail+' failed'+(_cancel?' (cancelled)':''),fail?'warn':'ok');
-  if(!dry&&ok){
+  if(!dry){ // also on failures: a failed verify refreshes propByUid with the real state
     _results.filter(r=>r.status&&!/^Failed/.test(r.status)).forEach(r=>{delete staged[r.property_uid];});
     // Map over the existing array instead of rebuilding from propByUid: that
     // dropped every property with no resolvable UID (never indexed) and reordered
