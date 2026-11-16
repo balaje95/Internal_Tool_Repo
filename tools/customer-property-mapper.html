@@ -141,7 +141,8 @@
       <div class="stat"><b id="s-total">0</b><span>Properties</span></div>
       <div class="stat"><b id="s-customers">0</b><span>Customers</span></div>
       <div class="stat"><b id="s-mapped">0</b><span>Have customers</span></div>
-      <div class="stat"><b id="s-changed">0</b><span>Changes queued</span></div>
+      <div class="stat"><b id="s-links">0</b><span>Customer links queued</span></div>
+      <div class="stat"><b id="s-changed">0</b><span>Properties to update</span></div>
     </div>
 
     <div class="toolbar">
@@ -591,7 +592,8 @@ function applyImportedRows(rows){
   const knownP=new Set(properties.map(propUid));
   const bad=['nan','none','#n/a','#ref!','#value!','#name?','#div/0!','#null!',''];
   const isBad=v=>!v||bad.includes(v.toLowerCase())||v.startsWith('#');
-  let ok=0,missC=0,missP=0,skip=0;
+  let ok=0,missC=0,missP=0,skip=0,already=0,dup=0;
+  const touched=new Set();
   rows.forEach(r=>{
     const pu=String(r[propCol]??'').trim();
     if(isBad(pu)){skip++;return;}
@@ -602,11 +604,20 @@ function applyImportedRows(rows){
     custUids.forEach(cu=>{
       if(isBad(cu)){skip++;return;}
       if(!knownC.has(cu)){missC++;return;}
-      if(addStaged(pu,cu))ok++;
+      const p=propByUid[pu];
+      if(p&&propCustomerUids(p).includes(cu)){already++;return;}
+      if(addStaged(pu,cu)){ok++;touched.add(pu);}else dup++;
     });
   });
   renderRows();updateStats();
-  $('import-status').textContent='Staged '+ok+' customer link(s). '+(missP?missP+' property UID(s) not found. ':'')+(missC?missC+' customer UID(s) not found. ':'')+(skip?skip+' invalid row(s) skipped.':'');
+  // "Changes queued" used to be read as a row count; spell out how rows map to
+  // links and properties so already-linked / repeated rows don't look like losses.
+  $('import-status').textContent='Read '+rows.length+' row(s) → staged '+ok+' new customer link(s) across '+touched.size+' property(ies). '
+    +(already?already+' already linked (nothing to do). ':'')
+    +(dup?dup+' duplicate(s) of a link already staged. ':'')
+    +(missP?missP+' property UID(s) not found. ':'')
+    +(missC?missC+' customer UID(s) not found. ':'')
+    +(skip?skip+' invalid row(s) skipped.':'');
 }
 
 /* ---------- stats ---------- */
@@ -615,8 +626,10 @@ function updateStats(){
   $('s-customers').textContent=customers.length;
   $('s-mapped').textContent=properties.filter(p=>propCustomerUids(p).length).length;
   const chg=Object.keys(staged).filter(pu=>(staged[pu]||[]).length).length;
+  const links=Object.values(staged).reduce((n,a)=>n+(a||[]).length,0);
   $('s-changed').textContent=chg;
-  $('apply-count').textContent=chg?chg+' property(ies) with staged customers':'no changes queued';
+  $('s-links').textContent=links;
+  $('apply-count').textContent=chg?links+' customer link(s) across '+chg+' property(ies)':'no changes queued';
 }
 
 /* ---------- apply ---------- */
