@@ -136,6 +136,30 @@
   .modal h3{font-family:var(--disp);margin:0 0 6px;font-size:16px}
   .note{border-left:2px solid var(--orange);background:rgba(253,80,0,.05);padding:11px 13px;border-radius:0 10px 10px 0;font-size:12px;color:var(--dim);margin:12px 0}
   .note b{color:var(--ink)}
+  .wf-bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .wf-tab{background:var(--sunken);border:1px solid var(--line);color:var(--dim);font-size:11px;padding:6px 11px;border-radius:999px;font-weight:600}
+  .wf-tab.on{background:var(--ink);color:var(--card);border-color:var(--ink)}
+  .wf-bar input.t{flex:1 1 160px;width:auto;padding:7px 11px;font-size:12px}
+  .wf-list{max-height:330px;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:10px}
+  .wf-row{display:flex;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line-2);cursor:pointer;font-size:12.5px}
+  .wf-row:last-child{border-bottom:none}
+  .wf-row:hover{background:var(--sunken)} .wf-row.sel{background:rgba(253,80,0,.07)}
+  .wf-row .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+  .wf-row .meta{font-family:var(--mono);font-size:10.5px;color:var(--faint);white-space:nowrap}
+  .pill{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:2px 8px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+  .pill.active,.pill.COMPLETED{color:var(--cyan);border-color:rgba(15,181,160,.4);background:rgba(15,181,160,.08)}
+  .pill.draft{color:var(--violet);border-color:rgba(109,90,224,.4);background:rgba(109,90,224,.07)}
+  .pill.fail,.pill.FAILED{color:var(--bad);border-color:rgba(214,69,69,.4);background:rgba(214,69,69,.07)}
+  .pill.chg,.pill.WAITING,.pill.IN_PROGRESS,.pill.QUEUED{color:var(--warn);border-color:rgba(183,121,31,.4)}
+  .wf-h{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:18px 0 6px}
+  .wf-detail{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
+  .wf-tbl{width:100%;border-collapse:collapse;font-size:12px}
+  .wf-tbl td,.wf-tbl th{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left;word-break:break-word}
+  .wf-tbl th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  .wf-tbl tr.click{cursor:pointer} .wf-tbl tr.click:hover{background:var(--sunken)} .wf-tbl tr.on{background:rgba(253,80,0,.07)}
+  .wf-chg{border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:10px;background:var(--sunken)}
+  .wf-chg pre.out{max-height:180px;margin-top:6px}
+  textarea.code{font-family:var(--mono);font-size:11.5px;min-height:120px;line-height:1.5}
   .warnrow{font-size:12px;color:var(--warn);background:rgba(183,121,31,.07);border:1px solid rgba(183,121,31,.25);border-radius:10px;padding:9px 12px;margin-top:10px}
   .toast{position:fixed;bottom:76px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:12.5px;box-shadow:var(--sh-lg);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
@@ -226,6 +250,18 @@ Optional — this box only fills in the When / If / Then boxes on the right. Typ
 
     <main class="flow">
       <div class="spine"></div>
+
+      <section class="stage" id="wfSection">
+        <div class="node">WF</div>
+        <div class="card">
+          <h3>Existing workflows <span class="tag">fix or change</span></h3>
+          <p class="d">Every workflow in the connected account — active, inactive and drafts — with failed runs from the last 14 days. Open one to see why it failed, fix it with AI or by hand, then save it as a draft.</p>
+          <div class="wf-bar" id="wfTabs"></div>
+          <div id="wfStatus"><div class="hint">Connect an account (left panel) to load its workflows.</div></div>
+          <div id="wfList" class="wf-list" hidden></div>
+          <div id="wfDetail"></div>
+        </div>
+      </section>
 
       <section class="stage">
         <div class="node">AI</div>
@@ -510,6 +546,7 @@ async function connect(){
   }
   setStatus($("#connStatus"),"ok",`Live on <b>${esc(S.company)}</b> &middot; <b>${S.categories.length}</b> categories loaded.`);
   renderActions(); probeConditions(); checkVariables();
+  loadWorkflowList();
 }
 
 /* ================= workflow Variables =================
@@ -2261,8 +2298,8 @@ $("#btnPush").addEventListener("click",()=>{
 /* POST /api/v2/workflows/nodes/validate {nodes, connections} → structured report:
    {type, message, validation:{is_valid, summary:{error_count}, …}, data: blocking errors}.
    Read-only; nothing is saved. */
-async function validateWorkflow(w){
-  const el=$("#validateResult"); if(!el) return;
+async function validateWorkflow(w,target){
+  const el=target||$("#validateResult"); if(!el) return;
   const host=workflowHost();
   if(!host){ el.innerHTML=""; return; }
   setStatus(el,"","Validating with the workflow service&hellip;",true);
@@ -2280,6 +2317,543 @@ async function validateWorkflow(w){
       (ok?"Validator: <b>valid</b>":"Validator: <b>"+cnt+" error"+(cnt===1?"":"s")+"</b>"+(d.message?" — "+esc(d.message):""))+
       (errs.length?"<div style=\"margin-top:4px;font-size:11px\">"+errs.slice(0,12).map(x=>"&middot; "+fmt(x)).join("<br>")+"</div>":""));
   }catch(e){ setStatus(el,"err","Validator unreachable ("+esc(e.message||String(e))+"). You can still push or export."); }
+}
+
+/* ================= existing workflows: list, diagnose, fix =================
+   Contracts (ZuperHuman skill, workflow-builder-api.md):
+     list     GET  /api/workflows?page&limit           (deleted ones excluded)
+     detail   GET  /api/workflows/<uid>                (draft nodes + live_* set, is_active)
+     runs     GET  /api/workflows/execution_history?filter.workflow_uid&filter.mode&filter.status
+     run      GET  /api/workflows/<wf>/executions/<exec> → node_execution[]
+     save     PUT  /api/v2/workflows/<uid> {workflow:{workflow_name, workflow_description,
+                   meta_data, nodes, connections}}  → saves the DRAFT only
+     publish  PUT  /api/v2/workflows/<uid>?publish_to_live=true   (never POST …/publish)
+   Safety: re-GET right before writing and refuse if it changed since it was opened; download a
+   backup of what was there; change only the fields listed; read back after saving; never
+   activate. Secrets in nodes are swapped for «secret:N» before anything goes to the AI. */
+const W={list:[],filter:"all",q:"",fails:{},failsLoaded:false,sel:null,wf:null,stamp:"",runs:[],runMode:"live",
+  runUid:null,runSummary:null,changes:[],secrets:[],secretIdx:{},savedDraft:false};
+const wfBase=()=>workflowHost().replace(/\/$/,"");
+const wfUid=w=>w&&(w.workflow_uid||w.uid||w._id);
+const clone=o=>JSON.parse(JSON.stringify(o));
+function isPublished(w){
+  return !!(w.live_version_id||w.published_draft_version_id||w.is_published||w.published_at||
+    (Array.isArray(w.live_nodes)&&w.live_nodes.length));
+}
+function wfState(w){ return w.is_active?"active":isPublished(w)?"inactive":"draft"; }
+function hasDraftChanges(w){
+  return isPublished(w)&&!!w.version_id&&!!w.published_draft_version_id&&w.version_id!==w.published_draft_version_id;
+}
+function wfNodeCount(w){
+  if(Array.isArray(w.nodes)) return w.nodes.filter(n=>n.action_type!=="NOTE").length;
+  return (w.meta_data&&w.meta_data.total_nodes)||null;
+}
+function fmtWhen(s){ if(!s) return ""; const d=new Date(s); return isNaN(d)?String(s):d.toLocaleString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}); }
+function ymd(d){ return d.toISOString().slice(0,10); }
+function listOf(d,keys){ if(Array.isArray(d)) return d; for(const k of keys){ if(d&&Array.isArray(d[k])) return d[k]; } return []; }
+
+async function loadWorkflowList(){
+  const st=$("#wfStatus");
+  if(!S.base||!workflowHost()){ return; }
+  W.sel=null; W.wf=null; $("#wfDetail").innerHTML="";
+  setStatus(st,"","Loading this account&rsquo;s workflows&hellip;",true);
+  const base=wfBase(); let page=1,all=[],totalPages=1;
+  try{
+    do{
+      const r=await zget(base,"/workflows?page="+page+"&limit=50&sort=DESC&sort_by=created_at");
+      if(!r.ok||(r.data&&r.data.type==="error")){
+        if(page===1) throw new Error("HTTP "+r.status+(r.data&&r.data.message?" — "+r.data.message:""));
+        break;
+      }
+      const rows=listOf(r.data,["data","workflows"]);
+      all=all.concat(rows);
+      totalPages=r.data.total_pages||(rows.length===50?page+1:page);
+      page++;
+    }while(page<=totalPages&&page<=40);
+  }catch(e){
+    setStatus(st,"err","Couldn&rsquo;t load workflows: "+esc(e.message||String(e)));
+    return;
+  }
+  W.list=all.filter(w=>w&&!w.is_deleted&&wfUid(w));
+  W.list.sort((a,b)=>String(b.updated_at||b.created_at||"").localeCompare(String(a.updated_at||a.created_at||"")));
+  st.innerHTML="";
+  renderWfList();
+  loadFailures();
+}
+
+// One sweep of FAILED live runs across all workflows (last 14 days), grouped by workflow.
+async function loadFailures(){
+  W.fails={}; W.failsLoaded=false;
+  const base=wfBase(); const end=new Date(), start=new Date(Date.now()-14*864e5);
+  try{
+    for(let page=1;page<=6;page++){
+      const r=await zget(base,"/workflows/execution_history?filter.mode=live&filter.status=FAILED"+
+        "&filter.start_date="+ymd(start)+"&filter.end_date="+ymd(end)+"&sort=DESC&sort_by=created_at&limit=50&page="+page);
+      if(!r.ok) break;
+      const rows=listOf(r.data,["data","executions"]);
+      rows.forEach(x=>{
+        const u=x.workflow_uid||(x.workflow&&(x.workflow.workflow_uid||x.workflow));
+        if(!u) return;
+        const f=W.fails[u]||(W.fails[u]={count:0,last:null});
+        f.count++; if(!f.last) f.last=x.created_at||x.started_at||x.updated_at;
+      });
+      if(rows.length<50||(r.data.total_pages&&page>=r.data.total_pages)) break;
+    }
+    W.failsLoaded=true;
+  }catch(e){}
+  renderWfList();
+}
+
+function renderWfList(){
+  const counts={all:W.list.length,active:0,inactive:0,draft:0,failing:0};
+  W.list.forEach(w=>{ counts[wfState(w)]++; if(W.fails[wfUid(w)]) counts.failing++; });
+  const tab=(k,l)=>`<button class="wf-tab${W.filter===k?" on":""}" data-f="${k}">${l} <span style="opacity:.7">${counts[k]}</span></button>`;
+  $("#wfTabs").innerHTML=tab("all","All")+tab("active","Active")+tab("inactive","Inactive")+tab("draft","Draft")+
+    tab("failing",W.failsLoaded?"Failing (14d)":"Failing&hellip;")+
+    `<input class="t" id="wfSearch" placeholder="Search by name" value="${esc(W.q)}"/>`+
+    `<button class="ghost mini" id="wfReload" title="Reload the list">&#8635;</button>`;
+  $("#wfTabs").querySelectorAll(".wf-tab").forEach(b=>b.onclick=()=>{ W.filter=b.dataset.f; renderWfList(); });
+  const si=$("#wfSearch"); si.oninput=()=>{ W.q=si.value; renderRows(); };
+  $("#wfReload").onclick=loadWorkflowList;
+  renderRows();
+}
+function renderRows(){
+  const q=W.q.trim().toLowerCase();
+  const rows=W.list.filter(w=>{
+    if(W.filter==="failing"){ if(!W.fails[wfUid(w)]) return false; }
+    else if(W.filter!=="all"&&wfState(w)!==W.filter) return false;
+    return !q||String(w.workflow_name||"").toLowerCase().includes(q);
+  });
+  const el=$("#wfList"); el.hidden=false;
+  if(!rows.length){ el.innerHTML='<div class="hint" style="padding:12px">No workflows match.</div>'; return; }
+  el.innerHTML=rows.map(w=>{
+    const u=wfUid(w), s=wfState(w), f=W.fails[u], n=wfNodeCount(w);
+    return `<div class="wf-row${W.sel===u?" sel":""}" data-u="${esc(u)}">
+      <span class="nm" title="${esc(w.workflow_name||"")}">${esc(w.workflow_name||"(unnamed)")}</span>
+      ${f?`<span class="pill fail" title="last failure ${esc(fmtWhen(f.last))}">${f.count}${f.count>=50?"+":""} failed</span>`:""}
+      ${hasDraftChanges(w)?'<span class="pill chg">unpublished edits</span>':""}
+      <span class="pill ${s}">${s}</span>
+      <span class="meta">${n!=null?n+" nodes · ":""}${esc(fmtWhen(w.updated_at||w.created_at))}</span>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".wf-row").forEach(r=>r.onclick=()=>openWorkflow(r.dataset.u));
+}
+
+function wfStamp(w){ return JSON.stringify([w.version_id||"",w.updated_at||"",(w.nodes||[]).length]); }
+async function getWorkflow(uid){
+  const r=await zget(wfBase(),"/workflows/"+encodeURIComponent(uid));
+  const d=r.ok&&r.data&&r.data.type!=="error"&&(r.data.data||r.data.workflow||r.data);
+  if(!d||!Array.isArray(d.nodes)) throw new Error("Could not read the workflow (HTTP "+r.status+").");
+  return d;
+}
+
+async function openWorkflow(uid){
+  W.sel=uid; W.changes=[]; W.runSummary=null; W.runUid=null; W.savedDraft=false; W.secrets=[]; W.secretIdx={};
+  renderRows();
+  const el=$("#wfDetail");
+  el.innerHTML='<div class="wf-detail"></div>';
+  setStatus(el.firstChild,"","Opening workflow&hellip;",true);
+  try{ W.wf=await getWorkflow(uid); W.stamp=wfStamp(W.wf); }
+  catch(e){ setStatus(el.firstChild,"err",esc(e.message)); return; }
+  renderDetail();
+  loadRuns();
+}
+
+function renderDetail(){
+  const w=W.wf, s=wfState(w);
+  let flow=""; try{ flow=renderFlowPreview({nodes:w.nodes,connections:w.connections||[]}); }catch(e){ flow='<div class="hint">Could not draw the graph.</div>'; }
+  const nodes=(w.nodes||[]).filter(n=>n.action_type!=="NOTE");
+  $("#wfDetail").innerHTML=`<div class="wf-detail">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <b style="font-family:var(--disp);font-size:15px">${esc(w.workflow_name||"(unnamed)")}</b>
+      <span class="pill ${s}">${s}</span>${hasDraftChanges(w)?'<span class="pill chg">draft differs from live</span>':""}
+      <code class="k">${esc(wfUid(w))}</code>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="ghost mini" id="wfBackup">Download JSON</button>
+        <button class="ghost mini" id="wfClose">Close</button>
+      </span>
+    </div>
+    ${s==="active"?'<div class="note">This workflow is <b>live</b>. Changes here are saved to its <b>draft</b>; the live version keeps running unchanged until you publish.</div>':""}
+    ${hasDraftChanges(w)?'<div class="warnrow">&#9888; The draft already has edits that were never published. You are editing the draft, so those edits will be kept and published along with yours.</div>':""}
+    <div class="wf-h">Graph (draft)</div>${flow}
+    <div class="wf-h">Recent runs <span id="wfRunMode"></span></div>
+    <div id="wfRuns"><div class="hint">Loading runs&hellip;</div></div>
+    <div id="wfRun"></div>
+
+    <div class="wf-h">Fix or change with AI</div>
+    <textarea id="wfFixPrompt" style="min-height:70px" placeholder="Leave empty to fix the error in the selected run — or describe the change, e.g. &ldquo;also skip jobs in the Warranty category&rdquo;."></textarea>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap">
+      <button class="primary mini" id="wfFixBtn">Diagnose &amp; suggest fix</button>
+      <span id="wfFixElapsed" class="hint" style="margin:0"></span>
+    </div>
+    <div id="wfFixStatus"></div>
+    <div id="wfFixResult"></div>
+
+    <details style="margin-top:14px"><summary style="cursor:pointer;font-size:12px;color:var(--dim)">Edit nodes by hand (${nodes.length})</summary>
+      <table class="wf-tbl" style="margin-top:8px"><thead><tr><th>Step</th><th>Type</th><th>On</th><th></th></tr></thead><tbody>
+      ${nodes.map(n=>`<tr><td><b>${esc(n.action_name||n.node_name||"")}</b></td><td><code class="k">${esc(n.action_key||"")}</code></td>
+        <td>${n.is_active===false?"off":"on"}</td><td style="text-align:right"><button class="ghost mini" data-edit="${esc(n.node_uid||n.id)}">Edit</button></td></tr>`).join("")}
+      </tbody></table>
+      <div id="wfNodeEdit"></div>
+    </details>
+
+    <div class="wf-h">Changes to save</div>
+    <div id="wfChanges"></div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="ghost mini" id="wfValidate">Validate</button>
+      <button class="primary mini" id="wfSave">Save as draft</button>
+      <button class="ghost mini" id="wfPublish" disabled title="Save a draft first">Publish to live</button>
+    </div>
+    <div id="wfValidateRes"></div>
+    <div id="wfSaveRes"></div>
+  </div>`;
+  $("#wfClose").onclick=()=>{ W.sel=null; W.wf=null; $("#wfDetail").innerHTML=""; renderRows(); };
+  $("#wfBackup").onclick=()=>downloadJson(W.wf,(W.wf.workflow_name||"workflow")+"_"+ymd(new Date())+".json");
+  $("#wfFixBtn").onclick=fixWithAi;
+  $("#wfDetail").querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openNodeEditor(b.dataset.edit));
+  $("#wfValidate").onclick=()=>{ const c=candidate(); if(c) validateWorkflow(c,$("#wfValidateRes")); };
+  $("#wfSave").onclick=saveDraft;
+  $("#wfPublish").onclick=publishLive;
+  renderChanges();
+}
+function downloadJson(obj,name){
+  const b=new Blob([JSON.stringify(obj,null,2)],{type:"application/json"}),a=document.createElement("a");
+  a.href=URL.createObjectURL(b); a.download=name.replace(/[^a-z0-9._-]+/gi,"_"); a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+function nodeByUid(nodes,uid){ return (nodes||[]).find(n=>n.node_uid===uid||n.id===uid); }
+function nodeName(uid){ const n=nodeByUid(W.wf&&W.wf.nodes,uid); return n?(n.action_name||n.node_name||uid):uid; }
+
+/* ---- runs ---- */
+function runsPath(uid,mode){
+  return "/workflows/execution_history?filter.workflow_uid="+encodeURIComponent(uid)+"&filter.mode="+mode+
+    "&exclude_skipped_executions=true&sort=DESC&sort_by=created_at&page=1&limit=15";
+}
+async function loadRuns(){
+  const uid=wfUid(W.wf), el=$("#wfRuns");
+  let rows=[], mode="live";
+  try{
+    let r=await zget(wfBase(),runsPath(uid,"live"));
+    rows=r.ok?listOf(r.data,["data","executions"]):[];
+    if(!rows.length){ r=await zget(wfBase(),runsPath(uid,"draft")); const t=r.ok?listOf(r.data,["data","executions"]):[]; if(t.length){ rows=t; mode="test"; } }
+  }catch(e){ el.innerHTML='<div class="warnrow">Couldn&rsquo;t load runs: '+esc(e.message)+'</div>'; return; }
+  if(W.sel!==uid) return;
+  W.runs=rows; W.runMode=mode;
+  $("#wfRunMode").textContent=rows.length?"("+mode+")":"";
+  if(!rows.length){ el.innerHTML='<div class="hint">No runs recorded (skipped runs are hidden). You can still describe a change below.</div>'; return; }
+  el.innerHTML='<table class="wf-tbl"><thead><tr><th>When</th><th>Status</th><th>Run</th></tr></thead><tbody>'+
+    rows.map(x=>{ const id=x.execution_uid||x.uid||x._id; const st=String(x.status||x.execution_status||"").toUpperCase();
+      return `<tr class="click${W.runUid===id?" on":""}" data-x="${esc(id)}"><td>${esc(fmtWhen(x.created_at||x.started_at))}</td><td><span class="pill ${esc(st)}">${esc(st||"?")}</span></td><td><code class="k">${esc(String(id).slice(0,8))}</code></td></tr>`; }).join("")+
+    '</tbody></table><div class="hint">Click a run to see each step. The newest failed run opens automatically.</div>';
+  el.querySelectorAll("tr[data-x]").forEach(tr=>tr.onclick=()=>loadRun(tr.dataset.x));
+  const failed=rows.find(x=>/FAIL/i.test(x.status||x.execution_status||""));
+  if(failed) loadRun(failed.execution_uid||failed.uid||failed._id);
+}
+function parseMaybe(v){ if(typeof v==="string"){ try{ return JSON.parse(v); }catch(e){} } return v; }
+function findStatusCode(o){
+  let hit=null;
+  (function walk(n,d){
+    if(hit!=null||!n||typeof n!=="object"||d>4) return;
+    for(const k of ["statusCode","status_code","http_status"]) if(typeof n[k]==="number"){ hit=n[k]; return; }
+    for(const k in n) walk(n[k],d+1);
+  })(o,0);
+  return hit;
+}
+function errText(e){ if(!e) return ""; if(typeof e==="string") return e; return e.message||e.error||JSON.stringify(e); }
+async function loadRun(execUid){
+  const uid=wfUid(W.wf), el=$("#wfRun");
+  W.runUid=execUid;
+  $("#wfRuns").querySelectorAll("tr[data-x]").forEach(tr=>tr.classList.toggle("on",tr.dataset.x===execUid));
+  setStatus(el,"","Reading run "+esc(String(execUid).slice(0,8))+"&hellip;",true);
+  let d;
+  try{
+    const r=await zget(wfBase(),"/workflows/"+encodeURIComponent(uid)+"/executions/"+encodeURIComponent(execUid));
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    d=(r.data&&(r.data.data||r.data))||{};
+  }catch(e){ setStatus(el,"err","Couldn&rsquo;t read the run: "+esc(e.message)); return; }
+  if(W.runUid!==execUid) return;
+  const list=d.node_execution||d.node_executions||(d.execution&&d.execution.node_execution)||[];
+  const steps=(Array.isArray(list)?list:[]).map(x=>{
+    const ed=parseMaybe(x.execution_data!=null?x.execution_data:x.output);
+    const first=Array.isArray(ed)?ed[0]:ed;
+    const n=nodeByUid(W.wf.nodes,x.node_uid)||nodeByUid(W.wf.nodes,x.node_id);
+    const code=findStatusCode(first);
+    const err=errText(x.error||(first&&first.error)||(ed&&ed.error));
+    return {step:(n&&n.action_name)||x.action_name||x.node_name||x.node_uid||"?",action_key:(n&&n.action_key)||x.action_key||"",
+      status:String(x.status||x.execution_status||"").toUpperCase(),http_status:code,error:err.slice(0,800),
+      output_excerpt:JSON.stringify(ed===undefined?null:ed).slice(0,1500)};
+  });
+  W.runSummary={execution_uid:execUid,status:String(d.status||d.execution_status||"").toUpperCase(),
+    error:errText(d.error||d.message).slice(0,800),started:d.created_at||d.started_at||"",steps};
+  const bad=s=>/FAIL|ERROR/.test(s.status)||(s.http_status&&s.http_status>=400)||!!s.error;
+  el.innerHTML=(W.runSummary.error?'<div class="warnrow">Run error: '+esc(W.runSummary.error)+'</div>':"")+
+    '<table class="wf-tbl" style="margin-top:8px"><thead><tr><th>Step</th><th>Status</th><th>Error / HTTP</th></tr></thead><tbody>'+
+    (steps.length?steps.map(s=>`<tr${bad(s)?' style="background:rgba(214,69,69,.06)"':""}><td><b>${esc(s.step)}</b><div class="hint" style="margin:0">${esc(s.action_key)}</div></td>
+      <td><span class="pill ${esc(s.status)}">${esc(s.status||"?")}</span></td>
+      <td>${s.http_status?'<code class="k">HTTP '+esc(s.http_status)+'</code> ':""}${esc(s.error)}
+        <details><summary style="cursor:pointer;font-size:10.5px;color:var(--faint)">output</summary><pre class="out" style="max-height:200px">${esc(s.output_excerpt)}</pre></details></td></tr>`).join("")
+      :'<tr><td colspan="3" class="hint">This run has no per-step records.</td></tr>')+
+    '</tbody></table>';
+}
+
+/* ---- secrets never leave the browser ---- */
+const SECRET_KEY_RX=/pass(word)?|secret|token|api_?key|authorization|client_secret/i;
+const UUID_RX=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function secretRef(v){
+  if(W.secretIdx[v]==null){ W.secretIdx[v]=W.secrets.length; W.secrets.push(v); }
+  return "«secret:"+W.secretIdx[v]+"»";
+}
+function isDynamic(v){ return /\{\{|VARIABLE\.|variable\./.test(v); }
+function scrubString(s){
+  return s
+    .replace(/(Bearer\s+)([A-Za-z0-9\-._~+\/]{16,}=*)/g,(m,p,t)=>p+secretRef(t))
+    .replace(/(['"`])([A-Za-z0-9_\-.]{28,})\1/g,(m,q,t)=>UUID_RX.test(t)||/^[a-z_.]+$/i.test(t)?m:q+secretRef(t)+q)
+    .replace(/\b[a-f0-9]{32,}\b/gi,t=>secretRef(t));
+}
+function redact(o,keyHint){
+  if(typeof o==="string"){
+    if(keyHint&&SECRET_KEY_RX.test(keyHint)&&o&&!isDynamic(o)) return secretRef(o);
+    return scrubString(o);
+  }
+  if(Array.isArray(o)) return o.map(x=>redact(x,keyHint));
+  if(o&&typeof o==="object"){
+    const out={};
+    // header pairs: {header_key:{value:"x-api-key"}, header_value:{value:"…"}}
+    const hk=o.header_key&&(o.header_key.value!=null?o.header_key.value:o.header_key);
+    for(const k in o){
+      let hint=k;
+      if(k==="value"&&keyHint) hint=keyHint;
+      if(k==="header_value"&&typeof hk==="string"&&/key|auth|token|secret/i.test(hk)) hint="authorization";
+      out[k]=redact(o[k],hint);
+    }
+    return out;
+  }
+  return o;
+}
+function restoreSecretsJson(text){
+  let bad=false;
+  const outText=text.replace(/«secret:(\d+)»/g,(m,n)=>{ const v=W.secrets[+n]; if(v==null){ bad=true; return m; } return JSON.stringify(v).slice(1,-1); });
+  return {text:outText,bad};
+}
+
+/* ---- AI fix ---- */
+let _fixTimer=null;
+async function fixWithAi(){
+  const w=W.wf; if(!w) return;
+  const prompt=$("#wfFixPrompt").value.trim();
+  if(!prompt&&!W.runSummary){ setStatus($("#wfFixStatus"),"err","Pick a failed run above, or describe what should change."); return; }
+  W.secrets=[]; W.secretIdx={};
+  const byId={}; (w.nodes||[]).forEach(n=>byId[n.id]=n.action_name||n.node_name||n.id);
+  const payload={
+    name:w.workflow_name,
+    state:wfState(w),
+    nodes:(w.nodes||[]).filter(n=>n.action_type!=="NOTE").map(n=>({node_uid:n.node_uid||n.id,name:n.action_name||n.node_name,
+      action_key:n.action_key,action_type:n.action_type,is_active:n.is_active!==false,form_fields:redact(n.form_fields||{})})),
+    connections:(w.connections||[]).map(e=>({from:byId[e.source]||e.source,to:byId[e.target]||e.target,
+      handle:e.sourceHandle||"",branch:e.output_value===true?"true":e.output_value===false?"false":""}))
+  };
+  const run=W.runSummary?redact(W.runSummary):null;
+  const btn=$("#wfFixBtn"); btn.disabled=true;
+  const t0=Date.now(); clearInterval(_fixTimer);
+  _fixTimer=setInterval(()=>{ const e=$("#wfFixElapsed"); if(e) e.textContent=Math.round((Date.now()-t0)/1000)+"s"; },1000);
+  setStatus($("#wfFixStatus"),"","Reading the workflow"+(run?" and the run":"")+"&hellip; usually 20–90 seconds. Credentials are masked before sending.",true);
+  try{
+    const r=await fetch("/api/workflow-ai",{method:"POST",
+      headers:{"Content-Type":"application/json","x-zuper-key":S.key,"x-zuper-base":S.base},
+      body:JSON.stringify({mode:"fix",prompt,context:aiContext(),workflow:payload,run})});
+    const txt=await r.text(); let d=null; try{ d=JSON.parse(txt); }catch(e){}
+    if(!r.ok||!d||!d.fix){
+      const msg=(d&&(d.message||d.error))||("HTTP "+r.status);
+      setStatus($("#wfFixStatus"),"err","Couldn&rsquo;t get a fix: "+esc(msg)+
+        (r.status===503?"<br><span style=\"font-size:11px\">Add <code class=\"k\">ANTHROPIC_API_KEY</code> in Vercel and redeploy. Hand edits below still work.</span>":
+         r.status===404?"<br><span style=\"font-size:11px\">Open the tool from the dashboard site, not a local file.</span>":""));
+      return;
+    }
+    if(W.wf!==w) return;
+    renderFix(d.fix);
+    setStatus($("#wfFixStatus"),"ok","Done in "+Math.round((Date.now()-t0)/1000)+"s &middot; "+(d.fix.changes||[]).length+" change(s) suggested. Review them under <b>Changes to save</b>.");
+  }catch(e){ setStatus($("#wfFixStatus"),"err","Request failed: "+esc(e.message||String(e))); }
+  finally{ clearInterval(_fixTimer); const e=$("#wfFixElapsed"); if(e) e.textContent=""; btn.disabled=false; }
+}
+const PATH_OK=/^(is_active|form_fields(\.[^.]+)+)$/;
+function getPath(o,path){ return path.split(".").reduce((a,k)=>a==null?undefined:a[k],o); }
+function setPath(o,path,val){
+  const ks=path.split("."); let a=o;
+  for(let i=0;i<ks.length-1;i++){ if(a[ks[i]]==null||typeof a[ks[i]]!=="object") a[ks[i]]=/^\d+$/.test(ks[i+1])?[]:{}; a=a[ks[i]]; }
+  a[ks[ks.length-1]]=val;
+}
+function renderFix(fix){
+  const notes=[];
+  (fix.changes||[]).forEach(c=>{
+    const n=nodeByUid(W.wf.nodes,c.node_uid);
+    if(!n){ notes.push("Skipped a change for an unknown step ("+esc(c.step_name||c.node_uid)+")."); return; }
+    if(!PATH_OK.test(c.field_path||"")){ notes.push("Skipped <b>"+esc(c.step_name)+"</b>: field <code>"+esc(c.field_path)+"</code> is outside what this tool edits."); return; }
+    const rs=restoreSecretsJson(String(c.new_value_json||""));
+    if(rs.bad){ notes.push("Skipped <b>"+esc(c.step_name)+"</b>: it referenced a credential that doesn&rsquo;t exist."); return; }
+    let val; try{ val=JSON.parse(rs.text); }catch(e){ val=rs.text; }
+    addChange({node_uid:n.node_uid||n.id,path:c.field_path,after:val,reason:c.reason,source:"AI"});
+  });
+  const list=(t,a,i)=>a&&a.length?`<div class="wf-h">${t}</div>`+a.map(x=>`<div style="font-size:12px;margin-top:4px">${i} ${esc(x)}</div>`).join(""):"";
+  $("#wfFixResult").innerHTML=
+    `<div class="note" style="margin-top:12px"><b>Diagnosis${fix.failing_step?" &middot; "+esc(fix.failing_step):""}</b><div style="margin-top:4px">${esc(fix.diagnosis||"")}</div></div>`+
+    (fix.clarifying_question?`<div class="warnrow">&#10067; ${esc(fix.clarifying_question)}</div>`:"")+
+    notes.map(x=>`<div class="warnrow">&#9888; ${x}</div>`).join("")+
+    list("Needs a manual step in Zuper",fix.manual_steps,"&#9744;")+
+    list("How to test",fix.test_plan,"&#8226;");
+}
+
+/* ---- changes ---- */
+let _chgId=0;
+function addChange(c){
+  const n=nodeByUid(W.wf.nodes,c.node_uid);
+  c.id=++_chgId; c.step=n?(n.action_name||n.node_name):c.node_uid;
+  c.before=clone(getPath(n,c.path)===undefined?null:getPath(n,c.path));
+  c.isString=typeof c.after==="string";
+  // A newer change to the same field replaces the older one.
+  W.changes=W.changes.filter(x=>!(x.node_uid===c.node_uid&&x.path===c.path));
+  W.changes.push(c); W.savedDraft=false;
+  renderChanges();
+}
+function showVal(v){ return typeof v==="string"?v:JSON.stringify(v,null,2); }
+function renderChanges(){
+  const el=$("#wfChanges"); if(!el) return;
+  const pub=$("#wfPublish"); if(pub){ pub.disabled=!W.savedDraft; pub.textContent="Publish to live"; pub.dataset.armed=""; }
+  if(!W.changes.length){ el.innerHTML='<div class="hint">None yet — ask the AI above or edit a node by hand.</div>'; return; }
+  el.innerHTML=W.changes.map(c=>`<div class="wf-chg" data-c="${c.id}">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${esc(c.step)}</b> <code class="k">${esc(c.path)}</code>
+      <span class="pill">${esc(c.source)}</span><button class="ghost mini" style="margin-left:auto" data-rm="${c.id}">Remove</button></div>
+    ${c.reason?`<div style="font-size:12px;color:var(--dim);margin-top:4px">${esc(c.reason)}</div>`:""}
+    <details><summary style="cursor:pointer;font-size:11px;color:var(--faint);margin-top:6px">current value</summary><pre class="out">${esc(showVal(c.before))}</pre></details>
+    <label style="margin-top:8px">New value ${c.isString?"(text)":"(JSON)"} — edit before saving if needed</label>
+    <textarea class="code" data-v="${c.id}">${esc(showVal(c.after))}</textarea>
+  </div>`).join("");
+  el.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{ W.changes=W.changes.filter(x=>x.id!==+b.dataset.rm); renderChanges(); });
+  el.querySelectorAll("textarea[data-v]").forEach(t=>t.oninput=()=>{ W.savedDraft=false; const p=$("#wfPublish"); if(p) p.disabled=true; });
+}
+// Read the edited textareas back into the changes; returns false on bad JSON.
+function syncChanges(){
+  let ok=true;
+  W.changes.forEach(c=>{
+    const t=$('#wfChanges textarea[data-v="'+c.id+'"]'); if(!t) return;
+    if(c.isString){ c.after=t.value; return; }
+    try{ c.after=JSON.parse(t.value); t.style.borderColor=""; }catch(e){ ok=false; t.style.borderColor="var(--bad)"; }
+  });
+  return ok;
+}
+function applyChanges(wf){
+  W.changes.forEach(c=>{
+    const n=nodeByUid(wf.nodes,c.node_uid); if(!n) throw new Error("Step “"+c.step+"” no longer exists in the workflow.");
+    setPath(n,c.path,clone(c.after));
+    if(c.path==="is_active"&&wf.meta_data&&Array.isArray(wf.meta_data.initial_nodes)){
+      const i=wf.meta_data.initial_nodes.find(x=>x.id===n.id); if(i&&i.data) i.data.is_active=!!c.after;
+    }
+  });
+  return wf;
+}
+function candidate(){
+  if(!syncChanges()){ setStatus($("#wfValidateRes"),"err","One of the JSON values doesn&rsquo;t parse (red box)."); return null; }
+  try{ return applyChanges(clone(W.wf)); }catch(e){ setStatus($("#wfValidateRes"),"err",esc(e.message)); return null; }
+}
+
+function openNodeEditor(uid){
+  const n=nodeByUid(W.wf.nodes,uid); if(!n) return;
+  const el=$("#wfNodeEdit");
+  const code=n.form_fields&&typeof n.form_fields.code==="string";
+  el.innerHTML=`<div class="wf-chg"><b>${esc(n.action_name||"")}</b> <code class="k">${esc(n.action_key||"")}</code>
+    <label style="margin-top:8px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="neOn" ${n.is_active===false?"":"checked"} style="width:auto"/> Step is on</label>
+    ${code?`<label style="margin-top:8px">Code</label><textarea class="code" id="neCode" style="min-height:220px">${esc(n.form_fields.code)}</textarea>`:""}
+    <details ${code?"":"open"}><summary style="cursor:pointer;font-size:11px;color:var(--faint);margin-top:8px">All fields (JSON)</summary>
+      <textarea class="code" id="neFF" style="min-height:220px">${esc(JSON.stringify(n.form_fields||{},null,2))}</textarea></details>
+    <div style="display:flex;gap:8px;margin-top:8px"><button class="primary mini" id="neAdd">Add to changes</button><button class="ghost mini" id="neX">Cancel</button></div>
+    <div id="neRes"></div></div>`;
+  $("#neX").onclick=()=>{ el.innerHTML=""; };
+  $("#neAdd").onclick=()=>{
+    const on=$("#neOn").checked; let added=0;
+    if(on!==(n.is_active!==false)){ addChange({node_uid:uid,path:"is_active",after:on,reason:on?"Turn step on":"Turn step off",source:"manual"}); added++; }
+    let ff; try{ ff=JSON.parse($("#neFF").value); }catch(e){ setStatus($("#neRes"),"err","The fields JSON doesn&rsquo;t parse: "+esc(e.message)); return; }
+    if(code&&$("#neCode").value!==n.form_fields.code&&JSON.stringify(ff)===JSON.stringify(n.form_fields)){
+      addChange({node_uid:uid,path:"form_fields.code",after:$("#neCode").value,reason:"Hand edit",source:"manual"}); added++;
+    }else if(JSON.stringify(ff)!==JSON.stringify(n.form_fields||{})){
+      addChange({node_uid:uid,path:"form_fields",after:ff,reason:"Hand edit",source:"manual"}); added++;
+    }
+    if(added){ el.innerHTML=""; toast("Added to changes"); } else setStatus($("#neRes"),"err","Nothing changed.");
+  };
+  el.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+// PATH_OK also governs hand edits that replace the whole form_fields object.
+function pathAllowed(p){ return p==="form_fields"||PATH_OK.test(p); }
+
+/* ---- save / publish ---- */
+function saveBody(wf){
+  return {workflow:{workflow_name:wf.workflow_name,workflow_description:wf.workflow_description!=null?wf.workflow_description:(wf.description||""),
+    meta_data:wf.meta_data||{},nodes:wf.nodes,connections:wf.connections||[]}};
+}
+async function freshOrStale(res){
+  const uid=wfUid(W.wf);
+  const fresh=await getWorkflow(uid);
+  if(wfStamp(fresh)!==W.stamp){
+    setStatus(res,"err","This workflow was changed in the Workflow Builder after you opened it. Nothing was saved. <button class=\"ghost mini\" id=\"wfReopen\">Reload it</button> and re-apply your changes.");
+    const b=$("#wfReopen"); if(b) b.onclick=()=>{ const keep=W.changes; openWorkflow(uid).then(()=>{ W.changes=keep.filter(c=>nodeByUid(W.wf.nodes,c.node_uid)); renderChanges(); }); };
+    return null;
+  }
+  return fresh;
+}
+async function saveDraft(){
+  const res=$("#wfSaveRes");
+  if(!W.changes.length){ setStatus(res,"err","There are no changes to save."); return; }
+  if(W.changes.some(c=>!pathAllowed(c.path))){ setStatus(res,"err","A change targets a field this tool doesn&rsquo;t edit."); return; }
+  if(!syncChanges()){ setStatus(res,"err","One of the JSON values doesn&rsquo;t parse (red box)."); return; }
+  const btn=$("#wfSave"); btn.disabled=true;
+  try{
+    setStatus(res,"","Checking nobody changed it since you opened it&hellip;",true);
+    const fresh=await freshOrStale(res); if(!fresh) return;
+    downloadJson(fresh,(fresh.workflow_name||"workflow")+"_backup_"+new Date().toISOString().replace(/[:.]/g,"-")+".json");
+    const next=applyChanges(clone(fresh));
+    setStatus(res,"","Saving the draft&hellip;",true);
+    const uid=wfUid(fresh);
+    const r=await fetch(wfBase()+"/v2/workflows/"+encodeURIComponent(uid),{method:"PUT",headers:zHeaders(true),body:JSON.stringify(saveBody(next))});
+    const txt=await r.text(); let d=null; try{ d=JSON.parse(txt); }catch(e){}
+    if(!r.ok||(d&&d.type==="error")){ setStatus(res,"err","Save refused (HTTP "+r.status+")"+(d&&d.message?": "+esc(d.message):"")+". Nothing changed; your edits are still here."+
+      (d&&d.data?'<pre class="out" style="max-height:160px">'+esc(JSON.stringify(d.data,null,2).slice(0,1500))+'</pre>':"")); return; }
+    // Read back: a 200 is not proof each field landed.
+    const back=await getWorkflow(uid);
+    const missed=W.changes.filter(c=>{ const n=nodeByUid(back.nodes,c.node_uid); return !n||JSON.stringify(getPath(n,c.path))!==JSON.stringify(c.after); });
+    W.wf=back; W.stamp=wfStamp(back);
+    const li=W.list.findIndex(x=>wfUid(x)===uid); if(li>-1) W.list[li]=Object.assign({},W.list[li],back);
+    S.wfCache=null;
+    if(missed.length){
+      setStatus(res,"err","Saved, but "+missed.length+" field(s) read back differently: "+missed.map(c=>esc(c.step)+" <code>"+esc(c.path)+"</code>").join(", ")+". Check them in the Workflow Builder.");
+      return;
+    }
+    const n=W.changes.length; W.changes=[]; W.savedDraft=true;
+    renderDetail(); W.savedDraft=true; renderChanges();
+    setStatus($("#wfSaveRes"),"ok","Saved "+n+" change(s) to the <b>draft</b> and read them back. A backup of the previous version was downloaded."+
+      "<div style=\"margin-top:6px;font-size:11px\">Next: run a test from the Workflow Builder on a sandbox record, then publish (button above or in the builder). "+
+      (wfState(back)==="active"?"The live version keeps running until you publish.":"This workflow is not active, so it won&rsquo;t run on live events even after publishing until someone activates it.")+"</div>");
+    renderRows();
+    loadRuns();
+  }catch(e){ setStatus(res,"err","Save failed:"+esc(e.message||String(e))+". Your edits are still here."); }
+  finally{ btn.disabled=false; }
+}
+async function publishLive(){
+  const btn=$("#wfPublish"), res=$("#wfSaveRes");
+  if(!W.savedDraft) return;
+  if(!btn.dataset.armed){ btn.dataset.armed="1"; btn.textContent="Click again to publish to live"; btn.classList.remove("ghost"); btn.classList.add("primary");
+    setTimeout(()=>{ if(btn.dataset.armed){ btn.dataset.armed=""; btn.textContent="Publish to live"; btn.classList.add("ghost"); btn.classList.remove("primary"); } },6000); return; }
+  btn.dataset.armed=""; btn.disabled=true;
+  try{
+    setStatus(res,"","Publishing the draft to live&hellip;",true);
+    const fresh=await freshOrStale(res); if(!fresh){ btn.disabled=false; return; }
+    const uid=wfUid(fresh);
+    const r=await fetch(wfBase()+"/v2/workflows/"+encodeURIComponent(uid)+"?publish_to_live=true",{method:"PUT",headers:zHeaders(true),body:JSON.stringify(saveBody(fresh))});
+    const txt=await r.text(); let d=null; try{ d=JSON.parse(txt); }catch(e){}
+    if(!r.ok||(d&&d.type==="error")){ setStatus(res,"err","Publish refused (HTTP "+r.status+")"+(d&&d.message?": "+esc(d.message):"")+"."); btn.disabled=false; return; }
+    const back=await getWorkflow(uid); W.wf=back; W.stamp=wfStamp(back); W.savedDraft=false;
+    const li=W.list.findIndex(x=>wfUid(x)===uid); if(li>-1) W.list[li]=Object.assign({},W.list[li],back);
+    renderDetail(); renderRows();
+    setStatus($("#wfSaveRes"),"ok","Published to live"+(d&&d.message?" — "+esc(d.message):"")+". "+
+      (back.is_active?"It is active, so the next matching event uses the new version.":"It is <b>not active</b>; activate it in the Workflow Builder when you&rsquo;re ready."));
+    loadRuns();
+  }catch(e){ setStatus(res,"err","Publish failed: "+esc(e.message||String(e))); btn.disabled=false; }
 }
 
 /* init */

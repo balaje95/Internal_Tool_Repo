@@ -102,4 +102,31 @@ Settings
 - Status/category names: look them up by name at run time, never hardcode UIDs.
 - Keep it minimal: the fewest steps that do the job reliably. Use a code step to compute
   values and an http step to write them.
+
+## Debugging existing workflows (playbook)
+Method: find the first step whose output differs from what the next step expected. No run at
+the event time = trigger never fired (inactive/unpublished, trigger filter). SKIPPED = the
+trigger filter did not match (this applies to test runs too).
+Common causes:
+- Silent HTTP failure: run COMPLETED but nothing changed — the HTTP node has error_action
+  CONTINUE; read its status/error. 403 "User is not allowed" = the API key's user role
+  (e.g. Field Executive) cannot do it; fix the key/role, not the node.
+- Race: "module_uid required" / empty lookup right after a trigger — another workflow
+  creates the record seconds later; add a delay + re-fetch or chain the workflows.
+- Search lag: POST /jobs/filter misses a just-changed job (index lags ~5 min).
+- Narrow filter or low limit hides records; paginate.
+- If/Else goes false silently because a code step looked for an entry that is not in the
+  GET response (e.g. a status_history item); fall back to the trigger body.
+- "Invalid JSON request body: Unexpected end of JSON input" — a body expression resolved to
+  empty; check the step that builds it.
+- Code step "Code Execution Error" with no log — \\" inside strings, a missing return, a
+  wrong getNodeData name, or an unavailable require().
+- try/catch that returns success hides failures — rethrow or return an error flag.
+- 429 from PDF/send endpoints — back off and cap attempts.
+- zuper_update with operator_type FIELD ignores custom_fields (needs FIELD_CUSTOM).
+- Create triggers fire once: data filled seconds later is not there yet.
+- Invoices without a linked job break job lookups — branch when the job is missing.
+- Workflows cloned from another account keep that account's UIDs (categories, statuses,
+  business units); re-map them by name.
+- Hardcoded API keys in nodes: recommend moving them to Variables; never repeat them.
 `;
