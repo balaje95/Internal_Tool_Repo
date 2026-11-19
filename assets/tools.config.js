@@ -59,22 +59,6 @@ const TOOLS = [
     "help": "Upload a CPQ spreadsheet (.xlsx or .csv), connect with your Zuper API key, and it creates the products, categories, and a proposal template in the account. Run a Dry Run first to preview what will be created vs reused."
   },
   {
-    "name": "Training Deck Generator",
-    "description": "Auto-generate branded training decks by team type",
-    "file": "tools/training-deck-generator.html",
-    "icon": "🖥️",
-    "updated": "2026-07-01",
-    "help": "Pick a team, optionally fetch customer info via an API key, choose chapters and screenshots, then generate a branded PowerPoint training deck client-side."
-  },
-  {
-    "name": "JN to Zuper Workflow Migration",
-    "description": "Migrate JobNimbus workflows into Zuper",
-    "file": "tools/jn-workflow-migration.html",
-    "icon": "🔀",
-    "updated": "2026-07-01",
-    "help": "Drop a JobNimbus automations JSON export and it converts each automation into Zuper Workflow Builder JSON, flagging anything that needs manual mapping."
-  },
-  {
     "name": "Zuper Dashboard Builder",
     "description": "Build and configure custom Zuper dashboards",
     "file": "tools/dashboard-builder.html",
@@ -89,22 +73,6 @@ const TOOLS = [
     "icon": "🗂️",
     "updated": "2026-08-21",
     "help": "Bulk fetch, delete, dedupe, migrate, and import Zuper records across many modules — jobs, recurring jobs, products, CPQ, workflows and more. Service Tasks: fetch the task instances that sit on jobs (showing the job, work order number, status, due date, priority, assignee and inspection form) and delete them in bulk; tasks that belong to no job are listed as Standalone rather than hidden, and the status filter matches the Zuper web app, so completed and cancelled tasks are not listed. Custom Fields: pick the module (Job, Customer, Asset, Contact, Property, Purchase Order, Invoice, Quote) and delete field definitions in bulk — with a warning naming the fields first, because deleting a field also deletes the value stored in it on every record of that module and that data cannot be restored. Jobs → 🎯 Delete by UID List: paste or upload a spreadsheet of job UIDs and only those jobs are looked up, shown in the grid with their number/title/customer/status, and deleted — UIDs that don't exist are reported, never queued. Recurring Jobs: delete recurrence definitions with a delete-scope choice — keep the jobs they generated, delete only future ones, or delete every generated job including completed history. Dry Run is on by default for destructive actions. CPQ → 🏠 Roofing CPQ Import: upload one workbook (Measurement Tokens, Formulas, Packages, Bundles sheets) to bulk-create CPQ measurement categories/tokens, formulas (with a confirm-before-apply variable→token mapping grid), service packages, and product bundles — dry-run, dedupe, and rate-limited."
-  },
-  {
-    "name": "Zuper Process Doc Generator",
-    "description": "Generate a process doc, or a support-handover deck, from a Zuper account",
-    "file": "tools/process-doc-generator.html",
-    "icon": "📝",
-    "updated": "2026-07-27",
-    "help": "Connect with a Zuper API key (region auto-detected), then choose what to build. Process Doc: a polished, editable document built from the account's job categories, statuses, checklists and CPQ — with a lifecycle flow diagram and a required-items checkpoint table; export to Word, PDF, HTML or JSON. Handover Document: a Support Handover Checklist (Questionnaire) that starts as a blank template pre-filled with the account name/region, with sections for overview, environment, integrations, automations, config, promises, risks, an acceptance checklist and Fathom meeting findings — edit each section inline, add meeting blocks, or import a prepared JSON (round-trips with JSON export), then export a branded PowerPoint (.pptx). The API key is never written into any export."
-  },
-  {
-    "name": "Go-Live Dashboard",
-    "description": "Roofing implementation pipeline and go-lives vs the 10/month goal",
-    "file": "tools/go-live-dashboard.html",
-    "icon": "🚀",
-    "updated": "2026-08-19",
-    "help": "Open it and you see the current roofing pipeline — no API key, no login to Zoho. Projects are flagged Gone Live / Due This Month / Missed / Upcoming against a fixed goal of 10 go-lives a month, with go-lives vs goal by month, pipeline by status, cumulative run-rate and BA workload. A panel at the top lists what moved since the previous export — went live, ETAs slipped or pulled in, status changes, new projects — and every chip, KPI, bar and slice is clickable, opening a drawer that drills down to the project, its comments and its HubSpot deal. Filter by month, status, owner or BA, search, and sort any column. The data comes from a Zoho Projects export refreshed weekly; the header states how old it is and warns when it is over a week old. Go-Live ETA comes from the Current ETA column and Deal Value from Deal Amount, so wrong numbers get fixed in Zoho and re-exported rather than edited here."
   },
   {
     "name": "CompanyCam → Zuper Sync",
